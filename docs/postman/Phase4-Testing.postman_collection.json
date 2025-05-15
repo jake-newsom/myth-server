@@ -1,0 +1,431 @@
+{
+  "info": {
+    "_postman_id": "f9e05a51-4e8c-4dcc-86a2-b4d45bf2c3df",
+    "name": "Viking Vengeance Phase 4 Testing",
+    "description": "Collection for testing Viking Vengeance Phase 4: Server-Side Game Logic & Solo Mode API (4x4 Board)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.environment.set(\"token\", jsonData.token);",
+                  "pm.environment.set(\"userId\", jsonData.user.id);",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Response has token\", function () {",
+                  "    pm.expect(jsonData.token).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{testUserEmail}}\",\n    \"password\": \"{{testUserPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login to get JWT token for API access"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Decks",
+      "item": [
+        {
+          "name": "Get User Decks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.decks && jsonData.decks.length > 0) {",
+                  "    pm.environment.set(\"deckId\", jsonData.decks[0].deck_id);",
+                  "}",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Response has decks array\", function () {",
+                  "    pm.expect(jsonData.decks).to.exist.and.to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/decks",
+              "host": ["{{baseUrl}}"],
+              "path": ["decks"]
+            },
+            "description": "Get user's decks to use for creating a game"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Solo Game",
+      "item": [
+        {
+          "name": "Create Solo Game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.environment.set(\"gameId\", jsonData.game_id);",
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"Response has game_id\", function () {",
+                  "    pm.expect(jsonData.game_id).to.exist;",
+                  "});",
+                  "pm.test(\"Game status is active\", function () {",
+                  "    pm.expect(jsonData.game_status).to.equal('active');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"deckId\": \"{{deckId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/games/solo",
+              "host": ["{{baseUrl}}"],
+              "path": ["games", "solo"]
+            },
+            "description": "Create a new solo game against the AI"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Game State",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "var gameState = JSON.parse(jsonData.game_state);",
+                  "",
+                  "// Cache first card in player's hand for later use",
+                  "if (gameState.player1 && gameState.player1.hand && gameState.player1.hand.length > 0) {",
+                  "    pm.environment.set(\"cardToPlay\", gameState.player1.hand[0]);",
+                  "}",
+                  "",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Board layout is 4x4\", function () {",
+                  "    pm.expect(jsonData.board_layout).to.equal('4x4');",
+                  "});",
+                  "",
+                  "pm.test(\"Game board is 4x4\", function () {",
+                  "    pm.expect(gameState.board).to.be.an('array').with.lengthOf(4);",
+                  "    gameState.board.forEach(row => {",
+                  "        pm.expect(row).to.be.an('array').with.lengthOf(4);",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Player 1 has cards\", function () {",
+                  "    pm.expect(gameState.player1.hand).to.be.an('array').and.not.empty;",
+                  "    pm.expect(gameState.player1.deck).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test(\"Player 2 (AI) has cards\", function () {",
+                  "    pm.expect(gameState.player2.hand).to.be.an('array').and.not.empty;",
+                  "    pm.expect(gameState.player2.deck).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/games/{{gameId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["games", "{{gameId}}"]
+            },
+            "description": "Get the current state of the game"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Game Actions",
+      "item": [
+        {
+          "name": "Place Card",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "var gameState = JSON.parse(jsonData.game_state);",
+                  "",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Card was placed on board\", function () {",
+                  "    var placedCard = gameState.board[1][1];",
+                  "    pm.expect(placedCard).to.not.be.null;",
+                  "    pm.expect(placedCard.user_card_instance_id).to.equal(pm.environment.get(\"cardToPlay\"));",
+                  "});",
+                  "",
+                  "pm.test(\"Card has proper structure\", function () {",
+                  "    var placedCard = gameState.board[1][1];",
+                  "    if (placedCard) {",
+                  "        pm.expect(placedCard.currentPower).to.be.an('object');",
+                  "        pm.expect(placedCard.currentPower).to.have.all.keys('top', 'right', 'bottom', 'left');",
+                  "        pm.expect(placedCard.level).to.be.a('number');",
+                  "        pm.expect(placedCard.baseCardData).to.be.an('object');",
+                  "    }",
+                  "});",
+                  "",
+                  "// Find if AI made a move",
+                  "let aiMoved = false;",
+                  "let aiCardPosition = null;",
+                  "",
+                  "for (let y = 0; y < 4; y++) {",
+                  "    for (let x = 0; x < 4; x++) {",
+                  "        const cell = gameState.board[y][x];",
+                  "        if (cell && cell.owner === gameState.player2.userId) {",
+                  "            aiMoved = true;",
+                  "            aiCardPosition = {x, y};",
+                  "            break;",
+                  "        }",
+                  "    }",
+                  "    if (aiMoved) break;",
+                  "}",
+                  "",
+                  "pm.test(\"AI responded with a move\", function () {",
+                  "    pm.expect(aiMoved).to.be.true;",
+                  "    if (aiCardPosition) {",
+                  "        console.log(`AI placed card at position (${aiCardPosition.x}, ${aiCardPosition.y})`);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"actionType\": \"placeCard\",\n    \"user_card_instance_id\": \"{{cardToPlay}}\",\n    \"position\": {\n        \"x\": 1,\n        \"y\": 1\n    }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/games/{{gameId}}/actions",
+              "host": ["{{baseUrl}}"],
+              "path": ["games", "{{gameId}}", "actions"]
+            },
+            "description": "Place a card on the board"
+          },
+          "response": []
+        },
+        {
+          "name": "Place Card (Position Taken)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message indicates position is occupied\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error).to.include('Invalid board position or position already occupied');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"actionType\": \"placeCard\",\n    \"user_card_instance_id\": \"{{cardToPlay}}\",\n    \"position\": {\n        \"x\": 1,\n        \"y\": 1\n    }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/games/{{gameId}}/actions",
+              "host": ["{{baseUrl}}"],
+              "path": ["games", "{{gameId}}", "actions"]
+            },
+            "description": "Try to place a card on an already occupied position"
+          },
+          "response": []
+        },
+        {
+          "name": "Surrender",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "var gameState = JSON.parse(jsonData.game_state);",
+                  "",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Game status is player2_win\", function () {",
+                  "    pm.expect(gameState.status).to.equal('player2_win');",
+                  "});",
+                  "",
+                  "pm.test(\"Winner is set to AI player\", function () {",
+                  "    pm.expect(jsonData.winner_id).to.equal(gameState.player2.userId);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"actionType\": \"surrender\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/games/{{gameId}}/actions",
+              "host": ["{{baseUrl}}"],
+              "path": ["games", "{{gameId}}", "actions"]
+            },
+            "description": "Surrender the game (AI wins)"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api",
+      "type": "string"
+    },
+    {
+      "key": "testUserEmail",
+      "value": "test-user@example.com",
+      "type": "string"
+    },
+    {
+      "key": "testUserPassword",
+      "value": "testpassword123",
+      "type": "string"
+    }
+  ]
+}

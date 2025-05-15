@@ -1,0 +1,119 @@
+import { PoolClient } from "pg";
+import db from "../config/db.config";
+import DeckModel from "../models/deck.model";
+import CardModel from "../models/card.model";
+import { UserCardInstance } from "../types/database.types";
+
+// Define Starter Content (IDs should match those in your Cards table after seeding)
+const STARTER_BASE_CARD_NAMES_AND_QUANTITIES: {
+  name: string;
+  quantity: number;
+}[] = [
+  { name: "Odin, Allfather", quantity: 1 }, // Assuming Odin is Legendary
+  { name: "Freya, Vanadis", quantity: 1 }, // Assuming Freya is Legendary or Epic
+  // Add more common/uncommon cards to reach 20 total instances for the deck
+  // Example: Assuming these are non-legendary and we give 2 copies of each
+  { name: "Valkyrie Recruit", quantity: 2 },
+  { name: "Shield Maiden", quantity: 2 },
+  { name: "Berserker Initiate", quantity: 2 },
+  { name: "Rune Carver Acolyte", quantity: 2 },
+  { name: "Scout of Midgard", quantity: 2 },
+  { name: "Aesir Guard", quantity: 2 },
+  { name: "Vanir Healer", quantity: 2 },
+  { name: "Forest Troll", quantity: 2 },
+  { name: "Mountain Giant", quantity: 1 }, // Example of a single non-legendary
+]; // This list needs to result in 20 card instances for the deck, respecting legendary limits.
+
+const STARTER_DECK_CONFIG = {
+  name: "Valiant Starter Deck",
+};
+
+const StarterService = {
+  async grantStarterContent(userId: string): Promise<void> {
+    const client: PoolClient = await db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      // 1. Get actual card_ids for starter card names
+      const baseCardNames = STARTER_BASE_CARD_NAMES_AND_QUANTITIES.map(
+        (c) => c.name
+      );
+      const cardNamePlaceholders = baseCardNames
+        .map((_, i) => `$${i + 1}`)
+        .join(",");
+
+      const cardRes = await client.query(
+        `SELECT card_id, name, rarity FROM "Cards" WHERE name IN (${cardNamePlaceholders});`,
+        baseCardNames
+      );
+      const cardIdMap = new Map<string, { card_id: string; rarity: string }>(
+        cardRes.rows.map((card) => [
+          card.name,
+          { card_id: card.card_id, rarity: card.rarity },
+        ])
+      );
+
+      if (cardRes.rows.length !== baseCardNames.length) {
+        console.warn(
+          "Not all starter base cards found in DB. Check STARTER_BASE_CARD_NAMES_AND_QUANTITIES.",
+          cardRes.rows.map((r) => r.name)
+        );
+        // Potentially throw an error or handle gracefully
+      }
+
+      // 2. Create UserCardInstance records for each copy of starter cards
+      const createdCardInstanceIds: string[] = [];
+      for (const cardInfo of STARTER_BASE_CARD_NAMES_AND_QUANTITIES) {
+        const baseCardDetails = cardIdMap.get(cardInfo.name);
+        if (baseCardDetails) {
+          for (let i = 0; i < cardInfo.quantity; i++) {
+            // Create a new instance for each copy
+            const instanceRes = await client.query(
+              'INSERT INTO "UserCardInstances" (user_id, card_id, level, xp) VALUES ($1, $2, 1, 0) RETURNING user_card_instance_id;',
+              [userId, baseCardDetails.card_id]
+            );
+            createdCardInstanceIds.push(
+              instanceRes.rows[0].user_card_instance_id
+            );
+          }
+        }
+      }
+      console.log(
+        `Granted ${createdCardInstanceIds.length} starter card instances to user ${userId}`
+      );
+
+      // 3. Create starter deck using the newly created card instances
+      // This simplified implementation assumes the createdCardInstanceIds are already chosen for the deck
+      // and that the list of STARTER_BASE_CARD_NAMES_AND_QUANTITIES is designed to create a valid 20-card deck
+
+      if (createdCardInstanceIds.length !== 20) {
+        console.warn(
+          `Starter deck for user ${userId} will not have exactly 20 cards. Has ${createdCardInstanceIds.length} cards.`
+        );
+      }
+
+      // Take up to 20 instances for the deck
+      const deckInstancesForCreation = createdCardInstanceIds.slice(0, 20);
+
+      await DeckModel.createWithClient(
+        client,
+        userId,
+        STARTER_DECK_CONFIG.name,
+        deckInstancesForCreation
+      );
+      console.log(
+        `Created starter deck "${STARTER_DECK_CONFIG.name}" for user ${userId} with ${deckInstancesForCreation.length} cards.`
+      );
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error granting starter content:", error);
+      throw error; // Re-throw to be caught by controller
+    } finally {
+      client.release();
+    }
+  },
+};
+
+export default StarterService;

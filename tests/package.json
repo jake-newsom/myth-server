@@ -1,0 +1,13 @@
+{
+  "name": "viking-vengeance-tests",
+  "version": "1.0.0",
+  "description": "Testing utilities for Viking Vengeance",
+  "main": "phase5_testing.js",
+  "scripts": {
+    "test:phase5": "node phase5_testing.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "socket.io-client": "^4.7.2"
+  }
+}

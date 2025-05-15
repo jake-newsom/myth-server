@@ -1,0 +1,114 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance Authentication API
+  description: API for user registration and authentication
+  version: 1.0.0
+
+paths:
+  /api/auth/register:
+    post:
+      summary: Register a new user
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  example: thor_hammer
+                email:
+                  type: string
+                  format: email
+                  example: thor@asgard.com
+                password:
+                  type: string
+                  format: password
+                  example: mjolnir123
+      responses:
+        201:
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      user_id:
+                        type: string
+                        format: uuid
+                      username:
+                        type: string
+                      email:
+                        type: string
+                      in_game_currency:
+                        type: number
+        400:
+          description: Bad request (validation error)
+        409:
+          description: User already exists with that email or username
+        500:
+          description: Server error
+
+  /api/auth/login:
+    post:
+      summary: Log in an existing user
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: thor@asgard.com
+                password:
+                  type: string
+                  format: password
+                  example: mjolnir123
+      responses:
+        200:
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      user_id:
+                        type: string
+                        format: uuid
+                      username:
+                        type: string
+                      email:
+                        type: string
+                      in_game_currency:
+                        type: number
+        400:
+          description: Invalid email or password
+        401:
+          description: Authentication failed
+        500:
+          description: Server error

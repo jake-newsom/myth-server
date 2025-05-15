@@ -1,0 +1,279 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance Matchmaking API
+  description: |
+    API for matchmaking and PvP game setup in Viking Vengeance.
+
+    The matchmaking system allows players to:
+    - Join a queue with their selected deck
+    - Get matched with another player
+    - Check their current status in the queue
+    - Leave the queue if they change their mind
+  version: 1.0.0
+
+paths:
+  /api/matchmaking/join:
+    post:
+      summary: Join the matchmaking queue
+      description: |
+        Adds the player to the matchmaking queue with their selected deck.
+        If another player is already waiting, they will be matched immediately and a game will be created.
+      tags:
+        - Matchmaking
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - deckId
+              properties:
+                deckId:
+                  type: string
+                  format: uuid
+                  description: The ID of the player's deck to use for the match
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+            examples:
+              joinWithDeck:
+                summary: Join queue with a specific deck
+                value:
+                  deckId: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        200:
+          description: Already matched with an opponent or match found immediately
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchedResponse"
+              example:
+                status: "matched"
+                gameId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                opponentUsername: "VikingWarrior42"
+        202:
+          description: Added to matchmaking queue, waiting for opponent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueuedResponse"
+              example:
+                status: "queued"
+                message: "Added to queue. Waiting for an opponent."
+        400:
+          description: Invalid request (e.g., deck not found, invalid deck, or already in queue)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalidDeck:
+                  summary: Invalid deck
+                  value:
+                    error:
+                      message: "Invalid or incomplete deck selected."
+                alreadyInQueue:
+                  summary: Already in queue
+                  value:
+                    error:
+                      message: "Already in queue or an active match."
+                noDeckId:
+                  summary: No deck ID provided
+                  value:
+                    error:
+                      message: "deckId is required to join matchmaking."
+        401:
+          description: Unauthorized - Invalid or missing token
+        500:
+          description: Server error
+
+  /api/matchmaking/status:
+    get:
+      summary: Get current matchmaking status
+      description: |
+        Checks the player's current matchmaking status.
+        Returns whether they are idle, in queue, or have been matched.
+        If in queue, includes wait time and position information.
+        If matched, includes game ID and opponent information.
+      tags:
+        - Matchmaking
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Current matchmaking status
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/IdleResponse"
+                  - $ref: "#/components/schemas/QueuedResponse"
+                  - $ref: "#/components/schemas/MatchedResponse"
+              examples:
+                idle:
+                  summary: Not in queue or matched
+                  value:
+                    status: "idle"
+                    message: "Not in queue or any active match."
+                queued:
+                  summary: In matchmaking queue
+                  value:
+                    status: "queued"
+                    message: "Still in queue. Waiting for an opponent."
+                    waitTime: 45
+                    queuePosition: 1
+                    queueLength: 3
+                matched:
+                  summary: Matched with opponent
+                  value:
+                    status: "matched"
+                    gameId: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                    opponentUsername: "VikingWarrior42"
+        401:
+          description: Unauthorized - Invalid or missing token
+        500:
+          description: Server error
+
+  /api/matchmaking/leave:
+    post:
+      summary: Leave the matchmaking queue
+      description: |
+        Removes the player from the matchmaking queue.
+        Can only be used if the player is currently in the queue and not yet matched.
+      tags:
+        - Matchmaking
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Successfully left matchmaking queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeftQueueResponse"
+              example:
+                status: "left_queue"
+                message: "Removed from matchmaking queue."
+        400:
+          description: Not in queue or already matched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                notInQueue:
+                  summary: Not in queue
+                  value:
+                    error:
+                      message: "You are not in the matchmaking queue."
+                alreadyMatched:
+                  summary: Already matched
+                  value:
+                    error:
+                      message: "Already matched with an opponent. Cannot leave queue."
+        401:
+          description: Unauthorized - Invalid or missing token
+        500:
+          description: Server error
+
+components:
+  schemas:
+    IdleResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [idle]
+          description: Status indicating the player is not in queue or matched
+        message:
+          type: string
+          description: Human-readable status message
+          example: "Not in queue or any active match."
+      required:
+        - status
+        - message
+
+    QueuedResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [queued]
+          description: Status indicating the player is in the matchmaking queue
+        message:
+          type: string
+          description: Human-readable status message
+          example: "Still in queue. Waiting for an opponent."
+        waitTime:
+          type: integer
+          description: Time in seconds the user has been waiting in the queue
+          example: 45
+        queuePosition:
+          type: integer
+          description: Position in the queue (1 is next to be matched)
+          example: 1
+        queueLength:
+          type: integer
+          description: Total number of players in queue
+          example: 3
+      required:
+        - status
+        - message
+
+    MatchedResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [matched]
+          description: Status indicating the player has been matched with an opponent
+        gameId:
+          type: string
+          format: uuid
+          description: The ID of the created game
+          example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+        opponentUsername:
+          type: string
+          description: Username of the matched opponent
+          example: "VikingWarrior42"
+      required:
+        - status
+        - gameId
+
+    LeftQueueResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [left_queue]
+          description: Status indicating the player has left the queue
+        message:
+          type: string
+          description: Human-readable confirmation message
+          example: "Removed from matchmaking queue."
+      required:
+        - status
+        - message
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Human-readable error message
+              example: "Invalid or incomplete deck selected."
+          required:
+            - message
+      required:
+        - error
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token authentication. Include the token in the Authorization header with the format "Bearer {token}".
