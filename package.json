@@ -6,12 +6,15 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "start": "node dist/app.js",
+    "start": "node server.js",
     "dev": "ts-node src/app.ts",
+    "dev:watch": "nodemon --watch src --exec ts-node src/app.ts",
+    "start:watch": "nodemon server.js",
     "migrate": "node-pg-migrate -m ./migrations",
     "migrate:create": "node-pg-migrate -m ./migrations create",
     "seed": "node scripts/seedDatabase.js",
-    "test-phase2": "node scripts/test_phase2.js"
+    "test-phase2": "node scripts/test_phase2.js",
+    "docs": "npx @redocly/cli build-docs docs/openapi/openapi.yaml"
   },
   "keywords": [],
   "author": "",
@@ -21,7 +24,7 @@
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
-    "express": "^5.1.0",
+    "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
     "node-pg-migrate": "^7.9.1",
@@ -32,7 +35,7 @@
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/cors": "^2.8.18",
-    "@types/express": "^5.0.1",
+    "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.9",
     "@types/lodash": "^4.17.16",
     "@types/node": "^22.15.18",

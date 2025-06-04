@@ -2,7 +2,11 @@
 import { Router } from "express";
 import authRoutes from "./auth.routes";
 import gameRoutes from "./game.routes";
-import errorMiddleware from "../middlewares/error.middleware";
+import userRoutes from "./user.routes";
+import cardRoutes from "./card.routes";
+import deckRoutes from "./deck.routes";
+import userCardRoutes from "./userCard.routes";
+import { handleErrors } from "../middlewares/error.middleware";
 
 // Import matchmaking routes
 const matchmakingRoutes = require("./matchmaking.routes");
@@ -13,9 +17,13 @@ const router = Router();
 router.use("/auth", authRoutes);
 router.use("/games", gameRoutes);
 router.use("/matchmaking", matchmakingRoutes);
+router.use("/users", userRoutes);
+router.use("/cards", cardRoutes);
+router.use("/decks", deckRoutes);
+router.use("/user-cards", userCardRoutes);
 
 // Global error handler
-router.use(errorMiddleware.handleErrors);
+router.use(handleErrors);
 
 // Health check endpoint
 router.get("/health", (_, res) => {

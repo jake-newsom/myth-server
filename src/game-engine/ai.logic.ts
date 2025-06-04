@@ -1,18 +1,15 @@
 import { GameLogic } from "./game.logic";
-import {
-  GameState,
-  BoardPosition,
-  HydratedCardInstance,
-} from "../types/game.types";
+import { GameState, BoardPosition } from "../types/game.types";
+import { InGameCard } from "../types/card.types";
 import * as _ from "lodash";
 
 const BOARD_SIZE = 4;
 
 export class AILogic {
-  // Evaluate move needs to use the currentPower of the hydrated card instance
+  // Evaluate move needs to use the current_power of the hydrated card instance
   evaluateMove(
     gameState: GameState,
-    cardToPlay: HydratedCardInstance,
+    cardToPlay: InGameCard,
     position: BoardPosition,
     aiPlayerId: string
   ): number {
@@ -21,25 +18,11 @@ export class AILogic {
 
     // Simulate placement with the card instance's actual power and level
     tempBoard[position.y][position.x] = {
-      user_card_instance_id: cardToPlay.user_card_instance_id,
-      base_card_id: cardToPlay.base_card_id,
-      owner: aiPlayerId,
-      currentPower: cardToPlay.currentPower,
-      level: cardToPlay.level,
-      state: "normal",
-      baseCardData: {
-        // Populate baseCardData for the simulated cell
-        name: cardToPlay.name,
-        rarity: cardToPlay.rarity,
-        image_url: cardToPlay.image_url,
-        special_ability_id: cardToPlay.special_ability_id,
-        tags: cardToPlay.tags,
-        basePower: cardToPlay.basePower,
-        ability_name: cardToPlay.ability_name,
-        ability_description: cardToPlay.ability_description,
-        ability_triggerMoment: cardToPlay.ability_triggerMoment,
-        ability_parameters: cardToPlay.ability_parameters,
-      },
+      card: cardToPlay,
+      tile_status: "normal",
+      player_1_turns_left: 0,
+      player_2_turns_left: 0,
+      animation_label: null,
     };
 
     let potentialFlips = 0;
@@ -58,12 +41,15 @@ export class AILogic {
         nx < BOARD_SIZE &&
         ny >= 0 &&
         ny < BOARD_SIZE &&
-        tempBoard[ny][nx] !== null
+        tempBoard[ny][nx] !== null &&
+        tempBoard[ny][nx]!.card
       ) {
         const adjacentCell = tempBoard[ny][nx]!;
-        if (adjacentCell.owner !== aiPlayerId) {
-          const placedCardPower = (cardToPlay.currentPower as any)[dir.from];
-          const adjacentCardPower = (adjacentCell.currentPower as any)[dir.to];
+        if (adjacentCell.card!.owner !== aiPlayerId) {
+          const placedCardPower = (cardToPlay.current_power as any)[dir.from];
+          const adjacentCardPower = (adjacentCell.card!.current_power as any)[
+            dir.to
+          ];
           if (placedCardPower > adjacentCardPower) {
             potentialFlips++;
           }
@@ -73,10 +59,10 @@ export class AILogic {
     score += potentialFlips * 100;
     // Add sum of card's current power stats to score
     score +=
-      cardToPlay.currentPower.top +
-      cardToPlay.currentPower.right +
-      cardToPlay.currentPower.bottom +
-      cardToPlay.currentPower.left;
+      cardToPlay.current_power.top +
+      cardToPlay.current_power.right +
+      cardToPlay.current_power.bottom +
+      cardToPlay.current_power.left;
 
     // Positional bonus for strategic positions (corners and center have higher value)
     if (
@@ -95,11 +81,11 @@ export class AILogic {
     currentGameState: GameState,
     aiDifficulty = "medium"
   ): Promise<{
-    actionType: string;
+    action_type: string;
     user_card_instance_id: string;
     position: BoardPosition;
   } | null> {
-    const aiPlayer = currentGameState.player1.userId.startsWith("AI_")
+    const aiPlayer = currentGameState.player1.user_id.startsWith("AI_")
       ? currentGameState.player1
       : currentGameState.player2;
     if (aiPlayer.hand.length === 0) return null;
@@ -107,7 +93,8 @@ export class AILogic {
     let possibleMoves = [];
     for (const instanceIdInHand of aiPlayer.hand) {
       // Get hydrated card data for AI (from cache or fetch - AI doesn't need userId verification for its own cards)
-      let cardData = currentGameState.hydratedCardDataCache?.[instanceIdInHand];
+      let cardData =
+        currentGameState.hydrated_card_data_cache?.[instanceIdInHand];
       if (!cardData) {
         const fetchedCard = await GameLogic.hydrateCardInstance(
           instanceIdInHand
@@ -121,9 +108,9 @@ export class AILogic {
           if (currentGameState.board[y][x] === null) {
             const moveScore = this.evaluateMove(
               _.cloneDeep(currentGameState),
-              cardData,
+              cardData as InGameCard,
               { x, y },
-              aiPlayer.userId
+              aiPlayer.user_id
             );
             possibleMoves.push({
               user_card_instance_id: instanceIdInHand,
@@ -144,7 +131,7 @@ export class AILogic {
     const chosenMove = possibleMoves[Math.floor(Math.random() * topN)];
 
     return {
-      actionType: "placeCard",
+      action_type: "placeCard",
       user_card_instance_id: chosenMove.user_card_instance_id,
       position: chosenMove.position,
     };

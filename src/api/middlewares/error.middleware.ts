@@ -11,7 +11,7 @@ interface ErrorResponseObject {
 /**
  * Central error handler middleware for standardized error responses
  */
-const handleErrors = (
+export const handleErrors = (
   err: any,
   req: Request,
   res: Response,

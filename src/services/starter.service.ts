@@ -1,31 +1,28 @@
 import { PoolClient } from "pg";
 import db from "../config/db.config";
 import DeckModel from "../models/deck.model";
-import CardModel from "../models/card.model";
-import { UserCardInstance } from "../types/database.types";
 
 // Define Starter Content (IDs should match those in your Cards table after seeding)
 const STARTER_BASE_CARD_NAMES_AND_QUANTITIES: {
   name: string;
   quantity: number;
 }[] = [
-  { name: "Odin, Allfather", quantity: 1 }, // Assuming Odin is Legendary
-  { name: "Freya, Vanadis", quantity: 1 }, // Assuming Freya is Legendary or Epic
-  // Add more common/uncommon cards to reach 20 total instances for the deck
-  // Example: Assuming these are non-legendary and we give 2 copies of each
-  { name: "Valkyrie Recruit", quantity: 2 },
+  { name: "Valkyrie", quantity: 1 },
+  { name: "Draugr", quantity: 1 },
+  { name: "Thunder Priest", quantity: 1 },
+  { name: "Ratatoskr", quantity: 1 },
   { name: "Shield Maiden", quantity: 2 },
-  { name: "Berserker Initiate", quantity: 2 },
-  { name: "Rune Carver Acolyte", quantity: 2 },
-  { name: "Scout of Midgard", quantity: 2 },
-  { name: "Aesir Guard", quantity: 2 },
-  { name: "Vanir Healer", quantity: 2 },
-  { name: "Forest Troll", quantity: 2 },
-  { name: "Mountain Giant", quantity: 1 }, // Example of a single non-legendary
-]; // This list needs to result in 20 card instances for the deck, respecting legendary limits.
+  { name: "Thrall", quantity: 2 },
+  { name: "Drengr", quantity: 2 },
+  { name: "Peasant Archer", quantity: 2 },
+  { name: "Wolf Pup", quantity: 2 },
+  { name: "Boar of the Hunt", quantity: 2 },
+  { name: "Skald", quantity: 2 },
+  { name: "Young Jarl", quantity: 2 },
+]; // This list results in 20 card instances for the deck, respecting legendary limits.
 
 const STARTER_DECK_CONFIG = {
-  name: "Valiant Starter Deck",
+  name: "Norse Warriors Starter Deck",
 };
 
 const StarterService = {
@@ -43,7 +40,7 @@ const StarterService = {
         .join(",");
 
       const cardRes = await client.query(
-        `SELECT card_id, name, rarity FROM "Cards" WHERE name IN (${cardNamePlaceholders});`,
+        `SELECT card_id, name, rarity FROM "cards" WHERE name IN (${cardNamePlaceholders});`,
         baseCardNames
       );
       const cardIdMap = new Map<string, { card_id: string; rarity: string }>(
@@ -69,7 +66,7 @@ const StarterService = {
           for (let i = 0; i < cardInfo.quantity; i++) {
             // Create a new instance for each copy
             const instanceRes = await client.query(
-              'INSERT INTO "UserCardInstances" (user_id, card_id, level, xp) VALUES ($1, $2, 1, 0) RETURNING user_card_instance_id;',
+              'INSERT INTO "user_owned_cards" (user_id, card_id, level, xp) VALUES ($1, $2, 1, 0) RETURNING user_card_instance_id;',
               [userId, baseCardDetails.card_id]
             );
             createdCardInstanceIds.push(

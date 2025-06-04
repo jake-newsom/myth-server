@@ -208,10 +208,7 @@ function initializeSocketManager(io) {
               : currentGameState.player1;
 
           nextGameState = { ...currentGameState };
-          nextGameState.status =
-            currentGameState.player1.userId === userId
-              ? "player2_win"
-              : "player1_win";
+          nextGameState.status = "completed";
           nextGameState.winner = winningPlayer.userId;
         } else {
           socket.emit("game:error", { message: "Invalid actionType." });
@@ -230,13 +227,9 @@ function initializeSocketManager(io) {
         let currencyAwardedTo = null;
 
         // Handle game over and winner rewards
-        if (nextGameState.status !== "active") {
+        if (nextGameState.status === "completed") {
           completedAt = "NOW()";
-          if (nextGameState.status === "player1_win") {
-            winnerIdDb = nextGameState.player1.userId;
-          } else if (nextGameState.status === "player2_win") {
-            winnerIdDb = nextGameState.player2.userId;
-          }
+          winnerIdDb = nextGameState.winner;
 
           // Award currency to winner
           if (winnerIdDb) {

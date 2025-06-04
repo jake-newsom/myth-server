@@ -1,13 +1,31 @@
 import { Request, Response } from "express";
-import db from "../../config/db.config";
-import { GameLogic } from "../../game-engine/game.logic";
+import { GameLogic, GameStatus } from "../../game-engine/game.logic";
 import { AILogic } from "../../game-engine/ai.logic";
 import { AbilityRegistry } from "../../game-engine/ability.registry";
 import { GameState, BoardPosition, GameAction } from "../../types/game.types";
 import * as _ from "lodash";
 
+// Import Services
+import DeckService, {
+  DeckNotFoundError,
+  DeckAccessError,
+  EmptyDeckError,
+} from "../../services/deck.service";
+import GameService, {
+  GameNotFoundError,
+  CreateGameResponse,
+  UpdatedGameResponse,
+  SanitizedGame,
+  GameRecord,
+} from "../../services/game.service";
+import UserService from "../../services/user.service";
+import { BaseGameEvent } from "../../game-engine/game-events";
+
 // Initialize ability registry
 AbilityRegistry.initialize();
+
+// Define a constant UUID for the AI player and EXPORT it
+export const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
 
 class GameController {
   constructor() {
@@ -22,120 +40,96 @@ class GameController {
    */
   async startSoloGame(req: Request, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.user_id;
 
       if (!userId) {
         res.status(401).json({ error: "Unauthorized" });
         return;
       }
 
-      const { deckId } = req.body;
+      const { deckId, aiDeckId: requestedAiDeckId } = req.body;
       if (!deckId) {
         res.status(400).json({ error: "Deck ID is required" });
         return;
       }
 
-      // 1. Validate that deck exists and belongs to the user
-      const deckQuery = `
-        SELECT * FROM "Decks" 
-        WHERE deck_id = $1 AND user_id = $2;
-      `;
-      const { rows: deckRows } = await db.query(deckQuery, [deckId, userId]);
-
-      if (deckRows.length === 0) {
-        res
-          .status(404)
-          .json({ error: "Deck not found or does not belong to the user" });
-        return;
-      }
-
-      // 2. Get user's card instances from the deck
-      const userCardInstancesQuery = `
-        SELECT user_card_instance_id FROM "DeckCards" 
-        WHERE deck_id = $1;
-      `;
-      const { rows: cardInstanceRows } = await db.query(
-        userCardInstancesQuery,
-        [deckId]
+      // 1. Validate user's deck and get card instances
+      await DeckService.validateUserDeck(deckId, userId); // Throws on error
+      const playerCardInstanceIds = await DeckService.getDeckCardInstances(
+        deckId
       );
 
-      if (cardInstanceRows.length === 0) {
+      if (playerCardInstanceIds.length === 0) {
+        // DeckService.getDeckCardInstances doesn't throw EmptyDeckError by default
+        // as per plan, to match original behavior of checking length here.
         res.status(400).json({ error: "Deck is empty" });
         return;
       }
 
-      const playerCardInstanceIds = cardInstanceRows.map(
-        (row) => row.user_card_instance_id
-      );
-
-      // 3. Generate AI deck with cards of similar level
-      // For simplicity in MVP, we'll use same cards but owned by AI
-      // In a real implementation, we'd select appropriate AI cards from a pool
-      const aiCardInstancesQuery = `
-        SELECT uci.user_card_instance_id 
-        FROM "UserCardInstances" uci
-        JOIN "Cards" c ON uci.card_id = c.card_id
-        WHERE uci.user_id = 'AI_PLAYER_ID_STATIC_STRING' 
-        LIMIT $1;
-      `;
-      const { rows: aiCardRows } = await db.query(aiCardInstancesQuery, [
-        playerCardInstanceIds.length,
-      ]);
-
-      let aiCardInstanceIds: string[];
-
-      if (aiCardRows.length >= playerCardInstanceIds.length) {
-        // If AI has enough cards, use those
-        aiCardInstanceIds = aiCardRows.map((row) => row.user_card_instance_id);
+      // 2. Determine and prepare AI deck
+      let aiDeckIdToUse = requestedAiDeckId;
+      if (!aiDeckIdToUse) {
+        aiDeckIdToUse = await DeckService.getRandomAIDeckId();
+        if (!aiDeckIdToUse) {
+          res.status(500).json({ error: "No AI decks available" });
+          return;
+        }
       } else {
-        // For development/testing purposes: Create copies of player cards but owned by AI
-        // In production, this should be replaced with proper AI card selection logic
-        aiCardInstanceIds = await this.createAICardCopies(
+        await DeckService.validateAIDeck(aiDeckIdToUse); // Throws on error
+      }
+
+      let aiCardInstanceIds = await DeckService.getDeckCardInstances(
+        aiDeckIdToUse
+      );
+      if (aiCardInstanceIds.length === 0) {
+        // Fallback to creating AI card copies
+        aiCardInstanceIds = await DeckService.createAICardCopies(
           playerCardInstanceIds
         );
       }
 
-      // 4. Initialize game state
+      // 3. Initialize game state
       const initialGameState = await GameLogic.initializeGame(
         playerCardInstanceIds,
         aiCardInstanceIds,
         userId
       );
 
-      // 5. Create game record in database
-      const gameQuery = `
-        INSERT INTO "Games" (player1_id, player2_id, player1_deck_id, game_mode, game_status, board_layout, current_turn_player_id, game_state, created_at, started_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-        RETURNING game_id, game_state, game_status;
-      `;
-      const gameValues = [
-        userId,
-        "AI_PLAYER_ID_STATIC_STRING",
-        deckId,
-        "solo",
-        "active",
-        "4x4", // Ensure this is '4x4' as required
-        initialGameState.currentPlayerId,
-        JSON.stringify(initialGameState),
-      ];
+      // 4. Create game record in database
+      const createdGameResponse: CreateGameResponse =
+        await GameService.createGameRecord(
+          userId,
+          AI_PLAYER_ID,
+          deckId,
+          aiDeckIdToUse,
+          "solo",
+          initialGameState
+        );
 
-      const { rows: gameRows } = await db.query(gameQuery, gameValues);
+      // game_state from createGameRecord (via DB) is a JSON string. Parse it.
+      const gameStateObject =
+        typeof createdGameResponse.game_state === "string"
+          ? JSON.parse(createdGameResponse.game_state)
+          : createdGameResponse.game_state;
 
-      if (gameRows.length === 0) {
-        res.status(500).json({ error: "Failed to create game" });
-        return;
-      }
-
-      const createdGame = {
-        game_id: gameRows[0].game_id,
-        game_state: gameRows[0].game_state,
-        game_status: gameRows[0].game_status,
-      };
-
-      res.status(201).json(createdGame);
+      res.status(201).json({
+        game_id: createdGameResponse.game_id,
+        game_state: gameStateObject,
+        game_status: createdGameResponse.game_status,
+        ai_deck_id: aiDeckIdToUse,
+      });
     } catch (error) {
       console.error("Error creating solo game:", error);
-      res.status(500).json({ error: "Server error creating game" });
+      if (
+        error instanceof DeckNotFoundError ||
+        error instanceof DeckAccessError ||
+        error instanceof EmptyDeckError
+      ) {
+        // Use specific status codes based on error type if desired, e.g., 404 for DeckNotFoundError
+        res.status(400).json({ error: (error as Error).message });
+      } else {
+        res.status(500).json({ error: "Server error creating game" });
+      }
     }
   }
 
@@ -144,7 +138,7 @@ class GameController {
    */
   async getGame(req: Request, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.user_id;
 
       if (!userId) {
         res.status(401).json({ error: "Unauthorized" });
@@ -152,46 +146,21 @@ class GameController {
       }
 
       const { gameId } = req.params;
+      let game: SanitizedGame | null = null;
 
-      // Fetch game data
-      const gameQuery = `
-        SELECT g.*, 
-               p1.username as player1_username,
-               CASE WHEN p2.username IS NULL THEN 'AI Opponent' ELSE p2.username END as player2_username
-        FROM "Games" g
-        LEFT JOIN "Users" p1 ON g.player1_id = p1.user_id
-        LEFT JOIN "Users" p2 ON g.player2_id = p2.user_id
-        WHERE g.game_id = $1 AND (g.player1_id = $2 OR g.player2_id = $2 OR $2 = 'ADMIN_USER_ID');
-      `;
-      const { rows: gameRows } = await db.query(gameQuery, [gameId, userId]);
+      if (req.user?.role === "admin") {
+        game = await GameService.findGameForAdmin(gameId);
+      } else {
+        game = await GameService.findGameForUser(gameId, userId);
+      }
 
-      if (gameRows.length === 0) {
+      if (!game) {
         res.status(404).json({ error: "Game not found or access denied" });
         return;
       }
 
-      const game = gameRows[0];
-
-      // Prepare response (sanitize data if needed)
-      // For example, for a PvP game, we might need to hide opponent's hand
-      const sanitizedGame = {
-        game_id: game.game_id,
-        player1_id: game.player1_id,
-        player1_username: game.player1_username,
-        player2_id: game.player2_id,
-        player2_username: game.player2_username,
-        game_mode: game.game_mode,
-        game_status: game.game_status,
-        board_layout: game.board_layout,
-        created_at: game.created_at,
-        started_at: game.started_at,
-        completed_at: game.completed_at,
-        winner_id: game.winner_id,
-        current_turn_player_id: game.current_turn_player_id,
-        game_state: game.game_state,
-      };
-
-      res.status(200).json(sanitizedGame);
+      // game_state from GameService (findGameForAdmin/User) is already an object
+      res.status(200).json(game);
     } catch (error) {
       console.error("Error fetching game:", error);
       res.status(500).json({ error: "Server error fetching game" });
@@ -203,7 +172,7 @@ class GameController {
    */
   async submitAction(req: Request, res: Response): Promise<void> {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.user_id;
 
       if (!userId) {
         res.status(401).json({ error: "Unauthorized" });
@@ -214,38 +183,36 @@ class GameController {
       const action: GameAction = req.body;
 
       // Validate the action has required fields
-      if (!action.actionType) {
+      if (!action.action_type) {
         res.status(400).json({ error: "Action type is required" });
         return;
       }
 
-      // Fetch current game state
-      const gameQuery = `
-        SELECT * FROM "Games" 
-        WHERE game_id = $1 AND (player1_id = $2 OR player2_id = $2);
-      `;
-      const { rows: gameRows } = await db.query(gameQuery, [gameId, userId]);
+      // Fetch current game (raw record needed for player IDs for win conditions)
+      // GameService.getRawGameRecord returns game_state as an object
+      const gameRecord: GameRecord | null = await GameService.getRawGameRecord(
+        gameId,
+        userId
+      );
 
-      if (gameRows.length === 0) {
+      if (!gameRecord) {
         res.status(404).json({ error: "Game not found or access denied" });
         return;
       }
 
-      const game = gameRows[0];
-
-      // Parse game state
-      const currentGameState: GameState = game.game_state;
+      const currentGameState: GameState = gameRecord.game_state; // Already an object
 
       // Validate that it's the player's turn
-      if (currentGameState.currentPlayerId !== userId) {
+      if (currentGameState.current_player_id !== userId) {
         res.status(400).json({ error: "Not your turn" });
         return;
       }
 
-      // Process the action based on actionType
-      let updatedGameState: GameState;
+      // Process the action based on action_type
+      let updatedGameState: GameState = _.cloneDeep(currentGameState); // Start with a copy for modifications by GameLogic
+      let events: BaseGameEvent[] = [];
 
-      switch (action.actionType) {
+      switch (action.action_type) {
         case "placeCard":
           if (!action.user_card_instance_id || !action.position) {
             res.status(400).json({
@@ -253,14 +220,15 @@ class GameController {
             });
             return;
           }
-
-          const position: BoardPosition = action.position;
-          updatedGameState = await GameLogic.placeCard(
-            currentGameState,
+          // GameLogic methods should ideally return a new state object rather than mutating
+          const placeCardResult = await GameLogic.placeCard(
+            currentGameState, // Pass original for validation within GameLogic
             userId,
             action.user_card_instance_id,
-            position
+            action.position
           );
+          updatedGameState = placeCardResult.state;
+          events.push(...placeCardResult.events);
           break;
 
         case "endTurn":
@@ -281,155 +249,90 @@ class GameController {
 
       // If it's now AI's turn in solo mode and game is active, make AI move
       if (
-        game.game_mode === "solo" &&
-        updatedGameState.status === "active" &&
-        updatedGameState.currentPlayerId === "AI_PLAYER_ID_STATIC_STRING"
+        gameRecord.game_mode === "solo" &&
+        updatedGameState.status === GameStatus.ACTIVE &&
+        updatedGameState.current_player_id === AI_PLAYER_ID
       ) {
         const ai = new AILogic();
-        const aiMove = await ai.makeAIMove(updatedGameState);
-
+        // Pass a clone of updatedGameState as AILogic.makeAIMove might modify it
+        // or GameLogic.placeCard/endTurn for AI might expect the state before AI's specific action
+        const aiMove = await ai.makeAIMove(_.cloneDeep(updatedGameState));
         if (aiMove) {
-          updatedGameState = await GameLogic.placeCard(
+          // Pass the state that includes player's action result for AI's move
+          const placeCardResult = await GameLogic.placeCard(
             updatedGameState,
-            "AI_PLAYER_ID_STATIC_STRING",
+            AI_PLAYER_ID,
             aiMove.user_card_instance_id,
             aiMove.position
           );
+          updatedGameState = placeCardResult.state;
+          events.push(...placeCardResult.events);
         } else {
           // AI has no valid moves, end turn
           updatedGameState = await GameLogic.endTurn(
             updatedGameState,
-            "AI_PLAYER_ID_STATIC_STRING"
+            AI_PLAYER_ID
           );
         }
       }
 
       // Process game completion if the status indicates game over
-      let winner_id = null;
-      let game_status = game.game_status;
+      let winner_id_for_db: string | null = updatedGameState.winner || null;
+      let new_game_status_for_db: GameStatus = updatedGameState.status;
 
+      // Award currency to the player for winning solo mode
       if (
-        updatedGameState.status === "player1_win" ||
-        updatedGameState.status === "player2_win" ||
-        updatedGameState.status === "draw"
+        new_game_status_for_db === GameStatus.COMPLETED &&
+        winner_id_for_db === userId &&
+        gameRecord.game_mode === "solo"
       ) {
-        game_status = "completed";
-
-        if (updatedGameState.status === "player1_win") {
-          winner_id = game.player1_id;
-
-          // Award currency to the player for winning solo mode
-          if (game.game_mode === "solo" && game.player1_id === userId) {
-            await this.awardCurrencyForWin(userId, 10); // Award 10 currency units for solo win
-          }
-        } else if (updatedGameState.status === "player2_win") {
-          winner_id = game.player2_id;
-        }
+        await UserService.awardCurrency(userId, 10);
       }
 
-      // Update game in database
-      const updateQuery = `
-        UPDATE "Games"
-        SET game_state = $1,
-            game_status = $2,
-            current_turn_player_id = $3,
-            winner_id = $4,
-            completed_at = CASE WHEN $2 = 'completed' THEN NOW() ELSE NULL END
-        WHERE game_id = $5
-        RETURNING game_id, game_state, game_status, winner_id;
-      `;
-      const updateValues = [
-        JSON.stringify(updatedGameState),
-        game_status,
-        updatedGameState.currentPlayerId,
-        winner_id,
-        gameId,
-      ];
+      // Update game in database using GameService
+      const updatedGameResponse: UpdatedGameResponse =
+        await GameService.updateGameAfterAction(
+          gameId,
+          updatedGameState, // This is the fully updated state object
+          new_game_status_for_db,
+          winner_id_for_db
+        );
 
-      const { rows: updatedRows } = await db.query(updateQuery, updateValues);
+      // game_state from updateGameAfterAction (via DB) is a JSON string. Parse it.
+      const finalGameStateObject =
+        typeof updatedGameResponse.game_state === "string"
+          ? JSON.parse(updatedGameResponse.game_state)
+          : updatedGameResponse.game_state;
 
-      if (updatedRows.length === 0) {
-        res.status(500).json({ error: "Failed to update game" });
-        return;
-      }
-
-      const updatedGame = {
-        game_id: updatedRows[0].game_id,
-        game_state: updatedRows[0].game_state,
-        game_status: updatedRows[0].game_status,
-        winner_id: updatedRows[0].winner_id,
-      };
-
-      res.status(200).json(updatedGame);
+      res.status(200).json({
+        game_id: updatedGameResponse.game_id,
+        game_state: finalGameStateObject,
+        game_status: updatedGameResponse.game_status,
+        winner_id: updatedGameResponse.winner_id,
+        events,
+      });
     } catch (error) {
       console.error("Error processing game action:", error);
-
       // Provide more specific error messages for client validation issues
-      if (error instanceof Error) {
+      if (error instanceof GameNotFoundError) {
+        res.status(404).json({ error: (error as Error).message });
+      } else if (
+        error instanceof Error &&
+        (error.message === "Not your turn" ||
+          error.message.includes(
+            "required for placeCard action"
+          ) /* specific validation messages from controller */ ||
+          error.message === "Invalid action type" ||
+          (error.message &&
+            error.message.startsWith(
+              "Card with ID"
+            ))) /* Example for errors from GameLogic if they become Error instances */
+      ) {
         res.status(400).json({ error: error.message });
       } else {
         res.status(500).json({ error: "Server error processing action" });
       }
     }
-  }
-
-  /**
-   * Helper method to create AI card copies for testing
-   */
-  private async createAICardCopies(
-    playerCardInstanceIds: string[]
-  ): Promise<string[]> {
-    const aiCardInstanceIds: string[] = [];
-
-    const AI_USER_ID = "AI_PLAYER_ID_STATIC_STRING";
-
-    // For each player card, create an AI copy with the same card ID
-    for (const playerInstanceId of playerCardInstanceIds) {
-      // Get the base card ID from the player's card instance
-      const cardQuery = `
-        SELECT card_id, level FROM "UserCardInstances" 
-        WHERE user_card_instance_id = $1;
-      `;
-      const { rows } = await db.query(cardQuery, [playerInstanceId]);
-
-      if (rows.length > 0) {
-        const baseCardId = rows[0].card_id;
-        const level = rows[0].level;
-
-        // Create a card instance for the AI with the same base card
-        const insertQuery = `
-          INSERT INTO "UserCardInstances" (user_id, card_id, level, xp, created_at)
-          VALUES ($1, $2, $3, 0, NOW())
-          RETURNING user_card_instance_id;
-        `;
-        const { rows: insertRows } = await db.query(insertQuery, [
-          AI_USER_ID,
-          baseCardId,
-          level,
-        ]);
-
-        if (insertRows.length > 0) {
-          aiCardInstanceIds.push(insertRows[0].user_card_instance_id);
-        }
-      }
-    }
-
-    return aiCardInstanceIds;
-  }
-
-  /**
-   * Award currency to player for winning
-   */
-  private async awardCurrencyForWin(
-    userId: string,
-    amount: number
-  ): Promise<void> {
-    const updateQuery = `
-      UPDATE "Users"
-      SET in_game_currency = in_game_currency + $1
-      WHERE user_id = $2;
-    `;
-    await db.query(updateQuery, [amount, userId]);
   }
 }
 

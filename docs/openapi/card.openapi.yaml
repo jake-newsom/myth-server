@@ -1,0 +1,241 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance - Card API
+  description: API endpoints for retrieving static card data and user card instances.
+  version: 1.0.0
+
+paths:
+  /api/cards:
+    get:
+      summary: Get all static cards
+      description: Retrieve a list of static card data with optional filtering. Card items will not include user-specific fields like user_card_instance_id, level, xp, or power_enhancements.
+      tags:
+        - Cards
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          description: Page number for pagination
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+          description: Number of items per page
+        - in: query
+          name: rarity
+          schema:
+            type: string
+            enum: [common, uncommon, rare, epic, legendary]
+          description: Filter cards by rarity
+        - in: query
+          name: name
+          schema:
+            type: string
+          description: Filter cards by name (partial match)
+        - in: query
+          name: tag
+          schema:
+            type: string
+          description: Filter cards by tag
+        - in: query
+          name: ids
+          schema:
+            type: string
+          description: Comma-separated list of card IDs to retrieve (e.g. "id1,id2,id3")
+      responses:
+        "200":
+          description: Successfully retrieved cards
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaticCardCollectionResponse"
+        "400":
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/cards/{cardId}:
+    get:
+      summary: Get a specific base card by ID
+      description: Retrieve detailed information for a specific base card definition. This response will not include user-specific fields.
+      tags:
+        - Cards
+      parameters:
+        - in: path
+          name: cardId
+          required: true
+          schema:
+            type: string
+          description: ID of the card to retrieve
+      responses:
+        "200":
+          description: Successfully retrieved card details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardResponse"
+        "404":
+          description: Card not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    PowerValues:
+      type: object
+      properties:
+        top:
+          type: integer
+          example: 5
+        bottom:
+          type: integer
+          example: 5
+        left:
+          type: integer
+          example: 5
+        right:
+          type: integer
+          example: 5
+      required:
+        - top
+        - bottom
+        - left
+        - right
+
+    CardResponse:
+      type: object
+      description: Represents a card. For base card definitions, user-specific fields (user_card_instance_id, level, xp, power_enhancements) will be null or omitted. For user card instances, these fields will be populated.
+      properties:
+        user_card_instance_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the user's specific card instance. Present only for owned cards.
+          nullable: true
+        base_card_id:
+          type: string
+          format: uuid
+          description: Identifier for the base card definition.
+        name:
+          type: string
+          example: "Shadow Fiend"
+        rarity:
+          type: string
+          enum: ["common", "uncommon", "rare", "epic", "legendary"]
+          example: "epic"
+        image_url:
+          type: string
+          format: url
+          example: "https://example.com/cards/shadow_fiend.png"
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["undead", "assassin"]
+        special_ability:
+          $ref: "#/components/schemas/SpecialAbilityInfo"
+          nullable: true
+        base_power:
+          $ref: "#/components/schemas/PowerValues"
+          description: The inherent power stats of the card.
+        level:
+          type: integer
+          description: Current level of the card instance (if applicable).
+          example: 3
+          nullable: true
+        xp:
+          type: integer
+          description: Experience points for the current level (if applicable).
+          example: 120
+          nullable: true
+        power_enhancements:
+          $ref: "#/components/schemas/PowerValues"
+          description: Permanent stat increases from leveling or other enhancements.
+          nullable: true
+      required:
+        - base_card_id
+        - name
+        - rarity
+        - image_url
+        - tags
+        - base_power
+
+    SpecialAbilityInfo:
+      type: object
+      properties:
+        ability_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        triggerMoment:
+          type: string
+          enum: [OnPlace, OnFlip, OnFlipped, OnTurnStart, OnTurnEnd]
+        parameters:
+          type: object
+          additionalProperties: true
+
+    StaticCardCollectionResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CardResponse"
+          description: Array of cards. For static collection, user-specific fields will be null/omitted.
+        total:
+          type: integer
+          description: Total number of cards matching the query
+        page:
+          type: integer
+          description: Current page number
+        limit:
+          type: integer
+          description: Number of items per page
+      required:
+        - data
+        - total
+        - page
+        - limit
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Error message
+            statusCode:
+              type: integer
+              description: HTTP status code
+            code:
+              type: string
+              description: Error code for client-side handling
+          required:
+            - message
+      required:
+        - error

@@ -1,0 +1,84 @@
+paths:
+  /api/user-cards:
+    get:
+      summary: Get all cards owned by the authenticated user
+      description: Retrieves a paginated list of card instances owned by the currently authenticated user. Supports filtering by rarity, name, and tag.
+      tags:
+        - Users # Assuming this tag exists, or choose an appropriate one
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: rarity
+          in: query
+          description: Filter by card rarity (e.g., common, rare).
+          required: false
+          schema:
+            type: string
+        - name: name
+          in: query
+          description: Filter by card name (case-insensitive, partial match).
+          required: false
+          schema:
+            type: string
+        - name: tag
+          in: query
+          description: Filter by a specific card tag.
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: Page number for pagination.
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page.
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: A paginated list of the user's card instances.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "./card.openapi.yaml#/components/schemas/CardResponse" # Reusing existing CardResponse
+                  total:
+                    type: integer
+                    example: 100
+                  page:
+                    type: integer
+                    example: 1
+                  limit:
+                    type: integer
+                    example: 20
+        "401":
+          description: Unauthorized - User not authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse" # Assuming a global ErrorResponse schema
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    ErrorResponse: # Define if not already globally available
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Error message"

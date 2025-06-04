@@ -1,9 +1,9 @@
 // myth-server/server.js
 require("dotenv").config(); // Load environment variables first
 const http = require("http");
-const app = require("./src/app"); // Import the Express app
+const app = require("./dist/app"); // Import the Express app from the dist directory
 const { Server } = require("socket.io"); // Import Socket.IO Server
-const initializeSocketManager = require("./src/sockets/socket.manager"); // Socket.IO manager
+const initializeSocketManager = require("./dist/sockets/socket.manager"); // Socket.IO manager from dist
 
 const PORT = process.env.PORT || 3000;
 

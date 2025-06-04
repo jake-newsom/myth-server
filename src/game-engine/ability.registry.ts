@@ -59,13 +59,13 @@ export class AbilityRegistry {
   ): GameState {
     const newState = _.cloneDeep(gameState);
     const player =
-      newState.player1.userId === playerId
+      newState.player1.user_id === playerId
         ? newState.player1
         : newState.player2;
 
     if (
       player.deck.length > 0 &&
-      player.hand.length < newState.maxCardsInHand
+      player.hand.length < newState.max_cards_in_hand
     ) {
       const cardId = player.deck.shift()!;
       player.hand.push(cardId);
@@ -84,11 +84,16 @@ export class AbilityRegistry {
     const amount = parameters?.amount || 1;
 
     const cell = newState.board[position.y][position.x];
-    if (cell && cell.owner === playerId) {
-      cell.currentPower.top += amount;
-      cell.currentPower.right += amount;
-      cell.currentPower.bottom += amount;
-      cell.currentPower.left += amount;
+    if (
+      cell &&
+      cell.card &&
+      cell.card.owner === playerId &&
+      cell.card.current_power
+    ) {
+      cell.card.current_power.top += amount;
+      cell.card.current_power.right += amount;
+      cell.card.current_power.bottom += amount;
+      cell.card.current_power.left += amount;
     }
 
     return newState;

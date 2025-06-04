@@ -3,7 +3,7 @@
  * These will be maintained in a separate file for future packaging as an NPM module
  */
 
-import { GameState, BoardPosition, HydratedCardInstance } from "./game.types";
+import { GameState, BoardPosition, InGameCard } from "./game.types";
 
 // Socket event types
 export enum SocketEvent {

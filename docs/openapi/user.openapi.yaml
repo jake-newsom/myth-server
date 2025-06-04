@@ -1,0 +1,232 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance - User API
+  description: API endpoints for user profiles, card collections, and decks
+  version: 1.0.0
+
+paths:
+  /api/users/me:
+    get:
+      summary: Get current user profile
+      description: Retrieve the current authenticated user's profile information
+      tags:
+        - Users
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Successfully retrieved user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/users/me/cards:
+    get:
+      summary: Get user's card collection
+      description: Retrieve all card instances owned by the current user
+      tags:
+        - Users
+        - Cards
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Successfully retrieved user's card instances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "./card.openapi.yaml#/components/schemas/CardResponse"
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/users/me/decks:
+    get:
+      summary: Get user's decks
+      description: Retrieve all decks owned by the current user with their complete card details
+      tags:
+        - Users
+        - Decks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Successfully retrieved user's decks with all card details
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "./deck.openapi.yaml#/components/schemas/DeckDetailResponse"
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/users/me/decks/{deckId}:
+    get:
+      summary: Get specific deck details
+      description: Retrieve detailed information about a specific deck including contained cards
+      tags:
+        - Users
+        - Decks
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: deckId
+          required: true
+          schema:
+            type: string
+          description: ID of the deck to retrieve
+      responses:
+        "200":
+          description: Successfully retrieved deck details
+          content:
+            application/json:
+              schema:
+                $ref: "./deck.openapi.yaml#/components/schemas/DeckDetailResponse"
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Deck not found or not owned by user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Authorization header using the Bearer scheme
+
+  schemas:
+    UserProfile:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: Unique identifier for the user
+        username:
+          type: string
+          description: User's display name
+        email:
+          type: string
+          format: email
+          description: User's email address
+        in_game_currency:
+          type: integer
+          description: User's current in-game currency amount
+        created_at:
+          type: string
+          format: date-time
+          description: When the user account was created
+        last_login:
+          type: string
+          format: date-time
+          description: When the user last logged in
+      required:
+        - user_id
+        - username
+        - email
+        - in_game_currency
+        - created_at
+        - last_login
+
+    DeckSummary:
+      type: object
+      properties:
+        deck_id:
+          type: string
+          description: Unique identifier for the deck
+        name:
+          type: string
+          description: Name of the deck
+        created_at:
+          type: string
+          format: date-time
+          description: When the deck was created
+        last_updated:
+          type: string
+          format: date-time
+          description: When the deck was last updated
+        card_count:
+          type: integer
+          description: Number of cards in the deck
+      required:
+        - deck_id
+        - name
+        - created_at
+        - last_updated
+        - card_count
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Error message
+            statusCode:
+              type: integer
+              description: HTTP status code
+            code:
+              type: string
+              description: Error code for client-side handling
+          required:
+            - message
+      required:
+        - error

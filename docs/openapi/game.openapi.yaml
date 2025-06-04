@@ -1,0 +1,487 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance Game API
+  description: API for game creation and gameplay
+  version: 1.0.0
+
+paths:
+  /api/games:
+    get:
+      summary: List all games for the authenticated user
+      security:
+        - bearerAuth: []
+      operationId: listGames
+      tags:
+        - Games
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, active, completed, aborted]
+          description: Filter games by status
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+          description: Number of games to return
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Starting index for pagination
+      responses:
+        "200":
+          description: A list of games
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Game"
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create a new game
+      security:
+        - bearerAuth: []
+      operationId: createGame
+      tags:
+        - Games
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - player1_deck_id
+                - game_mode
+              properties:
+                player1_deck_id:
+                  type: string
+                  format: uuid
+                player2_id:
+                  type: string
+                  description: Required for PvP matches, optional for AI matches
+                player2_deck_id:
+                  type: string
+                  format: uuid
+                  description: Optional, only used for PvP matches
+                ai_difficulty:
+                  type: string
+                  enum: [easy, medium, hard]
+                  default: medium
+                  description: Only used for AI matches
+                game_mode:
+                  type: string
+                  enum: [solo, pvp]
+                  default: solo
+                board_layout:
+                  type: string
+                  enum: [4x4]
+                  default: 4x4
+      responses:
+        "201":
+          description: Game created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/games/{game_id}:
+    get:
+      summary: Get game details by ID
+      security:
+        - bearerAuth: []
+      operationId: getGameById
+      tags:
+        - Games
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Game details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/games/{game_id}/action:
+    post:
+      summary: Perform game action (place card, end turn, etc.)
+      security:
+        - bearerAuth: []
+      operationId: gameAction
+      tags:
+        - Games
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GameAction"
+      responses:
+        "200":
+          description: Action performed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+        "400":
+          description: Invalid action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    CardPower:
+      type: object
+      properties:
+        top:
+          type: integer
+          minimum: 1
+          maximum: 10
+        right:
+          type: integer
+          minimum: 1
+          maximum: 10
+        bottom:
+          type: integer
+          minimum: 1
+          maximum: 10
+        left:
+          type: integer
+          minimum: 1
+          maximum: 10
+
+    BoardPosition:
+      type: object
+      properties:
+        x:
+          type: integer
+          minimum: 0
+          maximum: 3
+        y:
+          type: integer
+          minimum: 0
+          maximum: 3
+
+    BoardCell:
+      type: object
+      properties:
+        card:
+          type: object
+          nullable: true
+          description: All card data consolidated in a single object. Null if the cell does not contain a card.
+          properties:
+            user_card_instance_id:
+              type: string
+              format: uuid
+              nullable: true
+              description: The instance ID of the card on this cell. Null if no card present.
+            base_card_id:
+              type: string
+              format: uuid
+              nullable: true
+            owner:
+              type: string
+              format: uuid
+              nullable: true
+              description: ID of the player who owns this card on the board. Null if no card or card has no owner.
+            current_power:
+              $ref: "./card.openapi.yaml#/components/schemas/PowerValues"
+              nullable: true
+              description: The current effective power of the card on the board, after all modifiers. Null if no card present.
+            level:
+              type: integer
+              nullable: true
+              description: Level of the card instance, or null if no card is present.
+            card_state:
+              type: string
+              enum: [normal, immune, buffed, debuffed]
+              description: The state of the card itself (e.g., if it's immune to effects).
+            base_card_data:
+              type: object
+              nullable: true
+              description: Basic static data of the card placed. Null if no card present.
+              properties:
+                name:
+                  type: string
+                rarity:
+                  type: string
+                image_url:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                base_power:
+                  $ref: "./card.openapi.yaml#/components/schemas/PowerValues"
+                special_ability:
+                  type: object
+                  nullable: true
+                  properties:
+                    ability_id:
+                      type: string
+                      format: uuid
+                    name:
+                      type: string
+                    description:
+                      type: string
+                    trigger_moment:
+                      type: string
+                    parameters:
+                      type: object
+        tile_status:
+          type: string
+          enum: [blocked, removed, boosted, drained, normal]
+          default: normal
+          description: The status of the tile itself.
+        player_1_turns_left:
+          type: integer
+          description: Number of turns Player 1's effect on this tile remains. 0 if no active P1 effect.
+          default: 0
+        player_2_turns_left:
+          type: integer
+          description: Number of turns Player 2's effect on this tile remains. 0 if no active P2 effect.
+          default: 0
+        animation_label:
+          type: string
+          nullable: true
+          description: A label for client-side animations related to the tile's status or card events.
+
+    Player:
+      type: object
+      properties:
+        user_id:
+          type: string
+        hand:
+          type: array
+          items:
+            type: string
+            format: uuid
+        deck:
+          type: array
+          items:
+            type: string
+            format: uuid
+        score:
+          type: integer
+        discard_pile:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    Game:
+      type: object
+      properties:
+        game_id:
+          type: string
+          format: uuid
+        player1_id:
+          type: string
+        player1_username:
+          type: string
+        player2_id:
+          type: string
+        player2_username:
+          type: string
+        player1_deck_id:
+          type: string
+          format: uuid
+        player2_deck_id:
+          type: string
+          format: uuid
+          description: For AI games, this is the AI's deck ID
+        ai_deck_id:
+          type: string
+          format: uuid
+          description: ID of the AI deck used (only in solo mode)
+        game_mode:
+          type: string
+          enum: [solo, pvp]
+        winner_id:
+          type: string
+          nullable: true
+        board_layout:
+          type: string
+          enum: [4x4]
+        game_status:
+          type: string
+          enum: [pending, active, completed, aborted]
+          description: The current status of the game. When completed, check winner_id to determine the winner.
+        game_state:
+          type: object
+          properties:
+            board:
+              type: array
+              items:
+                type: array
+                items:
+                  oneOf:
+                    - $ref: "#/components/schemas/BoardCell"
+                    - type: "null"
+            player1:
+              $ref: "#/components/schemas/Player"
+            player2:
+              $ref: "#/components/schemas/Player"
+            current_player_id:
+              type: string
+            turn_number:
+              type: integer
+            status:
+              type: string
+              enum: [pending, active, completed, aborted]
+              description: The current status of the game. When completed, check winner_id to determine the winner.
+            winner:
+              type: string
+              nullable: true
+              description: The user_id of the winning player, or null for a draw or ongoing game.
+            max_cards_in_hand:
+              type: integer
+            initial_cards_to_draw:
+              type: integer
+            hydrated_card_data_cache:
+              type: object
+              additionalProperties:
+                type: object
+                properties:
+                  xp:
+                    type: integer
+                  name:
+                    type: string
+                  tags:
+                    type: array
+                    items:
+                      type: string
+                  level:
+                    type: integer
+                  rarity:
+                    type: string
+                  base_power:
+                    $ref: "#/components/schemas/CardPower"
+                  current_power:
+                    $ref: "#/components/schemas/CardPower"
+                  image_url:
+                    type: string
+                  ability_name:
+                    type: string
+                    nullable: true
+                  base_card_id:
+                    type: string
+                    format: uuid
+                  ability_parameters:
+                    type: object
+                    nullable: true
+                  special_ability_id:
+                    type: string
+                    nullable: true
+                  ability_description:
+                    type: string
+                    nullable: true
+                  ability_trigger_moment:
+                    type: string
+                    nullable: true
+                  user_card_instance_id:
+                    type: string
+                    format: uuid
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    GameAction:
+      type: object
+      required:
+        - action_type
+      properties:
+        action_type:
+          type: string
+          enum: [placeCard, endTurn, surrender]
+        user_card_instance_id:
+          type: string
+          format: uuid
+        position:
+          $ref: "#/components/schemas/BoardPosition"
+
+    ErrorResponse:# Defined locally or referenced from a common file
+      # ... (ErrorResponse definition)
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

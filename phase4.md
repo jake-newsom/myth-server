@@ -93,33 +93,39 @@
   export type CardState = "normal" | "immune" | "buffed" | "debuffed";
 
   export interface BoardCell {
-    user_card_instance_id: string; // ID of the specific UserCardInstance on the board
-    base_card_id: string; // ID of the base card definition
-    owner: string; // user_id of the player who owns this card on board
-    currentPower: CardPower; // Actual power of the card instance on the board (base + level bonus)
-    level: number; // Level of the card instance
-    state: CardState;
+    user_card_instance_id: string | null; // ID of the specific UserCardInstance on the board
+    base_card_id: string | null; // ID of the base card definition
+    owner: string | null; // user_id of the player who owns this card on board
+    current_power: CardPower | null; // Actual power of the card instance on the board (base + level bonus)
+    level: number | null; // Level of the card instance
+    card_state: CardState; // Renamed from state
     // Store base card details directly for easy access by abilities/combat without constant lookups
-    baseCardData: {
+    base_card_data: {
+      // Can be null if no card
       name: string;
       rarity: string;
       image_url: string;
       special_ability_id: string | null;
       tags: string[];
       // Base power is used to calculate currentPower with level
-      basePower: CardPower;
+      base_power: CardPower;
       // Ability details directly on the cell for easier processing
       ability_name?: string | null;
       ability_description?: string | null;
       ability_triggerMoment?: string | null;
       ability_parameters?: Record<string, any> | null;
-    };
+    } | null;
+    // New properties for tile effects
+    tile_status: TileStatus; // New
+    player_1_turns_left: number; // New
+    player_2_turns_left: number; // New
+    animation_label: string | null; // New
   }
 
   export type GameBoard = Array<Array<BoardCell | null>>;
 
   // Represents details of a card instance needed during gameplay (hand, deck, board)
-  export interface HydratedCardInstance {
+  export interface InGameCard {
     user_card_instance_id: string;
     base_card_id: string;
     name: string;
@@ -162,7 +168,7 @@
     initialCardsToDraw: number;
     winner?: string | null;
     // Cache for quick lookup of hydrated card instance details by user_card_instance_id
-    hydratedCardDataCache?: Record<string, HydratedCardInstance>;
+    hydratedCardDataCache?: Record<string, InGameCard>;
   }
 
   export interface GameAction {
@@ -455,7 +461,7 @@
     CardPower,
     BoardCell,
     Player,
-    HydratedCardInstance,
+    InGameCard,
   } from "../types/game.types";
   import {
     Card as BaseCard,
@@ -472,7 +478,7 @@
     static async hydrateCardInstance(
       instanceId: string,
       userIdToVerifyOwnership?: string
-    ): Promise<HydratedCardInstance | null> {
+    ): Promise<InGameCard | null> {
       // In a real app, this might hit a cache first, then DB
       // For now, directly query necessary details joining Cards, UserCardInstances, SpecialAbilities
       const query = `
@@ -545,7 +551,7 @@
       const board = Array(BOARD_SIZE)
         .fill(null)
         .map(() => Array(BOARD_SIZE).fill(null));
-      const hydratedCardDataCache: Record<string, HydratedCardInstance> = {};
+      const hydratedCardDataCache: Record<string, InGameCard> = {};
 
       // Hydrate initial hands and cache them
       const p1HandInstanceIds = p1DeckShuffled.slice(0, initialHandSize);
@@ -646,21 +652,26 @@
         user_card_instance_id: playedCardData.user_card_instance_id,
         base_card_id: playedCardData.base_card_id,
         owner: playerId,
-        currentPower: playedCardData.currentPower, // Use the instance's current (leveled) power
+        current_power: playedCardData.currentPower, // Use the instance's current (leveled) power
         level: playedCardData.level,
-        state: "normal",
-        baseCardData: {
+        card_state: "normal", // Renamed from state
+        base_card_data: {
           name: playedCardData.name,
           rarity: playedCardData.rarity,
           image_url: playedCardData.image_url,
           special_ability_id: playedCardData.special_ability_id,
           tags: playedCardData.tags,
-          basePower: playedCardData.basePower,
+          base_power: playedCardData.basePower,
           ability_name: playedCardData.ability_name,
           ability_description: playedCardData.ability_description,
           ability_triggerMoment: playedCardData.ability_triggerMoment,
           ability_parameters: playedCardData.ability_parameters,
         },
+        // New fields initialized
+        tile_status: "normal",
+        player_1_turns_left: 0,
+        player_2_turns_left: 0,
+        animation_label: null,
       };
       newState.board[position.y][position.x] = newBoardCell;
       player.hand.splice(cardIndexInHand, 1);
@@ -691,10 +702,10 @@
           const adjacentCell = newState.board[ny][nx]!;
           if (adjacentCell.owner !== playerId) {
             // Opponent's card
-            const placedCardPower = (newBoardCell.currentPower as any)[
+            const placedCardPower = (newBoardCell.current_power as any)[
               dir.from
             ];
-            const adjacentCardPower = (adjacentCell.currentPower as any)[
+            const adjacentCardPower = (adjacentCell.current_power as any)[
               dir.to
             ];
 
@@ -783,11 +794,7 @@
   ```typescript
   // myth-server/src/game-engine/ai.logic.ts
   import { GameLogic } from "./game.logic";
-  import {
-    GameState,
-    BoardPosition,
-    HydratedCardInstance,
-  } from "../types/game.types";
+  import { GameState, BoardPosition, InGameCard } from "../types/game.types";
   import * as _ from "lodash";
 
   const BOARD_SIZE = 4;
@@ -796,7 +803,7 @@
     // Evaluate move needs to use the currentPower of the hydrated card instance
     evaluateMove(
       gameState: GameState,
-      cardToPlay: HydratedCardInstance,
+      cardToPlay: InGameCard,
       position: BoardPosition,
       aiPlayerId: string
     ): number {
@@ -808,17 +815,17 @@
         user_card_instance_id: cardToPlay.user_card_instance_id,
         base_card_id: cardToPlay.base_card_id,
         owner: aiPlayerId,
-        currentPower: cardToPlay.currentPower,
+        current_power: cardToPlay.currentPower,
         level: cardToPlay.level,
-        state: "normal",
-        baseCardData: {
+        card_state: "normal",
+        base_card_data: {
           // Populate baseCardData for the simulated cell
           name: cardToPlay.name,
           rarity: cardToPlay.rarity,
           image_url: cardToPlay.image_url,
           special_ability_id: cardToPlay.special_ability_id,
           tags: cardToPlay.tags,
-          basePower: cardToPlay.basePower,
+          base_power: cardToPlay.basePower,
           ability_name: cardToPlay.ability_name,
           ability_description: cardToPlay.ability_description,
           ability_triggerMoment: cardToPlay.ability_triggerMoment,
@@ -844,7 +851,7 @@
           const adjacentCell = tempBoard[ny][nx]!;
           if (adjacentCell.owner !== aiPlayerId) {
             const placedCardPower = (cardToPlay.currentPower as any)[dir.from];
-            const adjacentCardPower = (adjacentCell.currentPower as any)[
+            const adjacentCardPower = (adjacentCell.current_power as any)[
               dir.to
             ];
             if (placedCardPower > adjacentCardPower) {
@@ -957,9 +964,9 @@
   - [ ] `Games` table entry reflects `board_layout='4x4'` and correct initial `gameState` with instance IDs.
 - [ ] **`POST /api/games/{gameId}/actions` (actionType: `placeCard`)**: (Payload now uses `user_card_instance_id`)
   - [ ] Player can place cards (instances) on all valid 4x4 positions.
-  - [ ] Combat logic correctly uses the `currentPower` of the placed `UserCardInstance` (derived from base stats + level).
+  - [ ] Combat logic correctly uses the `current_power` of the placed `UserCardInstance` (derived from base stats + level).
   - [ ] AI makes moves using `UserCardInstance` data and their leveled stats.
-  - [ ] Board cells correctly store `user_card_instance_id`, `level`, and `currentPower`.
+  - [ ] Board cells correctly store `user_card_instance_id`, `level`, and `current_power`.
 - [ ] **Game Over Logic (4x4)**:
   - [ ] Game correctly ends when all 16 cells of the 4x4 board are full.
   - [ ] Winner determined correctly based on card count on the 4x4 board.
@@ -973,7 +980,7 @@ Upon successful completion of Phase 4, the project will have a functional server
 
 **Important Development Standards:**
 
-1. **Strict TypeScript:** All game engine code must use strict TypeScript with proper typing (including `HydratedCardInstance`, updated `BoardCell`, `Player` types) to ensure type safety.
+1. **Strict TypeScript:** All game engine code must use strict TypeScript with proper typing (including `InGameCard`, updated `BoardCell`, `Player` types) to ensure type safety.
 2. **Type Definitions:** Continue to maintain all shared type definitions in the separate `src/types` directory for future packaging.
 3. **OpenAPI Documentation:** All REST API endpoints related to game functionality must be documented in OpenAPI specifications.
 4. **Code Documentation:** Use JSDoc comments to document all game logic functions, classes, and interfaces.

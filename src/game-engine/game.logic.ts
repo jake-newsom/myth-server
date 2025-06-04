@@ -1,91 +1,166 @@
-import CardModel from "../models/card.model"; // To fetch UserCardInstance details
 import {
   GameState,
   BoardPosition,
   CardPower,
-  BoardCell,
   Player,
-  HydratedCardInstance,
 } from "../types/game.types";
-import {
-  Card as BaseCard,
-  UserCardInstance,
-  SpecialAbility,
-} from "../types/database.types"; // DB Types
+import { InGameCard } from "../types/card.types";
 import * as _ from "lodash";
 import db from "../config/db.config"; // For direct DB access if necessary for hydration
-
+import * as validators from "./game.validators";
+import * as gameUtils from "./game.utils";
+import { triggerAbilities } from "./game.utils";
+import {
+  BaseGameEvent,
+  batchEvents,
+  CardEvent,
+  EVENT_TYPES,
+} from "./game-events";
 const BOARD_SIZE = 4;
+
+export enum GameStatus {
+  PENDING = "pending",
+  ACTIVE = "active",
+  COMPLETED = "completed",
+  ABORTED = "aborted",
+}
+
+// Note: Game winner is stored in the winner_id column in the database
+// rather than as part of the status enum
 
 export class GameLogic {
   // Helper to fetch and cache details for a UserCardInstance
   static async hydrateCardInstance(
     instanceId: string,
     userIdToVerifyOwnership?: string
-  ): Promise<HydratedCardInstance | null> {
-    // In a real app, this might hit a cache first, then DB
-    // For now, directly query necessary details joining Cards, UserCardInstances, SpecialAbilities
-    const query = `
-      SELECT 
-        uci.user_card_instance_id, uci.level, uci.xp, 
-        c.card_id as base_card_id, c.name, c.rarity, c.image_url, 
-        c.power_top as base_power_top, c.power_right as base_power_right, 
-        c.power_bottom as base_power_bottom, c.power_left as base_power_left, 
-        c.tags, c.special_ability_id,
-        sa.name as ability_name, sa.description as ability_description, 
-        sa.trigger_moment as ability_trigger, sa.parameters as ability_parameters
-      FROM "UserCardInstances" uci
-      JOIN "Cards" c ON uci.card_id = c.card_id
-      LEFT JOIN "SpecialAbilities" sa ON c.special_ability_id = sa.ability_id
-      WHERE uci.user_card_instance_id = $1 ${
-        userIdToVerifyOwnership ? "AND uci.user_id = $2" : ""
-      };
-    `;
-    const params = userIdToVerifyOwnership
-      ? [instanceId, userIdToVerifyOwnership]
-      : [instanceId];
-    const { rows } = await db.query(query, params);
-    if (rows.length === 0) return null;
+  ): Promise<InGameCard | undefined> {
+    try {
+      // In a real app, this might hit a cache first, then DB
+      // For now, directly query necessary details joining Cards, UserCardInstances, SpecialAbilities
+      const query = `
+        SELECT 
+          uci.user_card_instance_id, uci.level, uci.xp, 
+          c.card_id as base_card_id, c.name, c.rarity, c.image_url, 
+          c.power->>'top' as base_power_top, c.power->>'right' as base_power_right, 
+          c.power->>'bottom' as base_power_bottom, c.power->>'left' as base_power_left, 
+          c.tags, c.special_ability_id,
+          sa.name as ability_name, sa.description as ability_description, 
+          sa.trigger_moment as ability_trigger, sa.parameters as ability_parameters
+        FROM "user_owned_cards" uci
+        JOIN "cards" c ON uci.card_id = c.card_id
+        LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
+        WHERE uci.user_card_instance_id = $1 ${
+          userIdToVerifyOwnership ? "AND uci.user_id = $2" : ""
+        };
+      `;
+      const params = userIdToVerifyOwnership
+        ? [instanceId, userIdToVerifyOwnership]
+        : [instanceId];
 
-    const row = rows[0];
-    const levelBonus = row.level - 1; // Example: +1 power per stat for each level above 1
-    const basePower: CardPower = {
-      top: row.base_power_top,
-      right: row.base_power_right,
-      bottom: row.base_power_bottom,
-      left: row.base_power_left,
-    };
-    const currentPower: CardPower = {
-      top: basePower.top + levelBonus,
-      right: basePower.right + levelBonus,
-      bottom: basePower.bottom + levelBonus,
-      left: basePower.left + levelBonus,
-    };
+      try {
+        const { rows } = await db.query(query, params);
 
-    return {
-      user_card_instance_id: row.user_card_instance_id,
-      base_card_id: row.base_card_id,
-      name: row.name,
-      rarity: row.rarity,
-      image_url: row.image_url,
-      currentPower: currentPower,
-      basePower: basePower,
-      level: row.level,
-      xp: row.xp,
-      tags: row.tags,
-      special_ability_id: row.special_ability_id,
-      ability_name: row.ability_name,
-      ability_description: row.ability_description,
-      ability_triggerMoment: row.ability_trigger,
-      ability_parameters: row.ability_parameters,
-    };
+        if (rows.length === 0) {
+          return undefined;
+        }
+
+        const row = rows[0];
+        const levelBonus = row.level - 1; // Example: +1 power per stat for each level above 1
+
+        // Create base power values from the database
+        const basePower = {
+          top: parseInt(row.base_power_top, 10),
+          right: parseInt(row.base_power_right, 10),
+          bottom: parseInt(row.base_power_bottom, 10),
+          left: parseInt(row.base_power_left, 10),
+        };
+
+        // Create a SpecialAbility object if there's an ability
+        const specialAbility = row.ability_name
+          ? {
+              name: row.ability_name,
+              ability_id: row.special_ability_id,
+              description: row.ability_description,
+              trigger_moment: row.ability_trigger,
+              parameters: row.ability_parameters || {},
+            }
+          : null;
+
+        // Structure the base card data according to BaseCard interface
+        const baseCardData = {
+          card_id: row.base_card_id,
+          name: row.name,
+          tags: Array.isArray(row.tags) ? row.tags : [],
+          rarity: row.rarity,
+          image_url: row.image_url,
+          base_power: basePower,
+          special_ability: specialAbility,
+        };
+
+        // Calculate current power (base + level bonus)
+        const currentPower = {
+          top: basePower.top + levelBonus,
+          right: basePower.right + levelBonus,
+          bottom: basePower.bottom + levelBonus,
+          left: basePower.left + levelBonus,
+        };
+
+        // Empty power enhancements (will be populated elsewhere if needed)
+        const powerEnhancements = {
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+        };
+
+        // Create the full InGameCard structure according to the interface
+        const result: InGameCard = {
+          user_card_instance_id: row.user_card_instance_id,
+          base_card_id: row.base_card_id,
+          base_card_data: baseCardData,
+          level: row.level,
+          power_enhancements: powerEnhancements,
+          // InGameCard specific properties
+          owner: userIdToVerifyOwnership || "",
+          current_power: currentPower,
+          card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
+          card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
+        };
+
+        return result;
+      } catch (dbError) {
+        console.error(
+          `[DEBUG] Database error in hydrateCardInstance: ${
+            dbError instanceof Error ? dbError.message : String(dbError)
+          }`
+        );
+        console.error(
+          `[DEBUG] Error stack: ${
+            dbError instanceof Error ? dbError.stack : "No stack trace"
+          }`
+        );
+        throw dbError;
+      }
+    } catch (error) {
+      console.error(
+        `[DEBUG] Unexpected error in hydrateCardInstance: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      console.error(
+        `[DEBUG] Error stack: ${
+          error instanceof Error ? error.stack : "No stack trace"
+        }`
+      );
+      throw error;
+    }
   }
 
   static async initializeGame(
     player1UserCardInstanceIds: string[], // Array of UserCardInstance IDs
     player2UserCardInstanceIds: string[], // Array of UserCardInstance IDs for AI or P2
     player1UserId: string,
-    player2UserId = "AI_PLAYER_ID_STATIC_STRING"
+    player2UserId = "00000000-0000-0000-0000-000000000000"
   ): Promise<GameState> {
     const shuffleDeck = (deck: string[]): string[] => _.shuffle(deck);
     const p1DeckShuffled = shuffleDeck([...player1UserCardInstanceIds]);
@@ -95,39 +170,41 @@ export class GameLogic {
     const board = Array(BOARD_SIZE)
       .fill(null)
       .map(() => Array(BOARD_SIZE).fill(null));
-    const hydratedCardDataCache: Record<string, HydratedCardInstance> = {};
+    const hydrated_card_data_cache: Record<string, InGameCard> = {};
 
     // Hydrate initial hands and cache them
     const p1HandInstanceIds = p1DeckShuffled.slice(0, initialHandSize);
     for (const id of p1HandInstanceIds) {
-      if (!hydratedCardDataCache[id]) {
+      if (!hydrated_card_data_cache[id]) {
         const cardData = await this.hydrateCardInstance(id, player1UserId);
-        if (cardData) hydratedCardDataCache[id] = cardData;
+        if (cardData) hydrated_card_data_cache[id] = cardData;
       }
     }
     const p2HandInstanceIds = p2DeckShuffled.slice(0, initialHandSize);
     for (const id of p2HandInstanceIds) {
-      if (!hydratedCardDataCache[id]) {
+      if (!hydrated_card_data_cache[id]) {
         // For AI, we don't verify ownership with userId, or AI has its own instances
         const cardData = await this.hydrateCardInstance(
           id,
           player2UserId.startsWith("AI_") ? undefined : player2UserId
         );
-        if (cardData) hydratedCardDataCache[id] = cardData;
+        if (cardData) hydrated_card_data_cache[id] = cardData;
       }
     }
 
     const player1: Player = {
-      userId: player1UserId,
+      user_id: player1UserId,
       hand: p1HandInstanceIds,
       deck: p1DeckShuffled.slice(initialHandSize),
+      discard_pile: [],
       score: 0,
     };
 
     const player2: Player = {
-      userId: player2UserId,
+      user_id: player2UserId,
       hand: p2HandInstanceIds,
       deck: p2DeckShuffled.slice(initialHandSize),
+      discard_pile: [],
       score: 0,
     };
 
@@ -135,12 +212,13 @@ export class GameLogic {
       board,
       player1,
       player2,
-      currentPlayerId: player1UserId,
-      turnNumber: 1,
-      status: "active",
-      maxCardsInHand: 5,
-      initialCardsToDraw: initialHandSize,
-      hydratedCardDataCache,
+      current_player_id: player1UserId,
+      turn_number: 1,
+      status: GameStatus.ACTIVE,
+      max_cards_in_hand: 5,
+      initial_cards_to_draw: initialHandSize,
+      hydrated_card_data_cache,
+      winner: null, // Initialize with no winner
     };
   }
 
@@ -149,173 +227,163 @@ export class GameLogic {
     playerId: string,
     userCardInstanceId: string, // Now expects the ID of the UserCardInstance
     position: BoardPosition
-  ): Promise<GameState> {
-    let newState = _.cloneDeep(currentGameState);
-    const player =
-      newState.player1.userId === playerId
-        ? newState.player1
-        : newState.player2;
-    const opponent =
-      newState.player1.userId === playerId
-        ? newState.player2
-        : newState.player1;
+  ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
+    const events: BaseGameEvent[] = [];
 
-    // ... (validation: is it player's turn, is position valid and empty)
-    if (newState.currentPlayerId !== playerId)
-      throw new Error("Not player's turn.");
-    if (
-      position.x < 0 ||
-      position.x >= BOARD_SIZE ||
-      position.y < 0 ||
-      position.y >= BOARD_SIZE ||
-      newState.board[position.y][position.x] !== null
-    ) {
-      throw new Error("Invalid board position or position already occupied.");
-    }
-
-    const cardIndexInHand = player.hand.indexOf(userCardInstanceId);
-    if (cardIndexInHand === -1) throw new Error("Card instance not in hand.");
-
-    // Get hydrated card data (from cache or fetch)
-    let playedCardData = newState.hydratedCardDataCache?.[userCardInstanceId];
-    if (!playedCardData) {
-      playedCardData = await this.hydrateCardInstance(
-        userCardInstanceId,
-        playerId
+    try {
+      let newState = _.cloneDeep(currentGameState);
+      const cardIndexInHand = validators.getCardIndexInHand(
+        newState,
+        playerId,
+        userCardInstanceId
       );
-      if (!playedCardData)
-        throw new Error(
-          `Could not retrieve details for card instance ${userCardInstanceId}`
+      const playedCardData =
+        newState.hydrated_card_data_cache?.[userCardInstanceId];
+
+      if (!playedCardData) throw new Error(`Card data does not exist`);
+
+      if (!validators.isPlayerTurn(newState, playerId))
+        throw new Error("Not player's turn.");
+      if (cardIndexInHand === -1) throw new Error("Card instance not in hand.");
+      if (!validators.isValidBoardPosition(position))
+        throw new Error("Invalid board position.");
+      if (validators.isBoardPositionOccupied(newState, position))
+        throw new Error("Board position already occupied.");
+      if (!playedCardData) throw new Error(`Card data does not exist`);
+
+      // Get player and opponent references
+      const player = validators.getPlayer(newState, playerId);
+
+      const newBoardCell = gameUtils.createBoardCell(playedCardData, playerId);
+      player.hand.splice(cardIndexInHand, 1);
+      //TODO trigger LeftHand abilities?
+
+      newState.board[position.y][position.x] = newBoardCell;
+      events.push(
+        ...triggerAbilities("OnPlace", position, {
+          state: newState,
+          triggerCard: newBoardCell.card!,
+        })
+      );
+
+      // Resolve combat with adjacent cards
+      try {
+        const combatResult = gameUtils.resolveCombat(
+          newState,
+          position,
+          playerId
         );
-      if (newState.hydratedCardDataCache)
-        newState.hydratedCardDataCache[userCardInstanceId] = playedCardData;
-    }
-
-    // Place card on board
-    const newBoardCell: BoardCell = {
-      user_card_instance_id: playedCardData.user_card_instance_id,
-      base_card_id: playedCardData.base_card_id,
-      owner: playerId,
-      currentPower: playedCardData.currentPower, // Use the instance's current (leveled) power
-      level: playedCardData.level,
-      state: "normal",
-      baseCardData: {
-        name: playedCardData.name,
-        rarity: playedCardData.rarity,
-        image_url: playedCardData.image_url,
-        special_ability_id: playedCardData.special_ability_id,
-        tags: playedCardData.tags,
-        basePower: playedCardData.basePower,
-        ability_name: playedCardData.ability_name,
-        ability_description: playedCardData.ability_description,
-        ability_triggerMoment: playedCardData.ability_triggerMoment,
-        ability_parameters: playedCardData.ability_parameters,
-      },
-    };
-    newState.board[position.y][position.x] = newBoardCell;
-    player.hand.splice(cardIndexInHand, 1);
-
-    // TODO: Trigger OnPlace abilities using newBoardCell and playedCardData
-    // newState = AbilityRegistry.executeAbility('OnPlace', newState, position, playerId);
-
-    // Combat resolution (uses newBoardCell.currentPower)
-    // ... (combat logic remains similar but uses currentPower from BoardCell)
-    const directions = [
-      { dx: 0, dy: -1, from: "bottom", to: "top" }, // Card above
-      { dx: 1, dy: 0, from: "left", to: "right" }, // Card to the right
-      { dx: 0, dy: 1, from: "top", to: "bottom" }, // Card below
-      { dx: -1, dy: 0, from: "right", to: "left" }, // Card to the left
-    ];
-
-    for (const dir of directions) {
-      const nx = position.x + dir.dx;
-      const ny = position.y + dir.dy;
-
-      if (
-        nx >= 0 &&
-        nx < BOARD_SIZE &&
-        ny >= 0 &&
-        ny < BOARD_SIZE &&
-        newState.board[ny][nx]
-      ) {
-        const adjacentCell = newState.board[ny][nx]!;
-        if (adjacentCell.owner !== playerId) {
-          // Opponent's card
-          const placedCardPower = (newBoardCell.currentPower as any)[dir.from];
-          const adjacentCardPower = (adjacentCell.currentPower as any)[dir.to];
-
-          if (placedCardPower > adjacentCardPower) {
-            adjacentCell.owner = playerId; // Flip card
-            // TODO: Trigger OnFlip (for the flipped card) and OnFlipped (for other cards observing)
-            // newState = AbilityRegistry.executeAbility('OnFlip', newState, {x: nx, y: ny}, playerId);
-          }
-        }
+        newState = combatResult.state;
+        events.push(...combatResult.events);
+      } catch (err) {
+        throw err;
       }
-    }
 
-    // Update scores
-    newState.player1.score = 0;
-    newState.player2.score = 0;
-    for (let y = 0; y < BOARD_SIZE; y++) {
-      for (let x = 0; x < BOARD_SIZE; x++) {
-        if (newState.board[y][x]) {
-          if (newState.board[y][x]!.owner === newState.player1.userId)
-            newState.player1.score++;
-          else if (newState.board[y][x]!.owner === newState.player2.userId)
-            newState.player2.score++;
-        }
+      const scores = validators.calculateScores(
+        newState.board,
+        newState.player1.user_id,
+        newState.player2.user_id
+      );
+      newState.player1.score = scores.player1Score;
+      newState.player2.score = scores.player2Score;
+
+      if (validators.shouldDrawCard(player, newState.max_cards_in_hand)) {
+        const drawCardResult = await this.drawCard(newState, playerId);
+        newState = drawCardResult.state;
+        events.push(...drawCardResult.events);
       }
+
+      if (validators.isBoardFull(newState.board)) {
+        // Move all cards to discard piles and determine winner
+        newState = gameUtils.moveAllBoardCardsToDiscardPiles(newState);
+        const winnerId = validators.determineGameOutcome(
+          newState.player1.score,
+          newState.player2.score,
+          newState.player1.user_id,
+          newState.player2.user_id
+        );
+
+        newState.status = GameStatus.COMPLETED;
+        newState.winner = winnerId;
+      } else {
+        // Switch turn to opponent
+        newState = gameUtils.switchTurn(newState);
+        events.push({
+          type: EVENT_TYPES.TURN_END,
+          eventId: "TODO",
+          delayAfterMs: 200,
+          timestamp: Date.now(),
+          sourcePlayerId: newState.current_player_id,
+        });
+      }
+
+      return { state: newState, events };
+    } catch (error) {
+      console.error(
+        `[DEBUG] Error in placeCard: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      console.error(
+        `[DEBUG] Error stack: ${
+          error instanceof Error ? error.stack : "No stack trace"
+        }`
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Draws a card from the specified player's deck and adds it to their hand.
+   * Also hydrates the card data if not already cached.
+   */
+  static async drawCard(
+    currentGameState: GameState,
+    playerId: string
+  ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
+    const events: BaseGameEvent[] = [];
+    const newState = _.cloneDeep(currentGameState);
+
+    // Get the drawn card from the correct player's deck in the game state
+    const drawnInstanceId =
+      playerId === newState.player1.user_id
+        ? newState.player1.deck.shift()!
+        : newState.player2.deck.shift()!;
+
+    // Update the correct player's hand and deck in the game state
+    if (playerId === newState.player1.user_id) {
+      newState.player1.hand.push(drawnInstanceId);
+    } else {
+      newState.player2.hand.push(drawnInstanceId);
     }
 
-    // Draw card if hand < max and deck has cards
-    if (
-      player.hand.length < newState.maxCardsInHand &&
-      player.deck.length > 0
-    ) {
-      const drawnInstanceId = player.deck.shift()!;
-      player.hand.push(drawnInstanceId);
-      // Hydrate and cache the newly drawn card if not already in cache
-      if (!newState.hydratedCardDataCache?.[drawnInstanceId]) {
+    if (!newState.hydrated_card_data_cache?.[drawnInstanceId]) {
+      try {
         const cardData = await this.hydrateCardInstance(
           drawnInstanceId,
           playerId
         );
-        if (cardData && newState.hydratedCardDataCache)
-          newState.hydratedCardDataCache[drawnInstanceId] = cardData;
-      }
-    }
-
-    // Check game over (board full)
-    let boardFull = true;
-    for (let y = 0; y < BOARD_SIZE; y++) {
-      for (let x = 0; x < BOARD_SIZE; x++) {
-        if (newState.board[y][x] === null) {
-          boardFull = false;
-          break;
+        if (cardData && newState.hydrated_card_data_cache) {
+          newState.hydrated_card_data_cache[drawnInstanceId] = cardData;
         }
+        events.push({
+          type: EVENT_TYPES.CARD_DRAWN,
+          eventId: "TODO",
+          timestamp: Date.now(),
+          sourcePlayerId: playerId,
+          cardId: drawnInstanceId,
+        } as CardEvent);
+      } catch (err) {
+        console.error(
+          `[DEBUG] Error during drawn card hydration: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+        // Continue even if this fails, it's not critical
       }
-      if (!boardFull) break;
     }
 
-    if (boardFull) {
-      newState.status =
-        newState.player1.score > newState.player2.score
-          ? "player1_win"
-          : newState.player2.score > newState.player1.score
-          ? "player2_win"
-          : "draw";
-      newState.winner =
-        newState.status === "player1_win"
-          ? newState.player1.userId
-          : newState.status === "player2_win"
-          ? newState.player2.userId
-          : null;
-    } else {
-      newState.currentPlayerId = opponent.userId; // Switch turn
-      newState.turnNumber++;
-    }
-
-    return newState;
+    return { state: newState, events: batchEvents(events, 100) };
   }
 
   // Additional methods like endTurn, surrender, etc. can be implemented here
@@ -325,22 +393,22 @@ export class GameLogic {
   ): Promise<GameState> {
     let newState = _.cloneDeep(currentGameState);
 
-    if (newState.currentPlayerId !== playerId) {
+    if (newState.current_player_id !== playerId) {
       throw new Error("Not player's turn.");
     }
 
     const player =
-      newState.player1.userId === playerId
+      newState.player1.user_id === playerId
         ? newState.player1
         : newState.player2;
     const opponent =
-      newState.player1.userId === playerId
+      newState.player1.user_id === playerId
         ? newState.player2
         : newState.player1;
 
     // Switch turns
-    newState.currentPlayerId = opponent.userId;
-    newState.turnNumber++;
+    newState.current_player_id = opponent.user_id;
+    newState.turn_number++;
 
     return newState;
   }
@@ -351,14 +419,15 @@ export class GameLogic {
   ): Promise<GameState> {
     let newState = _.cloneDeep(currentGameState);
 
-    // Determine winner based on who surrendered
-    if (playerId === newState.player1.userId) {
-      newState.status = "player2_win";
-      newState.winner = newState.player2.userId;
-    } else {
-      newState.status = "player1_win";
-      newState.winner = newState.player1.userId;
-    }
+    // Move all cards from the board to their owners' discard piles
+    newState = gameUtils.moveAllBoardCardsToDiscardPiles(newState);
+
+    // Set winner to the opponent of the player who surrendered
+    newState.status = GameStatus.COMPLETED;
+    newState.winner =
+      playerId === newState.player1.user_id
+        ? newState.player2.user_id
+        : newState.player1.user_id;
 
     return newState;
   }

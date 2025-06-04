@@ -1,0 +1,138 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance API
+  description: Complete API documentation for the Viking Vengeance game server
+  version: 1.0.0
+
+tags:
+  - name: Authentication
+    description: User registration and authentication
+  - name: Game
+    description: Game creation and gameplay
+  - name: Matchmaking
+    description: Matchmaking and PvP setup
+  - name: System
+    description: System status and health
+  - name: Users
+    description: User profile and card collection management
+  - name: Cards
+    description: Static card data
+  - name: Decks
+    description: Deck creation and management
+
+paths:
+  # Authentication Endpoints
+  /api/auth/register:
+    $ref: "./auth.openapi.yaml#/paths/~1api~1auth~1register"
+
+  /api/auth/login:
+    $ref: "./auth.openapi.yaml#/paths/~1api~1auth~1login"
+
+  # User Endpoints
+  /api/users/me:
+    $ref: "./user.openapi.yaml#/paths/~1api~1users~1me"
+
+  /api/users/me/cards:
+    $ref: "./user.openapi.yaml#/paths/~1api~1users~1me~1cards"
+
+  /api/users/me/decks:
+    $ref: "./user.openapi.yaml#/paths/~1api~1users~1me~1decks"
+
+  /api/users/me/decks/{deckId}:
+    $ref: "./user.openapi.yaml#/paths/~1api~1users~1me~1decks~1{deckId}"
+
+  # Card Endpoints
+  /api/cards:
+    $ref: "./card.openapi.yaml#/paths/~1api~1cards"
+
+  /api/cards/{cardId}:
+    $ref: "./card.openapi.yaml#/paths/~1api~1cards~1{cardId}"
+
+  # Deck Endpoints
+  /api/decks:
+    $ref: "./deck.openapi.yaml#/paths/~1api~1decks"
+
+  /api/decks/{deckId}:
+    $ref: "./deck.openapi.yaml#/paths/~1api~1decks~1{deckId}"
+
+  # User Card Endpoints (New)
+  /api/user-cards:
+    $ref: "./userCard.openapi.yaml#/paths/~1api~1user-cards"
+
+  # Game Endpoints
+  /api/games/solo:
+    $ref: "./game.openapi.yaml#/paths/~1api~1games~1solo"
+
+  /api/games/{gameId}:
+    $ref: "./game.openapi.yaml#/paths/~1api~1games~1{gameId}"
+
+  /api/games/{gameId}/actions:
+    $ref: "./game.openapi.yaml#/paths/~1api~1games~1{gameId}~1actions"
+
+  # Matchmaking Endpoints
+  /api/matchmaking/join:
+    $ref: "./matchmaking.openapi.yaml#/paths/~1api~1matchmaking~1join"
+
+  /api/matchmaking/status:
+    $ref: "./matchmaking.openapi.yaml#/paths/~1api~1matchmaking~1status"
+
+  /api/matchmaking/leave:
+    $ref: "./matchmaking.openapi.yaml#/paths/~1api~1matchmaking~1leave"
+
+  # System Endpoints
+  /api/health:
+    $ref: "./health.openapi.yaml#/paths/~1api~1health"
+
+components:
+  schemas:
+    # Authentication schemas are defined inline in the auth.openapi.yaml paths
+
+    # User schemas
+    UserProfile:
+      $ref: "./user.openapi.yaml#/components/schemas/UserProfile"
+
+    # Card schemas
+    CardResponse:
+      $ref: "./card.openapi.yaml#/components/schemas/CardResponse"
+    StaticCardCollectionResponse:
+      $ref: "./card.openapi.yaml#/components/schemas/StaticCardCollectionResponse"
+
+    # Deck schemas
+    CreateDeckRequest:
+      $ref: "./deck.openapi.yaml#/components/schemas/CreateDeckRequest"
+    UpdateDeckRequest:
+      $ref: "./deck.openapi.yaml#/components/schemas/UpdateDeckRequest"
+    DeckDetailResponse:
+      $ref: "./deck.openapi.yaml#/components/schemas/DeckDetailResponse"
+    DeckSummary:
+      $ref: "./user.openapi.yaml#/components/schemas/DeckSummary"
+
+    # Game schemas
+    BoardPosition:
+      $ref: "./game.openapi.yaml#/components/schemas/BoardPosition"
+    BoardCell:
+      $ref: "./game.openapi.yaml#/components/schemas/BoardCell"
+    Player:
+      $ref: "./game.openapi.yaml#/components/schemas/Player"
+    Game:
+      $ref: "./game.openapi.yaml#/components/schemas/Game"
+    GameAction:
+      $ref: "./game.openapi.yaml#/components/schemas/GameAction"
+
+    # Matchmaking schemas
+    IdleResponse:
+      $ref: "./matchmaking.openapi.yaml#/components/schemas/IdleResponse"
+    QueuedResponse:
+      $ref: "./matchmaking.openapi.yaml#/components/schemas/QueuedResponse"
+    MatchedResponse:
+      $ref: "./matchmaking.openapi.yaml#/components/schemas/MatchedResponse"
+    LeftQueueResponse:
+      $ref: "./matchmaking.openapi.yaml#/components/schemas/LeftQueueResponse"
+    ErrorResponse:
+      $ref: "./matchmaking.openapi.yaml#/components/schemas/ErrorResponse"
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

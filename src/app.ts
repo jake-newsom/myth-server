@@ -4,19 +4,15 @@ import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import fs from "fs";
 import path from "path";
+import http from "http";
+import dotenv from "dotenv";
 
-// These modules will be created later, so we'll need to handle imports properly
-// For now, we're using require with type assertions
-const apiRoutes = require("./api/routes") as express.Router;
-const { centralErrorHandler } =
-  require("./api/middlewares/error.middleware") as {
-    centralErrorHandler: (
-      err: any,
-      req: Request,
-      res: Response,
-      next: NextFunction
-    ) => void;
-  };
+// Load environment variables
+dotenv.config();
+
+// Import the API routes
+import apiRoutes from "./api/routes";
+import { handleErrors } from "./api/middlewares/error.middleware";
 
 // Setup Swagger
 const swaggerOptions = {
@@ -59,7 +55,7 @@ app.get("/health", (req: Request, res: Response) => {
 });
 
 // Centralized Error Handling
-app.use(centralErrorHandler);
+app.use(handleErrors);
 
 // 404 Handler for undefined routes
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -68,4 +64,42 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     .json({ error: { message: "Resource not found on this server." } });
 });
 
+// Only start the server if this file is run directly
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  const httpServer = http.createServer(app);
+
+  // Try to import and initialize socket.io if available
+  try {
+    const { Server } = require("socket.io");
+    const io = new Server(httpServer, {
+      cors: {
+        origin: process.env.CLIENT_URL || "http://localhost:8100",
+        methods: ["GET", "POST"],
+      },
+    });
+
+    // Try to load socket manager if it exists
+    try {
+      const socketManager = require("./sockets/socket.manager").default;
+      if (socketManager) {
+        socketManager(io);
+      }
+    } catch (error) {
+      console.log("Socket manager not available or failed to initialize");
+    }
+  } catch (error) {
+    console.log(
+      "Socket.io not available, continuing without websocket support"
+    );
+  }
+
+  httpServer.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+    console.log(`Access at http://localhost:${PORT}`);
+  });
+}
+
+// Export the app for testing or for use in other files
+export default app;
 module.exports = app;

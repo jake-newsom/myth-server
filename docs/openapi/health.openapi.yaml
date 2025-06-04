@@ -1,0 +1,37 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance Health API
+  description: API for system health monitoring
+  version: 1.0.0
+
+paths:
+  /api/health:
+    get:
+      summary: Check system health
+      description: Returns the health status of the API
+      tags:
+        - System
+      responses:
+        200:
+          description: API is running correctly
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  message:
+                    type: string
+                    example: "API is running"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2023-07-25T12:34:56.789Z"
+              example:
+                status: "ok"
+                message: "API is running"
+                timestamp: "2023-07-25T12:34:56.789Z"
+        500:
+          description: Server error

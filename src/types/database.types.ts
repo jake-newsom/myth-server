@@ -1,3 +1,5 @@
+import { PowerValues } from "./card.types";
+
 /**
  * Type definitions for database schemas
  * These will be maintained in a separate file for future packaging as an NPM module
@@ -30,14 +32,16 @@ export interface SpecialAbility {
 export interface Card {
   card_id: string;
   name: string;
-  description: string;
-  rarity: string;
-  card_type: string;
-  faction: string;
-  cost: number;
+  description?: string;
+  rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+  faction?: string;
+  cost?: number;
   attack?: number;
   health?: number;
-  image_url?: string;
+  image_url: string;
+  base_power: PowerValues;
+  special_ability_id: string | null;
+  tags: string[];
 }
 
 export interface UserCardInstance {
@@ -46,7 +50,8 @@ export interface UserCardInstance {
   card_id: string;
   level: number;
   xp: number;
-  created_at: Date;
+  power_enhancements: PowerValues;
+  created_at?: Date;
 }
 
 export interface Deck {

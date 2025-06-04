@@ -11,7 +11,7 @@ declare module "express-serve-static-core" {
   }
 }
 
-const authenticateJWT = async (
+const protect = async (
   req: Request,
   res: Response,
   next: NextFunction
@@ -45,6 +45,7 @@ const authenticateJWT = async (
     // Verify token
     jwt.verify(token, config.jwtSecret as string, async (err, decoded: any) => {
       if (err) {
+        console.log(`[AUTH DEBUG] JWT verification failed: ${err.message}`);
         res.status(401).json({
           error: {
             message: "Authentication failed. Invalid token.",
@@ -72,12 +73,18 @@ const authenticateJWT = async (
         req.user = user;
         next();
       } catch (error) {
+        console.log(`[AUTH DEBUG] Error during user lookup: ${error}`);
         next(error);
       }
     });
   } catch (error) {
+    console.log(`[AUTH DEBUG] Unexpected error: ${error}`);
     next(error);
   }
 };
 
-export default { authenticateJWT };
+// Backwards compatibility
+const authenticateJWT = protect;
+
+export { protect, authenticateJWT };
+export default { protect, authenticateJWT };

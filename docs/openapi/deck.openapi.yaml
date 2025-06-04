@@ -1,0 +1,231 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance - Deck API
+  description: API endpoints for creating, updating, and deleting decks
+  version: 1.0.0
+
+paths:
+  /api/decks:
+    post:
+      summary: Create a new deck
+      description: Create a new deck with the specified cards
+      tags:
+        - Decks
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDeckRequest"
+      responses:
+        "201":
+          description: Successfully created deck
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeckDetailResponse"
+        "400":
+          description: Bad request - invalid data or deck rule violation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/decks/{deckId}:
+    put:
+      summary: Update an existing deck
+      description: Update a deck's name and/or cards
+      tags:
+        - Decks
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: deckId
+          required: true
+          schema:
+            type: string
+          description: ID of the deck to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDeckRequest"
+      responses:
+        "200":
+          description: Successfully updated deck
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeckDetailResponse"
+        "400":
+          description: Bad request - invalid data or deck rule violation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Deck not found or not owned by user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a deck
+      description: Delete a deck owned by the current user
+      tags:
+        - Decks
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: deckId
+          required: true
+          schema:
+            type: string
+          description: ID of the deck to delete
+      responses:
+        "204":
+          description: Successfully deleted deck (no content)
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Deck not found or not owned by user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Authorization header using the Bearer scheme
+
+  schemas:
+    CreateDeckRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the deck
+        user_card_instance_ids:
+          type: array
+          items:
+            type: string
+          description: Array of user card instance IDs to include in the deck
+          minItems: 20
+          maxItems: 20
+      required:
+        - name
+        - user_card_instance_ids
+
+    UpdateDeckRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: New name for the deck
+        user_card_instance_ids:
+          type: array
+          items:
+            type: string
+          description: New array of user card instance IDs for the deck
+          minItems: 20
+          maxItems: 20
+      minProperties: 1
+
+    DeckDetailResponse:
+      type: object
+      properties:
+        deck_id:
+          type: string
+          description: Unique identifier for the deck
+        name:
+          type: string
+          description: Name of the deck
+        user_id:
+          type: string
+          description: ID of the user who owns the deck
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp of when the deck was created
+        last_updated:
+          type: string
+          format: date-time
+          description: Timestamp of when the deck was last updated
+        cards:
+          type: array
+          items:
+            $ref: "./card.openapi.yaml#/components/schemas/CardResponse"
+          description: Array of cards included in the deck. Structure defined in card.openapi.yaml.
+      required:
+        - deck_id
+        - name
+        - user_id
+        - created_at
+        - last_updated
+        - cards
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Error message
+            statusCode:
+              type: integer
+              description: HTTP status code
+            code:
+              type: string
+              nullable: true
+              description: Optional error code for client-side handling
+          required:
+            - message
+            - statusCode
+      required:
+        - error
