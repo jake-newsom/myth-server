@@ -20,9 +20,11 @@ export function createBoardCell(
   const card: InGameCard = {
     ...playedCardData,
     owner: playerId,
+    temporary_effects: [],
     card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
     card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
     power_enhancements: { top: 0, bottom: 0, left: 0, right: 0 },
+    current_power: { ...playedCardData.base_card_data.base_power },
   };
   return {
     card,
@@ -210,8 +212,6 @@ export function updateAllBoardCards(gameState: GameState) {
         gameState.hydrated_card_data_cache?.[cell.card.user_card_instance_id];
       if (cachedCard) {
         cachedCard.current_power = cell.card.current_power;
-        cachedCard.card_modifiers_positive = cell.card.card_modifiers_positive;
-        cachedCard.card_modifiers_negative = cell.card.card_modifiers_negative;
       }
     }
   }

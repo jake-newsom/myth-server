@@ -10,6 +10,7 @@ import db from "../config/db.config"; // For direct DB access if necessary for h
 import * as validators from "./game.validators";
 import * as gameUtils from "./game.utils";
 import { triggerAbilities } from "./game.utils";
+import { updateCurrentPower } from "./ability.utils";
 import {
   BaseGameEvent,
   batchEvents,
@@ -125,6 +126,7 @@ export class GameLogic {
           current_power: currentPower,
           card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
           card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
+          temporary_effects: [],
         };
 
         return result;
@@ -391,23 +393,36 @@ export class GameLogic {
     currentGameState: GameState,
     playerId: string
   ): Promise<GameState> {
-    let newState = _.cloneDeep(currentGameState);
-
-    if (newState.current_player_id !== playerId) {
-      throw new Error("Not player's turn.");
+    if (!validators.isPlayerTurn(currentGameState, playerId)) {
+      throw new Error("Not current player's turn to end.");
     }
 
-    const player =
-      newState.player1.user_id === playerId
-        ? newState.player1
-        : newState.player2;
-    const opponent =
-      newState.player1.user_id === playerId
-        ? newState.player2
-        : newState.player1;
+    const newState = _.cloneDeep(currentGameState);
+
+    // Process temporary effects
+    for (const row of newState.board) {
+      for (const cell of row) {
+        if (cell?.card) {
+          cell.card.temporary_effects = cell.card.temporary_effects.filter(
+            (effect) => {
+              effect.duration -= 1;
+              return effect.duration > 0;
+            }
+          );
+          cell.card.current_power = updateCurrentPower(cell.card);
+          if (newState.hydrated_card_data_cache) {
+            newState.hydrated_card_data_cache[cell.card.user_card_instance_id] =
+              cell.card;
+          }
+        }
+      }
+    }
 
     // Switch turns
-    newState.current_player_id = opponent.user_id;
+    newState.current_player_id =
+      newState.current_player_id === newState.player1.user_id
+        ? newState.player2.user_id
+        : newState.player1.user_id;
     newState.turn_number++;
 
     return newState;

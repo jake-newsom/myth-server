@@ -1,4 +1,4 @@
-import { buff, debuff } from "./ability.utils";
+import { addTempBuff, addTempDebuff } from "./ability.utils";
 import { BaseGameEvent } from "./game-events";
 import { TriggerContext } from "./game.utils";
 
@@ -8,22 +8,42 @@ export const abilities: Record<
 > = {
   "Shieldmaidens Unite": (context) => {
     const { triggerCard } = context;
-    buff(triggerCard, 5);
+    addTempBuff(triggerCard, 2, {
+      top: 5,
+      bottom: 5,
+      left: 5,
+      right: 5,
+    });
     return [];
   },
   "Inspiring Song": (context) => {
     const { triggerCard } = context;
-    buff(triggerCard, 5);
+    addTempBuff(triggerCard, 2, {
+      top: 5,
+      bottom: 5,
+      left: 5,
+      right: 5,
+    });
     return [];
   },
   "Watery Depths": (context) => {
     const { triggerCard } = context;
-    buff(triggerCard, 5);
+    addTempBuff(triggerCard, 2, {
+      top: 5,
+      bottom: 5,
+      left: 5,
+      right: 5,
+    });
     return [];
   },
   "Grave Vengeance": (context) => {
     const { triggerCard } = context;
-    debuff(triggerCard, 5);
+    addTempDebuff(triggerCard, 3, {
+      top: 5,
+      bottom: 5,
+      left: 5,
+      right: 5,
+    });
     return [];
   },
 };

@@ -88,6 +88,12 @@ export type UserCard = {
 export interface InGameCard extends UserCard {
   card_modifiers_positive: PowerValues; // Temporary buffs in-game
   card_modifiers_negative: PowerValues; // Temporary nerfs in-game
+  temporary_effects: TemporaryEffect[];
   current_power: PowerValues;
   owner: string;
+}
+
+export interface TemporaryEffect {
+  power: Partial<PowerValues>;
+  duration: number; // in turns
 }

@@ -1,4 +1,4 @@
-import { InGameCard, PowerValues } from "../types/card.types";
+import { InGameCard, PowerValues, TemporaryEffect } from "../types/card.types";
 import { BoardCell, BoardPosition, GameBoard } from "../types/game.types";
 
 export function updateCurrentPower(card: InGameCard): PowerValues {
@@ -6,53 +6,57 @@ export function updateCurrentPower(card: InGameCard): PowerValues {
     card.base_card_data.base_power
   );
 
-  (["top", "bottom", "left", "right"] as (keyof PowerValues)[]).forEach(
+  // Add enhancements
+  (Object.keys(card.power_enhancements) as (keyof PowerValues)[]).forEach(
     (direction) => {
-      const modPositive = card.card_modifiers_positive[direction];
-      const modNegative = card.card_modifiers_negative[direction];
-      const modEnhancement = card.power_enhancements[direction];
-
-      currentPower[direction] += modPositive - modNegative + modEnhancement;
+      currentPower[direction] += card.power_enhancements[direction];
     }
   );
+
+  // Add temporary effects
+  if (card.temporary_effects) {
+    card.temporary_effects.forEach((effect) => {
+      (Object.keys(effect.power) as (keyof PowerValues)[]).forEach(
+        (direction) => {
+          currentPower[direction] += effect.power[direction] ?? 0;
+        }
+      );
+    });
+  }
 
   return currentPower;
 }
 
-export function buff(card: InGameCard, amount: number | PowerValues) {
-  if (typeof amount === "number") {
-    card.card_modifiers_positive = {
-      top: (card.card_modifiers_positive?.top ?? 0) + amount,
-      bottom: (card.card_modifiers_positive?.bottom ?? 0) + amount,
-      left: (card.card_modifiers_positive?.left ?? 0) + amount,
-      right: (card.card_modifiers_positive?.right ?? 0) + amount,
-    };
-  } else {
-    card.card_modifiers_positive = {
-      top: (card.card_modifiers_positive?.top ?? 0) + amount.top,
-      bottom: (card.card_modifiers_positive?.bottom ?? 0) + amount.bottom,
-      left: (card.card_modifiers_positive?.left ?? 0) + amount.left,
-      right: (card.card_modifiers_positive?.right ?? 0) + amount.right,
-    };
+export function addTempBuff(
+  card: InGameCard,
+  duration: number,
+  power: Partial<PowerValues>
+) {
+  if (!card.temporary_effects) {
+    card.temporary_effects = [];
   }
+  card.temporary_effects.push({
+    power,
+    duration,
+  });
 }
 
-export function debuff(card: InGameCard, amount: number | PowerValues) {
-  if (typeof amount === "number") {
-    card.card_modifiers_negative = {
-      top: (card.card_modifiers_negative?.top ?? 0) + amount,
-      bottom: (card.card_modifiers_negative?.bottom ?? 0) + amount,
-      left: (card.card_modifiers_negative?.left ?? 0) + amount,
-      right: (card.card_modifiers_negative?.right ?? 0) + amount,
-    };
-  } else {
-    card.card_modifiers_negative = {
-      top: (card.card_modifiers_negative?.top ?? 0) + amount.top,
-      bottom: (card.card_modifiers_negative?.bottom ?? 0) + amount.bottom,
-      left: (card.card_modifiers_negative?.left ?? 0) + amount.left,
-      right: (card.card_modifiers_negative?.right ?? 0) + amount.right,
-    };
+export function addTempDebuff(
+  card: InGameCard,
+  duration: number,
+  power: Partial<PowerValues>
+) {
+  if (!card.temporary_effects) {
+    card.temporary_effects = [];
   }
+  const negativePower: Partial<PowerValues> = {};
+  (Object.keys(power) as (keyof PowerValues)[]).forEach((direction) => {
+    negativePower[direction] = -(power[direction] ?? 0);
+  });
+  card.temporary_effects.push({
+    power: negativePower,
+    duration,
+  });
 }
 
 export const isCorner = (position: BoardPosition, boardSize: number) => {
@@ -240,62 +244,40 @@ export const getCardTotalPower = (card: InGameCard): number => {
   );
 };
 
-export const applyTemporaryBuff = (
-  card: InGameCard,
-  amount: number | PowerValues,
-  duration: number
-): void => {
-  // Note: temporary_buffs is not part of InGameCard interface
-  // This would need to be added to the type definition or handled differently
-  // For now, commenting out the implementation
-  console.warn(
-    "Temporary buffs system needs to be implemented in card type definition"
-  );
-
-  // TODO: Implement temporary buff system by either:
-  // 1. Adding temporary_buffs to InGameCard interface
-  // 2. Using a separate tracking system
-  // 3. Using existing card_modifiers_positive/negative with duration tracking
-};
-
 export const isFlankedByEnemies = (
   position: BoardPosition,
   board: GameBoard,
   playerId: string
 ): boolean => {
-  const { x, y } = position;
+  const adjacentEnemies = getEnemiesAdjacentTo(position, board, playerId);
+  if (adjacentEnemies.length < 2) {
+    return false;
+  }
+  // Check for opposite pairs
+  const positions = adjacentEnemies
+    .map((card) => {
+      for (let y = 0; y < board.length; y++) {
+        for (let x = 0; x < board.length; x++) {
+          if (
+            board[y][x]?.card?.user_card_instance_id ===
+            card.user_card_instance_id
+          ) {
+            return { x, y };
+          }
+        }
+      }
+      return null;
+    })
+    .filter((p) => p) as BoardPosition[];
 
-  // Check horizontal flanking (left and right)
-  const leftPos = { x: x - 1, y };
-  const rightPos = { x: x + 1, y };
-  const leftCard = getTileAtPosition(leftPos, board)?.card;
-  const rightCard = getTileAtPosition(rightPos, board)?.card;
-  const horizontalFlank =
-    isValidPosition(leftPos, board.length) &&
-    isValidPosition(rightPos, board.length) &&
-    leftCard !== null &&
-    leftCard !== undefined &&
-    leftCard.owner !== playerId &&
-    rightCard !== null &&
-    rightCard !== undefined &&
-    rightCard.owner !== playerId;
+  const hasHorizontalFlank = positions.some((p) =>
+    positions.some((other) => p.y === other.y && Math.abs(p.x - other.x) === 2)
+  );
+  const hasVerticalFlank = positions.some((p) =>
+    positions.some((other) => p.x === other.x && Math.abs(p.y - other.y) === 2)
+  );
 
-  // Check vertical flanking (top and bottom)
-  const topPos = { x, y: y - 1 };
-  const bottomPos = { x, y: y + 1 };
-  const topCard = getTileAtPosition(topPos, board)?.card;
-  const bottomCard = getTileAtPosition(bottomPos, board)?.card;
-  const verticalFlank =
-    isValidPosition(topPos, board.length) &&
-    isValidPosition(bottomPos, board.length) &&
-    topCard !== null &&
-    topCard !== undefined &&
-    topCard.owner !== playerId &&
-    bottomCard !== null &&
-    bottomCard !== undefined &&
-    bottomCard.owner !== playerId;
-
-  return horizontalFlank || verticalFlank;
+  return hasHorizontalFlank || hasVerticalFlank;
 };
 
 export const getCardsByCondition = (
@@ -303,16 +285,13 @@ export const getCardsByCondition = (
   filterFn: (card: InGameCard) => boolean
 ): InGameCard[] => {
   const cards: InGameCard[] = [];
-
-  for (let y = 0; y < board.length; y++) {
-    for (let x = 0; x < board[y].length; x++) {
-      const cell = board[y][x];
+  for (const row of board) {
+    for (const cell of row) {
       if (cell?.card && filterFn(cell.card)) {
         cards.push(cell.card);
       }
     }
   }
-
   return cards;
 };
 
@@ -321,34 +300,27 @@ export const countCornersControlled = (
   playerId: string
 ): number => {
   const corners = [
-    { x: 0, y: 0 },
-    { x: 0, y: board.length - 1 },
-    { x: board.length - 1, y: 0 },
-    { x: board.length - 1, y: board.length - 1 },
+    board[0][0],
+    board[0][board.length - 1],
+    board[board.length - 1][0],
+    board[board.length - 1][board.length - 1],
   ];
-
-  return corners.filter((corner) => {
-    const cell = getTileAtPosition(corner, board);
-    return cell?.card?.owner === playerId;
-  }).length;
+  return corners.filter((cell) => cell?.card?.owner === playerId).length;
 };
 
 export const rerollHighestStat = (card: InGameCard): void => {
-  const currentPower = updateCurrentPower(card);
-  const directions = ["top", "bottom", "left", "right"] as const;
+  let highestStat: keyof PowerValues | null = null;
+  let maxPower = -1;
 
-  // Find the direction with the highest power
-  let highestDirection: keyof PowerValues = directions[0];
-  let highestValue = currentPower[highestDirection];
-
-  directions.forEach((direction) => {
-    if (currentPower[direction] > highestValue) {
-      highestValue = currentPower[direction];
-      highestDirection = direction;
+  for (const [stat, power] of Object.entries(card.current_power)) {
+    if (power > maxPower) {
+      maxPower = power;
+      highestStat = stat as keyof PowerValues;
     }
-  });
+  }
 
-  // Reroll the highest stat (generate new random value between 1-10)
-  const newValue = Math.floor(Math.random() * 10) + 1;
-  card.base_card_data.base_power[highestDirection] = newValue;
+  if (highestStat) {
+    // Assuming a reroll means setting it to a new random value, e.g., between 1 and 10
+    card.current_power[highestStat] = Math.floor(Math.random() * 10) + 1;
+  }
 };
