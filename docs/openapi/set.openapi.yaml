@@ -1,0 +1,358 @@
+paths:
+  /api/sets:
+    get:
+      tags:
+        - Sets
+      summary: Get all card sets
+      description: Retrieves all card sets (both released and unreleased)
+      responses:
+        "200":
+          description: Sets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Sets retrieved successfully"
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Set"
+
+    post:
+      tags:
+        - Sets
+      summary: Create a new card set
+      description: Creates a new card set (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Name of the set
+                description:
+                  type: string
+                  description: Description of the set
+                is_released:
+                  type: boolean
+                  default: false
+                  description: Whether the set is released
+              example:
+                name: "Norse Mythology"
+                description: "Cards inspired by Norse gods and legends"
+                is_released: false
+      responses:
+        "201":
+          description: Set created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Set created successfully"
+                  data:
+                    $ref: "#/components/schemas/Set"
+        "400":
+          description: Bad request - set name already exists or invalid data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/sets/released:
+    get:
+      tags:
+        - Sets
+      summary: Get released card sets
+      description: Retrieves only the card sets that are released and available for pack opening
+      responses:
+        "200":
+          description: Released sets retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Released sets retrieved successfully"
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Set"
+
+  /api/sets/{setId}:
+    get:
+      tags:
+        - Sets
+      summary: Get a specific card set
+      description: Retrieves details about a specific card set including card count
+      parameters:
+        - in: path
+          name: setId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the set to retrieve
+      responses:
+        "200":
+          description: Set retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Set retrieved successfully"
+                  data:
+                    $ref: "#/components/schemas/SetWithCardCount"
+        "404":
+          description: Set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      tags:
+        - Sets
+      summary: Update a card set
+      description: Updates a card set (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: setId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the set to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Name of the set
+                description:
+                  type: string
+                  description: Description of the set
+                is_released:
+                  type: boolean
+                  description: Whether the set is released
+              example:
+                name: "Norse Mythology - Updated"
+                description: "Updated description for Norse gods and legends"
+                is_released: true
+      responses:
+        "200":
+          description: Set updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Set updated successfully"
+                  data:
+                    $ref: "#/components/schemas/Set"
+        "404":
+          description: Set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags:
+        - Sets
+      summary: Delete a card set
+      description: Deletes a card set (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: setId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the set to delete
+      responses:
+        "200":
+          description: Set deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Set deleted successfully"
+        "404":
+          description: Set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/sets/{setId}/release:
+    patch:
+      tags:
+        - Sets
+      summary: Update set release status
+      description: Updates whether a set is released and available for pack opening (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: setId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the set to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - is_released
+              properties:
+                is_released:
+                  type: boolean
+                  description: Whether the set should be released
+              example:
+                is_released: true
+      responses:
+        "200":
+          description: Set release status updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Set released successfully"
+                  data:
+                    $ref: "#/components/schemas/Set"
+        "404":
+          description: Set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    Set:
+      type: object
+      properties:
+        set_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the set
+        name:
+          type: string
+          description: Name of the set
+        description:
+          type: string
+          nullable: true
+          description: Description of the set
+        is_released:
+          type: boolean
+          description: Whether the set is released and available for pack opening
+        created_at:
+          type: string
+          format: date-time
+          description: When the set was created
+        updated_at:
+          type: string
+          format: date-time
+          description: When the set was last updated
+
+    SetWithCardCount:
+      allOf:
+        - $ref: "#/components/schemas/Set"
+        - type: object
+          properties:
+            cardCount:
+              type: integer
+              description: Number of cards in this set
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        message:
+          type: string
+          description: Error message describing what went wrong

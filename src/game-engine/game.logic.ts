@@ -10,13 +10,17 @@ import db from "../config/db.config"; // For direct DB access if necessary for h
 import * as validators from "./game.validators";
 import * as gameUtils from "./game.utils";
 import { triggerAbilities } from "./game.utils";
-import { updateCurrentPower } from "./ability.utils";
+import { setTileStatus, updateCurrentPower } from "./ability.utils";
 import {
   BaseGameEvent,
   batchEvents,
   CardEvent,
+  CardPlacedEvent,
   EVENT_TYPES,
 } from "./game-events";
+
+import { v4 as uuidv4 } from "uuid";
+
 const BOARD_SIZE = 4;
 
 export enum GameStatus {
@@ -127,6 +131,7 @@ export class GameLogic {
           card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
           card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
           temporary_effects: [],
+          lockedTurns: 0,
         };
 
         return result;
@@ -171,7 +176,9 @@ export class GameLogic {
 
     const board = Array(BOARD_SIZE)
       .fill(null)
-      .map(() => Array(BOARD_SIZE).fill(null));
+      .map(() =>
+        Array(BOARD_SIZE).fill(gameUtils.createBoardCell(null, "normal"))
+      );
     const hydrated_card_data_cache: Record<string, InGameCard> = {};
 
     // Hydrate initial hands and cache them
@@ -261,10 +268,21 @@ export class GameLogic {
       //TODO trigger LeftHand abilities?
 
       newState.board[position.y][position.x] = newBoardCell;
+      events.push({
+        type: EVENT_TYPES.CARD_PLACED,
+        eventId: uuidv4(),
+        timestamp: Date.now(),
+        cardId: playedCardData.user_card_instance_id,
+        originalOwner: playedCardData.owner,
+        delayAfterMs: 100,
+        position,
+      } as CardPlacedEvent);
+
       events.push(
-        ...triggerAbilities("OnPlace", position, {
+        ...triggerAbilities("OnPlace", {
           state: newState,
           triggerCard: newBoardCell.card!,
+          position,
         })
       );
 
@@ -297,7 +315,6 @@ export class GameLogic {
 
       if (validators.isBoardFull(newState.board)) {
         // Move all cards to discard piles and determine winner
-        newState = gameUtils.moveAllBoardCardsToDiscardPiles(newState);
         const winnerId = validators.determineGameOutcome(
           newState.player1.score,
           newState.player2.score,
@@ -309,14 +326,10 @@ export class GameLogic {
         newState.winner = winnerId;
       } else {
         // Switch turn to opponent
-        newState = gameUtils.switchTurn(newState);
-        events.push({
-          type: EVENT_TYPES.TURN_END,
-          eventId: "TODO",
-          delayAfterMs: 200,
-          timestamp: Date.now(),
-          sourcePlayerId: newState.current_player_id,
-        });
+
+        const endTurnResult = await GameLogic.endTurn(newState, playerId);
+        newState = endTurnResult.state;
+        events.push(...endTurnResult.events);
       }
 
       return { state: newState, events };
@@ -385,23 +398,31 @@ export class GameLogic {
       }
     }
 
-    return { state: newState, events: batchEvents(events, 100) };
+    return { state: newState, events: batchEvents(events, 50) };
   }
 
   // Additional methods like endTurn, surrender, etc. can be implemented here
   static async endTurn(
     currentGameState: GameState,
     playerId: string
-  ): Promise<GameState> {
+  ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
     if (!validators.isPlayerTurn(currentGameState, playerId)) {
       throw new Error("Not current player's turn to end.");
     }
 
+    let events: BaseGameEvent[] = [];
+
     const newState = _.cloneDeep(currentGameState);
 
     // Process temporary effects
-    for (const row of newState.board) {
-      for (const cell of row) {
+    for (const [y, row] of newState.board.entries()) {
+      for (const [x, cell] of row.entries()) {
+        if (cell.turns_left > 0) {
+          cell.turns_left -= 1;
+          if (cell.turns_left === 0) {
+            events.push(setTileStatus(cell, { x, y }, "normal", 0, ""));
+          }
+        }
         if (cell?.card) {
           cell.card.temporary_effects = cell.card.temporary_effects.filter(
             (effect) => {
@@ -418,6 +439,8 @@ export class GameLogic {
       }
     }
 
+    events = batchEvents(events, 300);
+
     // Switch turns
     newState.current_player_id =
       newState.current_player_id === newState.player1.user_id
@@ -425,7 +448,15 @@ export class GameLogic {
         : newState.player1.user_id;
     newState.turn_number++;
 
-    return newState;
+    events.push({
+      type: EVENT_TYPES.TURN_END,
+      eventId: uuidv4(),
+      delayAfterMs: 500,
+      timestamp: Date.now(),
+      sourcePlayerId: playerId,
+    });
+
+    return { state: newState, events };
   }
 
   static async surrender(
@@ -433,9 +464,6 @@ export class GameLogic {
     playerId: string
   ): Promise<GameState> {
     let newState = _.cloneDeep(currentGameState);
-
-    // Move all cards from the board to their owners' discard piles
-    newState = gameUtils.moveAllBoardCardsToDiscardPiles(newState);
 
     // Set winner to the opponent of the player who surrendered
     newState.status = GameStatus.COMPLETED;

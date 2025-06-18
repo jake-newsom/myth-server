@@ -21,7 +21,7 @@ export function isBoardPositionOccupied(
   position: BoardPosition
 ): boolean {
   const cell = gameState.board[position.y][position.x];
-  const isOccupied = cell !== null;
+  const isOccupied = cell.card !== null;
   return isOccupied;
 }
 
@@ -112,7 +112,7 @@ export function checkAdjacentCells(
 export function isBoardFull(board: (BoardCell | null)[][]): boolean {
   for (let y = 0; y < BOARD_SIZE; y++) {
     for (let x = 0; x < BOARD_SIZE; x++) {
-      if (board[y][x] === null) {
+      if (board[y][x]?.card === null) {
         return false;
       }
     }

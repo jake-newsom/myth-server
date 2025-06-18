@@ -20,6 +20,7 @@ import GameService, {
 } from "../../services/game.service";
 import UserService from "../../services/user.service";
 import { BaseGameEvent } from "../../game-engine/game-events";
+import { canPlaceOnTile } from "../../game-engine/game.utils";
 
 // Initialize ability registry
 AbilityRegistry.initialize();
@@ -95,6 +96,36 @@ class GameController {
         userId
       );
 
+      // Randomly choose starting player
+      const startingPlayerId = Math.random() < 0.5 ? userId : AI_PLAYER_ID;
+      initialGameState.current_player_id = startingPlayerId;
+
+      // If AI starts, make its move
+      let finalGameState = initialGameState;
+      let events: BaseGameEvent[] = [];
+      if (startingPlayerId === AI_PLAYER_ID) {
+        const ai = new AILogic();
+        const aiMove = await ai.makeAIMove(initialGameState);
+        if (aiMove) {
+          const placeCardResult = await GameLogic.placeCard(
+            initialGameState,
+            AI_PLAYER_ID,
+            aiMove.user_card_instance_id,
+            aiMove.position
+          );
+          finalGameState = placeCardResult.state;
+          events.push(...placeCardResult.events);
+        } else {
+          // AI has no valid moves, end turn
+          const endTurnResult = await GameLogic.endTurn(
+            initialGameState,
+            AI_PLAYER_ID
+          );
+          finalGameState = endTurnResult.state;
+          events.push(...endTurnResult.events);
+        }
+      }
+
       // 4. Create game record in database
       const createdGameResponse: CreateGameResponse =
         await GameService.createGameRecord(
@@ -103,7 +134,7 @@ class GameController {
           deckId,
           aiDeckIdToUse,
           "solo",
-          initialGameState
+          finalGameState
         );
 
       // game_state from createGameRecord (via DB) is a JSON string. Parse it.
@@ -117,6 +148,8 @@ class GameController {
         game_state: gameStateObject,
         game_status: createdGameResponse.game_status,
         ai_deck_id: aiDeckIdToUse,
+        current_user_id: userId,
+        events,
       });
     } catch (error) {
       console.error("Error creating solo game:", error);
@@ -159,8 +192,15 @@ class GameController {
         return;
       }
 
-      // game_state from GameService (findGameForAdmin/User) is already an object
-      res.status(200).json(game);
+      // Format response to match startSoloGame structure
+      res.status(200).json({
+        game_id: game.game_id,
+        game_state: game.game_state,
+        game_status: game.game_status,
+        ai_deck_id: game.game_mode === "solo" ? game.player2_deck_id : null,
+        current_user_id: userId,
+        events: [], // Initialize with empty events array since this is just a get request
+      });
     } catch (error) {
       console.error("Error fetching game:", error);
       res.status(500).json({ error: "Server error fetching game" });
@@ -220,6 +260,14 @@ class GameController {
             });
             return;
           }
+
+          if (!canPlaceOnTile(currentGameState, action.position)) {
+            res.status(400).json({
+              error: "Cannot place card on this tile",
+            });
+            return;
+          }
+
           // GameLogic methods should ideally return a new state object rather than mutating
           const placeCardResult = await GameLogic.placeCard(
             currentGameState, // Pass original for validation within GameLogic
@@ -232,7 +280,12 @@ class GameController {
           break;
 
         case "endTurn":
-          updatedGameState = await GameLogic.endTurn(currentGameState, userId);
+          const endTurnResult = await GameLogic.endTurn(
+            currentGameState,
+            userId
+          );
+          updatedGameState = endTurnResult.state;
+          events.push(...endTurnResult.events);
           break;
 
         case "surrender":
@@ -254,11 +307,8 @@ class GameController {
         updatedGameState.current_player_id === AI_PLAYER_ID
       ) {
         const ai = new AILogic();
-        // Pass a clone of updatedGameState as AILogic.makeAIMove might modify it
-        // or GameLogic.placeCard/endTurn for AI might expect the state before AI's specific action
         const aiMove = await ai.makeAIMove(_.cloneDeep(updatedGameState));
         if (aiMove) {
-          // Pass the state that includes player's action result for AI's move
           const placeCardResult = await GameLogic.placeCard(
             updatedGameState,
             AI_PLAYER_ID,
@@ -268,11 +318,12 @@ class GameController {
           updatedGameState = placeCardResult.state;
           events.push(...placeCardResult.events);
         } else {
-          // AI has no valid moves, end turn
-          updatedGameState = await GameLogic.endTurn(
+          const endTurnResult = await GameLogic.endTurn(
             updatedGameState,
             AI_PLAYER_ID
           );
+          updatedGameState = endTurnResult.state;
+          events.push(...endTurnResult.events);
         }
       }
 

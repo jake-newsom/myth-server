@@ -1,5 +1,18 @@
 import { InGameCard, PowerValues, TemporaryEffect } from "../types/card.types";
-import { BoardCell, BoardPosition, GameBoard } from "../types/game.types";
+import {
+  BoardCell,
+  BoardPosition,
+  GameBoard,
+  TileStatus,
+} from "../types/game.types";
+import {
+  BaseGameEvent,
+  CardEvent,
+  EVENT_TYPES,
+  TileEvent,
+} from "./game-events";
+
+import { v4 as uuidv4 } from "uuid";
 
 export function updateCurrentPower(card: InGameCard): PowerValues {
   const currentPower: PowerValues = structuredClone(
@@ -27,36 +40,83 @@ export function updateCurrentPower(card: InGameCard): PowerValues {
   return currentPower;
 }
 
+export function buff(
+  card: InGameCard,
+  amount: number | PowerValues
+): BaseGameEvent {
+  return addTempBuff(card, 1000, amount);
+}
+
+export function debuff(
+  card: InGameCard,
+  amount: number | PowerValues
+): BaseGameEvent {
+  return addTempDebuff(card, 1000, amount);
+}
+
 export function addTempBuff(
   card: InGameCard,
   duration: number,
-  power: Partial<PowerValues>
-) {
+  power: number | Partial<PowerValues>
+): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
   }
+
+  const buff =
+    typeof power === "number"
+      ? {
+          top: power,
+          bottom: power,
+          left: power,
+          right: power,
+        }
+      : power;
+
   card.temporary_effects.push({
-    power,
+    power: buff,
     duration,
   });
+
+  return {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    animation: "buff",
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    cardId: card.user_card_instance_id,
+  } as CardEvent;
 }
 
 export function addTempDebuff(
   card: InGameCard,
   duration: number,
-  power: Partial<PowerValues>
-) {
+  power: number | Partial<PowerValues>
+): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
   }
-  const negativePower: Partial<PowerValues> = {};
-  (Object.keys(power) as (keyof PowerValues)[]).forEach((direction) => {
-    negativePower[direction] = -(power[direction] ?? 0);
-  });
+  const negativePower =
+    typeof power === "number"
+      ? {
+          top: -power,
+          bottom: -power,
+          left: -power,
+          right: -power,
+        }
+      : power;
+
   card.temporary_effects.push({
     power: negativePower,
     duration,
   });
+
+  return {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    animation: "debuff",
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    cardId: card.user_card_instance_id,
+  } as CardEvent;
 }
 
 export const isCorner = (position: BoardPosition, boardSize: number) => {
@@ -135,23 +195,22 @@ export const getAdjacentCards = (
   let cards = adjacentPositions
     .map((pos) => getTileAtPosition(pos, board)?.card)
     .filter((card) => {
-      if (!options?.includeEmpty && card === null) return false;
-      return true;
+      return card || options?.includeEmpty;
     }) as InGameCard[];
 
   if (options?.owner && options?.playerId) {
     cards = cards.filter((card) => {
       if (options.owner === "ally") {
-        return card.owner === options.playerId;
+        return card?.owner === options.playerId;
       } else {
-        return card.owner !== options.playerId;
+        return card?.owner !== options.playerId;
       }
     });
   }
 
   if (options?.tag) {
-    cards = cards.filter((card) =>
-      card.base_card_data.tags?.includes(options.tag!)
+    cards = cards.filter(
+      (card) => card && card.base_card_data.tags?.includes(options.tag!)
     );
   }
 
@@ -323,4 +382,26 @@ export const rerollHighestStat = (card: InGameCard): void => {
     // Assuming a reroll means setting it to a new random value, e.g., between 1 and 10
     card.current_power[highestStat] = Math.floor(Math.random() * 10) + 1;
   }
+};
+
+export const setTileStatus = (
+  tile: BoardCell,
+  position: BoardPosition,
+  status: TileStatus,
+  turnsLeft: number,
+  animationLabel: string
+): BaseGameEvent => {
+  tile.tile_status = status;
+  tile.turns_left = turnsLeft;
+  tile.animation_label = animationLabel;
+
+  const { tile_status, turns_left, animation_label } = tile;
+
+  return {
+    type: EVENT_TYPES.TILE_STATE_CHANGED,
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    position,
+    tile: { tile_status, turns_left, animation_label },
+  } as TileEvent;
 };

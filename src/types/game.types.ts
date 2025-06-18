@@ -1,6 +1,9 @@
 import { GameStatus } from "../game-engine/game.logic";
 import { InGameCard } from "./card.types";
 
+// Re-export InGameCard for use in other modules
+export { InGameCard };
+
 /**
  * Type definitions for game engine and related components
  */
@@ -28,12 +31,11 @@ export interface BoardCell {
 
   // Tile effect properties
   tile_status: TileStatus;
-  player_1_turns_left: number; // Number of turns P1's effect remains
-  player_2_turns_left: number; // Number of turns P2's effect remains
+  turns_left: number; // Number of turns P1's effect remains
   animation_label: string | null; // e.g., "blocked_by_spell_X", "fire_boost"
 }
 
-export type GameBoard = Array<Array<BoardCell | null>>;
+export type GameBoard = Array<Array<BoardCell>>;
 
 export interface Player {
   user_id: string;

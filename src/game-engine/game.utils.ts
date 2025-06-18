@@ -10,27 +10,30 @@ import {
   CardEvent,
   EVENT_TYPES,
 } from "./game-events";
+
 /**
  * Creates a new board cell from hydrated card data
  */
 export function createBoardCell(
-  playedCardData: InGameCard,
+  playedCardData: InGameCard | null,
   playerId: string
 ): BoardCell {
-  const card: InGameCard = {
-    ...playedCardData,
-    owner: playerId,
-    temporary_effects: [],
-    card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
-    card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
-    power_enhancements: { top: 0, bottom: 0, left: 0, right: 0 },
-    current_power: { ...playedCardData.base_card_data.base_power },
-  };
+  const card: InGameCard | null = playedCardData
+    ? {
+        ...playedCardData,
+        owner: playerId,
+        temporary_effects: [],
+        card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
+        card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
+        power_enhancements: { top: 0, bottom: 0, left: 0, right: 0 },
+        current_power: { ...playedCardData.base_card_data.base_power },
+      }
+    : null;
+
   return {
     card,
     tile_status: "normal",
-    player_1_turns_left: 0,
-    player_2_turns_left: 0,
+    turns_left: 0,
     animation_label: null,
   };
 }
@@ -91,42 +94,11 @@ export function resolveCombat(
 
           if (placedCardPower > adjacentCardPower) {
             events.push(
-              ...triggerAbilities(
-                "OnFlip",
-                {
-                  x: position.x,
-                  y: position.y,
-                },
-                {
-                  state: newState,
-                  triggerCard: placedCell.card,
-                  flippedCardId: adjacentCell.card.user_card_instance_id,
-                }
-              )
-            );
-            adjacentCell.card.owner = playerId;
-
-            const cardFlippedEvent: CardEvent = {
-              type: EVENT_TYPES.CARD_FLIPPED,
-              eventId: "TODO",
-              timestamp: Date.now(),
-              sourcePlayerId: newState.current_player_id,
-              cardId: adjacentCell.card.user_card_instance_id,
-            };
-            events.push(cardFlippedEvent);
-
-            events.push(
-              ...triggerAbilities(
-                "OnFlipped",
-                {
-                  x: nx,
-                  y: ny,
-                },
-                {
-                  state: newState,
-                  triggerCard: adjacentCell.card,
-                  flippedByCardId: placedCell.card.user_card_instance_id,
-                }
+              ...flipCard(
+                newState,
+                position,
+                adjacentCell.card,
+                placedCell.card
               )
             );
           }
@@ -150,6 +122,62 @@ export function resolveCombat(
   }
 }
 
+export function canPlaceOnTile(
+  gameState: GameState,
+  position: BoardPosition
+): boolean {
+  const tile = gameState.board[position.y][position.x];
+  if (!tile) return false;
+  if (tile.card) return false;
+  if (tile.tile_status === "blocked" || tile.tile_status === "removed")
+    return false;
+
+  return true;
+}
+
+export function flipCard(
+  state: GameState,
+  position: BoardPosition,
+  target: InGameCard,
+  source: InGameCard
+): BaseGameEvent[] {
+  if (target.lockedTurns > 0) return [];
+
+  const events: BaseGameEvent[] = [];
+
+  events.push(
+    ...triggerAbilities("OnFlip", {
+      state,
+      triggerCard: source,
+      flippedCardId: target.user_card_instance_id,
+      position: {
+        x: position.x,
+        y: position.y,
+      },
+    })
+  );
+  target.owner = state.current_player_id;
+
+  const cardFlippedEvent: CardEvent = {
+    type: EVENT_TYPES.CARD_FLIPPED,
+    eventId: "TODO",
+    timestamp: Date.now(),
+    sourcePlayerId: state.current_player_id,
+    cardId: target.user_card_instance_id,
+  };
+  events.push(cardFlippedEvent);
+
+  events.push(
+    ...triggerAbilities("OnFlipped", {
+      state,
+      triggerCard: target,
+      flippedByCardId: source.user_card_instance_id,
+      position,
+    })
+  );
+  return events;
+}
+
 export type TriggerContext = {
   state: GameState;
   triggerCard: InGameCard;
@@ -157,11 +185,11 @@ export type TriggerContext = {
   flippedBy?: InGameCard;
   flippedCardId?: string;
   flippedByCardId?: string;
+  position: BoardPosition;
 };
 
 export function triggerAbilities(
   trigger: TriggerMoment,
-  position: BoardPosition,
   context: TriggerContext
 ): BaseGameEvent[] {
   const events: BaseGameEvent[] = [];
@@ -170,7 +198,8 @@ export function triggerAbilities(
   // check the specific card
   if (triggerCard.base_card_data.special_ability) {
     const ability = triggerCard.base_card_data.special_ability;
-    if (ability.trigger_moment === trigger) {
+    if (ability.trigger_moment === trigger && abilities[ability.name]) {
+      console.log(ability.name);
       events.push(...abilities[ability.name]?.(context));
       updateAllBoardCards(state);
     }
@@ -218,37 +247,6 @@ export function updateAllBoardCards(gameState: GameState) {
 }
 
 /**
- * Moves all cards from the board to their owners' discard piles
- */
-export function moveAllBoardCardsToDiscardPiles(
-  gameState: GameState
-): GameState {
-  const newState = _.cloneDeep(gameState);
-
-  for (let y = 0; y < 4; y++) {
-    for (let x = 0; x < 4; x++) {
-      const cell = newState.board[y][x];
-      if (cell && cell.card) {
-        const cardId = cell.card.user_card_instance_id;
-        const owner = cell.card.owner;
-
-        if (cardId && owner) {
-          const ownerPlayer =
-            owner === newState.player1.user_id
-              ? newState.player1
-              : newState.player2;
-          ownerPlayer.discard_pile.push(cardId);
-        }
-      }
-      // Clear the cell
-      newState.board[y][x] = null;
-    }
-  }
-
-  return newState;
-}
-
-/**
  * Draws a card from the player's deck to their hand
  */
 export function drawCard(gameState: GameState, playerId: string): GameState {
@@ -281,24 +279,6 @@ export function handleGameOver(gameState: GameState): GameState {
     newState.status = GameStatus.COMPLETED;
     newState.winner = null; // Draw
   }
-
-  return newState;
-}
-
-/**
- * Updates the current player and turn number
- */
-export function switchTurn(gameState: GameState): GameState {
-  const newState = _.cloneDeep(gameState);
-
-  // Switch to other player
-  newState.current_player_id =
-    newState.current_player_id === newState.player1.user_id
-      ? newState.player2.user_id
-      : newState.player1.user_id;
-
-  // Increment turn number
-  newState.turn_number++;
 
   return newState;
 }

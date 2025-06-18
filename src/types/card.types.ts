@@ -91,6 +91,7 @@ export interface InGameCard extends UserCard {
   temporary_effects: TemporaryEffect[];
   current_power: PowerValues;
   owner: string;
+  lockedTurns: number;
 }
 
 export interface TemporaryEffect {

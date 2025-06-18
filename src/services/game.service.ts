@@ -104,7 +104,12 @@ class GameService {
                   cell.card.base_card_id === null &&
                   cell.card.owner === null))
             ) {
-              parsedState.board[y][x] = null;
+              parsedState.board[y][x] = {
+                card: null,
+                tile_status: "normal",
+                turns_left: 0,
+                animation_label: null,
+              };
             }
           }
         }

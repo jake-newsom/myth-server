@@ -1,0 +1,209 @@
+paths:
+  /api/admin/give-packs:
+    post:
+      tags:
+        - Admin
+      summary: Give packs to a user
+      description: Adds packs to a user's inventory (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - quantity
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                  description: ID of the user to give packs to
+                quantity:
+                  type: integer
+                  minimum: 1
+                  description: Number of packs to give
+              example:
+                userId: "123e4567-e89b-12d3-a456-426614174000"
+                quantity: 5
+      responses:
+        "200":
+          description: Packs given successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Successfully gave 5 pack(s) to user123"
+                  data:
+                    type: object
+                    properties:
+                      user_id:
+                        type: string
+                        format: uuid
+                      username:
+                        type: string
+                      pack_count:
+                        type: integer
+        "400":
+          description: Bad request - invalid data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User or set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/set-pack-quantity:
+    post:
+      tags:
+        - Admin
+      summary: Set user's pack quantity
+      description: Sets the exact number of packs a user has for a specific set (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - quantity
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                  description: ID of the user
+                quantity:
+                  type: integer
+                  minimum: 0
+                  description: Exact number of packs to set
+              example:
+                userId: "123e4567-e89b-12d3-a456-426614174000"
+                quantity: 10
+      responses:
+        "200":
+          description: Pack quantity set successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Successfully set user123's pack quantity to 10"
+                  data:
+                    type: object
+                    properties:
+                      user_id:
+                        type: string
+                        format: uuid
+                      username:
+                        type: string
+                      pack_count:
+                        type: integer
+        "400":
+          description: Bad request - invalid data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User or set not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/user-pack-count/{userId}:
+    get:
+      tags:
+        - Admin
+      summary: Get user's pack count
+      description: Retrieves the total pack count for a specific user (admin only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the user whose pack count to retrieve
+      responses:
+        "200":
+          description: User pack count retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Retrieved pack count for user123"
+                  data:
+                    type: object
+                    properties:
+                      user_id:
+                        type: string
+                        format: uuid
+                      username:
+                        type: string
+                      pack_count:
+                        type: integer
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        message:
+          type: string
+          description: Error message describing what went wrong

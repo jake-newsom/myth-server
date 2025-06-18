@@ -11,9 +11,21 @@ export interface User {
   email: string;
   password_hash: string;
   in_game_currency: number;
+  pack_count: number;
   created_at: Date;
   last_login: Date;
 }
+
+export interface Set {
+  set_id: string;
+  name: string;
+  description?: string;
+  is_released: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// UserPack interface removed - packs are now tracked as a simple count on the User
 
 export interface SpecialAbility {
   ability_id: string;
@@ -41,6 +53,7 @@ export interface Card {
   image_url: string;
   base_power: PowerValues;
   special_ability_id: string | null;
+  set_id?: string | null;
   tags: string[];
 }
 

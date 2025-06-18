@@ -6,6 +6,9 @@ import userRoutes from "./user.routes";
 import cardRoutes from "./card.routes";
 import deckRoutes from "./deck.routes";
 import userCardRoutes from "./userCard.routes";
+import packRoutes from "./pack.routes";
+import setRoutes from "./set.routes";
+import adminRoutes from "./admin.routes";
 import { handleErrors } from "../middlewares/error.middleware";
 
 // Import matchmaking routes
@@ -21,6 +24,9 @@ router.use("/users", userRoutes);
 router.use("/cards", cardRoutes);
 router.use("/decks", deckRoutes);
 router.use("/user-cards", userCardRoutes);
+router.use("/packs", packRoutes);
+router.use("/sets", setRoutes);
+router.use("/admin", adminRoutes);
 
 // Global error handler
 router.use(handleErrors);

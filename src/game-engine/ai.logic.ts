@@ -2,6 +2,7 @@ import { GameLogic } from "./game.logic";
 import { GameState, BoardPosition } from "../types/game.types";
 import { InGameCard } from "../types/card.types";
 import * as _ from "lodash";
+import { canPlaceOnTile } from "./game.utils";
 
 const BOARD_SIZE = 4;
 
@@ -20,8 +21,7 @@ export class AILogic {
     tempBoard[position.y][position.x] = {
       card: cardToPlay,
       tile_status: "normal",
-      player_1_turns_left: 0,
-      player_2_turns_left: 0,
+      turns_left: 0,
       animation_label: null,
     };
 
@@ -105,7 +105,7 @@ export class AILogic {
 
       for (let y = 0; y < BOARD_SIZE; y++) {
         for (let x = 0; x < BOARD_SIZE; x++) {
-          if (currentGameState.board[y][x] === null) {
+          if (canPlaceOnTile(currentGameState, { x, y })) {
             const moveScore = this.evaluateMove(
               _.cloneDeep(currentGameState),
               cardData as InGameCard,

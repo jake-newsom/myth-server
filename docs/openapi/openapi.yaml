@@ -19,6 +19,12 @@ tags:
     description: Static card data
   - name: Decks
     description: Deck creation and management
+  - name: Packs
+    description: Card pack opening and inventory management
+  - name: Sets
+    description: Card set management
+  - name: Admin
+    description: Administrative functions
 
 paths:
   # Authentication Endpoints
@@ -79,6 +85,36 @@ paths:
   /api/matchmaking/leave:
     $ref: "./matchmaking.openapi.yaml#/paths/~1api~1matchmaking~1leave"
 
+  # Pack Endpoints
+  /api/packs/open:
+    $ref: "./pack.openapi.yaml#/paths/~1api~1packs~1open"
+
+  /api/packs:
+    $ref: "./pack.openapi.yaml#/paths/~1api~1packs"
+
+  # Set Endpoints
+  /api/sets:
+    $ref: "./set.openapi.yaml#/paths/~1api~1sets"
+
+  /api/sets/released:
+    $ref: "./set.openapi.yaml#/paths/~1api~1sets~1released"
+
+  /api/sets/{setId}:
+    $ref: "./set.openapi.yaml#/paths/~1api~1sets~1{setId}"
+
+  /api/sets/{setId}/release:
+    $ref: "./set.openapi.yaml#/paths/~1api~1sets~1{setId}~1release"
+
+  # Admin Endpoints
+  /api/admin/give-packs:
+    $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1give-packs"
+
+  /api/admin/set-pack-quantity:
+    $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1set-pack-quantity"
+
+  /api/admin/user-packs/{userId}:
+    $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1user-packs~1{userId}"
+
   # System Endpoints
   /api/health:
     $ref: "./health.openapi.yaml#/paths/~1api~1health"
@@ -130,6 +166,20 @@ components:
       $ref: "./matchmaking.openapi.yaml#/components/schemas/LeftQueueResponse"
     ErrorResponse:
       $ref: "./matchmaking.openapi.yaml#/components/schemas/ErrorResponse"
+
+    # Pack schemas
+    UserPackWithSetInfo:
+      $ref: "./pack.openapi.yaml#/components/schemas/UserPackWithSetInfo"
+
+    # Set schemas
+    Set:
+      $ref: "./set.openapi.yaml#/components/schemas/Set"
+    SetWithCardCount:
+      $ref: "./set.openapi.yaml#/components/schemas/SetWithCardCount"
+
+    # Admin schemas
+    UserPack:
+      $ref: "./admin.openapi.yaml#/components/schemas/UserPack"
 
   securitySchemes:
     bearerAuth:

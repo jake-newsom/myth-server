@@ -1,4 +1,4 @@
-import { BoardPosition } from "../types";
+import { BoardCell, BoardPosition } from "../types";
 
 export const EVENT_TYPES = {
   GAME_START: "GAME_START",
@@ -36,8 +36,14 @@ export interface CardEvent extends BaseGameEvent {
   cardId: string;
 }
 
+export interface CardPlacedEvent extends CardEvent {
+  originalOwner: string;
+  position: BoardPosition;
+}
+
 export interface TileEvent extends BaseGameEvent {
   position: BoardPosition;
+  tile: Pick<BoardCell, "tile_status" | "turns_left" | "animation_label">;
 }
 
 export function batchEvents(
@@ -45,7 +51,7 @@ export function batchEvents(
   delay: number
 ): BaseGameEvent[] {
   if (events.length > 0) {
-    events[0].delayAfterMs = delay;
+    events[events.length - 1].delayAfterMs = delay;
   }
   return events;
 }

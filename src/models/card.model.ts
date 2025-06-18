@@ -69,7 +69,7 @@ const CardModel = {
         c.power->>'right' as base_power_right, 
         c.power->>'bottom' as base_power_bottom, 
         c.power->>'left' as base_power_left,
-        c.special_ability_id, c.tags,
+        c.special_ability_id, c.set_id, c.tags,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moment as ability_trigger_moment, sa.parameters as ability_parameters,
         sa.id as ability_id_string
@@ -94,6 +94,7 @@ const CardModel = {
           left: parseInt(row.base_power_left, 10),
         },
         special_ability_id: row.special_ability_id,
+        set_id: row.set_id,
         tags: row.tags,
       };
 
@@ -134,7 +135,7 @@ const CardModel = {
         power->>'right' as base_power_right,
         power->>'bottom' as base_power_bottom, 
         power->>'left' as base_power_left,
-        special_ability_id, tags
+        special_ability_id, set_id, tags
       FROM "cards"
       WHERE card_id = $1;
     `;
@@ -154,12 +155,13 @@ const CardModel = {
         left: parseInt(row.base_power_left, 10),
       },
       special_ability_id: row.special_ability_id,
+      set_id: row.set_id,
       tags: row.tags,
     };
   },
 
   async findBaseCardById(cardId: string): Promise<BaseCard | null> {
-    const query = `SELECT card_id, name, rarity, image_url, power->>'top' as base_power_top, power->>'right' as base_power_right, power->>'bottom' as base_power_bottom, power->>'left' as base_power_left, special_ability_id, tags FROM "cards" WHERE card_id = $1;`;
+    const query = `SELECT card_id, name, rarity, image_url, power->>'top' as base_power_top, power->>'right' as base_power_right, power->>'bottom' as base_power_bottom, power->>'left' as base_power_left, special_ability_id, set_id, tags FROM "cards" WHERE card_id = $1;`;
     const { rows } = await db.query(query, [cardId]);
     if (rows.length === 0) return null;
     const row = rows[0];
@@ -175,6 +177,7 @@ const CardModel = {
         left: parseInt(row.base_power_left, 10),
       },
       special_ability_id: row.special_ability_id,
+      set_id: row.set_id,
       tags: row.tags,
     };
   },

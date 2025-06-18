@@ -1,0 +1,193 @@
+paths:
+  /api/packs/open:
+    post:
+      tags:
+        - Packs
+      summary: Open a card pack
+      description: Opens a pack from a specific set, consuming one pack from the user's inventory and returning 5 random cards
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - setId
+              properties:
+                setId:
+                  type: string
+                  format: uuid
+                  description: ID of the set to open a pack from
+              example:
+                setId: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        "200":
+          description: Pack opened successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Pack opened successfully"
+                  data:
+                    type: object
+                    properties:
+                      cards:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Card"
+                        description: The 5 cards obtained from the pack
+                      remainingPacks:
+                        type: integer
+                        description: Number of packs remaining for this set
+                        example: 2
+        "400":
+          description: Bad request - invalid set ID, no packs available, or set not released
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - user not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/packs:
+    get:
+      tags:
+        - Packs
+      summary: Get user's pack count
+      description: Retrieves the total number of packs owned by the authenticated user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User pack count retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "User pack count retrieved successfully"
+                  data:
+                    type: object
+                    properties:
+                      pack_count:
+                        type: integer
+                        description: Total number of packs the user owns
+                        example: 5
+        "401":
+          description: Unauthorized - user not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    Card:
+      type: object
+      properties:
+        card_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the card
+        name:
+          type: string
+          description: Name of the card
+        rarity:
+          type: string
+          enum: [common, uncommon, rare, epic, legendary]
+          description: Rarity of the card
+        image_url:
+          type: string
+          format: uri
+          description: URL to the card's image
+        base_power:
+          type: object
+          properties:
+            top:
+              type: integer
+            right:
+              type: integer
+            bottom:
+              type: integer
+            left:
+              type: integer
+          description: Base power values for each direction
+        special_ability_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the card's special ability
+        set_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the set this card belongs to
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags associated with the card
+
+    UserPackWithSetInfo:
+      type: object
+      properties:
+        user_pack_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the user pack record
+        user_id:
+          type: string
+          format: uuid
+          description: ID of the user who owns the packs
+        set_id:
+          type: string
+          format: uuid
+          description: ID of the set these packs belong to
+        quantity:
+          type: integer
+          description: Number of packs the user owns for this set
+        set_name:
+          type: string
+          description: Name of the set
+        set_description:
+          type: string
+          nullable: true
+          description: Description of the set
+        set_is_released:
+          type: boolean
+          description: Whether the set is released and packs can be opened
+        created_at:
+          type: string
+          format: date-time
+          description: When the pack record was created
+        updated_at:
+          type: string
+          format: date-time
+          description: When the pack record was last updated
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        message:
+          type: string
+          description: Error message describing what went wrong
