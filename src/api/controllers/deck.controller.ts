@@ -40,8 +40,8 @@ async function validateDeckComposition(
     // A better approach would be to fetch all instance details in one go.
     const instanceQuery = `
       SELECT uci.card_id as base_card_id, c.rarity 
-      FROM "UserCardInstances" uci 
-      JOIN "Cards" c ON uci.card_id = c.card_id
+      FROM "user_owned_cards" uci 
+      JOIN "cards" c ON uci.card_id = c.card_id
       WHERE uci.user_card_instance_id = $1 AND uci.user_id = $2;
     `;
     const instanceRes = await client.query(instanceQuery, [instanceId, userId]);

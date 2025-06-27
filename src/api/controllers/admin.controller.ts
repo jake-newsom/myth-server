@@ -4,7 +4,7 @@ import UserModel from "../../models/user.model";
 
 interface AuthenticatedRequest extends Request {
   user?: {
-    userId: string;
+    user_id: string;
     username: string;
     email: string;
   };

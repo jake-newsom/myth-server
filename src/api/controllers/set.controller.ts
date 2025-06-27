@@ -3,7 +3,7 @@ import SetModel from "../../models/set.model";
 
 interface AuthenticatedRequest extends Request {
   user?: {
-    userId: string;
+    user_id: string;
     username: string;
     email: string;
   };
@@ -88,7 +88,7 @@ const SetController = {
 
   async createSet(req: AuthenticatedRequest, res: Response) {
     try {
-      const { name, description, is_released } = req.body;
+      const { name, description, image_url, is_released } = req.body;
 
       if (!name) {
         return res.status(400).json({
@@ -109,6 +109,7 @@ const SetController = {
       const newSet = await SetModel.create({
         name,
         description,
+        image_url,
         is_released: is_released || false,
       });
 

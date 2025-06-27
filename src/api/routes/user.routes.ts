@@ -19,5 +19,10 @@ router.get(
   authMiddleware.protect,
   UserController.getMyDeckById
 );
+router.get(
+  "/me/active-games",
+  authMiddleware.protect,
+  UserController.getMyActiveGames
+);
 
 export default router;

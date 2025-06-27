@@ -25,6 +25,20 @@ tags:
     description: Card set management
   - name: Admin
     description: Administrative functions
+  - name: XP
+    description: Card XP management and transfers
+  - name: Currency
+    description: Gold, gems, and pack purchasing
+  - name: Friends
+    description: Social features and friend management
+  - name: Leaderboard
+    description: Rankings and competitive features
+  - name: Achievements
+    description: Achievement system and progress tracking
+  - name: Fate Picks
+    description: Social pack opening and Fate coins
+  - name: Mail
+    description: In-game mail and inbox system
 
 paths:
   # Authentication Endpoints
@@ -47,6 +61,41 @@ paths:
   /api/users/me/decks/{deckId}:
     $ref: "./user.openapi.yaml#/paths/~1api~1users~1me~1decks~1{deckId}"
 
+  /api/users/me/active-games:
+    get:
+      tags:
+        - Users
+      summary: Get user's active games
+      description: Retrieve all active games for the authenticated user with optional summary mode
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: summary
+          in: query
+          description: Return summary information only
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Active games retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  active_games:
+                    type: array
+                    items:
+                      type: object
+                  count:
+                    type: integer
+                    example: 2
+
   # Card Endpoints
   /api/cards:
     $ref: "./card.openapi.yaml#/paths/~1api~1cards"
@@ -61,9 +110,550 @@ paths:
   /api/decks/{deckId}:
     $ref: "./deck.openapi.yaml#/paths/~1api~1decks~1{deckId}"
 
-  # User Card Endpoints (New)
+  # User Card Endpoints
   /api/user-cards:
     $ref: "./userCard.openapi.yaml#/paths/~1api~1user-cards"
+
+  # XP System Endpoints
+  /api/xp/pools:
+    get:
+      tags:
+        - XP
+      summary: Get all user XP pools
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: XP pools retrieved successfully
+
+  /api/xp/pools/{cardName}:
+    get:
+      tags:
+        - XP
+      summary: Get specific card XP pool
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cardName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: XP pool retrieved successfully
+
+  /api/xp/transfer:
+    post:
+      tags:
+        - XP
+      summary: Transfer XP between cards
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: XP transferred successfully
+
+  /api/xp/sacrifice:
+    post:
+      tags:
+        - XP
+      summary: Sacrifice cards for XP pools
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Cards sacrificed successfully
+
+  /api/xp/apply:
+    post:
+      tags:
+        - XP
+      summary: Apply XP from pool to card
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: XP applied successfully
+
+  /api/xp/history:
+    get:
+      tags:
+        - XP
+      summary: Get XP transfer history
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: XP history retrieved successfully
+
+  # Currency System Endpoints
+  /api/currency:
+    get:
+      tags:
+        - Currency
+      summary: Get user's current currencies
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Currencies retrieved successfully
+
+  /api/currency/pack-prices:
+    get:
+      tags:
+        - Currency
+      summary: Get pack prices
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Pack prices retrieved successfully
+
+  /api/currency/purchase-packs:
+    post:
+      tags:
+        - Currency
+      summary: Purchase packs with currency
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Packs purchased successfully
+
+  /api/currency/award:
+    post:
+      tags:
+        - Currency
+      summary: Award currency to user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Currency awarded successfully
+
+  # Friends System Endpoints
+  /api/friends:
+    get:
+      tags:
+        - Friends
+      summary: Get friends list
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Friends list retrieved successfully
+
+  /api/friends/requests:
+    get:
+      tags:
+        - Friends
+      summary: Get friend requests
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Friend requests retrieved successfully
+
+  /api/friends/search:
+    get:
+      tags:
+        - Friends
+      summary: Search users for friending
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User search results retrieved successfully
+
+  /api/friends/status/{userId}:
+    get:
+      tags:
+        - Friends
+      summary: Check friendship status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Friendship status retrieved successfully
+
+  /api/friends/add:
+    post:
+      tags:
+        - Friends
+      summary: Send friend request
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Friend request sent successfully
+
+  /api/friends/accept/{friendshipId}:
+    post:
+      tags:
+        - Friends
+      summary: Accept friend request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendshipId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Friend request accepted successfully
+
+  /api/friends/reject/{friendshipId}:
+    post:
+      tags:
+        - Friends
+      summary: Reject friend request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendshipId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Friend request rejected successfully
+
+  /api/friends/challenge/{friendId}:
+    post:
+      tags:
+        - Friends
+      summary: Challenge friend to game
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Friend challenge created successfully
+
+  /api/friends/{friendshipId}:
+    delete:
+      tags:
+        - Friends
+      summary: Remove friend
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendshipId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Friend removed successfully
+
+  # Leaderboard System Endpoints
+  /api/leaderboard:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get leaderboard with user context
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Leaderboard retrieved successfully
+
+  /api/leaderboard/stats:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get leaderboard statistics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Leaderboard statistics retrieved successfully
+
+  /api/leaderboard/me:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get user's detailed ranking
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User ranking retrieved successfully
+
+  /api/leaderboard/me/history:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get user's rank history
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Rank history retrieved successfully
+
+  /api/leaderboard/me/around:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get leaderboard around user's position
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Contextual leaderboard retrieved successfully
+
+  /api/leaderboard/user/{identifier}:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get public user ranking
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: identifier
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User ranking retrieved successfully
+
+  /api/leaderboard/me/initialize:
+    post:
+      tags:
+        - Leaderboard
+      summary: Initialize user for season
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User initialized for season successfully
+
+  # Achievements System Endpoints
+  /api/achievements:
+    get:
+      tags:
+        - Achievements
+      summary: Get all available achievements
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Achievements retrieved successfully
+
+  /api/achievements/categories:
+    get:
+      tags:
+        - Achievements
+      summary: Get achievement categories
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Achievement categories retrieved successfully
+
+  /api/achievements/{achievementKey}:
+    get:
+      tags:
+        - Achievements
+      summary: Get specific achievement details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: achievementKey
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Achievement details retrieved successfully
+
+  /api/achievements/me/progress:
+    get:
+      tags:
+        - Achievements
+      summary: Get user's achievement progress
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Achievement progress retrieved successfully
+
+  /api/achievements/me/stats:
+    get:
+      tags:
+        - Achievements
+      summary: Get user's achievement statistics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Achievement statistics retrieved successfully
+
+  /api/achievements/me/recent:
+    get:
+      tags:
+        - Achievements
+      summary: Get recently completed achievements
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Recent achievements retrieved successfully
+
+  /api/achievements/{achievementId}/claim:
+    post:
+      tags:
+        - Achievements
+      summary: Claim achievement rewards
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: achievementId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Achievement rewards claimed successfully
+
+  # Fate Picks System Endpoints
+  /api/fate-picks:
+    get:
+      tags:
+        - Fate Picks
+      summary: Get available Fate Picks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Fate Picks retrieved successfully
+
+  /api/fate-picks/{fatePickId}:
+    get:
+      tags:
+        - Fate Picks
+      summary: Get specific Fate Pick details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: fatePickId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Fate Pick details retrieved successfully
+
+  /api/fate-picks/{fatePickId}/participate:
+    post:
+      tags:
+        - Fate Picks
+      summary: Participate in Fate Pick
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: fatePickId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Fate Pick participation successful
+
+  /api/fate-picks/{fatePickId}/select:
+    post:
+      tags:
+        - Fate Picks
+      summary: Select card position in Fate Pick
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: fatePickId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Fate Pick selection successful
+
+  /api/fate-picks/history:
+    get:
+      tags:
+        - Fate Picks
+      summary: Get Fate Pick participation history
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Fate Pick history retrieved successfully
+
+  /api/fate-picks/stats:
+    get:
+      tags:
+        - Fate Picks
+      summary: Get Fate Pick statistics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Fate Pick statistics retrieved successfully
+
+  # Mail System Endpoints
+  /api/mail:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail"
+
+  /api/mail/stats:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1stats"
+
+  /api/mail/counts:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1counts"
+
+  /api/mail/recent:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1recent"
+
+  /api/mail/{mailId}:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1{mailId}"
+
+  /api/mail/{mailId}/read:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1{mailId}~1read"
+
+  /api/mail/read/multiple:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1read~1multiple"
+
+  /api/mail/read/all:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1read~1all"
+
+  /api/mail/{mailId}/claim:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1{mailId}~1claim"
+
+  /api/mail/claim/all:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1claim~1all"
+
+  /api/mail/send/system:
+    $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1send~1system"
 
   # Game Endpoints
   /api/games/solo:
@@ -74,6 +664,9 @@ paths:
 
   /api/games/{gameId}/actions:
     $ref: "./game.openapi.yaml#/paths/~1api~1games~1{gameId}~1actions"
+
+  /api/games/{gameId}/ai-action:
+    $ref: "./game.openapi.yaml#/paths/~1api~1games~1{game_id}~1ai-action"
 
   # Matchmaking Endpoints
   /api/matchmaking/join:
@@ -180,6 +773,14 @@ components:
     # Admin schemas
     UserPack:
       $ref: "./admin.openapi.yaml#/components/schemas/UserPack"
+
+    # Mail schemas
+    Mail:
+      $ref: "./mail.openapi.yaml#/components/schemas/Mail"
+    MailWithSender:
+      $ref: "./mail.openapi.yaml#/components/schemas/MailWithSender"
+    MailStats:
+      $ref: "./mail.openapi.yaml#/components/schemas/MailStats"
 
   securitySchemes:
     bearerAuth:

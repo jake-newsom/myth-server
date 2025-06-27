@@ -4,7 +4,7 @@ import UserModel from "../../models/user.model";
 
 interface AuthenticatedRequest extends Request {
   user?: {
-    userId: string;
+    user_id: string;
     username: string;
     email: string;
   };
@@ -13,7 +13,7 @@ interface AuthenticatedRequest extends Request {
 const PackController = {
   async openPack(req: AuthenticatedRequest, res: Response) {
     try {
-      const userId = req.user?.userId;
+      const userId = req.user?.user_id;
       const { setId } = req.body;
 
       if (!userId) {
@@ -66,7 +66,7 @@ const PackController = {
 
   async getUserPacks(req: AuthenticatedRequest, res: Response) {
     try {
-      const userId = req.user?.userId;
+      const userId = req.user?.user_id;
 
       if (!userId) {
         return res.status(401).json({

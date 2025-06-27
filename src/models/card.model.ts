@@ -547,6 +547,76 @@ const CardModel = {
     return formatStaticCardResponse(card);
   },
 
+  // Add method to find multiple instances by IDs
+  async findInstancesByIds(instanceIds: string[]): Promise<CardResponse[]> {
+    if (instanceIds.length === 0) return [];
+
+    const query = `
+      SELECT 
+        uoc.user_card_instance_id, uoc.user_id, uoc.card_id, uoc.level, uoc.xp,
+        c.name, c.rarity, c.image_url, 
+        c.power->>'top' as base_power_top,
+        c.power->>'right' as base_power_right, 
+        c.power->>'bottom' as base_power_bottom, 
+        c.power->>'left' as base_power_left,
+        c.special_ability_id, c.set_id, c.tags,
+        sa.name as ability_name, sa.description as ability_description, 
+        sa.trigger_moment as ability_trigger_moment, sa.parameters as ability_parameters,
+        sa.id as ability_id_string
+      FROM "user_owned_cards" uoc
+      JOIN "cards" c ON uoc.card_id = c.card_id
+      LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
+      WHERE uoc.user_card_instance_id = ANY($1)
+      ORDER BY c.name;
+    `;
+
+    const { rows } = await db.query(query, [instanceIds]);
+    return rows.map((row) => {
+      const baseCard: BaseCard = {
+        card_id: row.card_id,
+        name: row.name,
+        rarity: row.rarity,
+        image_url: row.image_url,
+        base_power: {
+          top: parseInt(row.base_power_top, 10),
+          right: parseInt(row.base_power_right, 10),
+          bottom: parseInt(row.base_power_bottom, 10),
+          left: parseInt(row.base_power_left, 10),
+        },
+        special_ability_id: row.special_ability_id,
+        set_id: row.set_id,
+        tags: row.tags,
+      };
+
+      const instance: UserCardInstance = {
+        user_card_instance_id: row.user_card_instance_id,
+        user_id: row.user_id,
+        card_id: row.card_id,
+        level: row.level,
+        xp: row.xp,
+        power_enhancements: {
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+        },
+      };
+
+      const ability: SpecialAbility | null = row.special_ability_id
+        ? {
+            ability_id: row.special_ability_id,
+            id: row.ability_id_string || "",
+            name: row.ability_name,
+            description: row.ability_description,
+            triggerMoment: row.ability_trigger_moment,
+            parameters: row.ability_parameters,
+          }
+        : null;
+
+      return formatUserCardInstanceResponse(baseCard, instance, ability);
+    });
+  },
+
   // Keep existing methods for backward compatibility
   async findByName(name: string): Promise<BaseCard | null> {
     const query = `

@@ -1,13 +1,27 @@
 import { Router } from "express";
 import PackController from "../controllers/pack.controller";
-import { authenticateJWT } from "../middlewares/auth.middleware";
+import authMiddleware from "../middlewares/auth.middleware";
+import {
+  packOpeningRateLimit,
+  moderateRateLimit,
+} from "../middlewares/rateLimit.middleware";
 
 const router = Router();
 
-// Open a pack - requires authentication
-router.post("/open", authenticateJWT, PackController.openPack);
+// Get user's pack inventory - requires authentication (moderate rate limiting)
+router.get(
+  "/",
+  authMiddleware.protect,
+  moderateRateLimit,
+  PackController.getUserPacks
+);
 
-// Get user's pack inventory - requires authentication
-router.get("/", authenticateJWT, PackController.getUserPacks);
+// Open a pack - requires authentication (special pack opening rate limiting)
+router.post(
+  "/open",
+  authMiddleware.protect,
+  packOpeningRateLimit,
+  PackController.openPack
+);
 
 export default router;

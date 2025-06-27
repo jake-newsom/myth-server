@@ -12,7 +12,7 @@ dotenv.config();
 
 // Import the API routes
 import apiRoutes from "./api/routes";
-import { handleErrors } from "./api/middlewares/error.middleware";
+import errorHandler from "./api/middlewares/errorHandler.middleware";
 
 // Setup Swagger
 const swaggerOptions = {
@@ -55,7 +55,7 @@ app.get("/health", (req: Request, res: Response) => {
 });
 
 // Centralized Error Handling
-app.use(handleErrors);
+app.use(errorHandler);
 
 // 404 Handler for undefined routes
 app.use((req: Request, res: Response, next: NextFunction) => {

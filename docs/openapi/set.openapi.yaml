@@ -46,6 +46,9 @@ paths:
                 description:
                   type: string
                   description: Description of the set
+                image_url:
+                  type: string
+                  description: URL to the set's image
                 is_released:
                   type: boolean
                   default: false
@@ -53,6 +56,7 @@ paths:
               example:
                 name: "Norse Mythology"
                 description: "Cards inspired by Norse gods and legends"
+                image_url: "https://example.com/images/norse-mythology.jpg"
                 is_released: false
       responses:
         "201":
@@ -173,12 +177,16 @@ paths:
                 description:
                   type: string
                   description: Description of the set
+                image_url:
+                  type: string
+                  description: URL to the set's image
                 is_released:
                   type: boolean
                   description: Whether the set is released
               example:
                 name: "Norse Mythology - Updated"
                 description: "Updated description for Norse gods and legends"
+                image_url: "https://example.com/images/norse-mythology-updated.jpg"
                 is_released: true
       responses:
         "200":
@@ -326,6 +334,10 @@ components:
           type: string
           nullable: true
           description: Description of the set
+        image_url:
+          type: string
+          nullable: true
+          description: URL to the set's image
         is_released:
           type: boolean
           description: Whether the set is released and available for pack opening

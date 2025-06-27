@@ -82,6 +82,10 @@ const AuthController = {
           username: newUser.username,
           email: newUser.email,
           in_game_currency: newUser.in_game_currency,
+          gold: newUser.gold,
+          gems: newUser.gems,
+          fate_coins: newUser.fate_coins,
+          total_xp: newUser.total_xp,
         },
       });
     } catch (error) {
@@ -144,6 +148,10 @@ const AuthController = {
           username: user.username,
           email: user.email,
           in_game_currency: user.in_game_currency,
+          gold: user.gold,
+          gems: user.gems,
+          fate_coins: user.fate_coins,
+          total_xp: user.total_xp,
         },
       });
     } catch (error) {

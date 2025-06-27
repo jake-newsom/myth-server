@@ -2,11 +2,44 @@
 import UserModel from "../../models/user.model";
 import CardModel from "../../models/card.model";
 import DeckModel from "../../models/deck.model";
+import GameService from "../../services/game.service";
 import { Request, Response, NextFunction } from "express"; // Assuming Express types
+import { UserCard } from "../../types/card.types";
+import { CardResponse } from "../../types/api.types";
 
 interface AuthenticatedRequest extends Request {
   user?: { user_id: string /* other user props */ };
 }
+
+// Helper function to transform CardResponse to UserCard
+const transformToUserCard = (card: CardResponse): UserCard => ({
+  user_card_instance_id: card.user_card_instance_id!,
+  base_card_id: card.base_card_id,
+  base_card_data: {
+    card_id: card.base_card_id,
+    name: card.name,
+    tags: card.tags,
+    rarity: card.rarity,
+    image_url: card.image_url,
+    base_power: card.base_power,
+    special_ability: card.special_ability
+      ? {
+          name: card.special_ability.name,
+          ability_id: card.special_ability.ability_id,
+          description: card.special_ability.description,
+          trigger_moment: card.special_ability.triggerMoment,
+          parameters: card.special_ability.parameters,
+        }
+      : null,
+  },
+  level: card.level!,
+  power_enhancements: card.power_enhancements || {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+});
 
 const UserController = {
   /**
@@ -57,7 +90,11 @@ const UserController = {
       const ownedCardInstances = await CardModel.findInstancesByUserId(
         req.user.user_id
       );
-      res.status(200).json(ownedCardInstances);
+
+      // Transform CardResponse array to UserCard array
+      const userCards: UserCard[] = ownedCardInstances.map(transformToUserCard);
+
+      res.status(200).json(userCards);
     } catch (error) {
       next(error);
     }
@@ -81,7 +118,14 @@ const UserController = {
         return;
       }
       const userDecks = await DeckModel.findAllByUserId(req.user.user_id); // This will return summaries
-      res.status(200).json(userDecks);
+
+      // Transform cards arrays in each deck to UserCard arrays
+      const decksWithUserCards = userDecks.map((deck) => ({
+        ...deck,
+        cards: deck.cards.map(transformToUserCard),
+      }));
+
+      res.status(200).json(decksWithUserCards);
     } catch (error) {
       next(error);
     }
@@ -115,9 +159,61 @@ const UserController = {
         });
         return;
       }
-      res.status(200).json(deck);
+
+      // Transform cards array to UserCard type using helper function
+      const userCards: UserCard[] = deck.cards.map(transformToUserCard);
+
+      // Return deck with UserCard array
+      res.status(200).json({
+        ...deck,
+        cards: userCards,
+      });
     } catch (error) {
       next(error);
+    }
+  },
+
+  /**
+   * Get user's active games
+   * @route GET /api/users/me/active-games
+   * @param {AuthenticatedRequest} req - Express request object with authenticated user
+   * @param {Response} res - Express response object
+   * @param {NextFunction} next - Express next middleware function
+   */
+  async getMyActiveGames(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "User not authenticated." } });
+        return;
+      }
+
+      // Check if user wants summary or full details
+      const summary = req.query.summary === "true";
+
+      let activeGames;
+      if (summary) {
+        activeGames = await GameService.getActiveGamesSummary(req.user.user_id);
+      } else {
+        activeGames = await GameService.getActiveGamesForUser(req.user.user_id);
+      }
+
+      res.status(200).json({
+        success: true,
+        active_games: activeGames,
+        count: activeGames.length,
+      });
+    } catch (error) {
+      console.error("Error fetching active games:", error);
+      res.status(500).json({
+        error: {
+          message: "Failed to fetch active games",
+          details: error instanceof Error ? error.message : "Unknown error",
+        },
+      });
     }
   },
 };

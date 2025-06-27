@@ -201,6 +201,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/games/{game_id}/ai-action:
+    post:
+      summary: Submit an AI action for a solo game
+      description: Processes an AI turn in a solo game. This endpoint should be called after the player's turn when it's the AI's turn to play.
+      security:
+        - bearerAuth: []
+      operationId: submitAIAction
+      tags:
+        - Games
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: AI action performed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+        "400":
+          description: Invalid request (not AI's turn, not a solo game, or game not active)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Game not found or access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     CardPower:

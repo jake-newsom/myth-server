@@ -19,6 +19,9 @@ import GameService, {
   GameRecord,
 } from "../../services/game.service";
 import UserService from "../../services/user.service";
+import GameRewardsService, {
+  GameCompletionResult,
+} from "../../services/gameRewards.service";
 import { BaseGameEvent } from "../../game-engine/game-events";
 import { canPlaceOnTile } from "../../game-engine/game.utils";
 
@@ -34,6 +37,7 @@ class GameController {
     this.startSoloGame = this.startSoloGame.bind(this);
     this.getGame = this.getGame.bind(this);
     this.submitAction = this.submitAction.bind(this);
+    this.submitAIAction = this.submitAIAction.bind(this);
   }
 
   /**
@@ -100,31 +104,9 @@ class GameController {
       const startingPlayerId = Math.random() < 0.5 ? userId : AI_PLAYER_ID;
       initialGameState.current_player_id = startingPlayerId;
 
-      // If AI starts, make its move
+      // Set the final game state (no automatic AI moves)
       let finalGameState = initialGameState;
       let events: BaseGameEvent[] = [];
-      if (startingPlayerId === AI_PLAYER_ID) {
-        const ai = new AILogic();
-        const aiMove = await ai.makeAIMove(initialGameState);
-        if (aiMove) {
-          const placeCardResult = await GameLogic.placeCard(
-            initialGameState,
-            AI_PLAYER_ID,
-            aiMove.user_card_instance_id,
-            aiMove.position
-          );
-          finalGameState = placeCardResult.state;
-          events.push(...placeCardResult.events);
-        } else {
-          // AI has no valid moves, end turn
-          const endTurnResult = await GameLogic.endTurn(
-            initialGameState,
-            AI_PLAYER_ID
-          );
-          finalGameState = endTurnResult.state;
-          events.push(...endTurnResult.events);
-        }
-      }
 
       // 4. Create game record in database
       const createdGameResponse: CreateGameResponse =
@@ -300,44 +282,31 @@ class GameController {
           return;
       }
 
-      // If it's now AI's turn in solo mode and game is active, make AI move
-      if (
-        gameRecord.game_mode === "solo" &&
-        updatedGameState.status === GameStatus.ACTIVE &&
-        updatedGameState.current_player_id === AI_PLAYER_ID
-      ) {
-        const ai = new AILogic();
-        const aiMove = await ai.makeAIMove(_.cloneDeep(updatedGameState));
-        if (aiMove) {
-          const placeCardResult = await GameLogic.placeCard(
-            updatedGameState,
-            AI_PLAYER_ID,
-            aiMove.user_card_instance_id,
-            aiMove.position
-          );
-          updatedGameState = placeCardResult.state;
-          events.push(...placeCardResult.events);
-        } else {
-          const endTurnResult = await GameLogic.endTurn(
-            updatedGameState,
-            AI_PLAYER_ID
-          );
-          updatedGameState = endTurnResult.state;
-          events.push(...endTurnResult.events);
-        }
-      }
-
       // Process game completion if the status indicates game over
       let winner_id_for_db: string | null = updatedGameState.winner || null;
       let new_game_status_for_db: GameStatus = updatedGameState.status;
+      let gameCompletionResult: GameCompletionResult | null = null;
 
-      // Award currency to the player for winning solo mode
-      if (
-        new_game_status_for_db === GameStatus.COMPLETED &&
-        winner_id_for_db === userId &&
-        gameRecord.game_mode === "solo"
-      ) {
-        await UserService.awardCurrency(userId, 10);
+      // Process comprehensive rewards if game is completed
+      if (new_game_status_for_db === GameStatus.COMPLETED) {
+        try {
+          gameCompletionResult = await GameRewardsService.processGameCompletion(
+            userId,
+            updatedGameState,
+            gameRecord.game_mode as "solo" | "pvp",
+            new Date(gameRecord.created_at), // Game start time
+            gameRecord.player1_id,
+            gameRecord.player2_id,
+            gameRecord.player1_deck_id,
+            gameId // Pass gameId for leaderboard updates
+          );
+        } catch (error) {
+          console.error("Error processing game completion rewards:", error);
+          // Fallback to legacy currency award for solo wins
+          if (winner_id_for_db === userId && gameRecord.game_mode === "solo") {
+            await UserService.awardCurrency(userId, 10);
+          }
+        }
       }
 
       // Update game in database using GameService
@@ -355,13 +324,23 @@ class GameController {
           ? JSON.parse(updatedGameResponse.game_state)
           : updatedGameResponse.game_state;
 
-      res.status(200).json({
+      // Enhanced response with game completion rewards
+      const response: any = {
         game_id: updatedGameResponse.game_id,
         game_state: finalGameStateObject,
         game_status: updatedGameResponse.game_status,
         winner_id: updatedGameResponse.winner_id,
         events,
-      });
+      };
+
+      // Add reward data if game completed
+      if (gameCompletionResult) {
+        response.game_result = gameCompletionResult.game_result;
+        response.rewards = gameCompletionResult.rewards;
+        response.updated_currencies = gameCompletionResult.updated_currencies;
+      }
+
+      res.status(200).json(response);
     } catch (error) {
       console.error("Error processing game action:", error);
       // Provide more specific error messages for client validation issues
@@ -382,6 +361,153 @@ class GameController {
         res.status(400).json({ error: error.message });
       } else {
         res.status(500).json({ error: "Server error processing action" });
+      }
+    }
+  }
+
+  /**
+   * Submit an AI action (for solo games)
+   */
+  async submitAIAction(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.user_id;
+
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const { gameId } = req.params;
+
+      // Fetch current game (raw record needed for validation)
+      const gameRecord: GameRecord | null = await GameService.getRawGameRecord(
+        gameId,
+        userId
+      );
+
+      if (!gameRecord) {
+        res.status(404).json({ error: "Game not found or access denied" });
+        return;
+      }
+
+      // Validate this is a solo game
+      if (gameRecord.game_mode !== "solo") {
+        res.status(400).json({ error: "AI actions are only for solo games" });
+        return;
+      }
+
+      const currentGameState: GameState = gameRecord.game_state;
+
+      // Validate that it's the AI's turn
+      if (currentGameState.current_player_id !== AI_PLAYER_ID) {
+        res.status(400).json({ error: "Not AI's turn" });
+        return;
+      }
+
+      // Validate game is still active
+      if (currentGameState.status !== GameStatus.ACTIVE) {
+        res.status(400).json({ error: "Game is not active" });
+        return;
+      }
+
+      let updatedGameState: GameState = _.cloneDeep(currentGameState);
+      let events: BaseGameEvent[] = [];
+
+      // Make AI move
+      const ai = new AILogic();
+      const aiMove = await ai.makeAIMove(_.cloneDeep(currentGameState));
+
+      if (aiMove) {
+        const placeCardResult = await GameLogic.placeCard(
+          currentGameState,
+          AI_PLAYER_ID,
+          aiMove.user_card_instance_id,
+          aiMove.position
+        );
+        updatedGameState = placeCardResult.state;
+        events.push(...placeCardResult.events);
+      } else {
+        // AI has no valid moves, end turn
+        const endTurnResult = await GameLogic.endTurn(
+          currentGameState,
+          AI_PLAYER_ID
+        );
+        updatedGameState = endTurnResult.state;
+        events.push(...endTurnResult.events);
+      }
+
+      // Process game completion if the status indicates game over
+      let winner_id_for_db: string | null = updatedGameState.winner || null;
+      let new_game_status_for_db: GameStatus = updatedGameState.status;
+      let gameCompletionResult: GameCompletionResult | null = null;
+
+      // Process comprehensive rewards if game is completed
+      if (new_game_status_for_db === GameStatus.COMPLETED) {
+        try {
+          gameCompletionResult = await GameRewardsService.processGameCompletion(
+            userId,
+            updatedGameState,
+            gameRecord.game_mode as "solo" | "pvp",
+            new Date(gameRecord.created_at), // Game start time
+            gameRecord.player1_id,
+            gameRecord.player2_id,
+            gameRecord.player1_deck_id,
+            gameId // Pass gameId for leaderboard updates
+          );
+        } catch (error) {
+          console.error("Error processing game completion rewards:", error);
+          // Fallback to legacy currency award for solo wins
+          if (winner_id_for_db === userId && gameRecord.game_mode === "solo") {
+            await UserService.awardCurrency(userId, 10);
+          }
+        }
+      }
+
+      // Update game in database using GameService
+      const updatedGameResponse: UpdatedGameResponse =
+        await GameService.updateGameAfterAction(
+          gameId,
+          updatedGameState,
+          new_game_status_for_db,
+          winner_id_for_db
+        );
+
+      // game_state from updateGameAfterAction (via DB) is a JSON string. Parse it.
+      const finalGameStateObject =
+        typeof updatedGameResponse.game_state === "string"
+          ? JSON.parse(updatedGameResponse.game_state)
+          : updatedGameResponse.game_state;
+
+      // Enhanced response with game completion rewards
+      const response: any = {
+        game_id: updatedGameResponse.game_id,
+        game_state: finalGameStateObject,
+        game_status: updatedGameResponse.game_status,
+        winner_id: updatedGameResponse.winner_id,
+        events,
+      };
+
+      // Add reward data if game completed
+      if (gameCompletionResult) {
+        response.game_result = gameCompletionResult.game_result;
+        response.rewards = gameCompletionResult.rewards;
+        response.updated_currencies = gameCompletionResult.updated_currencies;
+      }
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error("Error processing AI action:", error);
+      if (error instanceof GameNotFoundError) {
+        res.status(404).json({ error: (error as Error).message });
+      } else if (
+        error instanceof Error &&
+        (error.message === "Not AI's turn" ||
+          error.message === "AI actions are only for solo games" ||
+          error.message === "Game is not active")
+      ) {
+        res.status(400).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: "Server error processing AI action" });
       }
     }
   }

@@ -233,6 +233,78 @@ class GameService {
     // game_state from DB is JSON string. The caller (controller) will parse it.
     return rows[0] as UpdatedGameResponse;
   }
+
+  /**
+   * Get all active games for a user (both solo and PvP)
+   */
+  async getActiveGamesForUser(userId: string): Promise<SanitizedGame[]> {
+    const query = `
+      SELECT g.*,
+             p1.username as player1_username,
+             CASE WHEN g.player2_id = $2 THEN 'AI Opponent' 
+                  WHEN p2.username IS NULL THEN 'Unknown Opponent' 
+                  ELSE p2.username 
+             END as player2_username
+      FROM "games" g
+      LEFT JOIN "users" p1 ON g.player1_id = p1.user_id
+      LEFT JOIN "users" p2 ON g.player2_id = p2.user_id AND g.player2_id != $2
+      WHERE (g.player1_id = $1 OR g.player2_id = $1) 
+        AND g.game_status = 'active'
+      ORDER BY g.created_at DESC;
+    `;
+    const { rows } = await db.query(query, [userId, AI_PLAYER_ID]);
+
+    return rows.map((game) => ({
+      ...game,
+      game_state: this.parseGameState(game.game_state),
+    })) as SanitizedGame[];
+  }
+
+  /**
+   * Get active games summary for a user (lightweight version without full game state)
+   */
+  async getActiveGamesSummary(userId: string): Promise<
+    {
+      game_id: string;
+      game_mode: string;
+      game_status: GameStatus;
+      opponent_name: string;
+      created_at: Date;
+      is_user_turn: boolean;
+      turn_number: number;
+    }[]
+  > {
+    const query = `
+      SELECT g.game_id,
+             g.game_mode,
+             g.game_status,
+             g.created_at,
+             g.game_state,
+             CASE WHEN g.player2_id = $2 THEN 'AI Opponent' 
+                  WHEN p2.username IS NULL THEN 'Unknown Opponent' 
+                  ELSE p2.username 
+             END as opponent_name
+      FROM "games" g
+      LEFT JOIN "users" p2 ON g.player2_id = p2.user_id AND g.player2_id != $2
+      WHERE (g.player1_id = $1 OR g.player2_id = $1) 
+        AND g.game_status = 'active'
+      ORDER BY g.created_at DESC;
+    `;
+    const { rows } = await db.query(query, [userId, AI_PLAYER_ID]);
+
+    return rows.map((game) => {
+      const gameState = this.parseGameState(game.game_state);
+      return {
+        game_id: game.game_id,
+        game_mode: game.game_mode,
+        game_status: game.game_status,
+        opponent_name: game.opponent_name,
+        created_at: game.created_at,
+        is_user_turn: gameState.current_player_id === userId,
+        turn_number: gameState.turn_number || 1,
+      };
+    });
+  }
 }
 
 export default new GameService();
