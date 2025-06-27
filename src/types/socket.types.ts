@@ -3,7 +3,24 @@
  * These will be maintained in a separate file for future packaging as an NPM module
  */
 
+import { Socket } from "socket.io";
 import { GameState, BoardPosition, InGameCard } from "./game.types";
+
+// Socket Authentication Types (consolidated from socket.types.d.ts)
+export interface SocketUser {
+  user_id: string;
+  username: string;
+  email: string;
+  in_game_currency: number;
+}
+
+export interface AuthenticatedSocket extends Socket {
+  user: SocketUser;
+}
+
+export interface JwtPayload {
+  userId: string;
+}
 
 // Socket event types
 export enum SocketEvent {

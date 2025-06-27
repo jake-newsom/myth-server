@@ -1,14 +1,7 @@
 import { Request, Response } from "express";
 import SetModel from "../../models/set.model";
 import UserModel from "../../models/user.model";
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    user_id: string;
-    username: string;
-    email: string;
-  };
-}
+import { AuthenticatedRequest } from "../../types";
 
 const AdminController = {
   async givePacksToUser(req: AuthenticatedRequest, res: Response) {

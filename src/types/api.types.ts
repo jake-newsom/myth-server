@@ -28,14 +28,7 @@ export interface AuthResponse {
   };
 }
 
-// Error response types
-export interface ErrorResponse {
-  error: {
-    message: string;
-    statusCode: number;
-    code?: string;
-  };
-}
+// Error response types moved to middleware.types.ts
 
 // User profile types
 export interface UserProfile {
@@ -107,11 +100,4 @@ export interface UpdateDeckRequest {
   user_card_instance_ids?: string[]; // Array of UserCardInstance IDs
 }
 
-// Extends Express Request to include user property from authentication middleware
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    user_id: string;
-    username: string;
-    email: string;
-  };
-}
+// AuthenticatedRequest moved to middleware.types.ts

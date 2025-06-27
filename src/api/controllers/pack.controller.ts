@@ -1,14 +1,7 @@
 import { Request, Response } from "express";
 import PackService from "../../services/pack.service";
 import UserModel from "../../models/user.model";
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    user_id: string;
-    username: string;
-    email: string;
-  };
-}
+import { AuthenticatedRequest } from "../../types";
 
 const PackController = {
   async openPack(req: AuthenticatedRequest, res: Response) {

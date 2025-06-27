@@ -1,6 +1,6 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import CardModel from "../../models/card.model";
-import { AuthenticatedRequest } from "../../types/api.types";
+import { AuthenticatedRequest } from "../../types";
 
 export const getAllUserCards = async (
   req: AuthenticatedRequest,

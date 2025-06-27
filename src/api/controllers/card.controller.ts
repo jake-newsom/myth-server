@@ -1,6 +1,7 @@
 // src/api/controllers/card.controller.ts
 import CardModel from "../../models/card.model";
 import { Request, Response, NextFunction } from "express";
+import crypto from "crypto";
 
 const CardController = {
   /**
@@ -47,10 +48,12 @@ const CardController = {
         return;
       }
 
-      if (isNaN(limitNum) || limitNum < 1) {
+      // Allow limit=0 to return all cards (no pagination)
+      if (isNaN(limitNum) || limitNum < 0) {
         res.status(400).json({
           error: {
-            message: "Invalid limit value. Must be a positive integer.",
+            message:
+              "Invalid limit value. Must be a non-negative integer. Use 0 for no limit.",
           },
         });
         return;
@@ -93,6 +96,24 @@ const CardController = {
 
       const filters = { rarity, name, tag, ids: processedIds };
       const result = await CardModel.findAllStatic(filters, pageNum, limitNum);
+
+      // Add caching headers when returning all cards (limit=0)
+      if (limitNum === 0) {
+        // Generate ETag based on data content for better cache invalidation
+        const dataHash = crypto
+          .createHash("md5")
+          .update(JSON.stringify(result.data))
+          .digest("hex")
+          .substring(0, 8);
+
+        // Cache for 1 hour (3600 seconds) for all cards
+        res.set({
+          "Cache-Control": "public, max-age=3600, s-maxage=3600",
+          ETag: `"cards-all-${dataHash}"`, // ETag based on actual data content
+          "Last-Modified": new Date().toUTCString(),
+          Vary: "Accept-Encoding", // Important for compressed responses
+        });
+      }
 
       res.status(200).json(result);
     } catch (error) {

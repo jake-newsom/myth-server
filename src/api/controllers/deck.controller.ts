@@ -3,11 +3,11 @@ import CardModel from "../../models/card.model"; // For fetching instance detail
 import db from "../../config/db.config";
 import { PoolClient } from "pg";
 import { Request, Response, NextFunction } from "express";
-import { CreateDeckRequest, UpdateDeckRequest } from "../../types/api.types";
-
-interface AuthenticatedRequest extends Request {
-  user?: { user_id: string /* other user props */ };
-}
+import {
+  CreateDeckRequest,
+  UpdateDeckRequest,
+  AuthenticatedRequest,
+} from "../../types";
 
 /**
  * Validates deck composition based on game rules:

@@ -23,12 +23,8 @@ import { v4 as uuidv4 } from "uuid";
 
 const BOARD_SIZE = 4;
 
-export enum GameStatus {
-  PENDING = "pending",
-  ACTIVE = "active",
-  COMPLETED = "completed",
-  ABORTED = "aborted",
-}
+import { GameStatus } from "../types";
+export { GameStatus };
 
 // Note: Game winner is stored in the winner_id column in the database
 // rather than as part of the status enum
@@ -83,10 +79,16 @@ export class GameLogic {
         // Create a SpecialAbility object if there's an ability
         const specialAbility = row.ability_name
           ? {
+              id: row.special_ability_id,
               name: row.ability_name,
               ability_id: row.special_ability_id,
               description: row.ability_description,
-              trigger_moment: row.ability_trigger,
+              triggerMoment: row.ability_trigger as
+                | "OnPlace"
+                | "OnFlip"
+                | "OnFlipped"
+                | "OnTurnStart"
+                | "OnTurnEnd",
               parameters: row.ability_parameters || {},
             }
           : null;

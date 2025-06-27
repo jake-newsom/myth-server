@@ -1,13 +1,6 @@
 import { Request, Response } from "express";
 import LeaderboardService from "../../services/leaderboard.service";
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    user_id: string;
-    username: string;
-    email: string;
-  };
-}
+import { AuthenticatedRequest } from "../../types";
 
 /**
  * Get current leaderboard with optional user context

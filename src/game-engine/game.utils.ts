@@ -198,7 +198,7 @@ export function triggerAbilities(
   // check the specific card
   if (triggerCard.base_card_data.special_ability) {
     const ability = triggerCard.base_card_data.special_ability;
-    if (ability.trigger_moment === trigger && abilities[ability.name]) {
+    if (ability.triggerMoment === trigger && abilities[ability.name]) {
       console.log(ability.name);
       events.push(...abilities[ability.name]?.(context));
       updateAllBoardCards(state);
@@ -218,7 +218,7 @@ export function triggerAbilities(
       const card = state.hydrated_card_data_cache?.[cardId];
       if (card && card.base_card_data.special_ability) {
         const ability = card.base_card_data.special_ability;
-        if (ability.trigger_moment === `InHand${trigger}`) {
+        if (ability.triggerMoment === `InHand${trigger}`) {
           events.push(...abilities[ability.name]?.(context));
         }
       }

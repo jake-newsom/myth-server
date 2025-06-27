@@ -1,3 +1,5 @@
+import { SpecialAbility } from "./database.types";
+
 export interface PowerValues {
   top: number;
   bottom: number;
@@ -55,13 +57,7 @@ export interface PlayerCardInstance {
  * Constructed Models
  */
 
-export type SpecialAbility = {
-  name: string;
-  ability_id: string;
-  description: string;
-  trigger_moment: TriggerMoment;
-  parameters: Record<string, any>; // Can be more strictly typed per ability
-};
+// SpecialAbility is defined in database.types.ts
 
 export interface BaseCard {
   card_id: string; // base_card_id

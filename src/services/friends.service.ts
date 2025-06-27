@@ -1,44 +1,14 @@
 import FriendshipModel from "../models/friendship.model";
 import UserModel from "../models/user.model";
-import { Friendship, FriendshipWithUser } from "../types/database.types";
-
-export interface FriendRequestInput {
-  addresseeUsername?: string;
-  addresseeId?: string;
-}
-
-export interface FriendRequestResponse {
-  success: boolean;
-  message: string;
-  friendship?: Friendship;
-  error?: string;
-}
-
-export interface FriendsListResponse {
-  success: boolean;
-  friends: FriendshipWithUser[];
-  stats: {
-    friends_count: number;
-    pending_incoming: number;
-    pending_outgoing: number;
-  };
-}
-
-export interface FriendRequestsResponse {
-  success: boolean;
-  incoming: FriendshipWithUser[];
-  outgoing: FriendshipWithUser[];
-  stats: {
-    pending_incoming: number;
-    pending_outgoing: number;
-  };
-}
-
-export interface UserSearchResponse {
-  success: boolean;
-  users: Array<{ user_id: string; username: string; email: string }>;
-  query: string;
-}
+import {
+  Friendship,
+  FriendshipWithUser,
+  FriendRequestInput,
+  FriendRequestResponse,
+  FriendsListResponse,
+  FriendRequestsResponse,
+  UserSearchResponse,
+} from "../types";
 
 class FriendsService {
   /**

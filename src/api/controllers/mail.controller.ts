@@ -1,13 +1,6 @@
 import { Request, Response } from "express";
 import MailService from "../../services/mail.service";
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    user_id: string;
-    username: string;
-    email: string;
-  };
-}
+import { AuthenticatedRequest } from "../../types";
 
 /**
  * Get user's mail with optional filters and pagination

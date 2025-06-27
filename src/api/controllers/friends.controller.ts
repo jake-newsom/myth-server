@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
-import FriendsService, {
-  FriendRequestInput,
-} from "../../services/friends.service";
+import FriendsService from "../../services/friends.service";
+
+import { FriendRequestInput } from "../../types";
 
 // Define the authenticated request type locally
 interface AuthenticatedRequest extends Request {

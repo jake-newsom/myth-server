@@ -1,13 +1,6 @@
 import { Request, Response } from "express";
 import SetModel from "../../models/set.model";
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    user_id: string;
-    username: string;
-    email: string;
-  };
-}
+import { AuthenticatedRequest } from "../../types";
 
 const SetController = {
   async getAllSets(req: Request, res: Response) {

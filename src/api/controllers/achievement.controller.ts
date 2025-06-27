@@ -1,14 +1,7 @@
 import { Request, Response } from "express";
 import AchievementService from "../../services/achievement.service";
 import AchievementModel from "../../models/achievement.model";
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    user_id: string;
-    username: string;
-    email: string;
-  };
-}
+import { AuthenticatedRequest } from "../../types";
 
 /**
  * Get all achievements for the authenticated user

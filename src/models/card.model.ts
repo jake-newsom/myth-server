@@ -321,9 +321,13 @@ const CardModel = {
       const whereClause =
         whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
-      // Add limit and offset at the end of the params array
-      queryParams.push(limit);
-      queryParams.push(offset);
+      // Handle pagination - if limit is 0, return all results
+      let limitClause = "";
+      if (limit > 0) {
+        queryParams.push(limit);
+        queryParams.push(offset);
+        limitClause = `LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      }
 
       const dataQuery = `
         SELECT c.card_id, c.name, c.rarity, c.image_url, 
@@ -340,7 +344,7 @@ const CardModel = {
         LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
         ${whereClause}
         ORDER BY c.name
-        LIMIT $${paramIndex} OFFSET $${paramIndex + 1};
+        ${limitClause};
       `;
 
       console.log("Full SQL query:", dataQuery);
@@ -362,7 +366,14 @@ const CardModel = {
           .filter((id) => id.length > 0);
 
         if (idArray.length > 0) {
-          // Use a simpler query with explicit casting
+          // Handle no-limit case in fallback query too
+          let fallbackLimitClause = "";
+          let fallbackParams: any[] = [idArray];
+          if (limit > 0) {
+            fallbackLimitClause = "LIMIT $2 OFFSET $3";
+            fallbackParams.push(limit, offset);
+          }
+
           const fallbackQuery = `
             SELECT c.card_id, c.name, c.rarity, c.image_url, 
                   c.power->>'top' as base_power_top, 
@@ -378,19 +389,17 @@ const CardModel = {
             LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
             WHERE c.card_id::text = ANY($1::text[])
             ORDER BY c.name
-            LIMIT $2 OFFSET $3;
+            ${fallbackLimitClause};
           `;
 
-          console.log("Executing fallback query with parameters:", [
-            idArray,
-            limit,
-            offset,
-          ]);
-          const { rows: fallbackRows } = await db.query(fallbackQuery, [
-            idArray,
-            limit,
-            offset,
-          ]);
+          console.log(
+            "Executing fallback query with parameters:",
+            fallbackParams
+          );
+          const { rows: fallbackRows } = await db.query(
+            fallbackQuery,
+            fallbackParams
+          );
           console.log(`Fallback query returned ${fallbackRows.length} results`);
 
           if (fallbackRows.length > 0) {

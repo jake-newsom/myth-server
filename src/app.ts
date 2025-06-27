@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
+import compression from "compression";
 import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import fs from "fs";
@@ -39,6 +40,7 @@ const swaggerSpec = swaggerJSDoc(swaggerOptions);
 const app = express();
 
 // Middleware
+app.use(compression()); // Enable gzip compression for all responses
 app.use(cors()); // Configure specific origins in production
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
