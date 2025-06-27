@@ -34,7 +34,8 @@ export const getUserAchievements = async (
       unclaimedOnly
     );
 
-    res.status(200).json(result);
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error fetching user achievements:", error);
     res.status(500).json({
@@ -54,7 +55,9 @@ export const getUserAchievements = async (
 export const getAchievementCategories = async (req: Request, res: Response) => {
   try {
     const result = await AchievementService.getAchievementCategories();
-    res.status(200).json(result);
+
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error fetching achievement categories:", error);
     res.status(500).json({
@@ -109,7 +112,8 @@ export const claimAchievementReward = async (
       return res.status(400).json(result);
     }
 
-    res.status(200).json(result);
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error claiming achievement reward:", error);
     res.status(500).json({
@@ -149,7 +153,6 @@ export const getRecentlyCompletedAchievements = async (
       await AchievementModel.getRecentlyCompletedAchievements(userId, limit);
 
     res.status(200).json({
-      success: true,
       recent_achievements: recentAchievements,
     });
   } catch (error) {
@@ -188,7 +191,6 @@ export const getAchievementStats = async (
     const stats = await AchievementModel.getUserAchievementStats(userId);
 
     res.status(200).json({
-      success: true,
       stats,
     });
   } catch (error) {
@@ -215,7 +217,6 @@ export const getAllAchievements = async (req: Request, res: Response) => {
     );
 
     res.status(200).json({
-      success: true,
       achievements,
     });
   } catch (error) {
@@ -265,7 +266,6 @@ export const getAchievementDetails = async (req: Request, res: Response) => {
     }
 
     res.status(200).json({
-      success: true,
       achievement,
     });
   } catch (error) {

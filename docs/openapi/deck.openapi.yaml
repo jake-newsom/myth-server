@@ -180,12 +180,14 @@ components:
       properties:
         deck_id:
           type: string
+          format: uuid
           description: Unique identifier for the deck
         name:
           type: string
           description: Name of the deck
         user_id:
           type: string
+          format: uuid
           description: ID of the user who owns the deck
         created_at:
           type: string
@@ -198,8 +200,10 @@ components:
         cards:
           type: array
           items:
-            $ref: "./card.openapi.yaml#/components/schemas/CardResponse"
-          description: Array of cards included in the deck. Structure defined in card.openapi.yaml.
+            $ref: "./userCard.openapi.yaml#/components/schemas/UserCard"
+          description: Array of user card instances included in the deck
+          minItems: 20
+          maxItems: 20
       required:
         - deck_id
         - name

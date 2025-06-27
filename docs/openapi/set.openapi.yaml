@@ -11,18 +11,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "success"
-                  message:
-                    type: string
-                    example: "Sets retrieved successfully"
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Set"
+                type: array
+                items:
+                  $ref: "#/components/schemas/Set"
 
     post:
       tags:
@@ -99,18 +90,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "success"
-                  message:
-                    type: string
-                    example: "Released sets retrieved successfully"
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Set"
+                type: array
+                items:
+                  $ref: "#/components/schemas/Set"
 
   /api/sets/{setId}:
     get:
@@ -132,16 +114,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "success"
-                  message:
-                    type: string
-                    example: "Set retrieved successfully"
-                  data:
-                    $ref: "#/components/schemas/SetWithCardCount"
+                $ref: "#/components/schemas/SetWithCardCount"
         "404":
           description: Set not found
           content:
@@ -194,16 +167,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "success"
-                  message:
-                    type: string
-                    example: "Set updated successfully"
-                  data:
-                    $ref: "#/components/schemas/Set"
+                $ref: "#/components/schemas/Set"
         "404":
           description: Set not found
           content:
@@ -239,13 +203,6 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  status:
-                    type: string
-                    example: "success"
-                  message:
-                    type: string
-                    example: "Set deleted successfully"
         "404":
           description: Set not found
           content:

@@ -36,22 +36,13 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
+                  user_id:
                     type: string
-                    example: "success"
-                  message:
+                    format: uuid
+                  username:
                     type: string
-                    example: "Successfully gave 5 pack(s) to user123"
-                  data:
-                    type: object
-                    properties:
-                      user_id:
-                        type: string
-                        format: uuid
-                      username:
-                        type: string
-                      pack_count:
-                        type: integer
+                  pack_count:
+                    type: integer
         "400":
           description: Bad request - invalid data
           content:
@@ -108,22 +99,13 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
+                  user_id:
                     type: string
-                    example: "success"
-                  message:
+                    format: uuid
+                  username:
                     type: string
-                    example: "Successfully set user123's pack quantity to 10"
-                  data:
-                    type: object
-                    properties:
-                      user_id:
-                        type: string
-                        format: uuid
-                      username:
-                        type: string
-                      pack_count:
-                        type: integer
+                  pack_count:
+                    type: integer
         "400":
           description: Bad request - invalid data
           content:
@@ -167,22 +149,13 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
+                  user_id:
                     type: string
-                    example: "success"
-                  message:
+                    format: uuid
+                  username:
                     type: string
-                    example: "Retrieved pack count for user123"
-                  data:
-                    type: object
-                    properties:
-                      user_id:
-                        type: string
-                        format: uuid
-                      username:
-                        type: string
-                      pack_count:
-                        type: integer
+                  pack_count:
+                    type: integer
         "404":
           description: User not found
           content:

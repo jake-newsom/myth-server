@@ -1,0 +1,381 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance Achievements API
+  description: API endpoints for achievement tracking and management
+  version: 1.0.0
+
+paths:
+  /api/achievements:
+    get:
+      summary: Get all achievements
+      description: Get all available achievements (public endpoint)
+      tags:
+        - Achievements
+      parameters:
+        - name: include_inactive
+          in: query
+          description: Include inactive achievements
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Achievements retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  achievements:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Achievement"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/achievements/categories:
+    get:
+      summary: Get achievement categories
+      description: Get achievement categories with counts
+      tags:
+        - Achievements
+      responses:
+        "200":
+          description: Achievement categories retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        category:
+                          type: string
+                        total_count:
+                          type: integer
+                        display_name:
+                          type: string
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/achievements/{achievementKey}:
+    get:
+      summary: Get achievement details
+      description: Get specific achievement details by key
+      tags:
+        - Achievements
+      parameters:
+        - name: achievementKey
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Achievement key identifier
+      responses:
+        "200":
+          description: Achievement details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  achievement:
+                    $ref: "#/components/schemas/Achievement"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/achievements/me/progress:
+    get:
+      summary: Get user's achievement progress
+      description: Get user's achievement progress with statistics
+      tags:
+        - Achievements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: category
+          in: query
+          description: Filter by category
+          required: false
+          schema:
+            type: string
+        - name: completed
+          in: query
+          description: Show only completed achievements
+          required: false
+          schema:
+            type: boolean
+        - name: unclaimed
+          in: query
+          description: Show only unclaimed achievements
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: User achievement progress retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  achievements:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UserAchievement"
+                  stats:
+                    $ref: "#/components/schemas/AchievementStats"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/achievements/me/stats:
+    get:
+      summary: Get user's achievement statistics
+      description: Get user's achievement progress statistics
+      tags:
+        - Achievements
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User achievement statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    $ref: "#/components/schemas/AchievementStats"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/achievements/me/recent:
+    get:
+      summary: Get recently completed achievements
+      description: Get recently completed achievements for the user
+      tags:
+        - Achievements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          description: Number of recent achievements to return
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        "200":
+          description: Recent achievements retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recent_achievements:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UserAchievement"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/achievements/{achievementId}/claim:
+    post:
+      summary: Claim achievement rewards
+      description: Claim rewards for a completed achievement
+      tags:
+        - Achievements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: achievementId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Achievement ID to claim
+      responses:
+        "200":
+          description: Achievement rewards claimed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  claimedAchievements:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UserAchievement"
+                  totalRewards:
+                    type: object
+                    properties:
+                      gold:
+                        type: integer
+                      gems:
+                        type: integer
+                      packs:
+                        type: integer
+                  updatedCurrencies:
+                    type: object
+                    properties:
+                      gold:
+                        type: integer
+                      gems:
+                        type: integer
+                      total_xp:
+                        type: integer
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Achievement:
+      type: object
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        rarity:
+          type: string
+        icon:
+          type: string
+        requirements:
+          type: object
+        rewards:
+          type: object
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    UserAchievement:
+      allOf:
+        - $ref: "#/components/schemas/Achievement"
+        - type: object
+          properties:
+            progress:
+              type: integer
+            max_progress:
+              type: integer
+            is_completed:
+              type: boolean
+            completed_at:
+              type: string
+              format: date-time
+              nullable: true
+            is_claimed:
+              type: boolean
+            claimed_at:
+              type: string
+              format: date-time
+              nullable: true
+            can_claim:
+              type: boolean
+
+    AchievementStats:
+      type: object
+      properties:
+        total_achievements:
+          type: integer
+        completed_achievements:
+          type: integer
+        claimed_achievements:
+          type: integer
+        completion_percentage:
+          type: number
+        total_rewards_earned:
+          type: object
+          properties:
+            gold:
+              type: integer
+            gems:
+              type: integer
+            packs:
+              type: integer
+        achievements_by_category:
+          type: object
+          additionalProperties:
+            type: integer
+        achievements_by_rarity:
+          type: object
+          additionalProperties:
+            type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            type:
+              type: string
+            message:
+              type: string
+            suggestion:
+              type: string
+
+  responses:
+    UnauthorizedError:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    BadRequestError:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFoundError:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

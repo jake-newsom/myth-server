@@ -66,17 +66,9 @@ paths:
       tags:
         - Users
       summary: Get user's active games
-      description: Retrieve all active games for the authenticated user with optional summary mode
+      description: Retrieve all active games for the authenticated user with complete game state information
       security:
         - bearerAuth: []
-      parameters:
-        - name: summary
-          in: query
-          description: Return summary information only
-          required: false
-          schema:
-            type: boolean
-            default: false
       responses:
         "200":
           description: Active games retrieved successfully
@@ -91,10 +83,7 @@ paths:
                   active_games:
                     type: array
                     items:
-                      type: object
-                  count:
-                    type: integer
-                    example: 2
+                      $ref: "#/components/schemas/ActiveGameDetails"
 
   # Card Endpoints
   /api/cards:
@@ -116,510 +105,126 @@ paths:
 
   # XP System Endpoints
   /api/xp/pools:
-    get:
-      tags:
-        - XP
-      summary: Get all user XP pools
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: XP pools retrieved successfully
+    $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1pools"
 
   /api/xp/pools/{cardName}:
-    get:
-      tags:
-        - XP
-      summary: Get specific card XP pool
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: cardName
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: XP pool retrieved successfully
+    $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1pools~1{cardName}"
 
   /api/xp/transfer:
-    post:
-      tags:
-        - XP
-      summary: Transfer XP between cards
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: XP transferred successfully
+    $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1transfer"
 
   /api/xp/sacrifice:
-    post:
-      tags:
-        - XP
-      summary: Sacrifice cards for XP pools
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Cards sacrificed successfully
+    $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1sacrifice"
 
   /api/xp/apply:
-    post:
-      tags:
-        - XP
-      summary: Apply XP from pool to card
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: XP applied successfully
+    $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1apply"
 
   /api/xp/history:
-    get:
-      tags:
-        - XP
-      summary: Get XP transfer history
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: XP history retrieved successfully
+    $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1history"
 
   # Currency System Endpoints
   /api/currency:
-    get:
-      tags:
-        - Currency
-      summary: Get user's current currencies
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Currencies retrieved successfully
+    $ref: "./currency.openapi.yaml#/paths/~1api~1currency"
 
   /api/currency/pack-prices:
-    get:
-      tags:
-        - Currency
-      summary: Get pack prices
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Pack prices retrieved successfully
+    $ref: "./currency.openapi.yaml#/paths/~1api~1currency~1pack-prices"
 
   /api/currency/purchase-packs:
-    post:
-      tags:
-        - Currency
-      summary: Purchase packs with currency
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Packs purchased successfully
+    $ref: "./currency.openapi.yaml#/paths/~1api~1currency~1purchase-packs"
 
   /api/currency/award:
-    post:
-      tags:
-        - Currency
-      summary: Award currency to user
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Currency awarded successfully
+    $ref: "./currency.openapi.yaml#/paths/~1api~1currency~1award"
 
   # Friends System Endpoints
   /api/friends:
-    get:
-      tags:
-        - Friends
-      summary: Get friends list
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Friends list retrieved successfully
+    $ref: "./friends.openapi.yaml#/paths/~1api~1friends"
 
   /api/friends/requests:
-    get:
-      tags:
-        - Friends
-      summary: Get friend requests
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Friend requests retrieved successfully
+    $ref: "./friends.openapi.yaml#/paths/~1api~1friends~1requests"
 
   /api/friends/search:
-    get:
-      tags:
-        - Friends
-      summary: Search users for friending
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: User search results retrieved successfully
+    $ref: "./friends.openapi.yaml#/paths/~1api~1friends~1search"
 
   /api/friends/status/{userId}:
-    get:
-      tags:
-        - Friends
-      summary: Check friendship status
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Friendship status retrieved successfully
+    $ref: "./friends.openapi.yaml#/paths/~1api~1friends~1status~1{userId}"
 
   /api/friends/add:
-    post:
-      tags:
-        - Friends
-      summary: Send friend request
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Friend request sent successfully
+    $ref: "./friends.openapi.yaml#/paths/~1api~1friends~1add"
 
   /api/friends/accept/{friendshipId}:
-    post:
-      tags:
-        - Friends
-      summary: Accept friend request
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: friendshipId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Friend request accepted successfully
+    $ref: "./friends.openapi.yaml#/paths/~1api~1friends~1accept~1{friendshipId}"
 
   /api/friends/reject/{friendshipId}:
-    post:
-      tags:
-        - Friends
-      summary: Reject friend request
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: friendshipId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Friend request rejected successfully
+    $ref: "./friends.openapi.yaml#/paths/~1api~1friends~1reject~1{friendshipId}"
 
   /api/friends/challenge/{friendId}:
-    post:
-      tags:
-        - Friends
-      summary: Challenge friend to game
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: friendId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Friend challenge created successfully
+    $ref: "./friends.openapi.yaml#/paths/~1api~1friends~1challenge~1{friendId}"
 
   /api/friends/{friendshipId}:
-    delete:
-      tags:
-        - Friends
-      summary: Remove friend
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: friendshipId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Friend removed successfully
+    $ref: "./friends.openapi.yaml#/paths/~1api~1friends~1{friendshipId}"
 
   # Leaderboard System Endpoints
   /api/leaderboard:
-    get:
-      tags:
-        - Leaderboard
-      summary: Get leaderboard with user context
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Leaderboard retrieved successfully
+    $ref: "./leaderboard.openapi.yaml#/paths/~1api~1leaderboard"
 
   /api/leaderboard/stats:
-    get:
-      tags:
-        - Leaderboard
-      summary: Get leaderboard statistics
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Leaderboard statistics retrieved successfully
+    $ref: "./leaderboard.openapi.yaml#/paths/~1api~1leaderboard~1stats"
 
   /api/leaderboard/me:
-    get:
-      tags:
-        - Leaderboard
-      summary: Get user's detailed ranking
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: User ranking retrieved successfully
+    $ref: "./leaderboard.openapi.yaml#/paths/~1api~1leaderboard~1me"
 
   /api/leaderboard/me/history:
-    get:
-      tags:
-        - Leaderboard
-      summary: Get user's rank history
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Rank history retrieved successfully
+    $ref: "./leaderboard.openapi.yaml#/paths/~1api~1leaderboard~1me~1history"
 
   /api/leaderboard/me/around:
-    get:
-      tags:
-        - Leaderboard
-      summary: Get leaderboard around user's position
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Contextual leaderboard retrieved successfully
+    $ref: "./leaderboard.openapi.yaml#/paths/~1api~1leaderboard~1me~1around"
 
   /api/leaderboard/user/{identifier}:
-    get:
-      tags:
-        - Leaderboard
-      summary: Get public user ranking
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: identifier
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: User ranking retrieved successfully
+    $ref: "./leaderboard.openapi.yaml#/paths/~1api~1leaderboard~1user~1{identifier}"
 
   /api/leaderboard/me/initialize:
-    post:
-      tags:
-        - Leaderboard
-      summary: Initialize user for season
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: User initialized for season successfully
+    $ref: "./leaderboard.openapi.yaml#/paths/~1api~1leaderboard~1me~1initialize"
 
   # Achievements System Endpoints
   /api/achievements:
-    get:
-      tags:
-        - Achievements
-      summary: Get all available achievements
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Achievements retrieved successfully
+    $ref: "./achievement.openapi.yaml#/paths/~1api~1achievements"
 
   /api/achievements/categories:
-    get:
-      tags:
-        - Achievements
-      summary: Get achievement categories
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Achievement categories retrieved successfully
+    $ref: "./achievement.openapi.yaml#/paths/~1api~1achievements~1categories"
 
   /api/achievements/{achievementKey}:
-    get:
-      tags:
-        - Achievements
-      summary: Get specific achievement details
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: achievementKey
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Achievement details retrieved successfully
+    $ref: "./achievement.openapi.yaml#/paths/~1api~1achievements~1{achievementKey}"
 
   /api/achievements/me/progress:
-    get:
-      tags:
-        - Achievements
-      summary: Get user's achievement progress
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Achievement progress retrieved successfully
+    $ref: "./achievement.openapi.yaml#/paths/~1api~1achievements~1me~1progress"
 
   /api/achievements/me/stats:
-    get:
-      tags:
-        - Achievements
-      summary: Get user's achievement statistics
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Achievement statistics retrieved successfully
+    $ref: "./achievement.openapi.yaml#/paths/~1api~1achievements~1me~1stats"
 
   /api/achievements/me/recent:
-    get:
-      tags:
-        - Achievements
-      summary: Get recently completed achievements
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Recent achievements retrieved successfully
+    $ref: "./achievement.openapi.yaml#/paths/~1api~1achievements~1me~1recent"
 
   /api/achievements/{achievementId}/claim:
-    post:
-      tags:
-        - Achievements
-      summary: Claim achievement rewards
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: achievementId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Achievement rewards claimed successfully
+    $ref: "./achievement.openapi.yaml#/paths/~1api~1achievements~1{achievementId}~1claim"
 
   # Fate Picks System Endpoints
   /api/fate-picks:
-    get:
-      tags:
-        - Fate Picks
-      summary: Get available Fate Picks
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Fate Picks retrieved successfully
-
-  /api/fate-picks/{fatePickId}:
-    get:
-      tags:
-        - Fate Picks
-      summary: Get specific Fate Pick details
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: fatePickId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Fate Pick details retrieved successfully
-
-  /api/fate-picks/{fatePickId}/participate:
-    post:
-      tags:
-        - Fate Picks
-      summary: Participate in Fate Pick
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: fatePickId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Fate Pick participation successful
-
-  /api/fate-picks/{fatePickId}/select:
-    post:
-      tags:
-        - Fate Picks
-      summary: Select card position in Fate Pick
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: fatePickId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Fate Pick selection successful
-
-  /api/fate-picks/history:
-    get:
-      tags:
-        - Fate Picks
-      summary: Get Fate Pick participation history
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Fate Pick history retrieved successfully
+    $ref: "./fatePick.openapi.yaml#/paths/~1api~1fate-picks"
 
   /api/fate-picks/stats:
-    get:
-      tags:
-        - Fate Picks
-      summary: Get Fate Pick statistics
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Fate Pick statistics retrieved successfully
+    $ref: "./fatePick.openapi.yaml#/paths/~1api~1fate-picks~1stats"
+
+  /api/fate-picks/history:
+    $ref: "./fatePick.openapi.yaml#/paths/~1api~1fate-picks~1history"
+
+  /api/fate-picks/{fatePickId}:
+    $ref: "./fatePick.openapi.yaml#/paths/~1api~1fate-picks~1{fatePickId}"
+
+  /api/fate-picks/{fatePickId}/participate:
+    $ref: "./fatePick.openapi.yaml#/paths/~1api~1fate-picks~1{fatePickId}~1participate"
+
+  /api/fate-picks/{fatePickId}/select:
+    $ref: "./fatePick.openapi.yaml#/paths/~1api~1fate-picks~1{fatePickId}~1select"
 
   # Mail System Endpoints
   /api/mail:
@@ -666,7 +271,7 @@ paths:
     $ref: "./game.openapi.yaml#/paths/~1api~1games~1{gameId}~1actions"
 
   /api/games/{gameId}/ai-action:
-    $ref: "./game.openapi.yaml#/paths/~1api~1games~1{game_id}~1ai-action"
+    $ref: "./game.openapi.yaml#/paths/~1api~1games~1{gameId}~1ai-action"
 
   # Matchmaking Endpoints
   /api/matchmaking/join:
@@ -705,8 +310,8 @@ paths:
   /api/admin/set-pack-quantity:
     $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1set-pack-quantity"
 
-  /api/admin/user-packs/{userId}:
-    $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1user-packs~1{userId}"
+  /api/admin/user-pack-count/{userId}:
+    $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1user-pack-count~1{userId}"
 
   # System Endpoints
   /api/health:
@@ -723,8 +328,12 @@ components:
     # Card schemas
     CardResponse:
       $ref: "./card.openapi.yaml#/components/schemas/CardResponse"
+    BaseCardResponse:
+      $ref: "./card.openapi.yaml#/components/schemas/BaseCardResponse"
     StaticCardCollectionResponse:
       $ref: "./card.openapi.yaml#/components/schemas/StaticCardCollectionResponse"
+    UserCard:
+      $ref: "./userCard.openapi.yaml#/components/schemas/UserCard"
 
     # Deck schemas
     CreateDeckRequest:
@@ -781,6 +390,308 @@ components:
       $ref: "./mail.openapi.yaml#/components/schemas/MailWithSender"
     MailStats:
       $ref: "./mail.openapi.yaml#/components/schemas/MailStats"
+
+    # Active Game schemas
+    ActiveGameDetails:
+      type: object
+      properties:
+        game_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the game
+        player1_id:
+          type: string
+          format: uuid
+          description: ID of player 1
+        player2_id:
+          type: string
+          format: uuid
+          description: ID of player 2 (AI opponent uses null UUID)
+        player1_deck_id:
+          type: string
+          format: uuid
+          description: Deck ID used by player 1
+        player2_deck_id:
+          type: string
+          format: uuid
+          description: Deck ID used by player 2
+        game_mode:
+          type: string
+          enum: [solo, multiplayer]
+          description: Type of game
+        winner_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the winning player, null if game is ongoing
+        game_status:
+          type: string
+          enum: [active, completed, abandoned]
+          description: Current status of the game
+        game_state:
+          $ref: "#/components/schemas/GameState"
+        board_layout:
+          type: string
+          example: "4x4"
+          description: Board dimensions
+        created_at:
+          type: string
+          format: date-time
+          description: When the game was created
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the game was completed
+        player1_username:
+          type: string
+          description: Username of player 1
+        player2_username:
+          type: string
+          description: Username of player 2
+      required:
+        - game_id
+        - player1_id
+        - player2_id
+        - player1_deck_id
+        - player2_deck_id
+        - game_mode
+        - game_status
+        - game_state
+        - board_layout
+        - created_at
+        - player1_username
+        - player2_username
+
+    GameState:
+      type: object
+      properties:
+        board:
+          type: array
+          items:
+            type: array
+            items:
+              $ref: "#/components/schemas/ActiveGameBoardCell"
+          description: 2D array representing the game board
+        status:
+          type: string
+          enum: [active, completed]
+          description: Current game status
+        winner:
+          type: string
+          format: uuid
+          nullable: true
+          description: Winner of the game
+        player1:
+          $ref: "#/components/schemas/GamePlayer"
+        player2:
+          $ref: "#/components/schemas/GamePlayer"
+        turn_number:
+          type: integer
+          description: Current turn number
+        current_player_id:
+          type: string
+          format: uuid
+          description: ID of the player whose turn it is
+        max_cards_in_hand:
+          type: integer
+          description: Maximum cards a player can hold
+        initial_cards_to_draw:
+          type: integer
+          description: Number of cards drawn at game start
+        hydrated_card_data_cache:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/HydratedCardData"
+          description: Cache of detailed card information
+      required:
+        - board
+        - status
+        - player1
+        - player2
+        - turn_number
+        - current_player_id
+        - max_cards_in_hand
+        - initial_cards_to_draw
+        - hydrated_card_data_cache
+
+    GamePlayer:
+      type: object
+      properties:
+        deck:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Card instance IDs remaining in deck
+        hand:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Card instance IDs in player's hand
+        score:
+          type: integer
+          description: Current player score
+        user_id:
+          type: string
+          format: uuid
+          description: Player's user ID
+        discard_pile:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Card instance IDs in discard pile
+      required:
+        - deck
+        - hand
+        - score
+        - user_id
+        - discard_pile
+
+    HydratedCardData:
+      type: object
+      properties:
+        level:
+          type: integer
+          description: Card level
+        owner:
+          type: string
+          format: uuid
+          description: Owner's user ID
+        lockedTurns:
+          type: integer
+          description: Number of turns the card is locked
+        base_card_id:
+          type: string
+          format: uuid
+          description: Base card definition ID
+        current_power:
+          $ref: "#/components/schemas/PowerValues"
+        base_card_data:
+          $ref: "#/components/schemas/BaseCardGameData"
+        temporary_effects:
+          type: array
+          items:
+            type: object
+          description: Temporary effects applied to the card
+        power_enhancements:
+          $ref: "#/components/schemas/PowerValues"
+        user_card_instance_id:
+          type: string
+          format: uuid
+          description: Unique card instance ID
+        card_modifiers_negative:
+          $ref: "#/components/schemas/PowerValues"
+        card_modifiers_positive:
+          $ref: "#/components/schemas/PowerValues"
+      required:
+        - level
+        - owner
+        - lockedTurns
+        - base_card_id
+        - current_power
+        - base_card_data
+        - temporary_effects
+        - power_enhancements
+        - user_card_instance_id
+        - card_modifiers_negative
+        - card_modifiers_positive
+
+    BaseCardGameData:
+      type: object
+      properties:
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        rarity:
+          type: string
+          enum: [common, uncommon, rare, epic, legendary]
+        card_id:
+          type: string
+          format: uuid
+        image_url:
+          type: string
+        base_power:
+          $ref: "#/components/schemas/PowerValues"
+        special_ability:
+          $ref: "#/components/schemas/SpecialAbilityGameData"
+          nullable: true
+      required:
+        - name
+        - tags
+        - rarity
+        - card_id
+        - image_url
+        - base_power
+
+    SpecialAbilityGameData:
+      type: object
+      properties:
+        name:
+          type: string
+        ability_id:
+          type: string
+          format: uuid
+        parameters:
+          type: object
+          additionalProperties: true
+        description:
+          type: string
+        trigger_moment:
+          type: string
+          enum: [OnPlace, OnFlip, OnFlipped, OnTurnStart, OnTurnEnd]
+      required:
+        - name
+        - ability_id
+        - parameters
+        - description
+        - trigger_moment
+
+    PowerValues:
+      type: object
+      properties:
+        top:
+          type: integer
+        right:
+          type: integer
+        bottom:
+          type: integer
+        left:
+          type: integer
+      required:
+        - top
+        - right
+        - bottom
+        - left
+
+    ActiveGameBoardCell:
+      type: object
+      properties:
+        card:
+          type: object
+          nullable: true
+          description: Card placed on this cell, null if empty
+        turns_left:
+          type: integer
+          description: Number of turns remaining for any effect on this cell
+        tile_status:
+          type: string
+          enum: [normal, blocked, boosted, drained]
+          description: Status of the tile itself
+        animation_label:
+          type: string
+          nullable: true
+          description: Label for client-side animations
+      required:
+        - card
+        - turns_left
+        - tile_status
+        - animation_label
 
   securitySchemes:
     bearerAuth:

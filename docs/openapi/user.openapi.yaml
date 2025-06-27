@@ -56,7 +56,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: "./card.openapi.yaml#/components/schemas/CardResponse"
+                  $ref: "./userCard.openapi.yaml#/components/schemas/UserCard"
         "401":
           description: Unauthorized - missing or invalid token
           content:
@@ -167,12 +167,27 @@ components:
           description: User's email address
         in_game_currency:
           type: integer
-          description: User's current in-game currency amount
+          description: User's legacy currency amount (deprecated, use gold/gems)
+        gold:
+          type: integer
+          description: User's current gold amount
+        gems:
+          type: integer
+          description: User's current gems amount
+        fate_coins:
+          type: integer
+          description: User's current fate coins amount
+        total_xp:
+          type: integer
+          description: User's total XP accumulated
+        pack_count:
+          type: integer
+          description: Number of packs the user currently has
         created_at:
           type: string
           format: date-time
           description: When the user account was created
-        last_login:
+        last_login_at:
           type: string
           format: date-time
           description: When the user last logged in
@@ -181,8 +196,13 @@ components:
         - username
         - email
         - in_game_currency
+        - gold
+        - gems
+        - fate_coins
+        - total_xp
+        - pack_count
         - created_at
-        - last_login
+        - last_login_at
 
     DeckSummary:
       type: object

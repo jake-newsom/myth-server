@@ -1,0 +1,408 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance XP API
+  description: API endpoints for card XP management and transfers
+  version: 1.0.0
+
+paths:
+  /api/xp/pools:
+    get:
+      summary: Get all user XP pools
+      description: Get all XP pools for the authenticated user
+      tags:
+        - XP
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: XP pools retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/XpPool"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/xp/pools/{cardName}:
+    get:
+      summary: Get specific card XP pool
+      description: Get XP pool for a specific card
+      tags:
+        - XP
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cardName
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Card name
+      responses:
+        "200":
+          description: XP pool retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/XpPool"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/xp/transfer:
+    post:
+      summary: Transfer XP between cards
+      description: Transfer XP from one card to another
+      tags:
+        - XP
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sourceCardInstanceId
+                - targetCardInstanceId
+                - xpAmount
+              properties:
+                sourceCardInstanceId:
+                  type: string
+                  description: Source card instance ID
+                targetCardInstanceId:
+                  type: string
+                  description: Target card instance ID
+                xpAmount:
+                  type: integer
+                  minimum: 1
+                  description: Amount of XP to transfer
+      responses:
+        "200":
+          description: XP transferred successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transferred_xp:
+                    type: integer
+                    description: Amount of XP transferred
+                  source_cards:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        card_id:
+                          type: string
+                        xp_lost:
+                          type: integer
+                  target_card:
+                    type: object
+                    properties:
+                      card_id:
+                        type: string
+                      xp_gained:
+                        type: integer
+                      new_level:
+                        type: integer
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/xp/sacrifice:
+    post:
+      summary: Sacrifice cards for XP pools
+      description: Sacrifice cards to add XP to pools
+      tags:
+        - XP
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cardInstanceIds
+              properties:
+                cardInstanceIds:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of card instance IDs to sacrifice
+      responses:
+        "200":
+          description: Cards sacrificed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sacrificed_cards:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        card_id:
+                          type: string
+                        xp_value:
+                          type: integer
+                  total_xp_gained:
+                    type: integer
+                  pool_new_total:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/xp/apply:
+    post:
+      summary: Apply XP from pool to card
+      description: Apply XP from a pool to a specific card
+      tags:
+        - XP
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cardInstanceId
+                - xpAmount
+              properties:
+                cardInstanceId:
+                  type: string
+                  description: Card instance ID to apply XP to
+                xpAmount:
+                  type: integer
+                  minimum: 1
+                  description: Amount of XP to apply
+      responses:
+        "200":
+          description: XP applied successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  xp_applied:
+                    type: integer
+                  new_card_xp:
+                    type: integer
+                  new_card_level:
+                    type: integer
+                  pool_remaining:
+                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/xp/history:
+    get:
+      summary: Get XP transfer history
+      description: Get XP transfer history for the authenticated user
+      tags:
+        - XP
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Results per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: XP transfer history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  history:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/XpTransferHistory"
+                  pagination:
+                    $ref: "#/components/schemas/PaginationInfo"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    XpPool:
+      type: object
+      properties:
+        pool_id:
+          type: string
+        user_id:
+          type: string
+        card_name:
+          type: string
+        total_xp:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    XpTransfer:
+      type: object
+      properties:
+        transfer_id:
+          type: string
+        source_card_instance_id:
+          type: string
+        target_card_instance_id:
+          type: string
+        xp_amount:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    SacrificedCard:
+      type: object
+      properties:
+        card_instance_id:
+          type: string
+        card_name:
+          type: string
+        xp_contributed:
+          type: integer
+
+    UpdatedCard:
+      type: object
+      properties:
+        card_instance_id:
+          type: string
+        card_name:
+          type: string
+        new_xp:
+          type: integer
+        xp_applied:
+          type: integer
+
+    XpTransferHistory:
+      type: object
+      properties:
+        transfer_id:
+          type: string
+        type:
+          type: string
+          enum: [transfer, sacrifice, apply]
+        source_card:
+          type: string
+          nullable: true
+        target_card:
+          type: string
+          nullable: true
+        xp_amount:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    PaginationInfo:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        pages:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            type:
+              type: string
+            message:
+              type: string
+            suggestion:
+              type: string
+
+  responses:
+    BadRequestError:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    UnauthorizedError:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFoundError:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

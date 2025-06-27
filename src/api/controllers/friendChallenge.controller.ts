@@ -63,7 +63,10 @@ export const challengeFriend = async (
     );
 
     if (result.success) {
-      res.status(201).json(result);
+      // Remove success and message, return flattened result
+      res.status(201).json({
+        gameId: result.gameId,
+      });
     } else {
       let status = 400;
       if (result.error === "NOT_FRIENDS") {

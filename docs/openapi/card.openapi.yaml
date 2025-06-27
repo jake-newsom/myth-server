@@ -87,7 +87,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CardResponse"
+                $ref: "#/components/schemas/BaseCardResponse"
         "404":
           description: Card not found
           content:
@@ -197,14 +197,81 @@ components:
           type: object
           additionalProperties: true
 
+    BaseCardResponse:
+      type: object
+      description: Represents a base card definition without any user-specific data
+      properties:
+        base_card_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the base card definition
+        name:
+          type: string
+          example: "Baldur"
+          description: Name of the card
+        rarity:
+          type: string
+          enum: ["common", "uncommon", "rare", "epic", "legendary"]
+          example: "epic"
+          description: Rarity level of the card
+        image_url:
+          type: string
+          example: "norse/baldur.webp"
+          description: Path to the card's image
+        base_power:
+          $ref: "#/components/schemas/PowerValues"
+          description: The base power stats of the card
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["god", "warrior"]
+          description: Tags associated with the card
+        special_ability:
+          type: object
+          nullable: true
+          description: Special ability of the card, null if the card has no special ability
+          properties:
+            ability_id:
+              type: string
+              format: uuid
+              description: Unique identifier for the ability
+            name:
+              type: string
+              description: Name of the special ability
+            description:
+              type: string
+              description: Description of what the ability does
+            triggerMoment:
+              type: string
+              enum: [OnPlace, OnFlip, OnFlipped, OnTurnStart, OnTurnEnd]
+              description: When the ability triggers
+            parameters:
+              type: object
+              additionalProperties: true
+              description: Additional parameters for the ability
+          required:
+            - ability_id
+            - name
+            - description
+            - triggerMoment
+            - parameters
+      required:
+        - base_card_id
+        - name
+        - rarity
+        - image_url
+        - base_power
+        - tags
+
     StaticCardCollectionResponse:
       type: object
       properties:
         data:
           type: array
           items:
-            $ref: "#/components/schemas/CardResponse"
-          description: Array of cards. For static collection, user-specific fields will be null/omitted.
+            $ref: "#/components/schemas/BaseCardResponse"
+          description: Array of base cards without user-specific data.
         total:
           type: integer
           description: Total number of cards matching the query

@@ -30,24 +30,15 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-                    example: "success"
-                  message:
-                    type: string
-                    example: "Pack opened successfully"
-                  data:
-                    type: object
-                    properties:
-                      cards:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/Card"
-                        description: The 5 cards obtained from the pack
-                      remainingPacks:
-                        type: integer
-                        description: Number of packs remaining for this set
-                        example: 2
+                  cards:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CardFromPack"
+                    description: The 5 cards obtained from the pack
+                  remainingPacks:
+                    type: integer
+                    description: Number of packs remaining for this set
+                    example: 2
         "400":
           description: Bad request - invalid set ID, no packs available, or set not released
           content:
@@ -77,19 +68,10 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-                    example: "success"
-                  message:
-                    type: string
-                    example: "User pack count retrieved successfully"
-                  data:
-                    type: object
-                    properties:
-                      pack_count:
-                        type: integer
-                        description: Total number of packs the user owns
-                        example: 5
+                  pack_count:
+                    type: integer
+                    description: Total number of packs the user owns
+                    example: 5
         "401":
           description: Unauthorized - user not authenticated
           content:
@@ -99,7 +81,7 @@ paths:
 
 components:
   schemas:
-    Card:
+    CardFromPack:
       type: object
       properties:
         card_id:
@@ -129,6 +111,28 @@ components:
             left:
               type: integer
           description: Base power values for each direction
+          required:
+            - top
+            - right
+            - bottom
+            - left
+        special_ability:
+          type: object
+          nullable: true
+          properties:
+            ability_id:
+              type: string
+            name:
+              type: string
+            description:
+              type: string
+            triggerMoment:
+              type: string
+              enum: [OnPlace, OnFlip, OnFlipped, OnTurnStart, OnTurnEnd]
+            parameters:
+              type: object
+              additionalProperties: true
+          description: Special ability of the card if it has one
         special_ability_id:
           type: string
           format: uuid
@@ -144,6 +148,13 @@ components:
           items:
             type: string
           description: Tags associated with the card
+      required:
+        - card_id
+        - name
+        - rarity
+        - image_url
+        - base_power
+        - tags
 
     UserPackWithSetInfo:
       type: object

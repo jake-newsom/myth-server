@@ -20,14 +20,11 @@ export const getCurrencies = async (req: Request, res: Response) => {
     }
 
     res.json({
-      success: true,
-      currencies: {
-        gold: user.gold,
-        gems: user.gems,
-        total_xp: user.total_xp,
-        // Legacy field for backward compatibility
-        in_game_currency: user.in_game_currency,
-      },
+      gold: user.gold,
+      gems: user.gems,
+      total_xp: user.total_xp,
+      // Legacy field for backward compatibility
+      in_game_currency: user.in_game_currency,
     });
   } catch (error) {
     console.error("Error fetching currencies:", error);
@@ -93,8 +90,6 @@ export const purchasePacks = async (req: Request, res: Response) => {
     }
 
     res.json({
-      success: true,
-      message: `Successfully purchased ${quantity} pack(s) for ${totalCost} ${currency_type}`,
       purchase_details: {
         quantity,
         currency_type,
@@ -158,8 +153,6 @@ export const awardCurrency = async (req: Request, res: Response) => {
     }
 
     res.json({
-      success: true,
-      message: `Successfully awarded ${goldToAdd} gold and ${gemsToAdd} gems`,
       reason: reason || "Manual award",
       updated_currencies: {
         gold: updatedUser.gold,
@@ -175,11 +168,7 @@ export const awardCurrency = async (req: Request, res: Response) => {
 
 export const getPackPrices = async (req: Request, res: Response) => {
   try {
-    res.json({
-      success: true,
-      pack_prices: PACK_PRICES,
-      message: "Current pack prices in the store",
-    });
+    res.json(PACK_PRICES);
   } catch (error) {
     console.error("Error fetching pack prices:", error);
     res.status(500).json({ error: "Failed to fetch pack prices" });

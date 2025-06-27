@@ -10,10 +10,7 @@ export const getXpPools = async (req: Request, res: Response) => {
     }
 
     const pools = await XpPoolModel.getAllXpPools(userId);
-    res.json({
-      success: true,
-      xp_pools: pools,
-    });
+    res.json(pools);
   } catch (error) {
     console.error("Error fetching XP pools:", error);
     res.status(500).json({ error: "Failed to fetch XP pools" });
@@ -34,10 +31,7 @@ export const getXpPool = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "XP pool not found" });
     }
 
-    res.json({
-      success: true,
-      xp_pool: pool,
-    });
+    res.json(pool);
   } catch (error) {
     console.error("Error fetching XP pool:", error);
     res.status(500).json({ error: "Failed to fetch XP pool" });
@@ -86,7 +80,9 @@ export const transferXp = async (req: Request, res: Response) => {
     );
 
     if (result.success) {
-      res.json(result);
+      // Remove success and message properties, return flattened result
+      const { success, message, ...flattenedResult } = result;
+      res.json(flattenedResult);
     } else {
       res.status(400).json({ error: result.message });
     }
@@ -115,7 +111,9 @@ export const sacrificeCards = async (req: Request, res: Response) => {
     const result = await XpService.sacrificeCards(userId, card_ids);
 
     if (result.success) {
-      res.json(result);
+      // Remove success and message properties, return flattened result
+      const { success, message, ...flattenedResult } = result;
+      res.json(flattenedResult);
     } else {
       res.status(400).json({ error: result.message });
     }
@@ -154,7 +152,9 @@ export const applyXp = async (req: Request, res: Response) => {
     );
 
     if (result.success) {
-      res.json(result);
+      // Remove success and message properties, return flattened result
+      const { success, message, ...flattenedResult } = result;
+      res.json(flattenedResult);
     } else {
       res.status(400).json({ error: result.message });
     }

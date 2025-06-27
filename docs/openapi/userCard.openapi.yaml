@@ -1,72 +1,53 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance - User Card API
+  description: API endpoints for managing user's card collection
+  version: 1.0.0
+
 paths:
-  /api/user-cards:
+  /api/users/me/cards:
     get:
       summary: Get all cards owned by the authenticated user
-      description: Retrieves a paginated list of card instances owned by the currently authenticated user. Supports filtering by rarity, name, and tag.
+      description: Retrieves a list of card instances owned by the currently authenticated user
       tags:
-        - Users # Assuming this tag exists, or choose an appropriate one
+        - User Cards
       security:
         - bearerAuth: []
       parameters:
         - name: rarity
           in: query
-          description: Filter by card rarity (e.g., common, rare).
+          description: Filter by card rarity (e.g., common, rare)
           required: false
           schema:
             type: string
+            enum: [common, uncommon, rare, epic, legendary]
         - name: name
           in: query
-          description: Filter by card name (case-insensitive, partial match).
+          description: Filter by card name (case-insensitive, partial match)
           required: false
           schema:
             type: string
         - name: tag
           in: query
-          description: Filter by a specific card tag.
+          description: Filter by a specific card tag
           required: false
           schema:
             type: string
-        - name: page
-          in: query
-          description: Page number for pagination.
-          required: false
-          schema:
-            type: integer
-            default: 1
-        - name: limit
-          in: query
-          description: Number of items per page.
-          required: false
-          schema:
-            type: integer
-            default: 20
       responses:
         "200":
-          description: A paginated list of the user's card instances.
+          description: List of the user's card instances
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "./card.openapi.yaml#/components/schemas/CardResponse" # Reusing existing CardResponse
-                  total:
-                    type: integer
-                    example: 100
-                  page:
-                    type: integer
-                    example: 1
-                  limit:
-                    type: integer
-                    example: 20
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserCard"
         "401":
-          description: Unauthorized - User not authenticated.
+          description: Unauthorized - User not authenticated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse" # Assuming a global ErrorResponse schema
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal Server Error
           content:
@@ -76,7 +57,115 @@ paths:
 
 components:
   schemas:
-    ErrorResponse: # Define if not already globally available
+    PowerValues:
+      type: object
+      properties:
+        top:
+          type: integer
+          example: 5
+        right:
+          type: integer
+          example: 5
+        bottom:
+          type: integer
+          example: 5
+        left:
+          type: integer
+          example: 5
+      required:
+        - top
+        - right
+        - bottom
+        - left
+
+    SpecialAbility:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        ability_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        triggerMoment:
+          type: string
+          enum: [OnPlace, OnFlip, OnFlipped, OnTurnStart, OnTurnEnd]
+        parameters:
+          type: object
+          description: Additional parameters for the ability
+          additionalProperties: true
+      required:
+        - id
+        - name
+        - ability_id
+        - description
+        - triggerMoment
+        - parameters
+
+    BaseCardData:
+      type: object
+      properties:
+        card_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        rarity:
+          type: string
+          enum: [common, uncommon, rare, epic, legendary]
+        image_url:
+          type: string
+        base_power:
+          $ref: "#/components/schemas/PowerValues"
+        special_ability:
+          $ref: "#/components/schemas/SpecialAbility"
+          nullable: true
+      required:
+        - card_id
+        - name
+        - tags
+        - rarity
+        - image_url
+        - base_power
+
+    UserCard:
+      type: object
+      description: A card instance owned by a user, including base card data and user-specific enhancements
+      properties:
+        user_card_instance_id:
+          type: string
+          format: uuid
+          description: Unique identifier for this specific card instance
+        base_card_id:
+          type: string
+          format: uuid
+          description: Reference to the base card definition
+        base_card_data:
+          $ref: "#/components/schemas/BaseCardData"
+          description: The complete base card information
+        level:
+          type: integer
+          description: Current level of the card instance
+          minimum: 1
+        power_enhancements:
+          $ref: "#/components/schemas/PowerValues"
+          description: Additional power values from leveling up
+      required:
+        - user_card_instance_id
+        - base_card_id
+        - base_card_data
+        - level
+        - power_enhancements
+
+    ErrorResponse:
       type: object
       properties:
         message:

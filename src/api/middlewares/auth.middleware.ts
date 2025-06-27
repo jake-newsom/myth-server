@@ -45,7 +45,9 @@ const protect = async (
     // Verify token
     jwt.verify(token, config.jwtSecret as string, async (err, decoded: any) => {
       if (err) {
-        console.log(`[AUTH DEBUG] JWT verification failed: ${err.message}`);
+        console.log(
+          `[AUTH DEBUG] JWT verification failed: ${err.message} ${token}`
+        );
         res.status(401).json({
           error: {
             message: "Authentication failed. Invalid token.",

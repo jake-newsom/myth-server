@@ -50,12 +50,9 @@ export const getAvailableFatePicks = async (
     }
 
     res.json({
-      success: true,
-      data: {
-        fate_picks: result.fatePicks,
-        pagination: result.pagination,
-        user_wonder_coins: result.userFateCoins,
-      },
+      fate_picks: result.fatePicks,
+      pagination: result.pagination,
+      user_wonder_coins: result.userFateCoins,
     });
   } catch (error) {
     console.error("Error in getAvailableFatePicks:", error);
@@ -102,10 +99,7 @@ export const getFatePickDetails = async (
       });
     }
 
-    const result = await FatePickService.getFatePickDetails(
-      fatePickId,
-      userId
-    );
+    const result = await FatePickService.getFatePickDetails(fatePickId, userId);
 
     if (!result.success) {
       const statusCode = result.error === "Wonder pick not found" ? 404 : 400;
@@ -123,11 +117,8 @@ export const getFatePickDetails = async (
     }
 
     res.json({
-      success: true,
-      data: {
-        fate_pick: result.fatePick,
-        user_participation: result.userParticipation,
-      },
+      fate_pick: result.fatePick,
+      user_participation: result.userParticipation,
     });
   } catch (error) {
     console.error("Error in getFatePickDetails:", error);
@@ -205,13 +196,10 @@ export const participateInFatePick = async (
     }
 
     res.json({
-      success: true,
-      data: {
-        participation: result.participation,
-        updated_wonder_coins: result.updatedWonderCoins,
-        message:
-          "Successfully joined wonder pick! Select a card to reveal your prize.",
-      },
+      participation: result.participation,
+      updated_wonder_coins: result.updatedWonderCoins,
+      message:
+        "Successfully joined wonder pick! Select a card to reveal your prize.",
     });
   } catch (error) {
     console.error("Error in participateInFatePick:", error);
@@ -307,13 +295,10 @@ export const selectCardPosition = async (
     }
 
     res.json({
-      success: true,
-      data: {
-        participation: result.result?.participation,
-        won_card: result.result?.wonCard,
-        added_to_collection: result.result?.addedToCollection,
-        message: `Congratulations! You won a ${result.result?.wonCard.rarity} ${result.result?.wonCard.name}!`,
-      },
+      participation: result.result?.participation,
+      won_card: result.result?.wonCard,
+      added_to_collection: result.result?.addedToCollection,
+      message: `Congratulations! You won a ${result.result?.wonCard.rarity} ${result.result?.wonCard.name}!`,
     });
   } catch (error) {
     console.error("Error in selectCardPosition:", error);
@@ -369,12 +354,9 @@ export const getUserParticipationHistory = async (
     }
 
     res.json({
-      success: true,
-      data: {
-        participations: result.participations,
-        pagination: result.pagination,
-        stats: result.stats,
-      },
+      participations: result.participations,
+      pagination: result.pagination,
+      stats: result.stats,
     });
   } catch (error) {
     console.error("Error in getUserParticipationHistory:", error);
@@ -408,10 +390,7 @@ export const getFatePickStats = async (req: Request, res: Response) => {
     }
 
     res.json({
-      success: true,
-      data: {
-        stats: result.stats,
-      },
+      stats: result.stats,
     });
   } catch (error) {
     console.error("Error in getFatePickStats:", error);
@@ -455,11 +434,7 @@ export const awardFateCoins = async (req: Request, res: Response) => {
       });
     }
 
-    const result = await FatePickService.awardFateCoins(
-      userId,
-      amount,
-      reason
-    );
+    const result = await FatePickService.awardFateCoins(userId, amount, reason);
 
     if (!result.success) {
       const statusCode = result.error === "User not found" ? 404 : 400;

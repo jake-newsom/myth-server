@@ -119,16 +119,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/games/{game_id}:
+  /api/games/{gameId}:
     get:
       summary: Get game details by ID
       security:
         - bearerAuth: []
-      operationId: getGameById
+      operationId: getGame
       tags:
         - Games
       parameters:
-        - name: game_id
+        - name: gameId
           in: path
           required: true
           schema:
@@ -154,16 +154,103 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/games/{game_id}/action:
+  /api/games/{gameId}/ai-action:
     post:
-      summary: Perform game action (place card, end turn, etc.)
+      summary: Submit an AI action for a solo game
       security:
         - bearerAuth: []
-      operationId: gameAction
+      operationId: submitAIAction
       tags:
         - Games
       parameters:
-        - name: game_id
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: AI action performed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/games/solo:
+    post:
+      summary: Create a new solo game against AI
+      security:
+        - bearerAuth: []
+      operationId: startSoloGame
+      tags:
+        - Games
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - deckId
+              properties:
+                deckId:
+                  type: string
+                  format: uuid
+                  description: The ID of the player's deck to use
+                aiDifficulty:
+                  type: string
+                  enum: [easy, medium, hard]
+                  default: medium
+                  description: AI difficulty level
+      responses:
+        "201":
+          description: Solo game created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/games/{gameId}/actions:
+    post:
+      summary: Submit an action for a game
+      security:
+        - bearerAuth: []
+      operationId: submitAction
+      tags:
+        - Games
+      parameters:
+        - name: gameId
           in: path
           required: true
           schema:
@@ -201,7 +288,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/games/{game_id}/ai-action:
+  /api/games/{gameId}/ai-action:
     post:
       summary: Submit an AI action for a solo game
       description: Processes an AI turn in a solo game. This endpoint should be called after the player's turn when it's the AI's turn to play.
@@ -211,7 +298,7 @@ paths:
       tags:
         - Games
       parameters:
-        - name: game_id
+        - name: gameId
           in: path
           required: true
           schema:

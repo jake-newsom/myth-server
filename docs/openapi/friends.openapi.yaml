@@ -1,0 +1,473 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance Friends API
+  description: API endpoints for social features and friend management
+  version: 1.0.0
+
+paths:
+  /api/friends:
+    get:
+      summary: Get user's friends list
+      description: Get the authenticated user's friends list
+      tags:
+        - Friends
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Friends list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  friends:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Friend"
+                  stats:
+                    type: object
+                    properties:
+                      friends_count:
+                        type: integer
+                        description: Total number of friends
+                      pending_incoming:
+                        type: integer
+                        description: Number of incoming friend requests
+                      pending_outgoing:
+                        type: integer
+                        description: Number of outgoing friend requests
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/friends/requests:
+    get:
+      summary: Get friend requests
+      description: Get pending friend requests for the authenticated user
+      tags:
+        - Friends
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Friend requests retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  incoming:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FriendRequest"
+                    description: Incoming friend requests
+                  outgoing:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FriendRequest"
+                    description: Outgoing friend requests
+                  stats:
+                    type: object
+                    properties:
+                      pending_incoming:
+                        type: integer
+                        description: Number of incoming friend requests
+                      pending_outgoing:
+                        type: integer
+                        description: Number of outgoing friend requests
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/friends/search:
+    get:
+      summary: Search users
+      description: Search for users to add as friends
+      tags:
+        - Friends
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+          description: Search query (username or partial username)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 10
+          description: Number of results to return
+      responses:
+        "200":
+          description: User search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SearchResult"
+                  query:
+                    type: string
+                    description: The search term that was used
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/friends/status/{userId}:
+    get:
+      summary: Check friendship status
+      description: Check friendship status with a specific user
+      tags:
+        - Friends
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID to check friendship status with
+      responses:
+        "200":
+          description: Friendship status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  areFriends:
+                    type: boolean
+                    description: Whether the users are friends
+                  friendship:
+                    $ref: "#/components/schemas/Friend"
+                    nullable: true
+                    description: Friendship details if it exists
+                  status:
+                    type: string
+                    description: Current friendship status
+                    example: "accepted"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/friends/add:
+    post:
+      summary: Send friend request
+      description: Send a friend request to another user
+      tags:
+        - Friends
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+              properties:
+                userId:
+                  type: string
+                  description: User ID to send friend request to
+                message:
+                  type: string
+                  maxLength: 500
+                  description: Optional message with the friend request
+      responses:
+        "200":
+          description: Friend request sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  friendship:
+                    $ref: "#/components/schemas/Friend"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/friends/accept/{friendshipId}:
+    post:
+      summary: Accept friend request
+      description: Accept a pending friend request
+      tags:
+        - Friends
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendshipId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Friendship ID to accept
+      responses:
+        "200":
+          description: Friend request accepted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  friendship:
+                    $ref: "#/components/schemas/Friend"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/friends/reject/{friendshipId}:
+    post:
+      summary: Reject friend request
+      description: Reject a pending friend request
+      tags:
+        - Friends
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendshipId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Friendship ID to reject
+      responses:
+        "200":
+          description: Friend request rejected successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  friendship:
+                    $ref: "#/components/schemas/Friend"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/friends/challenge/{friendId}:
+    post:
+      summary: Challenge friend to a game
+      description: Challenge a friend to a game
+      tags:
+        - Friends
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Friend's user ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - deckId
+              properties:
+                deckId:
+                  type: string
+                  description: Deck ID to use for the challenge
+                message:
+                  type: string
+                  maxLength: 500
+                  description: Optional challenge message
+      responses:
+        "200":
+          description: Challenge sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gameId:
+                    type: string
+                    description: The ID of the created game
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/friends/{friendshipId}:
+    delete:
+      summary: Remove friend
+      description: Remove a friend (unfriend)
+      tags:
+        - Friends
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: friendshipId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Friendship ID to remove
+      responses:
+        "200":
+          description: Friend removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Friend:
+      type: object
+      properties:
+        friendship_id:
+          type: string
+        user_id:
+          type: string
+        username:
+          type: string
+        status:
+          type: string
+          enum: [accepted]
+        created_at:
+          type: string
+          format: date-time
+        last_seen:
+          type: string
+          format: date-time
+        is_online:
+          type: boolean
+
+    FriendRequest:
+      type: object
+      properties:
+        friendship_id:
+          type: string
+        user_id:
+          type: string
+        username:
+          type: string
+        message:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending]
+        created_at:
+          type: string
+          format: date-time
+
+    SearchResult:
+      type: object
+      properties:
+        user_id:
+          type: string
+        username:
+          type: string
+        friendship_status:
+          type: string
+          enum: [none, pending_sent, pending_received, friends, blocked]
+        is_online:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            type:
+              type: string
+            message:
+              type: string
+            suggestion:
+              type: string
+
+  responses:
+    BadRequestError:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    UnauthorizedError:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFoundError:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    ConflictError:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

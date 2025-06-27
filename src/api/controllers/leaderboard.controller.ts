@@ -22,7 +22,9 @@ export const getLeaderboard = async (
       limit
     );
 
-    res.status(200).json(result);
+    // Remove success property and flatten response
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error fetching leaderboard:", error);
     res.status(500).json({
@@ -46,7 +48,9 @@ export const getLeaderboardStats = async (req: Request, res: Response) => {
 
     const result = await LeaderboardService.getRankingStats(season);
 
-    res.status(200).json(result);
+    // Remove success property and flatten response
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error fetching leaderboard stats:", error);
     res.status(500).json({
@@ -84,7 +88,9 @@ export const getUserRanking = async (
 
     const result = await LeaderboardService.getUserRanking(userId, season);
 
-    res.status(200).json(result);
+    // Remove success property and flatten response
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error fetching user ranking:", error);
 
@@ -152,7 +158,9 @@ export const getUserRankHistory = async (
 
     const result = await LeaderboardService.getUserRankHistory(userId, seasons);
 
-    res.status(200).json(result);
+    // Remove success property and flatten response
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error fetching rank history:", error);
     res.status(500).json({
@@ -195,7 +203,9 @@ export const getLeaderboardAroundUser = async (
       range
     );
 
-    res.status(200).json(result);
+    // Remove success property and flatten response
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error fetching contextual leaderboard:", error);
 
@@ -249,23 +259,26 @@ export const getPublicUserRanking = async (req: Request, res: Response) => {
 
     const result = await LeaderboardService.getUserRanking(userId, season);
 
+    // Remove success property and create public result
+    const { success, ...flattenedResult } = result;
+
     // Remove sensitive information for public view
     const publicResult = {
-      ...result,
+      ...flattenedResult,
       user_ranking: {
-        ...result.user_ranking,
+        ...flattenedResult.user_ranking,
         // Keep public fields only
-        username: result.user_ranking.username,
-        rating: result.user_ranking.rating,
-        rank_tier: result.user_ranking.rank_tier,
-        wins: result.user_ranking.wins,
-        losses: result.user_ranking.losses,
-        draws: result.user_ranking.draws,
-        total_games: result.user_ranking.total_games,
-        win_rate: result.user_ranking.win_rate,
-        current_rank: result.user_ranking.current_rank,
-        peak_rank: result.user_ranking.peak_rank,
-        peak_rating: result.user_ranking.peak_rating,
+        username: flattenedResult.user_ranking.username,
+        rating: flattenedResult.user_ranking.rating,
+        rank_tier: flattenedResult.user_ranking.rank_tier,
+        wins: flattenedResult.user_ranking.wins,
+        losses: flattenedResult.user_ranking.losses,
+        draws: flattenedResult.user_ranking.draws,
+        total_games: flattenedResult.user_ranking.total_games,
+        win_rate: flattenedResult.user_ranking.win_rate,
+        current_rank: flattenedResult.user_ranking.current_rank,
+        peak_rank: flattenedResult.user_ranking.peak_rank,
+        peak_rating: flattenedResult.user_ranking.peak_rating,
       },
       recent_games: [], // Don't show recent games for privacy
     };
@@ -323,9 +336,8 @@ export const initializeUserRanking = async (
       season
     );
 
+    // Return flattened response with just the user ranking
     res.status(200).json({
-      success: true,
-      message: "Ranking initialized successfully",
       user_ranking: userRanking,
     });
   } catch (error) {

@@ -1,0 +1,1839 @@
+{
+  "info": {
+    "name": "Viking Vengeance API - Complete Collection",
+    "description": "Complete API collection for Viking Vengeance game server with all endpoints from OpenAPI documentation",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "gameId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "deckId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "cardId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "setId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "mailId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "friendshipId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "achievementId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "fatePickId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "userCardInstanceId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser\",\n  \"email\": \"test@example.com\",\n  \"password\": \"securePassword123!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.token) {",
+                  "        pm.collectionVariables.set('authToken', response.token);",
+                  "        pm.collectionVariables.set('userId', response.user.user_id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"securePassword123!\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            }
+          }
+        },
+        {
+          "name": "Get My Cards",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/cards",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "cards"]
+            }
+          }
+        },
+        {
+          "name": "Get My Decks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/decks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "decks"]
+            }
+          }
+        },
+        {
+          "name": "Get Specific Deck",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/decks/{{deckId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "decks", "{{deckId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Active Games",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me/active-games?summary=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me", "active-games"],
+              "query": [
+                {
+                  "key": "summary",
+                  "value": "false"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cards & Collection",
+      "item": [
+        {
+          "name": "Get All Cards",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cards?page=1&limit=20&rarity=common&tag=warrior",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cards"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "rarity",
+                  "value": "common"
+                },
+                {
+                  "key": "tag",
+                  "value": "warrior"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Card by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cards/{{cardId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "cards", "{{cardId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get User Cards",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/user-cards",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "user-cards"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Deck Management",
+      "item": [
+        {
+          "name": "Create Deck",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.deck_id) {",
+                  "        pm.collectionVariables.set('deckId', response.deck_id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/decks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "decks"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My Battle Deck\",\n  \"user_card_instance_ids\": [\n    \"card-instance-1\",\n    \"card-instance-2\",\n    \"card-instance-3\",\n    \"card-instance-4\",\n    \"card-instance-5\",\n    \"card-instance-6\",\n    \"card-instance-7\",\n    \"card-instance-8\",\n    \"card-instance-9\",\n    \"card-instance-10\",\n    \"card-instance-11\",\n    \"card-instance-12\",\n    \"card-instance-13\",\n    \"card-instance-14\",\n    \"card-instance-15\",\n    \"card-instance-16\",\n    \"card-instance-17\",\n    \"card-instance-18\",\n    \"card-instance-19\",\n    \"card-instance-20\"\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Deck",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/decks/{{deckId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "decks", "{{deckId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Battle Deck\",\n  \"user_card_instance_ids\": [\n    \"card-instance-21\",\n    \"card-instance-22\",\n    \"card-instance-23\",\n    \"card-instance-24\",\n    \"card-instance-25\",\n    \"card-instance-26\",\n    \"card-instance-27\",\n    \"card-instance-28\",\n    \"card-instance-29\",\n    \"card-instance-30\",\n    \"card-instance-31\",\n    \"card-instance-32\",\n    \"card-instance-33\",\n    \"card-instance-34\",\n    \"card-instance-35\",\n    \"card-instance-36\",\n    \"card-instance-37\",\n    \"card-instance-38\",\n    \"card-instance-39\",\n    \"card-instance-40\"\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Deck",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/decks/{{deckId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "decks", "{{deckId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Game Management",
+      "item": [
+        {
+          "name": "Create Solo Game",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.game_id) {",
+                  "        pm.collectionVariables.set('gameId', response.game_id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/games/solo",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "games", "solo"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deckId\": \"{{deckId}}\",\n  \"aiDifficulty\": \"medium\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Game State",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/games/{{gameId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "games", "{{gameId}}"]
+            }
+          }
+        },
+        {
+          "name": "Submit Game Action - Place Card",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/games/{{gameId}}/actions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "games", "{{gameId}}", "actions"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action_type\": \"placeCard\",\n  \"user_card_instance_id\": \"{{userCardInstanceId}}\",\n  \"position\": {\n    \"x\": 1,\n    \"y\": 1\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit Game Action - End Turn",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/games/{{gameId}}/actions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "games", "{{gameId}}", "actions"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action_type\": \"endTurn\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit Game Action - Surrender",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/games/{{gameId}}/actions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "games", "{{gameId}}", "actions"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action_type\": \"surrender\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Submit AI Action",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/games/{{gameId}}/ai-action",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "games", "{{gameId}}", "ai-action"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Matchmaking",
+      "item": [
+        {
+          "name": "Join Matchmaking Queue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/matchmaking/join",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "matchmaking", "join"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deckId\": \"{{deckId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Check Matchmaking Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/matchmaking/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "matchmaking", "status"]
+            }
+          }
+        },
+        {
+          "name": "Leave Matchmaking Queue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/matchmaking/leave",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "matchmaking", "leave"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pack Management",
+      "item": [
+        {
+          "name": "Get Pack Count",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/packs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "packs"]
+            }
+          }
+        },
+        {
+          "name": "Open Pack",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/packs/open",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "packs", "open"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"setId\": \"{{setId}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Set Management",
+      "item": [
+        {
+          "name": "Get All Sets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sets",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sets"]
+            }
+          }
+        },
+        {
+          "name": "Get Released Sets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sets/released",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sets", "released"]
+            }
+          }
+        },
+        {
+          "name": "Get Set by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sets/{{setId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sets", "{{setId}}"]
+            }
+          }
+        },
+        {
+          "name": "Release Set (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sets/{{setId}}/release",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sets", "{{setId}}", "release"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "XP Management",
+      "item": [
+        {
+          "name": "Get XP Pools",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xp/pools",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "xp", "pools"]
+            }
+          }
+        },
+        {
+          "name": "Get Specific Card XP Pool",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xp/pools/Shadow%20Fiend",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "xp", "pools", "Shadow%20Fiend"]
+            }
+          }
+        },
+        {
+          "name": "Transfer XP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xp/transfer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "xp", "transfer"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_card_ids\": [\n    \"card-instance-1\",\n    \"card-instance-2\"\n  ],\n  \"target_card_id\": \"card-instance-3\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Sacrifice Cards for XP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xp/sacrifice",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "xp", "sacrifice"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"card_ids\": [\n    \"card-instance-4\",\n    \"card-instance-5\"\n  ],\n  \"card_name\": \"Shadow Fiend\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Apply XP to Card",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xp/apply",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "xp", "apply"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"card_name\": \"Shadow Fiend\",\n  \"target_card_id\": \"card-instance-6\",\n  \"xp_amount\": 100\n}"
+            }
+          }
+        },
+        {
+          "name": "Get XP History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/xp/history?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "xp", "history"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Currency Management",
+      "item": [
+        {
+          "name": "Get Currency Balances",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/currency",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "currency"]
+            }
+          }
+        },
+        {
+          "name": "Get Pack Prices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/currency/pack-prices",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "currency", "pack-prices"]
+            }
+          }
+        },
+        {
+          "name": "Purchase Packs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/currency/purchase-packs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "currency", "purchase-packs"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 3,\n  \"currency_type\": \"gold\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Award Currency (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/currency/award",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "currency", "award"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{userId}}\",\n  \"currency_type\": \"gold\",\n  \"amount\": 500,\n  \"reason\": \"Daily login bonus\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Friends Management",
+      "item": [
+        {
+          "name": "Get Friends List",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/friends",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "friends"]
+            }
+          }
+        },
+        {
+          "name": "Get Friend Requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/friends/requests",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "friends", "requests"]
+            }
+          }
+        },
+        {
+          "name": "Search Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/friends/search?query=test&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "friends", "search"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "test"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check Friendship Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/friends/status/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "friends", "status", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Send Friend Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/friends/add",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "friends", "add"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"friend_identifier\": \"testuser2\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Accept Friend Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/friends/accept/{{friendshipId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "friends", "accept", "{{friendshipId}}"]
+            }
+          }
+        },
+        {
+          "name": "Reject Friend Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/friends/reject/{{friendshipId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "friends", "reject", "{{friendshipId}}"]
+            }
+          }
+        },
+        {
+          "name": "Challenge Friend",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/friends/challenge/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "friends", "challenge", "{{userId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deck_id\": \"{{deckId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Remove Friend",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/friends/{{friendshipId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "friends", "{{friendshipId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Leaderboard",
+      "item": [
+        {
+          "name": "Get Leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaderboard?page=1&limit=50&tier=Gold",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leaderboard"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "tier",
+                  "value": "Gold"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Leaderboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaderboard/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leaderboard", "stats"]
+            }
+          }
+        },
+        {
+          "name": "Get My Ranking",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaderboard/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leaderboard", "me"]
+            }
+          }
+        },
+        {
+          "name": "Get My Rank History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaderboard/me/history?limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leaderboard", "me", "history"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Leaderboard Around Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaderboard/me/around?range=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leaderboard", "me", "around"],
+              "query": [
+                {
+                  "key": "range",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User Ranking",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaderboard/user/testuser",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leaderboard", "user", "testuser"]
+            }
+          }
+        },
+        {
+          "name": "Initialize Ranking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaderboard/me/initialize",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leaderboard", "me", "initialize"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Achievements",
+      "item": [
+        {
+          "name": "Get All Achievements",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/achievements?category=gameplay&rarity=common",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "achievements"],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "gameplay"
+                },
+                {
+                  "key": "rarity",
+                  "value": "common"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Achievement Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/achievements/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "achievements", "categories"]
+            }
+          }
+        },
+        {
+          "name": "Get Achievement by Key",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/achievements/first_win",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "achievements", "first_win"]
+            }
+          }
+        },
+        {
+          "name": "Get My Achievement Progress",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/achievements/me/progress?category=gameplay&status=in_progress",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "achievements", "me", "progress"],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "gameplay"
+                },
+                {
+                  "key": "status",
+                  "value": "in_progress"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get My Achievement Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/achievements/me/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "achievements", "me", "stats"]
+            }
+          }
+        },
+        {
+          "name": "Get Recent Achievements",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/achievements/me/recent?limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "achievements", "me", "recent"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Claim Achievement",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/achievements/{{achievementId}}/claim",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "achievements", "{{achievementId}}", "claim"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Fate Picks",
+      "item": [
+        {
+          "name": "Get Available Fate Picks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/fate-picks?page=1&limit=20&status=active",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "fate-picks"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "status",
+                  "value": "active"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Fate Pick Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/fate-picks/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "fate-picks", "stats"]
+            }
+          }
+        },
+        {
+          "name": "Get My Fate Pick History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/fate-picks/history?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "fate-picks", "history"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Specific Fate Pick",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/fate-picks/{{fatePickId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "fate-picks", "{{fatePickId}}"]
+            }
+          }
+        },
+        {
+          "name": "Participate in Fate Pick",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/fate-picks/{{fatePickId}}/participate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "fate-picks", "{{fatePickId}}", "participate"]
+            }
+          }
+        },
+        {
+          "name": "Select Card Position",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/fate-picks/{{fatePickId}}/select",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "fate-picks", "{{fatePickId}}", "select"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"position\": 2\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Mail Management",
+      "item": [
+        {
+          "name": "Get Mail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail?page=1&limit=20&mail_type=system&is_read=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "mail_type",
+                  "value": "system"
+                },
+                {
+                  "key": "is_read",
+                  "value": "false"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Mail Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail", "stats"]
+            }
+          }
+        },
+        {
+          "name": "Get Mail Counts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail/counts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail", "counts"]
+            }
+          }
+        },
+        {
+          "name": "Get Recent Mail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail/recent?limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail", "recent"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Specific Mail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail/{{mailId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail", "{{mailId}}"]
+            }
+          }
+        },
+        {
+          "name": "Mark Mail as Read",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail/{{mailId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail", "{{mailId}}", "read"]
+            }
+          }
+        },
+        {
+          "name": "Mark Multiple Mail as Read",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail/read/multiple",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail", "read", "multiple"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mailIds\": [\n    \"{{mailId}}\",\n    \"mail-id-2\",\n    \"mail-id-3\"\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Mark All Mail as Read",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail/read/all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail", "read", "all"]
+            }
+          }
+        },
+        {
+          "name": "Claim Mail Rewards",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail/{{mailId}}/claim",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail", "{{mailId}}", "claim"]
+            }
+          }
+        },
+        {
+          "name": "Claim All Rewards",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail/claim/all",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail", "claim", "all"]
+            }
+          }
+        },
+        {
+          "name": "Send System Notification (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/mail/send/system",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "mail", "send", "system"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{userId}}\",\n  \"subject\": \"Welcome to Viking Vengeance!\",\n  \"content\": \"Thank you for joining our game!\",\n  \"rewards\": {\n    \"gold\": 100,\n    \"gems\": 10,\n    \"packs\": 1\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Give Packs to User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/give-packs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "give-packs"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{userId}}\",\n  \"quantity\": 5\n}"
+            }
+          }
+        },
+        {
+          "name": "Set User Pack Quantity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/set-pack-quantity",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "set-pack-quantity"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{userId}}\",\n  \"quantity\": 10\n}"
+            }
+          }
+        },
+        {
+          "name": "Get User Pack Count",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/user-pack-count/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "user-pack-count", "{{userId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "health"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

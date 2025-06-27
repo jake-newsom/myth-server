@@ -7,11 +7,7 @@ const SetController = {
     try {
       const sets = await SetModel.findAll();
 
-      return res.status(200).json({
-        status: "success",
-        message: "Sets retrieved successfully",
-        data: sets,
-      });
+      return res.status(200).json(sets);
     } catch (error) {
       console.error("Error getting sets:", error);
       return res.status(500).json({
@@ -25,11 +21,7 @@ const SetController = {
     try {
       const sets = await SetModel.findReleased();
 
-      return res.status(200).json({
-        status: "success",
-        message: "Released sets retrieved successfully",
-        data: sets,
-      });
+      return res.status(200).json(sets);
     } catch (error) {
       console.error("Error getting released sets:", error);
       return res.status(500).json({
@@ -63,12 +55,8 @@ const SetController = {
       const cardCount = await SetModel.getCardCount(setId);
 
       return res.status(200).json({
-        status: "success",
-        message: "Set retrieved successfully",
-        data: {
-          ...set,
-          cardCount,
-        },
+        ...set,
+        cardCount,
       });
     } catch (error) {
       console.error("Error getting set:", error);
@@ -141,11 +129,7 @@ const SetController = {
         });
       }
 
-      return res.status(200).json({
-        status: "success",
-        message: "Set updated successfully",
-        data: updatedSet,
-      });
+      return res.status(200).json(updatedSet);
     } catch (error) {
       console.error("Error updating set:", error);
       return res.status(500).json({
@@ -217,10 +201,7 @@ const SetController = {
         });
       }
 
-      return res.status(200).json({
-        status: "success",
-        message: "Set deleted successfully",
-      });
+      return res.status(200).json({});
     } catch (error) {
       console.error("Error deleting set:", error);
       return res.status(500).json({

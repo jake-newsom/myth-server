@@ -35,9 +35,14 @@ export interface UserProfile {
   user_id: string;
   username: string;
   email: string;
-  in_game_currency: number;
+  in_game_currency: number; // Legacy field
+  gold: number;
+  gems: number;
+  fate_coins: number;
+  total_xp: number;
+  pack_count: number;
   created_at: string; // ISO Date string
-  last_login: string; // ISO Date string
+  last_login_at: string; // ISO Date string
 }
 
 // Card types for API responses

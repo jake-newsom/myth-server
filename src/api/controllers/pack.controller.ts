@@ -33,12 +33,8 @@ const PackController = {
       }
 
       return res.status(200).json({
-        status: "success",
-        message: "Pack opened successfully",
-        data: {
-          cards: result.cards,
-          remainingPacks: result.remainingPacks,
-        },
+        cards: result.cards,
+        remainingPacks: result.remainingPacks,
       });
     } catch (error) {
       console.error("Error opening pack:", error);
@@ -71,11 +67,7 @@ const PackController = {
       const packCount = await UserModel.getPackCount(userId);
 
       return res.status(200).json({
-        status: "success",
-        message: "User pack count retrieved successfully",
-        data: {
-          pack_count: packCount,
-        },
+        pack_count: packCount,
       });
     } catch (error) {
       console.error("Error getting user pack count:", error);

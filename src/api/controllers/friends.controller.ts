@@ -20,7 +20,9 @@ export const getFriends = async (
     const userId = req.user!.user_id;
     const result = await FriendsService.getFriendsList(userId);
 
-    res.status(200).json(result);
+    // Remove success property and flatten response
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error in getFriends:", error);
     res.status(500).json({
@@ -49,7 +51,9 @@ export const getFriendRequests = async (
     const userId = req.user!.user_id;
     const result = await FriendsService.getFriendRequests(userId);
 
-    res.status(200).json(result);
+    // Remove success property and flatten response
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error in getFriendRequests:", error);
     res.status(500).json({
@@ -108,7 +112,10 @@ export const sendFriendRequest = async (
     const result = await FriendsService.sendFriendRequest(requesterId, input);
 
     if (result.success) {
-      res.status(200).json(result);
+      // Remove success and message, return flattened result
+      res.status(200).json({
+        friendship: result.friendship,
+      });
     } else {
       // Map error types to appropriate HTTP status codes
       let status = 400;
@@ -188,7 +195,10 @@ export const acceptFriendRequest = async (
     );
 
     if (result.success) {
-      res.status(200).json(result);
+      // Remove success and message, return flattened result
+      res.status(200).json({
+        friendship: result.friendship,
+      });
     } else {
       let status = 400;
       if (result.error === "REQUEST_NOT_FOUND") {
@@ -264,7 +274,10 @@ export const rejectFriendRequest = async (
     );
 
     if (result.success) {
-      res.status(200).json(result);
+      // Remove success and message, return flattened result
+      res.status(200).json({
+        friendship: result.friendship,
+      });
     } else {
       let status = 400;
       if (result.error === "REQUEST_NOT_FOUND") {
@@ -337,7 +350,8 @@ export const removeFriend = async (
     const result = await FriendsService.removeFriend(userId, friendshipId);
 
     if (result.success) {
-      res.status(200).json(result);
+      // Return empty object for successful deletion
+      res.status(200).json({});
     } else {
       let status = 400;
       if (result.error === "FRIENDSHIP_NOT_FOUND") {
@@ -394,7 +408,9 @@ export const searchUsers = async (
       searchLimit
     );
 
-    res.status(200).json(result);
+    // Remove success property and flatten response
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
   } catch (error) {
     console.error("Error in searchUsers:", error);
     res.status(500).json({
@@ -443,10 +459,8 @@ export const checkFriendshipStatus = async (
 
     const result = await FriendsService.checkFriendshipStatus(userId1, userId2);
 
-    res.status(200).json({
-      success: true,
-      ...result,
-    });
+    // Return the result directly (already flattened)
+    res.status(200).json(result);
   } catch (error) {
     console.error("Error in checkFriendshipStatus:", error);
     res.status(500).json({

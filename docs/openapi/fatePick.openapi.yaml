@@ -1,0 +1,441 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance Fate Picks API
+  description: API endpoints for fate pick system (formerly wonder picks)
+  version: 1.0.0
+
+paths:
+  /api/fate-picks:
+    get:
+      summary: Get available fate picks
+      description: Get available fate picks for the authenticated user
+      tags:
+        - Fate Picks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of fate picks per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Available fate picks retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fate_picks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FatePick"
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                  user_wonder_coins:
+                    type: integer
+                    description: User's current fate coin balance
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/fate-picks/stats:
+    get:
+      summary: Get fate pick statistics
+      description: Get fate pick statistics (public endpoint)
+      tags:
+        - Fate Picks
+      responses:
+        "200":
+          description: Fate pick statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stats:
+                    type: object
+                    properties:
+                      total_active_picks:
+                        type: integer
+                      total_participations_today:
+                        type: integer
+                      average_participants_per_pick:
+                        type: number
+                      most_popular_set:
+                        type: string
+                        nullable: true
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/fate-picks/history:
+    get:
+      summary: Get user's participation history
+      description: Get user's fate pick participation history
+      tags:
+        - Fate Picks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of participations per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: User participation history retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  participations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FatePickParticipation"
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                  stats:
+                    type: object
+                    properties:
+                      total_participations:
+                        type: integer
+                      total_cards_won:
+                        type: integer
+                      total_fate_coins_spent:
+                        type: integer
+                      favorite_set:
+                        type: string
+                        nullable: true
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/fate-picks/{id}:
+    get:
+      summary: Get fate pick details
+      description: Get specific fate pick details
+      tags:
+        - Fate Picks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Fate pick ID
+      responses:
+        "200":
+          description: Fate pick details retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fate_pick:
+                    $ref: "#/components/schemas/FatePick"
+                  user_participation:
+                    $ref: "#/components/schemas/FatePickParticipation"
+                    nullable: true
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/fate-picks/{id}/participate:
+    post:
+      summary: Participate in fate pick
+      description: Participate in a fate pick (spend fate coins and shuffle)
+      tags:
+        - Fate Picks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Fate pick ID
+      responses:
+        "200":
+          description: Successfully participated in fate pick
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  participation:
+                    $ref: "#/components/schemas/FatePickParticipation"
+                  updated_wonder_coins:
+                    type: integer
+                    description: User's updated fate coin balance
+                  message:
+                    type: string
+                    example: "Successfully joined wonder pick! Select a card to reveal your prize."
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/fate-picks/{id}/select:
+    post:
+      summary: Select card position
+      description: Select a card position to reveal the result
+      tags:
+        - Fate Picks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Fate pick ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                selectedPosition:
+                  type: integer
+                  minimum: 0
+                  maximum: 4
+                  description: Card position to select (0-4)
+              required:
+                - selectedPosition
+      responses:
+        "200":
+          description: Card position selected successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  participation:
+                    $ref: "#/components/schemas/FatePickParticipation"
+                  won_card:
+                    $ref: "#/components/schemas/Card"
+                  added_to_collection:
+                    type: boolean
+                  message:
+                    type: string
+                    example: "Congratulations! You won a Rare Dragon!"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "410":
+          $ref: "#/components/responses/GoneError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    FatePick:
+      type: object
+      properties:
+        id:
+          type: string
+        pack_opening_id:
+          type: string
+        original_owner_id:
+          type: string
+        original_owner_username:
+          type: string
+        set_id:
+          type: string
+        set_name:
+          type: string
+        cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/Card"
+        cost_wonder_coins:
+          type: integer
+        max_participants:
+          type: integer
+        current_participants:
+          type: integer
+        is_active:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    FatePickParticipation:
+      type: object
+      properties:
+        id:
+          type: string
+        fate_pick_id:
+          type: string
+        user_id:
+          type: string
+        username:
+          type: string
+        cost_paid:
+          type: integer
+        selected_position:
+          type: integer
+          nullable: true
+        won_card_id:
+          type: string
+          nullable: true
+        is_completed:
+          type: boolean
+        participated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Card:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        rarity:
+          type: string
+        cost:
+          type: integer
+        attack:
+          type: integer
+        health:
+          type: integer
+        special_ability:
+          type: string
+          nullable: true
+        image_url:
+          type: string
+        set_id:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            type:
+              type: string
+            message:
+              type: string
+            suggestion:
+              type: string
+
+  responses:
+    UnauthorizedError:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    BadRequestError:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    ForbiddenError:
+      description: Forbidden - Participation required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFoundError:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    GoneError:
+      description: Gone - Fate pick expired
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

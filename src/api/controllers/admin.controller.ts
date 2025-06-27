@@ -35,13 +35,9 @@ const AdminController = {
       const updatedUser = await UserModel.addPacks(userId, quantity);
 
       return res.status(200).json({
-        status: "success",
-        message: `Successfully gave ${quantity} pack(s) to ${user.username}`,
-        data: {
-          user_id: updatedUser?.user_id,
-          username: updatedUser?.username,
-          pack_count: updatedUser?.pack_count,
-        },
+        user_id: updatedUser?.user_id,
+        username: updatedUser?.username,
+        pack_count: updatedUser?.pack_count,
       });
     } catch (error) {
       console.error("Error giving packs to user:", error);
@@ -83,13 +79,9 @@ const AdminController = {
       const updatedUser = await UserModel.setPackCount(userId, quantity);
 
       return res.status(200).json({
-        status: "success",
-        message: `Successfully set ${user.username}'s pack quantity to ${quantity}`,
-        data: {
-          user_id: updatedUser?.user_id,
-          username: updatedUser?.username,
-          pack_count: updatedUser?.pack_count,
-        },
+        user_id: updatedUser?.user_id,
+        username: updatedUser?.username,
+        pack_count: updatedUser?.pack_count,
       });
     } catch (error) {
       console.error("Error setting user pack quantity:", error);
@@ -123,13 +115,9 @@ const AdminController = {
       const packCount = await UserModel.getPackCount(userId);
 
       return res.status(200).json({
-        status: "success",
-        message: `Retrieved pack count for ${user.username}`,
-        data: {
-          user_id: user.user_id,
-          username: user.username,
-          pack_count: packCount,
-        },
+        user_id: user.user_id,
+        username: user.username,
+        pack_count: packCount,
       });
     } catch (error) {
       console.error("Error getting user pack count:", error);
