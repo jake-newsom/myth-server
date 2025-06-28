@@ -121,7 +121,7 @@ const GameRewardsService = {
     };
   },
 
-  // Calculate XP rewards for cards used in the game
+  // Calculate XP rewards for individual cards used in the game
   calculateCardXpRewards(
     userId: string,
     winnerId: string | null,
@@ -221,8 +221,11 @@ const GameRewardsService = {
         await UserModel.updateFateCoins(userId, currencyRewards.fate_coins);
       }
 
-      // Award XP to pools
-      const xpResults = await XpService.awardGameXp(userId, cardXpRewards);
+      // Award XP directly to individual cards
+      const xpResults = await XpService.awardDirectCardXp(
+        userId,
+        cardXpRewards
+      );
 
       // Update leaderboard rankings for PvP games
       if (gameMode === "pvp" && gameId && player1Id !== player2Id) {
@@ -241,34 +244,36 @@ const GameRewardsService = {
         }
       }
 
-      // Trigger achievement events
+      // Trigger achievement events (temporarily disabled due to database type issue)
       try {
+        // TODO: Fix achievement database type issue before re-enabling
+        console.log("Achievement processing temporarily disabled");
         // Game completion event (for all players)
-        await AchievementService.triggerAchievementEvent({
-          userId,
-          eventType: "game_completion",
-          eventData: {
-            gameMode,
-            winnerId: gameResult.winner,
-            gameDurationSeconds: gameResult.game_duration_seconds,
-            cardsUsed: deckCards,
-          },
-        });
+        // await AchievementService.triggerAchievementEvent({
+        //   userId,
+        //   eventType: "game_completion",
+        //   eventData: {
+        //     gameMode,
+        //     winnerId: gameResult.winner,
+        //     gameDurationSeconds: gameResult.game_duration_seconds,
+        //     cardsUsed: deckCards,
+        //   },
+        // });
 
         // Game victory event (only for winner)
-        if (gameResult.winner === userId) {
-          await AchievementService.triggerAchievementEvent({
-            userId,
-            eventType: "game_victory",
-            eventData: {
-              gameMode,
-              isWinStreak: false, // TODO: Implement win streak tracking
-              winStreakCount: 0, // TODO: Implement win streak tracking
-              cardsLost: 0, // TODO: Calculate cards lost for perfect game achievement
-              gameDurationSeconds: gameResult.game_duration_seconds,
-            },
-          });
-        }
+        // if (gameResult.winner === userId) {
+        //   await AchievementService.triggerAchievementEvent({
+        //     userId,
+        //     eventType: "game_victory",
+        //     eventData: {
+        //       gameMode,
+        //       isWinStreak: false, // TODO: Implement win streak tracking
+        //       winStreakCount: 0, // TODO: Implement win streak tracking
+        //       cardsLost: 0, // TODO: Calculate cards lost for perfect game achievement
+        //       gameDurationSeconds: gameResult.game_duration_seconds,
+        //     },
+        //   });
+        // }
       } catch (error) {
         console.error("Error processing achievement events:", error);
         // Don't fail the entire reward process if achievement processing fails

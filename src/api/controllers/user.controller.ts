@@ -34,6 +34,7 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
       : null,
   },
   level: card.level!,
+  xp: card.xp!,
   power_enhancements: card.power_enhancements || {
     top: 0,
     right: 0,

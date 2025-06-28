@@ -43,20 +43,17 @@ const XpService = {
     return Math.min(level, 10);
   },
 
-  // Calculate XP value of a card for sacrifice (based on level and current XP)
+  // Calculate XP value of a card for sacrifice (fixed value)
   calculateSacrificeValue(cardXp: number, cardLevel: number): number {
-    // Base value + bonus for level
-    const baseValue = cardXp;
-    const levelBonus = (cardLevel - 1) * 10;
-    return Math.floor((baseValue + levelBonus) * 0.5); // 50% efficiency
+    // Sacrificing any card always gives 10 XP to the pool
+    return 10;
   },
 
   // Transfer XP between cards of the same name
   async transferXp(
     userId: string,
-    sourceCardIds: string[],
-    targetCardId: string,
-    xpAmounts: number[]
+    sourceCardId: string,
+    targetCardId: string
   ): Promise<XpTransferResult> {
     const client = await db.getClient();
 
@@ -64,7 +61,7 @@ const XpService = {
       await client.query("BEGIN");
 
       // Get all cards and validate ownership
-      const allCardIds = [...sourceCardIds, targetCardId];
+      const allCardIds = [sourceCardId, targetCardId];
 
       // Query user cards directly
       const query = `
@@ -86,49 +83,36 @@ const XpService = {
       }
       const cardName = cardNames[0];
 
-      // Validate source cards have enough XP
-      const sourceCards = rows.filter((card) =>
-        sourceCardIds.includes(card.user_card_instance_id)
+      // Get source and target cards
+      const sourceCard = rows.find(
+        (card) => card.user_card_instance_id === sourceCardId
       );
-      for (let i = 0; i < sourceCards.length; i++) {
-        if (sourceCards[i].xp < xpAmounts[i]) {
-          throw new Error(
-            `Card ${sourceCards[i].user_card_instance_id} doesn't have enough XP`
-          );
-        }
-      }
-
       const targetCard = rows.find(
         (card) => card.user_card_instance_id === targetCardId
       );
-      if (!targetCard) {
-        throw new Error("Target card not found");
+
+      if (!sourceCard || !targetCard) {
+        throw new Error("Source or target card not found");
       }
 
-      // Calculate total XP to transfer
-      const totalXpToTransfer = xpAmounts.reduce(
-        (sum, amount) => sum + amount,
-        0
-      );
+      // Check source card has XP to transfer
+      if (sourceCard.xp <= 0) {
+        throw new Error("Source card has no XP to transfer");
+      }
+
+      // Transfer 100% of source card's XP
+      const totalXpToTransfer = sourceCard.xp;
       const efficiency = 0.8; // 80% efficiency for direct transfers
       const actualXpTransferred = Math.floor(totalXpToTransfer * efficiency);
 
-      // Update source cards
-      const sourceUpdates = [];
-      for (let i = 0; i < sourceCards.length; i++) {
-        const newXp = sourceCards[i].xp - xpAmounts[i];
-        const newLevel = this.calculateLevel(newXp);
+      // Update source card (set XP to 0 and recalculate level)
+      const newSourceXp = 0;
+      const newSourceLevel = this.calculateLevel(newSourceXp);
 
-        await client.query(
-          `UPDATE "user_owned_cards" SET xp = $1, level = $2 WHERE user_card_instance_id = $3`,
-          [newXp, newLevel, sourceCards[i].user_card_instance_id]
-        );
-
-        sourceUpdates.push({
-          card_id: sourceCards[i].user_card_instance_id,
-          xp_lost: xpAmounts[i],
-        });
-      }
+      await client.query(
+        `UPDATE "user_owned_cards" SET xp = $1, level = $2 WHERE user_card_instance_id = $3`,
+        [newSourceXp, newSourceLevel, sourceCardId]
+      );
 
       // Update target card
       const newTargetXp = targetCard.xp + actualXpTransferred;
@@ -143,7 +127,7 @@ const XpService = {
       await XpPoolModel.logXpTransfer({
         user_id: userId,
         transfer_type: "card_to_card",
-        source_card_ids: sourceCardIds,
+        source_card_ids: [sourceCardId],
         target_card_id: targetCardId,
         card_name: cardName,
         xp_transferred: actualXpTransferred,
@@ -156,7 +140,12 @@ const XpService = {
         success: true,
         message: `Transferred ${actualXpTransferred} XP to ${cardName}`,
         transferred_xp: actualXpTransferred,
-        source_cards: sourceUpdates,
+        source_cards: [
+          {
+            card_id: sourceCardId,
+            xp_lost: totalXpToTransfer,
+          },
+        ],
         target_card: {
           card_id: targetCardId,
           xp_gained: actualXpTransferred,
@@ -240,7 +229,7 @@ const XpService = {
         source_card_ids: cardIds,
         card_name: cardName,
         xp_transferred: totalXpValue,
-        efficiency_rate: 0.5,
+        efficiency_rate: 1.0, // Fixed 10 XP per card
       });
 
       await client.query("COMMIT");
@@ -408,6 +397,80 @@ const XpService = {
     } catch (error) {
       await client.query("ROLLBACK");
       console.error("Error awarding game XP:", error);
+      return [];
+    } finally {
+      client.release();
+    }
+  },
+
+  // Award XP directly to individual cards from game completion
+  async awardDirectCardXp(
+    userId: string,
+    cardRewards: { card_id: string; card_name: string; xp_gained: number }[]
+  ): Promise<XpReward[]> {
+    const client = await db.getClient();
+    const results: XpReward[] = [];
+
+    try {
+      await client.query("BEGIN");
+
+      for (const reward of cardRewards) {
+        // Get current card stats and validate ownership
+        const query = `
+          SELECT uoc.user_card_instance_id, uoc.level, uoc.xp, c.name
+          FROM "user_owned_cards" uoc
+          JOIN "cards" c ON uoc.card_id = c.card_id
+          WHERE uoc.user_card_instance_id = $1 AND uoc.user_id = $2
+        `;
+        const { rows } = await client.query(query, [reward.card_id, userId]);
+
+        if (rows.length === 0) {
+          console.warn(`Card ${reward.card_id} not found for user ${userId}`);
+          continue;
+        }
+
+        const card = rows[0];
+
+        // Update card XP and level
+        const newXp = card.xp + reward.xp_gained;
+        const newLevel = this.calculateLevel(newXp);
+
+        await client.query(
+          `UPDATE "user_owned_cards" SET xp = $1, level = $2 WHERE user_card_instance_id = $3`,
+          [newXp, newLevel, reward.card_id]
+        );
+
+        // Log the direct card XP award (using pool_to_card type temporarily)
+        await XpPoolModel.logXpTransfer({
+          user_id: userId,
+          transfer_type: "pool_to_card",
+          target_card_id: reward.card_id,
+          card_name: reward.card_name,
+          xp_transferred: reward.xp_gained,
+          efficiency_rate: 1.0,
+        });
+
+        results.push({
+          card_id: reward.card_id,
+          card_name: reward.card_name,
+          xp_gained: reward.xp_gained,
+          new_xp: newXp,
+          new_level: newLevel,
+        });
+      }
+
+      // Update user's total XP
+      const totalXpGained = cardRewards.reduce(
+        (sum, r) => sum + r.xp_gained,
+        0
+      );
+      await UserModel.updateTotalXp(userId, totalXpGained);
+
+      await client.query("COMMIT");
+      return results;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      console.error("Error awarding direct card XP:", error);
       return [];
     } finally {
       client.release();

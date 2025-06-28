@@ -145,7 +145,7 @@ export const packOpeningRateLimit = createRateLimit({
 // Game action rate limiting (prevent rapid game actions)
 export const gameActionRateLimit = createRateLimit({
   windowMs: 1 * 1000, // 1 second
-  maxRequests: 5, // 5 actions per second
+  maxRequests: 10, // 5 actions per second
   message: "Game actions too rapid. Please wait between actions.",
 });
 

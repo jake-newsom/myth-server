@@ -17,6 +17,7 @@ import {
   getAdjacentPositions,
   getTileAtPosition,
   setTileStatus,
+  destroyCardAtPosition,
 } from "./ability.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "./game-events";
 import { TriggerContext } from "./game.utils";
@@ -334,6 +335,28 @@ export const abilities: Record<
         //   reason: "Heaven's Wrath",
         //   sourcePlayerId: triggerCard.owner,
         // });
+      }
+    }
+
+    return gameEvents;
+  },
+  "Ragnarok Blast": (context) => {
+    const {
+      triggerCard,
+      position,
+      state: { board },
+    } = context;
+    const gameEvents: BaseGameEvent[] = [];
+    const adjacentPositions = getAdjacentPositions(position, board.length);
+
+    for (const pos of adjacentPositions) {
+      const tile = getTileAtPosition(pos, board);
+      if (tile?.card) {
+        const event = destroyCardAtPosition(pos, board, "ragnarok");
+
+        if (event) {
+          gameEvents.push(event);
+        }
       }
     }
 

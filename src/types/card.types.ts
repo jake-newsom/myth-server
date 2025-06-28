@@ -75,6 +75,7 @@ export type UserCard = {
   base_card_data: BaseCard;
 
   level: number;
+  xp: number;
   power_enhancements: PowerValues;
 };
 /**

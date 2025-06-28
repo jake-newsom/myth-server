@@ -155,6 +155,10 @@ components:
           type: integer
           description: Current level of the card instance
           minimum: 1
+        xp:
+          type: integer
+          description: Current experience points of the card instance
+          minimum: 0
         power_enhancements:
           $ref: "#/components/schemas/PowerValues"
           description: Additional power values from leveling up
@@ -163,6 +167,7 @@ components:
         - base_card_id
         - base_card_data
         - level
+        - xp
         - power_enhancements
 
     ErrorResponse:

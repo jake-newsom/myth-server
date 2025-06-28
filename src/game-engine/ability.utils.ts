@@ -384,6 +384,31 @@ export const rerollHighestStat = (card: InGameCard): void => {
   }
 };
 
+export const destroyCardAtPosition = (
+  position: BoardPosition,
+  board: GameBoard,
+  animation?: string
+): BaseGameEvent | null => {
+  const tile = getTileAtPosition(position, board);
+  if (!tile?.card) return null;
+
+  const cardId = tile.card.user_card_instance_id;
+  const owner = tile.card.owner;
+
+  tile.card = null;
+
+  return {
+    type: EVENT_TYPES.CARD_REMOVED_FROM_BOARD,
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    cardId,
+    reason: "destroyed",
+    sourcePlayerId: owner,
+    animation: animation || "destroy",
+    position,
+  } as CardEvent;
+};
+
 export const setTileStatus = (
   tile: BoardCell,
   position: BoardPosition,

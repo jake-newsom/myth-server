@@ -40,6 +40,7 @@ export interface BaseGameEvent {
 
 export interface CardEvent extends BaseGameEvent {
   cardId: string;
+  position?: BoardPosition;
 }
 
 export interface CardPlacedEvent extends CardEvent {

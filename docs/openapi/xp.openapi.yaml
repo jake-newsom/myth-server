@@ -59,7 +59,7 @@ paths:
   /api/xp/transfer:
     post:
       summary: Transfer XP between cards
-      description: Transfer XP from one card to another
+      description: Transfer 100% of XP from one card to another with 80% efficiency
       tags:
         - XP
       security:
@@ -71,20 +71,15 @@ paths:
             schema:
               type: object
               required:
-                - sourceCardInstanceId
-                - targetCardInstanceId
-                - xpAmount
+                - source_card_id
+                - target_card_id
               properties:
-                sourceCardInstanceId:
+                source_card_id:
                   type: string
-                  description: Source card instance ID
-                targetCardInstanceId:
+                  description: Source card instance ID (will transfer all XP)
+                target_card_id:
                   type: string
                   description: Target card instance ID
-                xpAmount:
-                  type: integer
-                  minimum: 1
-                  description: Amount of XP to transfer
       responses:
         "200":
           description: XP transferred successfully
@@ -136,9 +131,9 @@ paths:
             schema:
               type: object
               required:
-                - cardInstanceIds
+                - card_ids
               properties:
-                cardInstanceIds:
+                card_ids:
                   type: array
                   items:
                     type: string
@@ -186,13 +181,13 @@ paths:
             schema:
               type: object
               required:
-                - cardInstanceId
-                - xpAmount
+                - target_card_id
+                - xp_amount
               properties:
-                cardInstanceId:
+                target_card_id:
                   type: string
                   description: Card instance ID to apply XP to
-                xpAmount:
+                xp_amount:
                   type: integer
                   minimum: 1
                   description: Amount of XP to apply

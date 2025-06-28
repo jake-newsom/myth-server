@@ -41,42 +41,31 @@ export const getXpPool = async (req: Request, res: Response) => {
 export const transferXp = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.user_id;
-    const { source_card_ids, target_card_id, xp_amounts } = req.body;
+    const { source_card_id, target_card_id } = req.body;
 
     if (!userId) {
       return res.status(401).json({ error: "User not authenticated" });
     }
 
     // Basic validation
-    if (!source_card_ids || !target_card_id || !xp_amounts) {
+    if (!source_card_id || !target_card_id) {
       return res.status(400).json({
-        error:
-          "Missing required fields: source_card_ids, target_card_id, xp_amounts",
+        error: "Missing required fields: source_card_id, target_card_id",
       });
     }
 
-    if (source_card_ids.length !== xp_amounts.length) {
+    // Prevent transferring to the same card
+    if (source_card_id === target_card_id) {
       return res.status(400).json({
-        error:
-          "source_card_ids and xp_amounts arrays must have the same length",
+        error: "Cannot transfer XP to the same card",
       });
-    }
-
-    // Validate XP amounts are positive integers
-    for (const amount of xp_amounts) {
-      if (!Number.isInteger(amount) || amount <= 0) {
-        return res.status(400).json({
-          error: "All XP amounts must be positive integers",
-        });
-      }
     }
 
     // Call XP service
     const result = await XpService.transferXp(
       userId,
-      source_card_ids,
-      target_card_id,
-      xp_amounts
+      source_card_id,
+      target_card_id
     );
 
     if (result.success) {

@@ -126,6 +126,7 @@ export class GameLogic {
           base_card_id: row.base_card_id,
           base_card_data: baseCardData,
           level: row.level,
+          xp: row.xp,
           power_enhancements: powerEnhancements,
           // InGameCard specific properties
           owner: userIdToVerifyOwnership || "",
