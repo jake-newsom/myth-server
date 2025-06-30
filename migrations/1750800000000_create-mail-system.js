@@ -83,7 +83,7 @@ exports.up = (pgm) => {
     reward_card_ids: {
       type: "text[]",
       notNull: true,
-      default: "'{}'",
+      default: pgm.func("ARRAY[]::text[]"),
     },
     expires_at: {
       type: "timestamp with time zone",

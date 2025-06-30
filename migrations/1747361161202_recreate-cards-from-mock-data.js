@@ -24,32 +24,8 @@ exports.up = (pgm) => {
     // Second: Delete all existing entries in special_abilities table
     pgm.sql("DELETE FROM special_abilities");
 
-    // Third: Check for and add missing enum values
-    // Safer approach for adding enum values - first check if they exist
-    pgm.sql(`
-      DO $$
-      BEGIN
-        -- Check if 'uncommon' exists in card_rarity
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_type 
-          JOIN pg_enum ON pg_enum.enumtypid = pg_type.oid 
-          WHERE pg_type.typname = 'card_rarity' AND pg_enum.enumlabel = 'uncommon'
-        ) THEN
-          -- If it doesn't exist, add it
-          ALTER TYPE card_rarity ADD VALUE 'uncommon';
-        END IF;
-        
-        -- Check if 'OnAnyFlip' exists in trigger_moment
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_type 
-          JOIN pg_enum ON pg_enum.enumtypid = pg_type.oid 
-          WHERE pg_type.typname = 'trigger_moment' AND pg_enum.enumlabel = 'OnAnyFlip'
-        ) THEN
-          -- If it doesn't exist, add it
-          ALTER TYPE trigger_moment ADD VALUE 'OnAnyFlip';
-        END IF;
-      END $$;
-    `);
+    // Third: Enum values should be added in a separate migration
+    // This migration assumes the enum values have already been added
 
     // Insert special abilities one by one to avoid SQL quote issues
     // Each ability is inserted as a separate SQL command
