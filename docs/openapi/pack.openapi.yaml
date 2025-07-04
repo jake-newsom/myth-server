@@ -3,8 +3,9 @@ paths:
     post:
       tags:
         - Packs
-      summary: Open a card pack
-      description: Opens a pack from a specific set, consuming one pack from the user's inventory and returning 5 random cards
+      summary: Open one or more card packs
+      description: |
+        Opens one or more packs from a specific set. If the user owns enough packs, those are used. If not, the remaining packs are purchased for 100 gems each (with a 10% discount if opening 10 or more packs at once). Returns an array of pack results.
       security:
         - bearerAuth: []
       requestBody:
@@ -19,28 +20,39 @@ paths:
                 setId:
                   type: string
                   format: uuid
-                  description: ID of the set to open a pack from
+                  description: ID of the set to open packs from
+                count:
+                  type: integer
+                  minimum: 1
+                  description: Number of packs to open (default 1)
               example:
                 setId: "123e4567-e89b-12d3-a456-426614174000"
+                count: 10
       responses:
         "200":
-          description: Pack opened successfully
+          description: Packs opened successfully
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  cards:
+                  packs:
                     type: array
                     items:
-                      $ref: "#/components/schemas/CardFromPack"
-                    description: The 5 cards obtained from the pack
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/CardFromPack"
+                    description: Each item is an array of 5 cards obtained from a pack
                   remainingPacks:
                     type: integer
                     description: Number of packs remaining for this set
                     example: 2
+                  remainingGems:
+                    type: integer
+                    description: Number of gems remaining after purchase
+                    example: 900
         "400":
-          description: Bad request - invalid set ID, no packs available, or set not released
+          description: Bad request - not enough resources, invalid set ID, or set not released
           content:
             application/json:
               schema:

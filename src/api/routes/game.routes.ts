@@ -4,6 +4,7 @@ import authMiddleware from "../middlewares/auth.middleware";
 import {
   gameActionRateLimit,
   moderateRateLimit,
+  aiActionRateLimit,
 } from "../middlewares/rateLimit.middleware";
 
 const router = Router();
@@ -32,11 +33,11 @@ router.post(
   gameController.submitAction
 );
 
-// Submit an AI action for a solo game (strict rate limiting)
+// Submit an AI action for a solo game (more lenient rate limiting for AI moves)
 router.post(
   "/:gameId/ai-action",
   authMiddleware.protect,
-  gameActionRateLimit,
+  aiActionRateLimit,
   gameController.submitAIAction
 );
 

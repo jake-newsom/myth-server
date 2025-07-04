@@ -3,6 +3,7 @@ import { GameLogic, GameStatus } from "../../game-engine/game.logic";
 import { AILogic } from "../../game-engine/ai.logic";
 import { AbilityRegistry } from "../../game-engine/ability.registry";
 import { GameState, BoardPosition, GameAction } from "../../types/game.types";
+import * as validators from "../../game-engine/game.validators";
 import * as _ from "lodash";
 
 // Import Services
@@ -224,18 +225,18 @@ class GameController {
 
       const currentGameState: GameState = gameRecord.game_state; // Already an object
 
-      // Validate that it's the player's turn
-      if (currentGameState.current_player_id !== userId) {
-        res.status(400).json({ error: "Not your turn" });
-        return;
-      }
-
       // Process the action based on action_type
       let updatedGameState: GameState = _.cloneDeep(currentGameState); // Start with a copy for modifications by GameLogic
       let events: BaseGameEvent[] = [];
 
       switch (action.action_type) {
         case "placeCard":
+          // Validate that it's the player's turn for placeCard action
+          if (currentGameState.current_player_id !== userId) {
+            res.status(400).json({ error: "Not your turn" });
+            return;
+          }
+
           if (!action.user_card_instance_id || !action.position) {
             res.status(400).json({
               error: "Card ID and position are required for placeCard action",
@@ -262,6 +263,12 @@ class GameController {
           break;
 
         case "endTurn":
+          // Validate that it's the player's turn for endTurn action
+          if (currentGameState.current_player_id !== userId) {
+            res.status(400).json({ error: "Not your turn" });
+            return;
+          }
+
           const endTurnResult = await GameLogic.endTurn(
             currentGameState,
             userId
@@ -271,6 +278,7 @@ class GameController {
           break;
 
         case "surrender":
+          // Surrender is allowed regardless of whose turn it is
           updatedGameState = await GameLogic.surrender(
             currentGameState,
             userId
@@ -434,6 +442,40 @@ class GameController {
         );
         updatedGameState = endTurnResult.state;
         events.push(...endTurnResult.events);
+
+        // Draw a card for the AI if needed after ending turn
+        console.log(`[DEBUG] AI action: Checking if AI should draw a card...`);
+        const aiPlayer = validators.getPlayer(updatedGameState, AI_PLAYER_ID);
+        console.log(`[DEBUG] AI player hand size: ${aiPlayer.hand.length}`);
+        console.log(
+          `[DEBUG] Max cards in hand: ${updatedGameState.max_cards_in_hand}`
+        );
+        console.log(
+          `[DEBUG] Should draw card: ${validators.shouldDrawCard(
+            aiPlayer,
+            updatedGameState.max_cards_in_hand
+          )}`
+        );
+
+        if (
+          validators.shouldDrawCard(
+            aiPlayer,
+            updatedGameState.max_cards_in_hand
+          )
+        ) {
+          console.log(`[DEBUG] AI action: Drawing card for AI...`);
+          const drawCardResult = await GameLogic.drawCard(
+            updatedGameState,
+            AI_PLAYER_ID
+          );
+          updatedGameState = drawCardResult.state;
+          events.push(...drawCardResult.events);
+          console.log(
+            `[DEBUG] AI action: Card drawn. New hand size: ${updatedGameState.player2.hand.length}`
+          );
+        } else {
+          console.log(`[DEBUG] AI action: AI should not draw a card`);
+        }
       }
 
       // Process game completion if the status indicates game over

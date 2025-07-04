@@ -318,7 +318,7 @@ Authorization: Bearer your_jwt_token
 
 ### 5.4 Surrender
 
-Test the surrender functionality.
+Test the surrender functionality. Surrender should work regardless of whose turn it is.
 
 **Request:**
 
@@ -330,7 +330,37 @@ Authorization: Bearer your_jwt_token
 }
 ```
 
-**Expected Response:** Game state with status set to "player2_win" (AI wins).
+**Expected Response:** Game state with status set to "completed" and winner set to the opponent.
+
+**Verification Points:**
+
+- Game status should be "completed"
+- Winner should be the opponent of the surrendering player
+- Surrender should work even when it's not the player's turn
+
+### 5.5 Surrender When Not Your Turn
+
+Test that surrender works even when it's not the player's turn.
+
+**Setup:** Create a game and wait for it to be the AI's turn (or opponent's turn in PvP).
+
+**Request:**
+
+```
+POST /api/games/{game_id}/actions
+Authorization: Bearer your_jwt_token
+{
+  "actionType": "surrender"
+}
+```
+
+**Expected Response:** Game state with status set to "completed" and winner set to the opponent.
+
+**Verification Points:**
+
+- Should not return "Not your turn" error
+- Game status should be "completed"
+- Winner should be the opponent of the surrendering player
 
 ## 6. Performance Testing
 
@@ -344,23 +374,24 @@ Make moves rapidly to test system stability.
 
 ## Test Results Tracking
 
-| Test ID | Test Name              | Status | Notes |
-| ------- | ---------------------- | ------ | ----- |
-| 1.1     | Games Table Structure  |        |       |
-| 1.2     | UserCardInstance Table |        |       |
-| 2.1     | Obtain JWT Token       |        |       |
-| 2.2     | Get User's Deck IDs    |        |       |
-| 3.1     | Create Solo Game       |        |       |
-| 3.2     | Get Game State         |        |       |
-| 4.1     | Place Card             |        |       |
-| 4.2     | Combat Mechanics       |        |       |
-| 4.3     | Game Completion        |        |       |
-| 5.1     | Invalid Placement      |        |       |
-| 5.2     | Not Your Turn          |        |       |
-| 5.3     | Card Not In Hand       |        |       |
-| 5.4     | Surrender              |        |       |
-| 6.1     | Multiple Games         |        |       |
-| 6.2     | Fast Moves             |        |       |
+| Test ID | Test Name                    | Status | Notes |
+| ------- | ---------------------------- | ------ | ----- |
+| 1.1     | Games Table Structure        |        |       |
+| 1.2     | UserCardInstance Table       |        |       |
+| 2.1     | Obtain JWT Token             |        |       |
+| 2.2     | Get User's Deck IDs          |        |       |
+| 3.1     | Create Solo Game             |        |       |
+| 3.2     | Get Game State               |        |       |
+| 4.1     | Place Card                   |        |       |
+| 4.2     | Combat Mechanics             |        |       |
+| 4.3     | Game Completion              |        |       |
+| 5.1     | Invalid Placement            |        |       |
+| 5.2     | Not Your Turn                |        |       |
+| 5.3     | Card Not In Hand             |        |       |
+| 5.4     | Surrender                    |        |       |
+| 5.5     | Surrender When Not Your Turn |        |       |
+| 6.1     | Multiple Games               |        |       |
+| 6.2     | Fast Moves                   |        |       |
 
 ## Automated Testing
 

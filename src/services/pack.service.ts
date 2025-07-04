@@ -31,34 +31,40 @@ const PackService = {
       throw new Error("Set is not available for pack opening");
     }
 
-    // 2. Check if user has at least one pack
+    // 2. Check if the set has cards available
+    const setCardsCount = await this.getSetCardCount(setId);
+    if (setCardsCount === 0) {
+      throw new Error("No cards available in this set");
+    }
+
+    // 3. Check if user has at least one pack
     const userPackCount = await UserModel.getPackCount(userId);
     if (userPackCount < 1) {
       throw new Error("User does not have any packs available");
     }
 
-    // 3. Get all cards from this set
+    // 4. Get all cards from this set
     const setCards = await this.getCardsFromSet(setId);
     if (setCards.length === 0) {
       throw new Error("No cards available in this set");
     }
 
-    // 4. Randomly select 5 cards (with replacement allowed)
+    // 5. Randomly select 5 cards (with replacement allowed)
     const selectedCards = this.selectRandomCards(setCards, CARDS_PER_PACK);
 
-    // 5. Remove one pack from user's total pack count
+    // 6. Remove one pack from user's total pack count
     const updatedUser = await UserModel.removePacks(userId, 1);
     if (!updatedUser) {
       throw new Error("Failed to remove pack from user inventory");
     }
 
-    // 6. Add the selected cards to user's collection
+    // 7. Add the selected cards to user's collection
     await this.addCardsToUserCollection(userId, selectedCards);
 
-    // 7. Log the pack opening to history
+    // 8. Log the pack opening to history
     await this.logPackOpening(userId, setId, selectedCards);
 
-    // 8. Trigger achievement events for pack opening
+    // 9. Trigger achievement events for pack opening
     try {
       const AchievementService = await import("./achievement.service");
 
@@ -82,8 +88,8 @@ const PackService = {
             cardId: card.card_id,
             cardName: card.name,
             rarity: card.rarity,
-            // TODO: Calculate total unique cards for card_master achievement
-            totalUniqueCards: 0,
+            // Ensure totalUniqueCards is always a number (0 is falsy but valid)
+            totalUniqueCards: 0, // Will be calculated in future implementation
           },
         });
       }
@@ -92,7 +98,7 @@ const PackService = {
       // Don't fail the pack opening process if achievement processing fails
     }
 
-    // 9. Create fate pick opportunity from this pack opening
+    // 10. Create fate pick opportunity from this pack opening
     try {
       const FatePickService = await import("./fatePick.service");
 
@@ -274,6 +280,192 @@ const PackService = {
     }
 
     return "common"; // fallback
+  },
+
+  async openMultiplePacks(userId: string, setId: string, count: number) {
+    // 1. Verify the set exists and is released
+    const set = await SetModel.findById(setId);
+    if (!set || !set.is_released) {
+      return {
+        success: false,
+        message: "Set is not available for pack opening",
+      };
+    }
+
+    // 2. Check if the set has cards available
+    const setCardsCount = await this.getSetCardCount(setId);
+    if (setCardsCount === 0) {
+      return {
+        success: false,
+        message: "No cards available in this set",
+      };
+    }
+
+    // 3. Check how many packs the user owns
+    const userPackCount = await UserModel.getPackCount(userId);
+    let packsToUse = Math.min(userPackCount, count);
+    let packsToBuy = Math.max(0, count - userPackCount);
+    let requiredGems = 0;
+    let discount = 1;
+    if (packsToBuy > 0) {
+      requiredGems = packsToBuy * 100;
+      if (count >= 10) {
+        discount = 0.9;
+        requiredGems = Math.floor(requiredGems * discount);
+      }
+      // Check if user has enough gems
+      const user = await UserModel.findById(userId);
+      if (!user || user.gems < requiredGems) {
+        return {
+          success: false,
+          message: "Not enough resources to purchase packs",
+        };
+      }
+    }
+    // If not enough packs and not enough gems, fail
+    if (packsToUse + packsToBuy < count) {
+      return {
+        success: false,
+        message: "Not enough resources to purchase packs",
+      };
+    }
+
+    // Remove packs and gems as needed
+    if (packsToUse > 0) {
+      const removed = await UserModel.removePacks(userId, packsToUse);
+      if (!removed) {
+        return {
+          success: false,
+          message: "Failed to remove packs from user inventory",
+        };
+      }
+    }
+    if (packsToBuy > 0) {
+      const spent = await UserModel.spendGems(userId, requiredGems);
+      if (!spent) {
+        return { success: false, message: "Failed to spend gems" };
+      }
+    }
+
+    // Open the packs - but don't use openPack directly as it checks pack count each time
+    const packs: any[] = [];
+
+    try {
+      // Get all cards from this set
+      const setCards = await this.getCardsFromSet(setId);
+      if (setCards.length === 0) {
+        throw new Error("No cards available in this set");
+      }
+
+      // Process each pack
+      for (let i = 0; i < count; i++) {
+        // Select cards for this pack
+        const selectedCards = this.selectRandomCards(setCards, CARDS_PER_PACK);
+
+        // Add the selected cards to user's collection
+        await this.addCardsToUserCollection(userId, selectedCards);
+
+        // Log the pack opening to history
+        await this.logPackOpening(userId, setId, selectedCards);
+
+        // Trigger achievement events for pack opening
+        try {
+          const AchievementService = await import("./achievement.service");
+
+          // Pack opened event
+          await AchievementService.default.triggerAchievementEvent({
+            userId,
+            eventType: "pack_opened",
+            eventData: {
+              setId,
+              cardsReceived: selectedCards,
+              packsRemaining: userPackCount - packsToUse + packsToBuy - (i + 1),
+            },
+          });
+
+          // Card collection events for each unique card
+          for (const card of selectedCards) {
+            await AchievementService.default.triggerAchievementEvent({
+              userId,
+              eventType: "card_collected",
+              eventData: {
+                cardId: card.card_id,
+                cardName: card.name,
+                rarity: card.rarity,
+                // Ensure totalUniqueCards is always a number (0 is falsy but valid)
+                totalUniqueCards: 0, // Will be calculated in future implementation
+              },
+            });
+          }
+        } catch (error) {
+          console.error(
+            "Error processing pack opening achievement events:",
+            error
+          );
+          // Don't fail the pack opening process if achievement processing fails
+        }
+
+        // Create fate pick opportunity from this pack opening
+        try {
+          const FatePickService = await import("./fatePick.service");
+
+          // Get the pack opening ID from the history
+          const packOpeningQuery = `
+            SELECT pack_opening_id FROM pack_opening_history 
+            WHERE user_id = $1 
+            ORDER BY opened_at DESC 
+            LIMIT 1;
+          `;
+          const db = require("../config/db.config").default;
+          const { rows: packRows } = await db.query(packOpeningQuery, [userId]);
+
+          if (packRows.length > 0) {
+            const packOpeningId = packRows[0].pack_opening_id;
+
+            // Create fate pick with 1 wonder coin cost
+            await FatePickService.default.createFatePickFromPackOpening(
+              packOpeningId,
+              userId,
+              selectedCards,
+              setId,
+              1 // Cost in wonder coins
+            );
+          }
+        } catch (error) {
+          console.error("Error creating fate pick from pack opening:", error);
+          // Don't fail the pack opening process if fate pick creation fails
+        }
+
+        // Add this pack's cards to the result
+        packs.push(selectedCards);
+      }
+
+      // Get updated user info
+      const updatedUser = await UserModel.findById(userId);
+      return {
+        success: true,
+        packs,
+        remainingPacks: updatedUser?.pack_count ?? 0,
+        remainingGems: updatedUser?.gems ?? 0,
+      };
+    } catch (error) {
+      console.error("Error in openMultiplePacks:", error);
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unknown error opening packs",
+      };
+    }
+  },
+
+  // Add this helper method to check if a set has cards
+  async getSetCardCount(setId: string): Promise<number> {
+    const db = require("../config/db.config").default;
+    const query = `SELECT COUNT(*) as card_count FROM cards WHERE set_id = $1;`;
+    const { rows } = await db.query(query, [setId]);
+    return parseInt(rows[0]?.card_count || "0", 10);
   },
 };
 

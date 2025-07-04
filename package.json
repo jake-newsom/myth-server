@@ -18,6 +18,9 @@
     "seed": "node scripts/seedInitialData.js",
     "db:fresh": "npm run migrate:reset && npm run migrate:up && npm run seed",
     "test-phase2": "node scripts/test_phase2.js",
+    "test-surrender": "node tests/surrender.test.js",
+    "test-rate-limit": "node tests/rate-limit.test.js",
+    "test-ai-drawing": "node tests/ai-card-drawing.test.js",
     "docs": "npx @redocly/cli build-docs docs/openapi/openapi.yaml"
   },
   "keywords": [],

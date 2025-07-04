@@ -325,6 +325,7 @@ export const abilities: Record<
           cardId: strongestEnemy.user_card_instance_id,
           reason: "Heaven's Wrath",
           sourcePlayerId: triggerCard.owner, // Optional: Indicate who triggered this
+          position: position,
         } as CardEvent);
         // Potentially, an event to remove from hand if it goes there after defeat
         // gameEvents.push({

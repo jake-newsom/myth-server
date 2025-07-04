@@ -115,7 +115,7 @@ export const strictRateLimit = createRateLimit({
 // Moderate rate limiting for API calls
 export const moderateRateLimit = createRateLimit({
   windowMs: 60 * 1000, // 1 minute
-  maxRequests: 30, // 30 requests per minute
+  maxRequests: 120, // 120 requests per minute (2 per second average)
   message: "Too many API requests. Please slow down.",
 });
 
@@ -144,9 +144,16 @@ export const packOpeningRateLimit = createRateLimit({
 
 // Game action rate limiting (prevent rapid game actions)
 export const gameActionRateLimit = createRateLimit({
-  windowMs: 1 * 1000, // 1 second
-  maxRequests: 10, // 5 actions per second
+  windowMs: 10 * 1000, // 10 seconds
+  maxRequests: 100, // 100 actions per 10 seconds (10 per second average)
   message: "Game actions too rapid. Please wait between actions.",
+});
+
+// AI action rate limiting (more lenient for automated AI moves)
+export const aiActionRateLimit = createRateLimit({
+  windowMs: 1 * 1000, // 1 second
+  maxRequests: 30, // 30 AI actions per second
+  message: "AI actions too rapid. Please wait between AI moves.",
 });
 
 export default {
@@ -157,4 +164,5 @@ export default {
   authRateLimit,
   packOpeningRateLimit,
   gameActionRateLimit,
+  aiActionRateLimit,
 };

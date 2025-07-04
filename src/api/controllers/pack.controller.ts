@@ -7,7 +7,7 @@ const PackController = {
   async openPack(req: AuthenticatedRequest, res: Response) {
     try {
       const userId = req.user?.user_id;
-      const { setId } = req.body;
+      const { setId, count } = req.body;
 
       if (!userId) {
         return res.status(401).json({
@@ -23,29 +23,33 @@ const PackController = {
         });
       }
 
-      const result = await PackService.openPack(userId, setId);
+      const packsToOpen = Math.max(1, parseInt(count, 10) || 1);
+      const result = await PackService.openMultiplePacks(
+        userId,
+        setId,
+        packsToOpen
+      );
 
-      if (!result) {
+      if (!result.success) {
         return res.status(400).json({
           status: "error",
-          message: "Failed to open pack",
+          message: result.message || "Not enough resources to purchase packs",
         });
       }
 
       return res.status(200).json({
-        cards: result.cards,
+        packs: result.packs,
         remainingPacks: result.remainingPacks,
+        remainingGems: result.remainingGems,
       });
     } catch (error) {
-      console.error("Error opening pack:", error);
-
+      console.error("Error opening packs:", error);
       if (error instanceof Error) {
         return res.status(400).json({
           status: "error",
           message: error.message,
         });
       }
-
       return res.status(500).json({
         status: "error",
         message: "Internal server error",

@@ -144,7 +144,12 @@ export function calculateScores(
 }
 
 export function shouldDrawCard(player: any, maxCardsInHand: number): boolean {
-  return player.hand.length < maxCardsInHand && player.deck.length > 0;
+  const shouldDraw =
+    player.hand.length < maxCardsInHand && player.deck.length > 0;
+  console.log(
+    `[DEBUG] shouldDrawCard: player hand length: ${player.hand.length}, max cards: ${maxCardsInHand}, deck length: ${player.deck.length}, should draw: ${shouldDraw}`
+  );
+  return shouldDraw;
 }
 
 export function determineGameOutcome(

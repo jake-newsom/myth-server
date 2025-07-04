@@ -359,6 +359,22 @@ export class GameLogic {
     currentGameState: GameState,
     playerId: string
   ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
+    console.log(`[DEBUG] drawCard called for player: ${playerId}`);
+    console.log(`[DEBUG] Player 1 ID: ${currentGameState.player1.user_id}`);
+    console.log(`[DEBUG] Player 2 ID: ${currentGameState.player2.user_id}`);
+    console.log(
+      `[DEBUG] Player 1 deck size before: ${currentGameState.player1.deck.length}`
+    );
+    console.log(
+      `[DEBUG] Player 2 deck size before: ${currentGameState.player2.deck.length}`
+    );
+    console.log(
+      `[DEBUG] Player 1 hand size before: ${currentGameState.player1.hand.length}`
+    );
+    console.log(
+      `[DEBUG] Player 2 hand size before: ${currentGameState.player2.hand.length}`
+    );
+
     const events: BaseGameEvent[] = [];
     const newState = _.cloneDeep(currentGameState);
 
@@ -368,11 +384,22 @@ export class GameLogic {
         ? newState.player1.deck.shift()!
         : newState.player2.deck.shift()!;
 
+    console.log(`[DEBUG] Drawn card instance ID: ${drawnInstanceId}`);
+    console.log(
+      `[DEBUG] Is player 1: ${playerId === newState.player1.user_id}`
+    );
+
     // Update the correct player's hand and deck in the game state
     if (playerId === newState.player1.user_id) {
       newState.player1.hand.push(drawnInstanceId);
+      console.log(
+        `[DEBUG] Added card to player 1 hand. New hand size: ${newState.player1.hand.length}`
+      );
     } else {
       newState.player2.hand.push(drawnInstanceId);
+      console.log(
+        `[DEBUG] Added card to player 2 hand. New hand size: ${newState.player2.hand.length}`
+      );
     }
 
     if (!newState.hydrated_card_data_cache?.[drawnInstanceId]) {

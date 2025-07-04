@@ -244,6 +244,9 @@ paths:
   /api/games/{gameId}/actions:
     post:
       summary: Submit an action for a game
+      description: |
+        Submit a game action. Most actions (placeCard, endTurn) require it to be the player's turn.
+        Surrender actions are allowed regardless of whose turn it is.
       security:
         - bearerAuth: []
       operationId: submitAction
@@ -600,11 +603,18 @@ components:
         action_type:
           type: string
           enum: [placeCard, endTurn, surrender]
+          description: |
+            The type of action to perform:
+            - `placeCard`: Place a card on the board (requires user_card_instance_id and position, only allowed on player's turn)
+            - `endTurn`: End the current turn (only allowed on player's turn)
+            - `surrender`: Surrender the game (allowed regardless of whose turn it is)
         user_card_instance_id:
           type: string
           format: uuid
+          description: Required for placeCard action - the ID of the card instance to place
         position:
           $ref: "#/components/schemas/BoardPosition"
+          description: Required for placeCard action - the position on the board to place the card
 
     ErrorResponse:# Defined locally or referenced from a common file
       # ... (ErrorResponse definition)

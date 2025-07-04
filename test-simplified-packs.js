@@ -157,6 +157,68 @@ async function testSimplifiedPackSystem() {
       `✅ Final pack count: ${finalPacksResponse.data.data.pack_count}`
     );
 
+    // 10. Try to open more packs than owned (should spend gems)
+    console.log("\n10. 💎 Attempting to open 5 packs with only 3 owned (should spend gems for 2)...");
+    try {
+      const openMultiResponse = await axios.post(
+        `${BASE_URL}/api/packs/open`,
+        {
+          setId: setId,
+          count: 5,
+        },
+        {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }
+      );
+      console.log(`✅ Opened 5 packs. Packs array length: ${openMultiResponse.data.data.packs.length}`);
+      console.log(`✅ Remaining packs: ${openMultiResponse.data.data.remainingPacks}`);
+      console.log(`✅ Remaining gems: ${openMultiResponse.data.data.remainingGems}`);
+    } catch (error) {
+      console.log(`❌ Multi-pack open failed: ${error.response?.data?.message || error.message}`);
+    }
+
+    // 11. Try to open 10 packs (should apply 10% gem discount)
+    console.log("\n11. 💎 Attempting to open 10 packs (should apply discount if not enough owned)...");
+    try {
+      const openTenResponse = await axios.post(
+        `${BASE_URL}/api/packs/open`,
+        {
+          setId: setId,
+          count: 10,
+        },
+        {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }
+      );
+      console.log(`✅ Opened 10 packs. Packs array length: ${openTenResponse.data.data.packs.length}`);
+      console.log(`✅ Remaining packs: ${openTenResponse.data.data.remainingPacks}`);
+      console.log(`✅ Remaining gems: ${openTenResponse.data.data.remainingGems}`);
+    } catch (error) {
+      console.log(`❌ 10-pack open failed: ${error.response?.data?.message || error.message}`);
+    }
+
+    // 12. Try to open more packs than possible (should error)
+    console.log("\n12. ❌ Attempting to open 1000 packs (should fail)...");
+    try {
+      const openFailResponse = await axios.post(
+        `${BASE_URL}/api/packs/open`,
+        {
+          setId: setId,
+          count: 1000,
+        },
+        {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }
+      );
+      console.log(`❌ Unexpected success: ${openFailResponse.data.data}`);
+    } catch (error) {
+      if (error.response?.data?.message?.includes("Not enough resources")) {
+        console.log(`✅ Correctly failed to open too many packs: ${error.response.data.message}`);
+      } else {
+        console.log(`❌ Unexpected error: ${error.response?.data?.message || error.message}`);
+      }
+    }
+
     console.log("\n🎉 All tests completed successfully!");
     console.log("=".repeat(50));
   } catch (error) {
