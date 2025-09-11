@@ -81,19 +81,75 @@ describe("Game Utils", () => {
       const hydratedCard = createMockHydratedCard("card-10");
       const playerId = "player1";
 
-      const boardCell = gameUtils.createBoardCell(hydratedCard, playerId);
+      const { boardCell } = gameUtils.createBoardCell(hydratedCard, playerId);
 
-      expect(boardCell.user_card_instance_id).toBe("card-10");
-      expect(boardCell.owner).toBe("player1");
-      expect(boardCell.current_power).toEqual({
+      expect(boardCell.card).toBeDefined();
+      expect(boardCell.card!.user_card_instance_id).toBe("card-10");
+      expect(boardCell.card!.owner).toBe("player1");
+      expect(boardCell.card!.current_power).toEqual({
         top: 5,
         right: 5,
         bottom: 5,
         left: 5,
       });
-      expect(boardCell.level).toBe(2);
-      expect(boardCell.card_state).toBe("normal");
-      expect(boardCell.tile_status).toBe("normal");
+      expect(boardCell.card!.level).toBe(2);
+      expect(boardCell.tile_enabled).toBe(true);
+    });
+
+    it("should apply tile effect power bonuses when creating board cell", () => {
+      const hydratedCard = createMockHydratedCard("card-10");
+      const playerId = "player1";
+      const tileEffect = {
+        status: "boosted" as any,
+        turns_left: 5,
+        power: { top: 2, right: 1, bottom: 2, left: 1 },
+      };
+
+      const { boardCell, tileEffectTransferred } = gameUtils.createBoardCell(
+        hydratedCard,
+        playerId,
+        tileEffect
+      );
+
+      expect(boardCell.card).toBeDefined();
+      expect(boardCell.card!.current_power).toEqual({
+        top: 7, // 5 + 2 from tile effect
+        right: 6, // 5 + 1 from tile effect
+        bottom: 7, // 5 + 2 from tile effect
+        left: 6, // 5 + 1 from tile effect
+      });
+      expect(tileEffectTransferred).toBe(true);
+      expect(boardCell.tile_effect).toBeUndefined(); // Tile effect should be removed after transfer
+      expect(boardCell.card!.temporary_effects).toHaveLength(1);
+      expect(boardCell.card!.temporary_effects[0].duration).toBe(5); // max(3, 5)
+    });
+
+    it("should not transfer tile effect when applies_to_user doesn't match card owner", () => {
+      const hydratedCard = createMockHydratedCard("card-10");
+      const playerId = "player1";
+      const tileEffect = {
+        status: "boosted" as any,
+        turns_left: 5,
+        power: { top: 2, right: 1, bottom: 2, left: 1 },
+        applies_to_user: "player2", // Different user
+      };
+
+      const { boardCell, tileEffectTransferred } = gameUtils.createBoardCell(
+        hydratedCard,
+        playerId,
+        tileEffect
+      );
+
+      expect(boardCell.card).toBeDefined();
+      expect(boardCell.card!.current_power).toEqual({
+        top: 5, // No bonus applied
+        right: 5,
+        bottom: 5,
+        left: 5,
+      });
+      expect(tileEffectTransferred).toBe(false);
+      expect(boardCell.tile_effect).toEqual(tileEffect); // Tile effect remains
+      expect(boardCell.card!.temporary_effects).toHaveLength(0);
     });
   });
 

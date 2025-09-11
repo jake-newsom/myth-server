@@ -1,4 +1,4 @@
-import { PowerValues } from "./card.types";
+import { PowerValues, TriggerMoment } from "./card.types";
 
 /**
  * Type definitions for database schemas
@@ -62,12 +62,7 @@ export interface SpecialAbility {
   id: string;
   name: string;
   description: string;
-  triggerMoment:
-    | "OnPlace"
-    | "OnFlip"
-    | "OnFlipped"
-    | "OnTurnStart"
-    | "OnTurnEnd";
+  triggerMoment: TriggerMoment;
   parameters: Record<string, any>;
 }
 

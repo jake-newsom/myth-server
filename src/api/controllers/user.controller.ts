@@ -4,7 +4,12 @@ import CardModel from "../../models/card.model";
 import DeckModel from "../../models/deck.model";
 import GameService from "../../services/game.service";
 import { Request, Response, NextFunction } from "express"; // Assuming Express types
-import { UserCard, CardResponse, AuthenticatedRequest } from "../../types";
+import {
+  UserCard,
+  CardResponse,
+  AuthenticatedRequest,
+  TriggerMoment,
+} from "../../types";
 
 // Helper function to transform CardResponse to UserCard
 const transformToUserCard = (card: CardResponse): UserCard => ({
@@ -23,12 +28,7 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
           name: card.special_ability.name,
           ability_id: card.special_ability.ability_id,
           description: card.special_ability.description,
-          triggerMoment: card.special_ability.triggerMoment as
-            | "OnPlace"
-            | "OnFlip"
-            | "OnFlipped"
-            | "OnTurnStart"
-            | "OnTurnEnd",
+          triggerMoment: card.special_ability.triggerMoment,
           parameters: card.special_ability.parameters,
         }
       : null,

@@ -1,5 +1,6 @@
 // myth-server/src/sockets/socket.manager.js
 const { socketAuthMiddleware } = require("./socket.auth.middleware");
+const { setupGameNamespace } = require("./namespace.game");
 const db = require("../config/db.config").default; // Access the database
 const GameLogic = require("../game-engine/game.logic").GameLogic; // Import GameLogic class for game actions
 const UserModel = require("../models/user.model").default; // Import UserModel for updating currency
@@ -23,6 +24,9 @@ const userSocketMap = new Map();
  */
 function initializeSocketManager(io) {
   io.use(socketAuthMiddleware); // Apply auth middleware to all incoming connections
+
+  // Initialize the namespaced multiplayer layer
+  setupGameNamespace(io);
 
   io.on("connection", (socket) => {
     // At this point, socket has been authenticated and has socket.user
@@ -49,7 +53,7 @@ function initializeSocketManager(io) {
       try {
         // Fetch game from database
         const gameResult = await db.query(
-          'SELECT * FROM "Games" WHERE game_id = $1',
+          'SELECT * FROM "games" WHERE game_id = $1',
           [gameId]
         );
 
@@ -91,9 +95,11 @@ function initializeSocketManager(io) {
         }
 
         // Notify player they've joined
+        const playerNumber = game.player1_id === userId ? 1 : 2;
         socket.emit("game:joined", {
           gameId,
           gameState: game.game_state,
+          playerNumber,
           message: `Successfully joined game ${gameId}`,
         });
 
@@ -136,7 +142,7 @@ function initializeSocketManager(io) {
       try {
         // Fetch current game state from database
         const gameResult = await db.query(
-          'SELECT * FROM "Games" WHERE game_id = $1;',
+          'SELECT * FROM "games" WHERE game_id = $1;',
           [gameId]
         );
 
@@ -157,7 +163,7 @@ function initializeSocketManager(io) {
         }
 
         // Check if it's player's turn
-        if (currentGameState.currentPlayerId !== userId) {
+        if (currentGameState.current_player_id !== userId) {
           socket.emit("game:error", { message: "Not your turn." });
           return;
         }
@@ -177,12 +183,13 @@ function initializeSocketManager(io) {
 
           try {
             // Use GameLogic to process the move
-            nextGameState = await GameLogic.placeCard(
+            const result = await GameLogic.placeCard(
               currentGameState,
               userId,
               user_card_instance_id,
               position
             );
+            nextGameState = result.state;
           } catch (err) {
             // Handle game logic errors (invalid moves, etc.)
             socket.emit("game:error", { message: err.message });
@@ -191,25 +198,22 @@ function initializeSocketManager(io) {
         } else if (actionType === "endTurn") {
           // Explicit end turn action
           try {
-            nextGameState = await GameLogic.endTurn(currentGameState, userId);
+            const result = await GameLogic.endTurn(currentGameState, userId);
+            nextGameState = result.state;
           } catch (err) {
             socket.emit("game:error", { message: err.message });
             return;
           }
         } else if (actionType === "surrender") {
           // Handle player surrender
-          const surrenderingPlayer =
-            currentGameState.player1.userId === userId
-              ? currentGameState.player1
-              : currentGameState.player2;
-          const winningPlayer =
-            currentGameState.player1.userId === userId
-              ? currentGameState.player2
-              : currentGameState.player1;
+          const winningPlayerId =
+            currentGameState.player1.user_id === userId
+              ? currentGameState.player2.user_id
+              : currentGameState.player1.user_id;
 
           nextGameState = { ...currentGameState };
           nextGameState.status = "completed";
-          nextGameState.winner = winningPlayer.userId;
+          nextGameState.winner = winningPlayerId;
         } else {
           socket.emit("game:error", { message: "Invalid actionType." });
           return;
@@ -217,10 +221,13 @@ function initializeSocketManager(io) {
 
         // Update game in database
         const updateQuery = `
-          UPDATE "Games" 
-          SET game_state = $1, game_status = $2, current_turn_player_id = $3, completed_at = $4, winner_id = $5
-          WHERE game_id = $6 
-          RETURNING game_id, game_state, game_status, current_turn_player_id, winner_id;`;
+          UPDATE "games" 
+          SET game_state = $1,
+              game_status = $2,
+              completed_at = CASE WHEN $2 = 'completed' THEN NOW() ELSE completed_at END,
+              winner_id = $3
+          WHERE game_id = $4 
+          RETURNING game_id, game_state, game_status, winner_id;`;
 
         let completedAt = null;
         let winnerIdDb = null;
@@ -245,8 +252,6 @@ function initializeSocketManager(io) {
         const updateValues = [
           JSON.stringify(nextGameState),
           nextGameState.status === "active" ? "active" : nextGameState.status,
-          nextGameState.currentPlayerId,
-          completedAt,
           winnerIdDb,
           gameId,
         ];
@@ -264,7 +269,7 @@ function initializeSocketManager(io) {
         io.to(gameId).emit("game:state_update", {
           gameState: updatedGameData.game_state,
           gameStatus: updatedGameData.game_status,
-          currentPlayerId: updatedGameData.current_turn_player_id,
+          currentPlayerId: nextGameState.current_player_id,
         });
 
         // If game is over, send game over event

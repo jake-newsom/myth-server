@@ -144,7 +144,6 @@ export class AbilityRegistry {
     // For now, just set a flag to indicate the ability was activated
     // In a real implementation, we might set a property on the game state
     // to track this information and use it in the frontend
-    console.log(`Player ${playerId} used ability to reveal enemy hand`);
 
     return newState;
   }

@@ -8,17 +8,23 @@ export interface PowerValues {
 }
 
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
-export type TriggerMoment =
-  | "OnPlace"
-  | "OnFlip"
-  | "OnFlipped"
-  | "OnTurnStart"
-  | "OnTurnEnd"
-  | "HandOnFlip"
-  | "BoardOnFlip"
-  | "HandOnPlace" // used to trigger changes while the card is in the player's hand
-  | "BoardOnPlace" // used to trigger changes while the card is on the board
-  | string;
+// Enum that serves as the source of truth for all trigger moments
+export enum TriggerMoment {
+  OnPlace = "OnPlace",
+  OnFlip = "OnFlip",
+  OnFlipped = "OnFlipped",
+  OnTurnStart = "OnTurnStart",
+  OnTurnEnd = "OnTurnEnd",
+  AnyOnFlip = "AnyOnFlip",
+  OnDefend = "OnDefend",
+  AnyOnDefend = "AnyOnDefend",
+  HandOnFlip = "HandOnFlip",
+  BoardOnFlip = "BoardOnFlip",
+  HandOnPlace = "HandOnPlace",
+  BoardOnPlace = "BoardOnPlace",
+  BeforeCombat = "BeforeCombat",
+  AfterCombat = "AfterCombat",
+}
 
 /**
  * Database models
@@ -78,6 +84,13 @@ export type UserCard = {
   xp: number;
   power_enhancements: PowerValues;
 };
+
+export type DefeatRecord = {
+  user_card_instance_id: string;
+  base_card_id: string;
+  name: string;
+};
+
 /**
  * Represents a card as it exists within an active game session.
  * This is typically a constructed type, not directly stored in its entirety in the DB.
@@ -89,9 +102,22 @@ export interface InGameCard extends UserCard {
   current_power: PowerValues;
   owner: string;
   lockedTurns: number;
+  defeats: DefeatRecord[];
+}
+
+export enum EffectType {
+  Buff = "buff",
+  Debuff = "debuff",
+  BlockDebuff = "block_debuff",
+  BlockBuff = "block_buff",
+  BlockDefeat = "block_defeat",
+  TilePowerBonus = "tile_power_bonus",
 }
 
 export interface TemporaryEffect {
   power: Partial<PowerValues>;
-  duration: number; // in turns
+  duration: number;
+  name?: string;
+  data?: Record<string, any>;
+  type: EffectType;
 }

@@ -1,4 +1,4 @@
-import { BoardPosition, InGameCard } from "./game.types";
+import { BoardCell, BoardPosition, GameState, InGameCard } from "./game.types";
 
 /**
  * Game Engine specific type definitions
@@ -14,6 +14,7 @@ export const EVENT_TYPES = {
   ABILITY_TRIGGERED: "ABILITY_TRIGGERED",
   CARD_POWER_CHANGED: "CARD_POWER_CHANGED",
   CARD_FLIPPED: "CARD_FLIPPED",
+  CARD_DEFENDED: "CARD_DEFENDED",
   TILE_STATE_CHANGED: "TILE_STATE_CHANGED",
   CARD_STATE_CHANGED: "CARD_STATE_CHANGED",
   SCORE_UPDATED: "SCORE_UPDATED",
@@ -36,6 +37,7 @@ export interface BaseGameEvent {
   delayAfterMs?: number;
   sourcePlayerId?: string;
   animation?: string;
+  position?: BoardPosition;
 }
 
 export interface CardEvent extends BaseGameEvent {
@@ -50,11 +52,11 @@ export interface CardPlacedEvent extends CardEvent {
 
 export interface TileEvent extends BaseGameEvent {
   position: BoardPosition;
-  tile: Pick<
-    import("./game.types").BoardCell,
-    "tile_status" | "turns_left" | "animation_label"
-  >;
+  tile: Pick<BoardCell, "tile_enabled" | "tile_effect">;
 }
+
+export type AbilityMethod = (context: TriggerContext) => BaseGameEvent[];
+export type AbilityMap = Record<string, AbilityMethod>;
 
 // Game Status Enum
 export enum GameStatus {
@@ -64,14 +66,14 @@ export enum GameStatus {
   ABORTED = "aborted",
 }
 
-// Game Utils Types
 export type TriggerContext = {
-  gameState: import("./game.types").GameState;
+  state: GameState;
   triggerCard: InGameCard;
+  flippedCard?: InGameCard;
+  flippedBy?: InGameCard;
+  flippedCardId?: string;
+  flippedByCardId?: string;
   position: BoardPosition;
-  player: import("./game.types").Player;
-  opponent: import("./game.types").Player;
-  events: BaseGameEvent[];
 };
 
 // Utility Functions

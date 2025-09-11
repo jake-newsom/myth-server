@@ -1,6 +1,6 @@
-const express = require("express");
-const MatchmakingController = require("../controllers/matchmaking.controller");
-const { protect } = require("../middlewares/auth.middleware");
+import express from "express";
+import { MatchmakingController } from "../controllers/matchmaking.controller";
+import { protect } from "../middlewares/auth.middleware";
 
 const router = express.Router();
 
@@ -12,4 +12,4 @@ router.post("/join", MatchmakingController.joinQueue); // Join matchmaking queue
 router.get("/status", MatchmakingController.getMatchStatus); // Check matchmaking status
 router.post("/leave", MatchmakingController.leaveQueue); // Leave matchmaking queue
 
-module.exports = router;
+export default router;

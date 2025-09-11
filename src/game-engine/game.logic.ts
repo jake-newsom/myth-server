@@ -4,13 +4,13 @@ import {
   CardPower,
   Player,
 } from "../types/game.types";
-import { InGameCard } from "../types/card.types";
+import { InGameCard, TriggerMoment } from "../types/card.types";
 import * as _ from "lodash";
 import db from "../config/db.config"; // For direct DB access if necessary for hydration
 import * as validators from "./game.validators";
 import * as gameUtils from "./game.utils";
 import { triggerAbilities } from "./game.utils";
-import { setTileStatus, updateCurrentPower } from "./ability.utils";
+import { resetTile, setTileStatus, updateCurrentPower } from "./ability.utils";
 import {
   BaseGameEvent,
   batchEvents,
@@ -23,7 +23,7 @@ import { v4 as uuidv4 } from "uuid";
 
 const BOARD_SIZE = 4;
 
-import { GameStatus } from "../types";
+import { GameStatus, TileEvent, TileStatus } from "../types";
 export { GameStatus };
 
 // Note: Game winner is stored in the winner_id column in the database
@@ -66,7 +66,8 @@ export class GameLogic {
         }
 
         const row = rows[0];
-        const levelBonus = row.level - 1; // Example: +1 power per stat for each level above 1
+        // const levelBonus = row.level - 1; // Example: +1 power per stat for each level above 1
+        const levelBonus = 0;
 
         // Create base power values from the database
         const basePower = {
@@ -83,12 +84,7 @@ export class GameLogic {
               name: row.ability_name,
               ability_id: row.special_ability_id,
               description: row.ability_description,
-              triggerMoment: row.ability_trigger as
-                | "OnPlace"
-                | "OnFlip"
-                | "OnFlipped"
-                | "OnTurnStart"
-                | "OnTurnEnd",
+              triggerMoment: row.ability_trigger,
               parameters: row.ability_parameters || {},
             }
           : null;
@@ -135,6 +131,7 @@ export class GameLogic {
           card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
           temporary_effects: [],
           lockedTurns: 0,
+          defeats: [],
         };
 
         return result;
@@ -180,7 +177,9 @@ export class GameLogic {
     const board = Array(BOARD_SIZE)
       .fill(null)
       .map(() =>
-        Array(BOARD_SIZE).fill(gameUtils.createBoardCell(null, "normal"))
+        Array(BOARD_SIZE).fill(
+          gameUtils.createBoardCell(null, "normal").boardCell
+        )
       );
     const hydrated_card_data_cache: Record<string, InGameCard> = {};
 
@@ -257,18 +256,31 @@ export class GameLogic {
       if (!validators.isPlayerTurn(newState, playerId))
         throw new Error("Not player's turn.");
       if (cardIndexInHand === -1) throw new Error("Card instance not in hand.");
-      if (!validators.isValidBoardPosition(position))
-        throw new Error("Invalid board position.");
-      if (validators.isBoardPositionOccupied(newState, position))
-        throw new Error("Board position already occupied.");
-      if (!playedCardData) throw new Error(`Card data does not exist`);
+      const { canPlace, errorMessage } = validators.canPlaceOnTile(
+        newState,
+        position
+      );
+      if (!canPlace) throw new Error(errorMessage);
 
       // Get player and opponent references
       const player = validators.getPlayer(newState, playerId);
 
-      const newBoardCell = gameUtils.createBoardCell(playedCardData, playerId);
+      // Get existing tile effect before placing the card
+      const existingTileEffect =
+        newState.board[position.y][position.x]?.tile_effect;
+
+      const { boardCell: newBoardCell, tileEffectTransferred } =
+        gameUtils.createBoardCell(playedCardData, playerId, existingTileEffect);
       player.hand.splice(cardIndexInHand, 1);
-      //TODO trigger LeftHand abilities?
+
+      if (tileEffectTransferred) {
+        events.push({
+          type: EVENT_TYPES.CARD_POWER_CHANGED,
+          eventId: uuidv4(),
+          timestamp: Date.now(),
+          position,
+        } as CardEvent);
+      }
 
       newState.board[position.y][position.x] = newBoardCell;
       events.push({
@@ -277,12 +289,12 @@ export class GameLogic {
         timestamp: Date.now(),
         cardId: playedCardData.user_card_instance_id,
         originalOwner: playedCardData.owner,
-        delayAfterMs: 100,
+        delayAfterMs: 0,
         position,
       } as CardPlacedEvent);
 
       events.push(
-        ...triggerAbilities("OnPlace", {
+        ...triggerAbilities(TriggerMoment.OnPlace, {
           state: newState,
           triggerCard: newBoardCell.card!,
           position,
@@ -359,22 +371,6 @@ export class GameLogic {
     currentGameState: GameState,
     playerId: string
   ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
-    console.log(`[DEBUG] drawCard called for player: ${playerId}`);
-    console.log(`[DEBUG] Player 1 ID: ${currentGameState.player1.user_id}`);
-    console.log(`[DEBUG] Player 2 ID: ${currentGameState.player2.user_id}`);
-    console.log(
-      `[DEBUG] Player 1 deck size before: ${currentGameState.player1.deck.length}`
-    );
-    console.log(
-      `[DEBUG] Player 2 deck size before: ${currentGameState.player2.deck.length}`
-    );
-    console.log(
-      `[DEBUG] Player 1 hand size before: ${currentGameState.player1.hand.length}`
-    );
-    console.log(
-      `[DEBUG] Player 2 hand size before: ${currentGameState.player2.hand.length}`
-    );
-
     const events: BaseGameEvent[] = [];
     const newState = _.cloneDeep(currentGameState);
 
@@ -384,22 +380,11 @@ export class GameLogic {
         ? newState.player1.deck.shift()!
         : newState.player2.deck.shift()!;
 
-    console.log(`[DEBUG] Drawn card instance ID: ${drawnInstanceId}`);
-    console.log(
-      `[DEBUG] Is player 1: ${playerId === newState.player1.user_id}`
-    );
-
     // Update the correct player's hand and deck in the game state
     if (playerId === newState.player1.user_id) {
       newState.player1.hand.push(drawnInstanceId);
-      console.log(
-        `[DEBUG] Added card to player 1 hand. New hand size: ${newState.player1.hand.length}`
-      );
     } else {
       newState.player2.hand.push(drawnInstanceId);
-      console.log(
-        `[DEBUG] Added card to player 2 hand. New hand size: ${newState.player2.hand.length}`
-      );
     }
 
     if (!newState.hydrated_card_data_cache?.[drawnInstanceId]) {
@@ -447,10 +432,11 @@ export class GameLogic {
     // Process temporary effects
     for (const [y, row] of newState.board.entries()) {
       for (const [x, cell] of row.entries()) {
-        if (cell.turns_left > 0) {
-          cell.turns_left -= 1;
-          if (cell.turns_left === 0) {
-            events.push(setTileStatus(cell, { x, y }, "normal", 0, ""));
+        if (cell.tile_effect?.turns_left && cell.tile_effect.turns_left > 0) {
+          cell.tile_effect.turns_left -= 1;
+
+          if (cell.tile_effect.turns_left === 0) {
+            events.push(resetTile(cell, { x, y }));
           }
         }
         if (cell?.card) {
@@ -477,6 +463,8 @@ export class GameLogic {
         ? newState.player2.user_id
         : newState.player1.user_id;
     newState.turn_number++;
+
+    events.push(...gameUtils.turnEndAbilities(newState));
 
     events.push({
       type: EVENT_TYPES.TURN_END,

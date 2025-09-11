@@ -533,12 +533,12 @@ class FriendsService {
       );
 
       // Challenger goes first
-      initialGameState.currentPlayerId = challengerId;
+      initialGameState.current_player_id = challengerId;
 
       // Create the game in the database
       const gameQuery = `
-        INSERT INTO "Games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, current_turn_player_id, game_state, created_at, started_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
         RETURNING game_id;
       `;
       const gameValues = [
@@ -549,7 +549,6 @@ class FriendsService {
         "pvp",
         "active",
         "4x4",
-        initialGameState.currentPlayerId,
         JSON.stringify(initialGameState),
       ];
 

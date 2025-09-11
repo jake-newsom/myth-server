@@ -1,8 +1,10 @@
-import { InGameCard, PowerValues, TemporaryEffect } from "../types/card.types";
+import { EffectType, InGameCard, PowerValues } from "../types/card.types";
 import {
   BoardCell,
   BoardPosition,
   GameBoard,
+  GameState,
+  TileEffect,
   TileStatus,
 } from "../types/game.types";
 import {
@@ -13,6 +15,41 @@ import {
 } from "./game-events";
 
 import { v4 as uuidv4 } from "uuid";
+
+/**
+ * Helper function to get the tile effect that should be applied to a card at a specific position
+ */
+export function getTileEffectForPosition(
+  gameState: GameState,
+  position: BoardPosition
+): TileEffect | undefined {
+  return gameState.board[position.y]?.[position.x]?.tile_effect;
+}
+
+/**
+ * Transfers tile effect power bonuses to a card as temporary effects
+ * Returns true if a transfer occurred, false otherwise
+ */
+export function transferTileEffectToCard(
+  card: InGameCard,
+  tileEffect: TileEffect | undefined
+): boolean {
+  if (!tileEffect?.power) return false;
+
+  if (tileEffect.applies_to_user && tileEffect.applies_to_user !== card.owner)
+    return false;
+
+  const temporaryEffect = {
+    type: EffectType.TilePowerBonus,
+    power: { ...tileEffect.power },
+    duration: tileEffect.effect_duration ?? 1000,
+  };
+
+  card.temporary_effects.push(temporaryEffect);
+
+  //TODO: Return a game event
+  return true;
+}
 
 export function updateCurrentPower(card: InGameCard): PowerValues {
   const currentPower: PowerValues = structuredClone(
@@ -37,27 +74,44 @@ export function updateCurrentPower(card: InGameCard): PowerValues {
     });
   }
 
-  return currentPower;
+  return {
+    top: Math.max(currentPower.top, 0),
+    bottom: Math.max(currentPower.bottom, 0),
+    left: Math.max(currentPower.left, 0),
+    right: Math.max(currentPower.right, 0),
+  };
+}
+
+export function getOpponentId(playerId: string, gameState: GameState): string {
+  return playerId === gameState.player1.user_id
+    ? gameState.player2.user_id
+    : gameState.player1.user_id;
 }
 
 export function buff(
   card: InGameCard,
-  amount: number | PowerValues
+  amount: number | PowerValues,
+  name?: string,
+  data?: Record<string, any>
 ): BaseGameEvent {
-  return addTempBuff(card, 1000, amount);
+  return addTempBuff(card, 1000, amount, name, data);
 }
 
 export function debuff(
   card: InGameCard,
-  amount: number | PowerValues
+  amount: number | PowerValues,
+  name?: string,
+  data?: Record<string, any>
 ): BaseGameEvent {
-  return addTempDebuff(card, 1000, amount);
+  return addTempDebuff(card, 1000, amount, { name, data });
 }
 
 export function addTempBuff(
   card: InGameCard,
   duration: number,
-  power: number | Partial<PowerValues>
+  power: number | Partial<PowerValues>,
+  name?: string,
+  data?: Record<string, any>
 ): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
@@ -76,6 +130,9 @@ export function addTempBuff(
   card.temporary_effects.push({
     power: buff,
     duration,
+    name,
+    data,
+    type: EffectType.Buff,
   });
 
   return {
@@ -87,10 +144,18 @@ export function addTempBuff(
   } as CardEvent;
 }
 
+type EventOptions = {
+  name?: string;
+  data?: Record<string, any>;
+  animation?: string;
+  position?: BoardPosition;
+};
+
 export function addTempDebuff(
   card: InGameCard,
   duration: number,
-  power: number | Partial<PowerValues>
+  power: number | Partial<PowerValues>,
+  options?: EventOptions
 ): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
@@ -98,26 +163,44 @@ export function addTempDebuff(
   const negativePower =
     typeof power === "number"
       ? {
-          top: -power,
-          bottom: -power,
-          left: -power,
-          right: -power,
+          top: power,
+          bottom: power,
+          left: power,
+          right: power,
         }
       : power;
 
   card.temporary_effects.push({
     power: negativePower,
     duration,
+    name: options?.name,
+    data: options?.data,
+    type: EffectType.Debuff,
   });
 
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
-    animation: "debuff",
+    animation: options?.animation || "debuff",
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
+    position: options?.position,
   } as CardEvent;
 }
+
+export const getPositionOfCardById = (
+  cardId: string,
+  board: GameBoard
+): BoardPosition | null => {
+  for (let y = 0; y < board.length; y++) {
+    for (let x = 0; x < board[y].length; x++) {
+      if (board[y][x]?.card?.user_card_instance_id === cardId) {
+        return { x, y };
+      }
+    }
+  }
+  return null;
+};
 
 export const isCorner = (position: BoardPosition, boardSize: number) => {
   const { x, y } = position;
@@ -181,6 +264,13 @@ export const getTileAtPosition = (
   return board[position.y][position.x];
 };
 
+export const cardAtPosition = (
+  position: BoardPosition,
+  board: GameBoard
+): InGameCard | null => {
+  return board[position.y][position.x]?.card;
+};
+
 export const getAdjacentCards = (
   position: BoardPosition,
   board: GameBoard,
@@ -189,6 +279,7 @@ export const getAdjacentCards = (
     playerId?: string;
     tag?: string;
     includeEmpty?: boolean;
+    name?: string;
   }
 ): InGameCard[] => {
   const adjacentPositions = getAdjacentPositions(position, board.length);
@@ -212,6 +303,10 @@ export const getAdjacentCards = (
     cards = cards.filter(
       (card) => card && card.base_card_data.tags?.includes(options.tag!)
     );
+  }
+
+  if (options?.name) {
+    cards = cards.filter((card) => card?.base_card_data.name === options.name);
   }
 
   return cards;
@@ -409,24 +504,293 @@ export const destroyCardAtPosition = (
   } as CardEvent;
 };
 
-export const setTileStatus = (
+export const resetTile = (
   tile: BoardCell,
-  position: BoardPosition,
-  status: TileStatus,
-  turnsLeft: number,
-  animationLabel: string
+  position: BoardPosition
 ): BaseGameEvent => {
-  tile.tile_status = status;
-  tile.turns_left = turnsLeft;
-  tile.animation_label = animationLabel;
-
-  const { tile_status, turns_left, animation_label } = tile;
+  tile.tile_effect = undefined;
 
   return {
     type: EVENT_TYPES.TILE_STATE_CHANGED,
     eventId: uuidv4(),
     timestamp: Date.now(),
     position,
-    tile: { tile_status, turns_left, animation_label },
+    tile: { tile_effect: tile.tile_effect },
   } as TileEvent;
 };
+
+export const setTileStatus = (
+  tile: BoardCell,
+  position: BoardPosition,
+  effect: TileEffect
+): BaseGameEvent => {
+  tile.tile_effect = effect;
+
+  const { tile_effect } = tile;
+
+  return {
+    type: EVENT_TYPES.TILE_STATE_CHANGED,
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    position,
+    tile: { tile_effect },
+  } as TileEvent;
+};
+
+export function getCardsInSameRow(
+  position: BoardPosition,
+  board: GameBoard,
+  excludePlayerId?: string
+): InGameCard[] {
+  const cards: InGameCard[] = [];
+  const { y } = position;
+
+  for (let x = 0; x < board.length; x++) {
+    const cell = board[y][x];
+    if (cell?.card) {
+      if (!excludePlayerId || cell.card.owner !== excludePlayerId) {
+        cards.push(cell.card);
+      }
+    }
+  }
+  return cards;
+}
+
+export function getCardsInSameColumn(
+  position: BoardPosition,
+  board: GameBoard,
+  excludePlayerId?: string
+): InGameCard[] {
+  const cards: InGameCard[] = [];
+  const { x } = position;
+
+  for (let y = 0; y < board.length; y++) {
+    const cell = board[y][x];
+    if (cell?.card) {
+      if (!excludePlayerId || cell.card.owner !== excludePlayerId) {
+        cards.push(cell.card);
+      }
+    }
+  }
+  return cards;
+}
+
+export function removeTemporaryBuffs(card: InGameCard): BaseGameEvent {
+  // Remove positive temporary effects only, keeping debuffs
+  if (card.temporary_effects) {
+    card.temporary_effects = card.temporary_effects.filter((effect) => {
+      const totalPowerChange = Object.values(effect.power).reduce(
+        (sum, val) => sum + (val || 0),
+        0
+      );
+      return totalPowerChange <= 0; // Keep debuffs, remove buffs
+    });
+  }
+
+  return {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    animation: "buff-removed",
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    cardId: card.user_card_instance_id,
+  } as CardEvent;
+}
+
+// New utility functions for Polynesian abilities
+export function getEmptyAdjacentTiles(
+  position: BoardPosition,
+  board: GameBoard
+): Array<{ position: BoardPosition; tile: BoardCell }> {
+  const adjacentPositions = getAdjacentPositions(position, board.length);
+  const emptyTiles: Array<{ position: BoardPosition; tile: BoardCell }> = [];
+
+  for (const pos of adjacentPositions) {
+    const tile = getTileAtPosition(pos, board);
+    if (tile && !tile.card) {
+      emptyTiles.push({ position: pos, tile });
+    }
+  }
+
+  return emptyTiles;
+}
+
+export function cleanseDebuffs(card: InGameCard, count: number): BaseGameEvent {
+  // Remove negative temporary effects (debuffs) up to the specified count
+  if (card.temporary_effects) {
+    let removed = 0;
+    card.temporary_effects = card.temporary_effects.filter((effect) => {
+      if (removed >= count) return true;
+
+      const totalPowerChange = Object.values(effect.power).reduce(
+        (sum, val) => sum + (val || 0),
+        0
+      );
+
+      if (totalPowerChange < 0) {
+        removed++;
+        return false; // Remove this debuff
+      }
+      return true;
+    });
+  }
+
+  return {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    animation: "cleanse",
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    cardId: card.user_card_instance_id,
+  } as CardEvent;
+}
+
+export function getAllAlliesOnBoard(
+  board: GameBoard,
+  playerId: string
+): InGameCard[] {
+  return getCardsByCondition(board, (card) => card.owner === playerId);
+}
+
+export function pushCardAway(
+  card: InGameCard,
+  fromPosition: BoardPosition,
+  board: GameBoard
+): BaseGameEvent | null {
+  // Find the card's current position
+  let cardPosition: BoardPosition | null = null;
+  for (let y = 0; y < board.length; y++) {
+    for (let x = 0; x < board.length; x++) {
+      if (
+        board[y][x]?.card?.user_card_instance_id === card.user_card_instance_id
+      ) {
+        cardPosition = { x, y };
+        break;
+      }
+    }
+    if (cardPosition) break;
+  }
+
+  if (!cardPosition) return null;
+
+  // Calculate push direction (away from the triggering position)
+  const deltaX = cardPosition.x - fromPosition.x;
+  const deltaY = cardPosition.y - fromPosition.y;
+
+  // Normalize to get direction
+  const newX = cardPosition.x + (deltaX !== 0 ? Math.sign(deltaX) : 0);
+  const newY = cardPosition.y + (deltaY !== 0 ? Math.sign(deltaY) : 0);
+
+  const newPosition = { x: newX, y: newY };
+
+  // Check if new position is valid and empty
+  if (
+    !isValidPosition(newPosition, board.length) ||
+    getTileAtPosition(newPosition, board)?.card
+  ) {
+    return null; // Can't push if destination is invalid or occupied
+  }
+
+  // Move the card
+  const currentTile = getTileAtPosition(cardPosition, board);
+  const newTile = getTileAtPosition(newPosition, board);
+
+  if (currentTile && newTile) {
+    newTile.card = card;
+    currentTile.card = null;
+
+    return {
+      type: EVENT_TYPES.CARD_MOVED,
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      cardId: card.user_card_instance_id,
+      fromPosition: cardPosition,
+      toPosition: newPosition,
+      animation: "push",
+    } as CardEvent;
+  }
+
+  return null;
+}
+
+// TODO: This function needs proper turn tracking implementation
+export function getAlternatingTurnEffect(
+  turnNumber: number,
+  effectA: any,
+  effectB: any
+): any {
+  // Placeholder implementation - needs actual turn tracking
+  return turnNumber % 2 === 0 ? effectA : effectB;
+}
+
+export function disableAbilities(
+  card: InGameCard,
+  turns: number
+): BaseGameEvent {
+  // TODO: Need to implement ability disabling system
+  // This would require adding a disabled_abilities field to the card or a game state system
+  // For now, we'll use a temporary effect to mark the card as disabled
+
+  if (!card.temporary_effects) {
+    card.temporary_effects = [];
+  }
+
+  // return {
+  //   type: EVENT_TYPES.CARD_POWER_CHANGED,
+  //   animation: "abilities-disabled",
+  //   eventId: uuidv4(),
+  //   timestamp: Date.now(),
+  //   cardId: card.user_card_instance_id,
+  // } as CardEvent;
+  return {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    animation: "abilities-disabled",
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    cardId: card.user_card_instance_id,
+  } as CardEvent;
+}
+
+export function addTileBlessing(
+  position: BoardPosition,
+  bonus: number,
+  ownerId: string
+): BaseGameEvent {
+  return {
+    type: EVENT_TYPES.TILE_STATE_CHANGED,
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    position,
+    tile: {
+      tile_enabled: true,
+      tile_effect: {
+        status: TileStatus.Boosted,
+        turns_left: 1000,
+        animation_label: `blessed-${bonus}`,
+        power: { top: bonus, bottom: bonus, left: bonus, right: bonus },
+        applies_to_user: ownerId,
+      },
+    },
+  } as TileEvent;
+}
+
+export function protectFromDefeat(
+  card: InGameCard,
+  turns: number
+): BaseGameEvent {
+  if (!card.temporary_effects) {
+    card.temporary_effects = [];
+  }
+
+  card.temporary_effects.push({
+    power: { top: 0, bottom: 0, left: 0, right: 0 },
+    duration: turns,
+    type: EffectType.BlockDefeat,
+  });
+
+  return {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    animation: "protected",
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    cardId: card.user_card_instance_id,
+  } as CardEvent;
+}

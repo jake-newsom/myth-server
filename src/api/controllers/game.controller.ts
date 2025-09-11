@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { GameLogic, GameStatus } from "../../game-engine/game.logic";
 import { AILogic } from "../../game-engine/ai.logic";
-import { AbilityRegistry } from "../../game-engine/ability.registry";
-import { GameState, BoardPosition, GameAction } from "../../types/game.types";
+// import { AbilityRegistry } from "../../game-engine/ability.registry";
+import { GameState, GameAction } from "../../types/game.types";
 import * as validators from "../../game-engine/game.validators";
 import * as _ from "lodash";
 
@@ -24,10 +24,10 @@ import GameRewardsService, {
   GameCompletionResult,
 } from "../../services/gameRewards.service";
 import { BaseGameEvent } from "../../game-engine/game-events";
-import { canPlaceOnTile } from "../../game-engine/game.utils";
+import { sanitizeGameStateForPlayer } from "../../utils/sanitize";
 
 // Initialize ability registry
-AbilityRegistry.initialize();
+// AbilityRegistry.initialize();
 
 // Define a constant UUID for the AI player and EXPORT it
 export const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
@@ -178,7 +178,7 @@ class GameController {
       // Format response to match startSoloGame structure
       res.status(200).json({
         game_id: game.game_id,
-        game_state: game.game_state,
+        game_state: sanitizeGameStateForPlayer(game.game_state, userId),
         game_status: game.game_status,
         ai_deck_id: game.game_mode === "solo" ? game.player2_deck_id : null,
         current_user_id: userId,
@@ -244,9 +244,14 @@ class GameController {
             return;
           }
 
-          if (!canPlaceOnTile(currentGameState, action.position)) {
+          const placeResult = validators.canPlaceOnTile(
+            currentGameState,
+            action.position
+          );
+          if (!placeResult.canPlace) {
             res.status(400).json({
-              error: "Cannot place card on this tile",
+              error:
+                placeResult.errorMessage || "Cannot place card on this tile",
             });
             return;
           }
@@ -444,18 +449,7 @@ class GameController {
         events.push(...endTurnResult.events);
 
         // Draw a card for the AI if needed after ending turn
-        console.log(`[DEBUG] AI action: Checking if AI should draw a card...`);
         const aiPlayer = validators.getPlayer(updatedGameState, AI_PLAYER_ID);
-        console.log(`[DEBUG] AI player hand size: ${aiPlayer.hand.length}`);
-        console.log(
-          `[DEBUG] Max cards in hand: ${updatedGameState.max_cards_in_hand}`
-        );
-        console.log(
-          `[DEBUG] Should draw card: ${validators.shouldDrawCard(
-            aiPlayer,
-            updatedGameState.max_cards_in_hand
-          )}`
-        );
 
         if (
           validators.shouldDrawCard(
@@ -463,18 +457,12 @@ class GameController {
             updatedGameState.max_cards_in_hand
           )
         ) {
-          console.log(`[DEBUG] AI action: Drawing card for AI...`);
           const drawCardResult = await GameLogic.drawCard(
             updatedGameState,
             AI_PLAYER_ID
           );
           updatedGameState = drawCardResult.state;
           events.push(...drawCardResult.events);
-          console.log(
-            `[DEBUG] AI action: Card drawn. New hand size: ${updatedGameState.player2.hand.length}`
-          );
-        } else {
-          console.log(`[DEBUG] AI action: AI should not draw a card`);
         }
       }
 

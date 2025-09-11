@@ -1,10 +1,40 @@
-import { GameState, BoardPosition, BoardCell } from "../types/game.types";
-import { GameStatus } from "./game.logic";
+import {
+  GameState,
+  BoardPosition,
+  BoardCell,
+  TileStatus,
+} from "../types/game.types";
 
 const BOARD_SIZE = 4;
 
 export function isPlayerTurn(gameState: GameState, playerId: string): boolean {
   return gameState.current_player_id === playerId;
+}
+
+export function canPlaceOnTile(
+  gameState: GameState,
+  position: BoardPosition
+): { canPlace: boolean; errorMessage: string } {
+  if (!isValidBoardPosition(position)) {
+    return { canPlace: false, errorMessage: "Invalid board position." };
+  }
+
+  if (isBoardPositionOccupied(gameState, position)) {
+    return {
+      canPlace: false,
+      errorMessage: `Board position ${position.x},${
+        position.y
+      } is occupied: ${JSON.stringify(
+        gameState.board[position.y][position.x].card
+      )}`,
+    };
+  }
+
+  if (isBoardPositionBlocked(gameState, position)) {
+    return { canPlace: false, errorMessage: "Board position is blocked." };
+  }
+
+  return { canPlace: true, errorMessage: "" };
 }
 
 export function isValidBoardPosition(position: BoardPosition): boolean {
@@ -21,8 +51,19 @@ export function isBoardPositionOccupied(
   position: BoardPosition
 ): boolean {
   const cell = gameState.board[position.y][position.x];
-  const isOccupied = cell.card !== null;
-  return isOccupied;
+  return cell.card !== null;
+}
+
+export function isBoardPositionBlocked(
+  gameState: GameState,
+  position: BoardPosition
+): boolean {
+  const cell = gameState.board[position.y][position.x];
+
+  if (cell.tile_effect?.status === TileStatus.Blocked) return true;
+  if (cell.tile_effect?.status === TileStatus.Removed) return true;
+
+  return cell.tile_enabled === false;
 }
 
 export function getExistingCardAtPosition(
@@ -144,12 +185,7 @@ export function calculateScores(
 }
 
 export function shouldDrawCard(player: any, maxCardsInHand: number): boolean {
-  const shouldDraw =
-    player.hand.length < maxCardsInHand && player.deck.length > 0;
-  console.log(
-    `[DEBUG] shouldDrawCard: player hand length: ${player.hand.length}, max cards: ${maxCardsInHand}, deck length: ${player.deck.length}, should draw: ${shouldDraw}`
-  );
-  return shouldDraw;
+  return player.hand.length < maxCardsInHand && player.deck.length > 0;
 }
 
 export function determineGameOutcome(

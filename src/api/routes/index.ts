@@ -19,7 +19,7 @@ import mailRoutes from "./mail.routes";
 import { handleErrors } from "../middlewares/error.middleware";
 
 // Import matchmaking routes
-const matchmakingRoutes = require("./matchmaking.routes");
+import matchmakingRoutes from "./matchmaking.routes";
 
 const router = Router();
 

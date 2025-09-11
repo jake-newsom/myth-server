@@ -1,12 +1,29 @@
-const db = require("../../config/db.config").default;
-const DeckModel = require("../../models/deck.model").default;
-const UserModel = require("../../models/user.model").default;
-const GameLogic = require("../../game-engine/game.logic").GameLogic;
-const { v4: uuidv4 } = require("uuid");
+import db from "../../config/db.config";
+import { default as DeckModel } from "../../models/deck.model";
+import { default as UserModel } from "../../models/user.model";
+import { GameLogic } from "../../game-engine/game.logic";
+import { v4 as uuidv4 } from "uuid";
+import { Request, Response, NextFunction } from "express";
+import { GameState } from "../../types/game.types";
+
+// Define interfaces for queue entries and active matches
+interface QueueEntry {
+  userId: string;
+  deckId: string;
+  timestamp: Date;
+}
 
 // In-memory queue for matchmaking (replace with Redis or DB for production)
-const matchmakingQueue = []; // Stores { userId, deckId, timestamp }
-const activeMatches = new Map(); // Stores gameId by userId if they are matched
+const matchmakingQueue: QueueEntry[] = []; // Stores { userId, deckId, timestamp }
+const activeMatches = new Map<string, string>(); // Stores gameId by userId if they are matched
+
+// --- Match Cleanup Function ---
+function clearActiveMatch(userId: string) {
+  if (activeMatches.has(userId)) {
+    activeMatches.delete(userId);
+    console.log(`User ${userId} cleared from activeMatches.`);
+  }
+}
 
 /**
  * Matchmaking controller for PvP game matchmaking.
@@ -15,11 +32,11 @@ const activeMatches = new Map(); // Stores gameId by userId if they are matched
 const MatchmakingController = {
   /**
    * Join the matchmaking queue
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   * @param {Function} next - Express next middleware function
+   * @param {Request} req - Express request object
+   * @param {Response} res - Express response object
+   * @param {NextFunction} next - Express next middleware function
    */
-  async joinQueue(req, res, next) {
+  async joinQueue(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user.user_id;
       const { deckId } = req.body;
@@ -31,7 +48,7 @@ const MatchmakingController = {
       }
 
       // Validate deck ownership and validity
-      const playerDeck = await DeckModel.findByIdAndUserIdWithCards(
+      const playerDeck = await DeckModel.findDeckWithInstanceDetails(
         deckId,
         userId
       );
@@ -63,6 +80,13 @@ const MatchmakingController = {
       if (matchmakingQueue.length > 0) {
         const opponent = matchmakingQueue.shift(); // Get first player from queue
 
+        if (!opponent) {
+          // TypeScript safety check
+          return res.status(500).json({
+            error: { message: "Error processing matchmaking queue." },
+          });
+        }
+
         if (opponent.userId === userId) {
           // Safeguard against matching with self
           matchmakingQueue.push(opponent);
@@ -73,25 +97,43 @@ const MatchmakingController = {
         }
 
         // --- Create Game ---
-        const player1Deck = await DeckModel.findByIdAndUserIdWithCards(
+        const player1Deck = await DeckModel.findDeckWithInstanceDetails(
           deckId,
           userId
         );
-        const player2Deck = await DeckModel.findByIdAndUserIdWithCards(
+        const player2Deck = await DeckModel.findDeckWithInstanceDetails(
           opponent.deckId,
           opponent.userId
         );
 
-        // Extract card IDs for the game initialization
-        const p1DeckCardIds = player1Deck.cards.reduce((acc, card) => {
-          for (let i = 0; i < card.quantity; i++) acc.push(card.card_id);
-          return acc;
-        }, []);
+        if (!player1Deck || !player2Deck) {
+          return res.status(400).json({
+            error: { message: "Error retrieving deck information." },
+          });
+        }
 
-        const p2DeckCardIds = player2Deck.cards.reduce((acc, card) => {
-          for (let i = 0; i < card.quantity; i++) acc.push(card.card_id);
-          return acc;
-        }, []);
+        // Extract card IDs for the game initialization
+        const p1DeckCardIds = player1Deck.cards.reduce(
+          (acc: string[], card) => {
+            // Each card in the deck is an instance, so we add it once
+            if (card.user_card_instance_id) {
+              acc.push(card.user_card_instance_id);
+            }
+            return acc;
+          },
+          []
+        );
+
+        const p2DeckCardIds = player2Deck.cards.reduce(
+          (acc: string[], card) => {
+            // Each card in the deck is an instance, so we add it once
+            if (card.user_card_instance_id) {
+              acc.push(card.user_card_instance_id);
+            }
+            return acc;
+          },
+          []
+        );
 
         // Initialize game with the current player as P1, queued player as P2
         const p1UserIdForGame = userId;
@@ -105,12 +147,12 @@ const MatchmakingController = {
         );
 
         // Player who initiated match often goes first
-        initialGameState.currentPlayerId = p1UserIdForGame;
+        initialGameState.current_player_id = p1UserIdForGame;
 
         // Create a new game in the database
         const gameQuery = `
-          INSERT INTO "Games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, current_turn_player_id, game_state, created_at, started_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+          INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
           RETURNING game_id;
         `;
         const gameValues = [
@@ -119,9 +161,8 @@ const MatchmakingController = {
           deckId,
           opponent.deckId,
           "pvp",
-          "active", // Start as active
+          "active",
           "4x4",
-          initialGameState.currentPlayerId,
           JSON.stringify(initialGameState),
         ];
 
@@ -165,11 +206,11 @@ const MatchmakingController = {
 
   /**
    * Get current matchmaking status
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   * @param {Function} next - Express next middleware function
+   * @param {Request} req - Express request object
+   * @param {Response} res - Express response object
+   * @param {NextFunction} next - Express next middleware function
    */
-  async getMatchStatus(req, res, next) {
+  async getMatchStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user.user_id;
 
@@ -179,7 +220,7 @@ const MatchmakingController = {
 
         // Get opponent details
         const gameDetails = await db.query(
-          'SELECT player1_id, player2_id FROM "Games" WHERE game_id = $1',
+          'SELECT player1_id, player2_id FROM "games" WHERE game_id = $1',
           [gameId]
         );
 
@@ -204,8 +245,14 @@ const MatchmakingController = {
       else if (matchmakingQueue.find((p) => p.userId === userId)) {
         // Calculate wait time
         const queueEntry = matchmakingQueue.find((p) => p.userId === userId);
+        if (!queueEntry) {
+          return res.status(500).json({
+            error: { message: "Error retrieving queue status." },
+          });
+        }
+
         const waitTimeSeconds = Math.floor(
-          (new Date() - queueEntry.timestamp) / 1000
+          (new Date().getTime() - queueEntry.timestamp.getTime()) / 1000
         );
 
         res.status(200).json({
@@ -232,11 +279,11 @@ const MatchmakingController = {
 
   /**
    * Leave the matchmaking queue
-   * @param {Object} req - Express request object
-   * @param {Object} res - Express response object
-   * @param {Function} next - Express next middleware function
+   * @param {Request} req - Express request object
+   * @param {Response} res - Express response object
+   * @param {NextFunction} next - Express next middleware function
    */
-  async leaveQueue(req, res, next) {
+  async leaveQueue(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user.user_id;
       const index = matchmakingQueue.findIndex((p) => p.userId === userId);
@@ -266,17 +313,6 @@ const MatchmakingController = {
       next(error);
     }
   },
-
-  /**
-   * Clear a user from active matches (internal function)
-   * @param {string} userId - User ID to clear
-   */
-  clearActiveMatch(userId) {
-    if (activeMatches.has(userId)) {
-      activeMatches.delete(userId);
-      console.log(`User ${userId} cleared from activeMatches.`);
-    }
-  },
 };
 
-module.exports = MatchmakingController;
+export { MatchmakingController, clearActiveMatch };

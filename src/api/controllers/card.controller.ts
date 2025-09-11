@@ -37,8 +37,6 @@ const CardController = {
       const pageNum = parseInt(page, 10);
       const limitNum = parseInt(limit, 10);
 
-      console.log("Controller received:", { page, limit, pageNum, limitNum });
-
       if (isNaN(pageNum) || pageNum < 1) {
         res.status(400).json({
           error: {

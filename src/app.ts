@@ -20,9 +20,9 @@ const swaggerOptions = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "Viking Vengeance API",
+      title: "Myth API",
       version: "1.0.0",
-      description: "API for the Viking Vengeance card game",
+      description: "API for the Myth card game",
     },
     servers: [
       {
@@ -83,8 +83,9 @@ if (require.main === module) {
 
     // Try to load socket manager if it exists
     try {
-      const socketManager = require("./sockets/socket.manager").default;
+      const socketManager = require("./sockets/socket.manager");
       if (socketManager) {
+        console.log("!!!!!!!!!! INITIALIZING SOCKET MANAGER NOW !!!!!!!!!!");
         socketManager(io);
       }
     } catch (error) {

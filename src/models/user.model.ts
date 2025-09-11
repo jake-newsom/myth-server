@@ -17,8 +17,8 @@ const UserModel = {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
       RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
-    // Initial values: give new users starting currencies and 1 pack
-    const values = [username, email, hashedPassword, 100, 100, 0, 3, 0, 1]; // Start with 100 gold and 3 wonder coins and 1 pack
+
+    const values = [username, email, hashedPassword, 0, 0, 0, 0, 0, 0];
     const { rows } = await db.query(query, values);
     return rows[0];
   },
@@ -180,10 +180,7 @@ const UserModel = {
   },
 
   // Wonder coins methods
-  async updateFateCoins(
-    userId: string,
-    amount: number
-  ): Promise<User | null> {
+  async updateFateCoins(userId: string, amount: number): Promise<User | null> {
     const query = `
       UPDATE "users" 
       SET fate_coins = fate_coins + $2 

@@ -1,5 +1,5 @@
 import { GameStatus } from "../game-engine/game.logic";
-import { InGameCard } from "./card.types";
+import { InGameCard, PowerValues } from "./card.types";
 
 // Re-export InGameCard for use in other modules
 export { InGameCard };
@@ -19,29 +19,42 @@ export type CardPower = {
 
 export type CardState = "normal" | "immune" | "buffed" | "debuffed";
 
-export type TileStatus =
-  | "blocked"
-  | "removed"
-  | "boosted"
-  | "cursed"
-  | "normal";
+export enum TileStatus {
+  Blocked = "blocked",
+  Removed = "removed",
+  Boosted = "boosted",
+  Cursed = "cursed",
+  Normal = "normal",
+}
+
+export enum TileTerrain {
+  Ocean = "ocean",
+  Lava = "lava",
+}
+
+export interface TileEffect {
+  status: TileStatus;
+  turns_left: number;
+  power?: Partial<PowerValues>;
+  effect_duration?: number;
+  terrain?: TileTerrain;
+  animation_label?: string;
+  applies_to_user?: string;
+}
 
 export interface BoardCell {
   card: InGameCard | null;
-
-  // Tile effect properties
-  tile_status: TileStatus;
-  turns_left: number; // Number of turns P1's effect remains
-  animation_label: string | null; // e.g., "blocked_by_spell_X", "fire_boost"
+  tile_enabled: boolean;
+  tile_effect?: TileEffect;
 }
 
 export type GameBoard = Array<Array<BoardCell>>;
 
 export interface Player {
   user_id: string;
-  hand: string[]; // Array of user_card_instance_id
-  deck: string[]; // Array of user_card_instance_id
-  discard_pile: string[]; // Array of user_card_instance_id for cards that have been played/removed
+  hand: string[];
+  deck: string[];
+  discard_pile: string[];
   score: number;
 }
 

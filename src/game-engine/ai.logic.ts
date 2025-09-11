@@ -1,8 +1,8 @@
 import { GameLogic } from "./game.logic";
-import { GameState, BoardPosition } from "../types/game.types";
+import { GameState, BoardPosition, TileStatus } from "../types/game.types";
 import { InGameCard } from "../types/card.types";
 import * as _ from "lodash";
-import { canPlaceOnTile } from "./game.utils";
+import * as validators from "./game.validators";
 
 const BOARD_SIZE = 4;
 
@@ -20,9 +20,7 @@ export class AILogic {
     // Simulate placement with the card instance's actual power and level
     tempBoard[position.y][position.x] = {
       card: cardToPlay,
-      tile_status: "normal",
-      turns_left: 0,
-      animation_label: null,
+      tile_enabled: true,
     };
 
     let potentialFlips = 0;
@@ -105,7 +103,11 @@ export class AILogic {
 
       for (let y = 0; y < BOARD_SIZE; y++) {
         for (let x = 0; x < BOARD_SIZE; x++) {
-          if (canPlaceOnTile(currentGameState, { x, y })) {
+          const placeResult = validators.canPlaceOnTile(currentGameState, {
+            x,
+            y,
+          });
+          if (placeResult.canPlace) {
             const moveScore = this.evaluateMove(
               _.cloneDeep(currentGameState),
               cardData as InGameCard,

@@ -1,4 +1,4 @@
-import { PowerValues } from "./card.types";
+import { PowerValues, TriggerMoment } from "./card.types";
 import { Request } from "express";
 
 /**
@@ -47,29 +47,27 @@ export interface UserProfile {
 
 // Card types for API responses
 export interface CardResponse {
-  // Represents a card instance with its current (possibly leveled) stats
-  user_card_instance_id?: string; // Present if it's a user's specific instance
-  base_card_id: string; // ID of the base card definition
+  user_card_instance_id?: string;
+  base_card_id: string;
   name: string;
   rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
   image_url: string;
-  base_power: PowerValues; // Changed from 'power'
-  level?: number; // Present for user instances
-  xp?: number; // Present for user instances
+  base_power: PowerValues;
+  level?: number;
+  xp?: number;
   tags: string[];
   special_ability: {
     ability_id: string;
     name: string;
     description: string;
-    triggerMoment: string;
+    triggerMoment: TriggerMoment;
     parameters: Record<string, any>;
   } | null;
-  power_enhancements?: PowerValues; // Added for player-owned cards
+  power_enhancements?: PowerValues;
 }
 
 export interface StaticCardCollectionResponse {
-  // For /api/cards (list of base cards)
-  data: CardResponse[]; // Here, CardResponse will not have user_card_instance_id, level, xp
+  data: CardResponse[];
   total: number;
   page: number;
   limit: number;
@@ -77,22 +75,20 @@ export interface StaticCardCollectionResponse {
 
 // Deck types
 export interface DeckSummary {
-  // For listing multiple decks
   deck_id: string;
   name: string;
-  created_at: string; // ISO Date string
-  last_updated: string; // ISO Date string
-  card_count: number; // Total number of card instances in the deck
+  created_at: string;
+  last_updated: string;
+  card_count: number;
 }
 
 export interface DeckDetailResponse {
-  // For a single deck view
   deck_id: string;
   name: string;
   user_id: string;
-  created_at: string; // ISO Date string
-  last_updated: string; // ISO Date string
-  cards: CardResponse[]; // Array of detailed card instances in the deck
+  created_at: string;
+  last_updated: string;
+  cards: CardResponse[];
 }
 
 export interface CreateDeckRequest {

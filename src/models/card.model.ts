@@ -5,7 +5,7 @@ import {
   Card as BaseCard,
   SpecialAbility,
 } from "../types/database.types";
-import { PowerValues } from "../types/card.types";
+import { PowerValues, TriggerMoment } from "../types/card.types";
 
 // Helper to format the card instance response
 function formatUserCardInstanceResponse(
@@ -55,7 +55,13 @@ function formatStaticCardResponse(
   return {
     ...rest,
     base_card_id: card_id,
-    special_ability: baseCard.special_ability || null,
+    special_ability: baseCard.special_ability
+      ? {
+          ...baseCard.special_ability,
+          triggerMoment: baseCard.special_ability
+            .triggerMoment as TriggerMoment,
+        }
+      : null,
   };
 }
 
@@ -271,7 +277,6 @@ const CardModel = {
   }> {
     try {
       const { rarity, name, tag, ids } = filters;
-      console.log("ids", ids, "page", page, "limit", limit);
 
       const offset = (page - 1) * limit;
 
@@ -347,18 +352,10 @@ const CardModel = {
         ${limitClause};
       `;
 
-      console.log("Full SQL query:", dataQuery);
-      console.log("Query parameters:", queryParams);
-
       const { rows: dataRows } = await db.query(dataQuery, queryParams);
-      console.log(`Query returned ${dataRows.length} results`);
 
       // If the main query returned no results but we have IDs, try a fallback approach
       if (dataRows.length === 0 && ids) {
-        console.log(
-          "Main query returned no results. Trying fallback approach..."
-        );
-
         // Split the IDs and try a direct text-based comparison approach
         const idArray = ids
           .split(",")
@@ -392,19 +389,13 @@ const CardModel = {
             ${fallbackLimitClause};
           `;
 
-          console.log(
-            "Executing fallback query with parameters:",
-            fallbackParams
-          );
           const { rows: fallbackRows } = await db.query(
             fallbackQuery,
             fallbackParams
           );
-          console.log(`Fallback query returned ${fallbackRows.length} results`);
 
           if (fallbackRows.length > 0) {
             // Use results from fallback query instead
-            console.log("Using fallback query results");
 
             // Get count of total matching IDs for pagination
             const fallbackCountQuery = `SELECT COUNT(*) FROM "cards" WHERE card_id::text = ANY($1::text[])`;
@@ -453,9 +444,6 @@ const CardModel = {
       // Count query - use the same where clause but without limit/offset
       const countQuery = `SELECT COUNT(*) FROM "cards" c ${whereClause}`;
       const countParams = queryParams.slice(0, -2); // Remove limit and offset
-
-      console.log("Count query:", countQuery);
-      console.log("Count params:", countParams);
 
       const { rows: countRows } = await db.query(countQuery, countParams);
 
@@ -705,7 +693,6 @@ const CardModel = {
     limit: number;
   }> {
     try {
-      console.log("LIMIT: ", limit);
       const { rarity, name, tag } = filters;
       const offset = (page - 1) * limit;
 
@@ -757,9 +744,6 @@ const CardModel = {
         LIMIT $${paramIndex} OFFSET $${paramIndex + 1};
       `;
 
-      console.log("[findAllUserCardInstances] Data Query:", dataQuery);
-      console.log("[findAllUserCardInstances] Query Parameters:", queryParams);
-
       const { rows: dataRows } = await db.query(dataQuery, queryParams);
 
       const countQuery = `
@@ -770,8 +754,6 @@ const CardModel = {
       `;
       // Remove limit and offset for count query
       const countParams = queryParams.slice(0, -2);
-      console.log("[findAllUserCardInstances] Count Query:", countQuery);
-      console.log("[findAllUserCardInstances] Count Parameters:", countParams);
       const { rows: countRows } = await db.query(countQuery, countParams);
 
       const data = dataRows.map((row) => {

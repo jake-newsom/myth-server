@@ -1,5 +1,5 @@
 import db from "../config/db.config";
-import { GameState } from "../types/game.types"; // Assuming GameState is defined here
+import { GameState, TileStatus } from "../types/game.types"; // Assuming GameState is defined here
 import { GameStatus } from "../game-engine/game.logic";
 
 // Define types for game records and responses
@@ -89,14 +89,10 @@ class GameService {
     if (typeof gameStateString === "string") {
       const parsedState = JSON.parse(gameStateString) as GameState;
 
-      // Transform board representation to match expected format
       if (parsedState.board) {
-        // For each row in the board
         for (let y = 0; y < parsedState.board.length; y++) {
           for (let x = 0; x < parsedState.board[y].length; x++) {
             const cell = parsedState.board[y][x];
-            // If the cell is not null but has no card or the card has no user_card_instance_id,
-            // replace it with null to match expected API schema
             if (
               cell &&
               (!cell.card ||
@@ -106,9 +102,8 @@ class GameService {
             ) {
               parsedState.board[y][x] = {
                 card: null,
-                tile_status: "normal",
-                turns_left: 0,
-                animation_label: null,
+                tile_enabled: true,
+                tile_effect: undefined,
               };
             }
           }
