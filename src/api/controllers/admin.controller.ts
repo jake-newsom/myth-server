@@ -363,6 +363,68 @@ const AdminController = {
     }
   },
 
+  async resetMigrations(req: Request, res: Response) {
+    try {
+      console.log("🔄 Admin endpoint: Resetting migrations...");
+
+      // Check database connectivity first
+      try {
+        await db.query("SELECT 1");
+      } catch (dbError) {
+        return res.status(503).json({
+          status: "error",
+          message: "Database connection failed",
+          error:
+            dbError instanceof Error
+              ? dbError.message
+              : "Unknown database error",
+        });
+      }
+
+      // Reset migrations using node-pg-migrate
+      const resetCommand = "npx node-pg-migrate -m ./migrations reset";
+
+      try {
+        const { stdout, stderr } = await execAsync(resetCommand, {
+          cwd: process.cwd(),
+          env: { ...process.env },
+        });
+
+        console.log("Migration reset stdout:", stdout);
+        if (stderr) {
+          console.log("Migration reset stderr:", stderr);
+        }
+
+        return res.status(200).json({
+          status: "success",
+          message:
+            "Database migrations reset successfully - you can now run migrations fresh",
+          output: stdout,
+          warnings: stderr || null,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (execError: any) {
+        console.error("Migration reset execution error:", execError);
+        return res.status(500).json({
+          status: "error",
+          message: "Failed to reset migrations",
+          error: execError.message,
+          output: execError.stdout || null,
+          stderr: execError.stderr || null,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error("Admin migration reset endpoint error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during migration reset",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
   async getDatabaseStatus(req: Request, res: Response) {
     try {
       const status = {

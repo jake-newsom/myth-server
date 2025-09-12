@@ -20,6 +20,8 @@ router.get(
 // Database Management Endpoints (No auth required for initial setup)
 router.post("/migrate", AdminController.runMigrations);
 
+router.post("/reset-migrations", AdminController.resetMigrations);
+
 router.post("/seed", AdminController.seedDatabase);
 
 router.get("/database-status", AdminController.getDatabaseStatus);
