@@ -775,9 +775,9 @@ const AdminController = {
 
           // Create deck
           const deckResult = await client.query(
-            `INSERT INTO "decks" (user_id, name, description)
-             VALUES ($1, $2, $3) RETURNING deck_id`,
-            [AI_PLAYER_ID, deckName, `Auto-generated AI deck ${deckIndex + 1}`]
+            `INSERT INTO "decks" (user_id, name)
+             VALUES ($1, $2) RETURNING deck_id`,
+            [AI_PLAYER_ID, deckName]
           );
 
           const deckId = deckResult.rows[0].deck_id;
