@@ -17,7 +17,7 @@ exports.up = (pgm) => {
 
   // Create custom enum types
   pgm.createType("card_rarity", ["common", "uncommon", "rare", "epic", "legendary"]);
-  pgm.createType("trigger_moment", ["OnPlace", "OnFlip", "OnFlipped", "OnTurnStart", "OnTurnEnd", "OnAnyFlip"]);
+  pgm.createType("trigger_moment", ["OnPlace", "OnFlip", "OnFlipped", "OnTurnStart", "OnTurnEnd", "AnyOnFlip", "OnDefend", "AnyOnDefend", "HandOnFlip", "BoardOnFlip", "HandOnPlace", "BoardOnPlace", "BeforeCombat", "AfterCombat"]);
   pgm.createType("game_mode", ["solo", "pvp"]);
   pgm.createType("game_status", ["pending", "active", "completed", "aborted"]);
   pgm.createType("board_layout", ["4x4"]);
