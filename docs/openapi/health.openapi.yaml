@@ -1,19 +1,19 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
-  title: Viking Vengeance Health API
-  description: API for system health monitoring
+  title: Health Check API
+  description: Health monitoring endpoints for the Myth Server API
   version: 1.0.0
 
 paths:
-  /api/health:
+  /health:
     get:
-      summary: Check system health
-      description: Returns the health status of the API
+      summary: Basic health check
+      description: Returns basic health status of the API service
       tags:
-        - System
+        - Health
       responses:
-        200:
-          description: API is running correctly
+        "200":
+          description: Service is healthy
           content:
             application/json:
               schema:
@@ -28,10 +28,236 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
-                    example: "2023-07-25T12:34:56.789Z"
-              example:
-                status: "ok"
-                message: "API is running"
-                timestamp: "2023-07-25T12:34:56.789Z"
-        500:
-          description: Server error
+                  uptime:
+                    type: number
+                    description: Process uptime in seconds
+                  environment:
+                    type: string
+                    example: "production"
+
+  /health/detailed:
+    get:
+      summary: Detailed health check
+      description: Comprehensive health check including database connectivity and system metrics
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetailedHealthResponse"
+        "503":
+          description: Service is unhealthy or degraded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetailedHealthResponse"
+
+  /health/database:
+    get:
+      summary: Database health check
+      description: Tests database connectivity and verifies critical tables exist
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Database is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseHealthResponse"
+        "503":
+          description: Database is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseHealthResponse"
+
+  /health/ready:
+    get:
+      summary: Readiness check
+      description: Indicates if the service is ready to handle requests
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ready"
+                  message:
+                    type: string
+                    example: "Service is ready to handle requests"
+                  timestamp:
+                    type: string
+                    format: date-time
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "not ready"
+                  message:
+                    type: string
+                    example: "Database not accessible"
+                  error:
+                    type: string
+                    description: Error details if available
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /health/live:
+    get:
+      summary: Liveness check
+      description: Indicates if the service process is alive
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "alive"
+                  message:
+                    type: string
+                    example: "Service is alive"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  uptime:
+                    type: number
+                    description: Process uptime in seconds
+                  pid:
+                    type: integer
+                    description: Process ID
+
+components:
+  schemas:
+    DetailedHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+          description: Overall health status
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: number
+          description: Process uptime in seconds
+        environment:
+          type: string
+          description: Runtime environment
+        version:
+          type: string
+          description: Application version
+        services:
+          type: object
+          properties:
+            database:
+              $ref: "#/components/schemas/DatabaseService"
+            memory:
+              $ref: "#/components/schemas/MemoryMetrics"
+            cpu:
+              $ref: "#/components/schemas/CpuMetrics"
+
+    DatabaseService:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, unknown]
+        responseTime:
+          type: number
+          description: Database response time in milliseconds
+        error:
+          type: string
+          nullable: true
+          description: Error message if unhealthy
+
+    MemoryMetrics:
+      type: object
+      properties:
+        used:
+          type: number
+          description: Heap memory used in bytes
+        total:
+          type: number
+          description: Total heap memory in bytes
+        external:
+          type: number
+          description: External memory in bytes
+        rss:
+          type: number
+          description: Resident set size in bytes
+
+    CpuMetrics:
+      type: object
+      properties:
+        usage:
+          type: object
+          description: CPU usage statistics
+
+    DatabaseHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, unknown]
+        timestamp:
+          type: string
+          format: date-time
+        tests:
+          type: object
+          properties:
+            connectivity:
+              $ref: "#/components/schemas/HealthTest"
+            basicQuery:
+              $ref: "#/components/schemas/HealthTest"
+            tablesExist:
+              type: object
+              allOf:
+                - $ref: "#/components/schemas/HealthTest"
+                - type: object
+                  properties:
+                    tables:
+                      type: array
+                      items:
+                        type: string
+                      description: List of existing tables
+
+    HealthTest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, unknown]
+        responseTime:
+          type: number
+          description: Test response time in milliseconds
+        error:
+          type: string
+          nullable: true
+          description: Error message if test failed
+
+tags:
+  - name: Health
+    description: Health monitoring and status endpoints

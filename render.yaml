@@ -1,0 +1,47 @@
+services:
+  # Main Web Service
+  - type: web
+    name: myth-server-api
+    env: node
+    plan: starter # You can upgrade to starter, standard, pro, or pro plus as needed
+    buildCommand: npm run render:build
+    startCommand: npm run render:start
+    healthCheckPath: /api/health/live
+    autoDeploy: false # Set to true if you want automatic deploys on git push
+
+    # Environment Variables - Using linked environment group
+    envVarGroups:
+      - staging
+
+    # Additional service-specific environment variables (if needed)
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000 # Render uses port 10000 by default
+      # All other environment variables (JWT_SECRET, JWT_EXPIRES_IN, BCRYPT_SALT_ROUNDS, etc.)
+      # are managed through the "staging" environment group
+      # DATABASE_URL will be automatically set when you add a PostgreSQL database
+
+    # Disk storage (if you need persistent file storage)
+    # disk:
+    #   name: myth-server-storage
+    #   mountPath: /opt/render/project/src/storage
+    #   sizeGB: 1
+
+  # PostgreSQL Database
+  - type: pserv
+    name: myth-server-postgres
+    env: postgresql
+    plan: starter # Free tier available, or upgrade as needed
+
+
+    # Database will be automatically configured with:
+    # - DATABASE_URL environment variable
+    # - SSL enabled by default
+    # - Automatic backups on paid plans
+# Optional: Redis for session storage or caching
+# - type: redis
+#   name: myth-server-redis
+#   plan: starter
+#   maxmemoryPolicy: allkeys-lru

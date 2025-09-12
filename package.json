@@ -21,7 +21,14 @@
     "test-surrender": "node tests/surrender.test.js",
     "test-rate-limit": "node tests/rate-limit.test.js",
     "test-ai-drawing": "node tests/ai-card-drawing.test.js",
-    "docs": "npx @redocly/cli build-docs docs/openapi/openapi.yaml"
+    "docs": "npx @redocly/cli build-docs docs/openapi/openapi.yaml",
+    "render:build": "npm run build",
+    "render:start": "npm run migrate:up && npm start",
+    "render:deploy": "npm run render:build",
+    "db:run-queries": "node scripts/run-database-queries.js",
+    "db:setup": "npm run migrate:up && npm run db:run-queries",
+    "verify:env": "node scripts/verify-env.js",
+    "postinstall": "npm run build"
   },
   "keywords": [],
   "author": "",

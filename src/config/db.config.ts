@@ -3,10 +3,11 @@ import config from "./index";
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
-  // Optional: SSL configuration for production if needed
-  // ssl: {
-  //   rejectUnauthorized: false // Necessary for some cloud providers like Heroku, Render
-  // }
+  // SSL configuration for production (required for Render.com and other cloud providers)
+  ssl:
+    process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : false,
 });
 
 pool.on("error", (err: Error) => {

@@ -16,6 +16,7 @@ import leaderboardRoutes from "./leaderboard.routes";
 import achievementRoutes from "./achievement.routes";
 import fatePickRoutes from "./fatePick.routes";
 import mailRoutes from "./mail.routes";
+import healthRoutes from "./health.routes";
 import { handleErrors } from "../middlewares/error.middleware";
 
 // Import matchmaking routes
@@ -41,18 +42,10 @@ router.use("/leaderboard", leaderboardRoutes);
 router.use("/achievements", achievementRoutes);
 router.use("/fate-picks", fatePickRoutes);
 router.use("/mail", mailRoutes);
+router.use("/health", healthRoutes);
 
 // Global error handler
 router.use(handleErrors);
-
-// Health check endpoint
-router.get("/health", (_, res) => {
-  res.status(200).json({
-    status: "ok",
-    message: "API is running",
-    timestamp: new Date().toISOString(),
-  });
-});
 
 // 404 Handler for any undefined API routes
 router.use("*", (_, res) => {

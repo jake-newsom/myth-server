@@ -13,6 +13,8 @@ tags:
     description: Matchmaking and PvP setup
   - name: System
     description: System status and health
+  - name: Health
+    description: Health monitoring and status endpoints
   - name: Users
     description: User profile and card collection management
   - name: Cards
@@ -313,9 +315,21 @@ paths:
   /api/admin/user-pack-count/{userId}:
     $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1user-pack-count~1{userId}"
 
-  # System Endpoints
+  # System Endpoints - Health Monitoring
   /api/health:
-    $ref: "./health.openapi.yaml#/paths/~1api~1health"
+    $ref: "./health.openapi.yaml#/paths/~1health"
+
+  /api/health/detailed:
+    $ref: "./health.openapi.yaml#/paths/~1health~1detailed"
+
+  /api/health/database:
+    $ref: "./health.openapi.yaml#/paths/~1health~1database"
+
+  /api/health/ready:
+    $ref: "./health.openapi.yaml#/paths/~1health~1ready"
+
+  /api/health/live:
+    $ref: "./health.openapi.yaml#/paths/~1health~1live"
 
 components:
   schemas:
