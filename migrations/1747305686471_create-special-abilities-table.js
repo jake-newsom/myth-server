@@ -7,6 +7,7 @@ exports.shorthands = undefined;
  * @param pgm {import('node-pg-migrate').MigrationBuilder}
  * @returns {Promise<void> | void}
  */
+
 exports.up = (pgm) => {
   // Create custom type for the trigger moments
   pgm.createType("trigger_moment", [
@@ -15,6 +16,15 @@ exports.up = (pgm) => {
     "OnFlipped",
     "OnTurnStart",
     "OnTurnEnd",
+    "AnyOnFlip",
+    "OnDefend",
+    "AnyOnDefend",
+    "HandOnFlip",
+    "BoardOnFlip",
+    "HandOnPlace",
+    "BoardOnPlace",
+    "BeforeCombat",
+    "AfterCombat",
   ]);
 
   pgm.createTable("special_abilities", {

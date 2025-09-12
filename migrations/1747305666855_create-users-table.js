@@ -46,11 +46,18 @@ exports.up = (pgm) => {
       notNull: true,
       default: pgm.func("current_timestamp"),
     },
+    pack_count: {
+      type: "integer",
+      notNull: true,
+      default: 0,
+      check: "pack_count >= 0",
+    },
   });
 
   // Create indexes for performance
   pgm.createIndex("users", "username");
   pgm.createIndex("users", "email");
+  pgm.createIndex("users", "pack_count");
 };
 
 /**

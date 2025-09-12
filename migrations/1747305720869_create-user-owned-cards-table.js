@@ -38,6 +38,11 @@ exports.up = (pgm) => {
       default: 0,
       check: "xp >= 0",
     },
+    created_at: {
+      type: "timestamp",
+      notNull: true,
+      default: pgm.func("current_timestamp"),
+    },
   });
 
   // Create indexes for performance

@@ -9,21 +9,21 @@ exports.shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 exports.up = (pgm) => {
-  // Add wonder coins to users table for wonder picks currency
+  // Add fate coins to users table for fate picks currency
   pgm.addColumn("users", {
-    wonder_coins: {
+    fate_coins: {
       type: "integer",
       notNull: true,
       default: 0,
     },
   });
 
-  pgm.addConstraint("users", "users_wonder_coins_check", {
-    check: "wonder_coins >= 0",
+  pgm.addConstraint("users", "users_fate_coins_check", {
+    check: "fate_coins >= 0",
   });
 
-  // Create wonder_picks table for available wonder pick opportunities
-  pgm.createTable("wonder_picks", {
+  // Create fate_picks table for available fate pick opportunities
+  pgm.createTable("fate_picks", {
     id: {
       type: "uuid",
       primaryKey: true,
@@ -52,7 +52,7 @@ exports.up = (pgm) => {
       references: "sets(set_id)",
       onDelete: "CASCADE",
     },
-    cost_wonder_coins: {
+    cost_fate_coins: {
       type: "integer",
       notNull: true,
       default: 1,
@@ -89,17 +89,17 @@ exports.up = (pgm) => {
     },
   });
 
-  // Create wonder_pick_participations table for tracking user participations
-  pgm.createTable("wonder_pick_participations", {
+  // Create fate_pick_participations table for tracking user participations
+  pgm.createTable("fate_pick_participations", {
     id: {
       type: "uuid",
       primaryKey: true,
       default: pgm.func("gen_random_uuid()"),
     },
-    wonder_pick_id: {
+    fate_pick_id: {
       type: "uuid",
       notNull: true,
-      references: "wonder_picks(id)",
+      references: "fate_picks(id)",
       onDelete: "CASCADE",
     },
     participant_id: {
@@ -127,7 +127,7 @@ exports.up = (pgm) => {
     cost_paid: {
       type: "integer",
       notNull: true,
-      comment: "Wonder coins paid for this participation",
+      comment: "Fate coins paid for this participation",
     },
     status: {
       type: "varchar(20)",
@@ -153,26 +153,26 @@ exports.up = (pgm) => {
   });
 
   // Add constraints
-  pgm.addConstraint("wonder_picks", "wonder_picks_cost_check", {
-    check: "cost_wonder_coins > 0",
+  pgm.addConstraint("fate_picks", "fate_picks_cost_check", {
+    check: "cost_fate_coins > 0",
   });
 
-  pgm.addConstraint("wonder_picks", "wonder_picks_participants_check", {
+  pgm.addConstraint("fate_picks", "fate_picks_participants_check", {
     check:
       "current_participants >= 0 AND current_participants <= max_participants",
   });
 
   pgm.addConstraint(
-    "wonder_pick_participations",
-    "wonder_pick_participations_status_check",
+    "fate_pick_participations",
+    "fate_pick_participations_status_check",
     {
       check: "status IN ('shuffled', 'selected', 'expired')",
     }
   );
 
   pgm.addConstraint(
-    "wonder_pick_participations",
-    "wonder_pick_participations_position_check",
+    "fate_pick_participations",
+    "fate_pick_participations_position_check",
     {
       check:
         "selected_position IS NULL OR (selected_position >= 0 AND selected_position <= 4)",
@@ -180,36 +180,36 @@ exports.up = (pgm) => {
   );
 
   pgm.addConstraint(
-    "wonder_pick_participations",
-    "wonder_pick_participations_cost_check",
+    "fate_pick_participations",
+    "fate_pick_participations_cost_check",
     {
       check: "cost_paid > 0",
     }
   );
 
-  // Unique constraint: one participation per user per wonder pick
+  // Unique constraint: one participation per user per fate pick
   pgm.createIndex(
-    "wonder_pick_participations",
-    ["wonder_pick_id", "participant_id"],
+    "fate_pick_participations",
+    ["fate_pick_id", "participant_id"],
     {
       unique: true,
-      name: "wonder_pick_participations_unique_per_pick",
+      name: "fate_pick_participations_unique_per_pick",
     }
   );
 
   // Indexes for efficient queries
-  pgm.createIndex("wonder_picks", "original_owner_id");
-  pgm.createIndex("wonder_picks", "set_id");
-  pgm.createIndex("wonder_picks", ["is_active", "expires_at"]);
-  pgm.createIndex("wonder_picks", "created_at");
+  pgm.createIndex("fate_picks", "original_owner_id");
+  pgm.createIndex("fate_picks", "set_id");
+  pgm.createIndex("fate_picks", ["is_active", "expires_at"]);
+  pgm.createIndex("fate_picks", "created_at");
 
-  pgm.createIndex("wonder_pick_participations", "wonder_pick_id");
-  pgm.createIndex("wonder_pick_participations", "participant_id");
-  pgm.createIndex("wonder_pick_participations", ["status", "expires_at"]);
+  pgm.createIndex("fate_pick_participations", "fate_pick_id");
+  pgm.createIndex("fate_pick_participations", "participant_id");
+  pgm.createIndex("fate_pick_participations", ["status", "expires_at"]);
 
   // Function to auto-update updated_at timestamps
   pgm.sql(`
-    CREATE OR REPLACE FUNCTION update_wonder_picks_updated_at()
+    CREATE OR REPLACE FUNCTION update_fate_picks_updated_at()
     RETURNS TRIGGER AS $$
     BEGIN
       NEW.updated_at = NOW();
@@ -220,25 +220,25 @@ exports.up = (pgm) => {
 
   // Trigger to automatically update updated_at
   pgm.sql(`
-    CREATE TRIGGER update_wonder_picks_updated_at_trigger
-    BEFORE UPDATE ON wonder_picks
+    CREATE TRIGGER update_fate_picks_updated_at_trigger
+    BEFORE UPDATE ON fate_picks
     FOR EACH ROW
-    EXECUTE FUNCTION update_wonder_picks_updated_at();
+    EXECUTE FUNCTION update_fate_picks_updated_at();
   `);
 
-  // Function to auto-expire wonder picks and participations
+  // Function to auto-expire fate picks and participations
   pgm.sql(`
-    CREATE OR REPLACE FUNCTION cleanup_expired_wonder_picks()
+    CREATE OR REPLACE FUNCTION cleanup_expired_fate_picks()
     RETURNS void AS $$
     BEGIN
       -- Expire participations that haven't been selected in time
-      UPDATE wonder_pick_participations 
+      UPDATE fate_pick_participations 
       SET status = 'expired' 
       WHERE status = 'shuffled' 
         AND expires_at < NOW();
       
-      -- Deactivate expired wonder picks
-      UPDATE wonder_picks 
+      -- Deactivate expired fate picks
+      UPDATE fate_picks 
       SET is_active = false 
       WHERE is_active = true 
         AND expires_at < NOW();
@@ -248,18 +248,18 @@ exports.up = (pgm) => {
 
   // Trigger to update participant count when participations are added
   pgm.sql(`
-    CREATE OR REPLACE FUNCTION update_wonder_pick_participant_count()
+    CREATE OR REPLACE FUNCTION update_fate_pick_participant_count()
     RETURNS TRIGGER AS $$
     BEGIN
       IF TG_OP = 'INSERT' THEN
-        UPDATE wonder_picks 
+        UPDATE fate_picks 
         SET current_participants = current_participants + 1 
-        WHERE id = NEW.wonder_pick_id;
+        WHERE id = NEW.fate_pick_id;
         RETURN NEW;
       ELSIF TG_OP = 'DELETE' THEN
-        UPDATE wonder_picks 
+        UPDATE fate_picks 
         SET current_participants = current_participants - 1 
-        WHERE id = OLD.wonder_pick_id;
+        WHERE id = OLD.fate_pick_id;
         RETURN OLD;
       END IF;
       RETURN NULL;
@@ -268,10 +268,10 @@ exports.up = (pgm) => {
   `);
 
   pgm.sql(`
-    CREATE TRIGGER update_wonder_pick_participant_count_trigger
-    AFTER INSERT OR DELETE ON wonder_pick_participations
+    CREATE TRIGGER update_fate_pick_participant_count_trigger
+    AFTER INSERT OR DELETE ON fate_pick_participations
     FOR EACH ROW
-    EXECUTE FUNCTION update_wonder_pick_participant_count();
+    EXECUTE FUNCTION update_fate_pick_participant_count();
   `);
 };
 
@@ -283,19 +283,19 @@ exports.up = (pgm) => {
 exports.down = (pgm) => {
   // Drop triggers and functions
   pgm.sql(
-    "DROP TRIGGER IF EXISTS update_wonder_pick_participant_count_trigger ON wonder_pick_participations;"
+    "DROP TRIGGER IF EXISTS update_fate_pick_participant_count_trigger ON fate_pick_participations;"
   );
   pgm.sql(
-    "DROP TRIGGER IF EXISTS update_wonder_picks_updated_at_trigger ON wonder_picks;"
+    "DROP TRIGGER IF EXISTS update_fate_picks_updated_at_trigger ON fate_picks;"
   );
-  pgm.sql("DROP FUNCTION IF EXISTS update_wonder_pick_participant_count();");
-  pgm.sql("DROP FUNCTION IF EXISTS cleanup_expired_wonder_picks();");
-  pgm.sql("DROP FUNCTION IF EXISTS update_wonder_picks_updated_at();");
+  pgm.sql("DROP FUNCTION IF EXISTS update_fate_pick_participant_count();");
+  pgm.sql("DROP FUNCTION IF EXISTS cleanup_expired_fate_picks();");
+  pgm.sql("DROP FUNCTION IF EXISTS update_fate_picks_updated_at();");
 
   // Drop tables
-  pgm.dropTable("wonder_pick_participations");
-  pgm.dropTable("wonder_picks");
+  pgm.dropTable("fate_pick_participations");
+  pgm.dropTable("fate_picks");
 
-  // Remove wonder coins column
-  pgm.dropColumn("users", "wonder_coins");
+  // Remove fate coins column
+  pgm.dropColumn("users", "fate_coins");
 };

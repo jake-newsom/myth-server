@@ -54,9 +54,16 @@ exports.up = (pgm) => {
       notNull: true,
       default: "{}",
     },
+    set_id: {
+      type: "uuid",
+      references: "sets(set_id)",
+      onDelete: "RESTRICT",
+      onUpdate: "CASCADE",
+    },
   });
 
   // Create indexes for performance
+  pgm.createIndex("cards", "set_id");
   pgm.createIndex("cards", "name");
   pgm.createIndex("cards", "rarity");
   pgm.createIndex("cards", "special_ability_id");
@@ -72,6 +79,7 @@ exports.down = (pgm) => {
   pgm.dropIndex("cards", "special_ability_id");
   pgm.dropIndex("cards", "rarity");
   pgm.dropIndex("cards", "name");
+  pgm.dropIndex("cards", "set_id");
   pgm.dropTable("cards");
   pgm.dropType("card_rarity");
 };
