@@ -53,6 +53,39 @@ export const norseAbilities: AbilityMap = {
   // Warrior's Blessing: Grant +2 to adjacent allies for a turn.
   // Peaceful Strength: Gain +2 if no adjacent enemies.
   // Winter's Grasp: Freeze one adjacent tile for 1 turn.
+
+  "Winter's Grasp": (context) => {
+    console.log("Winter's Grasp");
+    const { position, state } = context;
+    const gameEvents: BaseGameEvent[] = [];
+    if (!position) return [];
+
+    const adjacentPositions = getAdjacentPositions(
+      position,
+      state.board.length
+    ).filter((pos) => getTileAtPosition(pos, state.board)?.card === null);
+    console.log("adjacentPositions", adjacentPositions);
+
+    if (adjacentPositions.length > 0) {
+      const randomIndex = Math.floor(Math.random() * adjacentPositions.length);
+      const tile = getTileAtPosition(
+        adjacentPositions[randomIndex],
+        state.board
+      );
+      console.log("tile", tile);
+      if (tile)
+        gameEvents.push(
+          setTileStatus(tile, adjacentPositions[randomIndex], {
+            status: TileStatus.Blocked,
+            turns_left: 2,
+            animation_label: "frozen",
+          })
+        );
+    }
+
+    return gameEvents;
+  },
+
   "Trickster's Gambit": (context) => {
     const {
       triggerCard,

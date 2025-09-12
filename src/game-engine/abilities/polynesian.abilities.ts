@@ -189,7 +189,7 @@ export const polynesianAbilities: AbilityMap = {
 
     const emptyAdjacentTiles = getEmptyAdjacentTiles(position, board);
     for (const { position: tilePos } of emptyAdjacentTiles) {
-      gameEvents.push(addTileBlessing(tilePos, 1, triggerCard.owner));
+      gameEvents.push(addTileBlessing(tilePos, 3, triggerCard.owner));
     }
 
     return gameEvents;
