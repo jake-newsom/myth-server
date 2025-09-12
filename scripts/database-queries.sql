@@ -343,7 +343,7 @@ ON CONFLICT (id) DO UPDATE SET
   trigger_moment = EXCLUDED.trigger_moment,
   parameters = EXCLUDED.parameters;
 INSERT INTO special_abilities (id, name, description, trigger_moment, parameters)
-VALUES ('okuriinu_hunters_mark', 'Hunter’s Mark', 'Gains +1 power for each defeated enemy.', 'OnAnyFlip', '{}')
+VALUES ('okuriinu_hunters_mark', 'Hunter's Mark', 'Gains +1 power for each defeated enemy.', 'AnyOnFlip', '{}')
 ON CONFLICT (id) DO UPDATE SET 
   name = EXCLUDED.name,
   description = EXCLUDED.description,
@@ -469,7 +469,7 @@ ON CONFLICT (id) DO UPDATE SET
   trigger_moment = EXCLUDED.trigger_moment,
   parameters = EXCLUDED.parameters;
 INSERT INTO special_abilities (id, name, description, trigger_moment, parameters)
-VALUES ('vali_revenge', 'Avenge Baldr', 'Gain +1 to all stats for each ally defeated this game.', 'OnAnyFlip', '{}')
+VALUES ('vali_revenge', 'Avenge Baldr', 'Gain +1 to all stats for each ally defeated this game.', 'AnyOnFlip', '{}')
 ON CONFLICT (id) DO UPDATE SET 
   name = EXCLUDED.name,
   description = EXCLUDED.description,
@@ -530,15 +530,7 @@ VALUES (
   NULL,
   ARRAY['japanese', 'yokai'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Amaterasu',
@@ -549,15 +541,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'amaterasu_radiant_blessing'),
   ARRAY['japanese', 'goddess', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Bakeneko',
@@ -568,15 +552,7 @@ VALUES (
   NULL,
   ARRAY['japanese', 'yokai'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Baldr',
@@ -587,15 +563,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'baldr_immune'),
   ARRAY['norse', 'god', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Bear Totem',
@@ -606,15 +574,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Benkei',
@@ -625,15 +585,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'benkei_steadfast_guard'),
   ARRAY['japanese', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Berserker',
@@ -644,15 +596,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Bragi',
@@ -663,15 +607,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'bragi_inspire'),
   ARRAY['norse', 'god', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Canoe Builder',
@@ -682,15 +618,7 @@ VALUES (
   NULL,
   ARRAY['polynesian', 'human', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Drenger',
@@ -701,15 +629,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Fenrir',
@@ -720,15 +640,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'fenrir_devourer_surge'),
   ARRAY['norse', 'beast', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Fisherman of Kuʻula',
@@ -739,15 +651,7 @@ VALUES (
   NULL,
   ARRAY['polynesian', 'human', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Freyja',
@@ -758,15 +662,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'freyja_bless'),
   ARRAY['norse', 'goddess', 'warrior', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Frigg',
@@ -777,15 +673,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'frigg_bless'),
   ARRAY['norse', 'goddess', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Futakuchi-onna',
@@ -796,15 +684,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'futakuchi_onna_vengeful_bite'),
   ARRAY['japanese', 'yokai'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Gashadokuro',
@@ -815,15 +695,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'gashadokuro_bone_chill'),
   ARRAY['japanese', 'yokai', 'beast'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Hachiman',
@@ -834,15 +706,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'hachiman_warriors_aura'),
   ARRAY['japanese', 'god', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Hauwahine',
@@ -853,15 +717,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'hauwahine_rains_blessing'),
   ARRAY['polynesian', 'mystic', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Heimdall',
@@ -872,15 +728,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'heimdall_block'),
   ARRAY['norse', 'god', 'warrior', 'sky'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Hel',
@@ -891,15 +739,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'hel_soul'),
   ARRAY['norse', 'goddess', 'mystic', 'undead'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Hitotsume-kozō',
@@ -910,15 +750,7 @@ VALUES (
   NULL,
   ARRAY['japanese', 'yokai'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Hi‘iaka',
@@ -929,15 +761,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'hiaka_cleansing_hula'),
   ARRAY['polynesian', 'goddess', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Hula Dancer',
@@ -948,15 +772,7 @@ VALUES (
   NULL,
   ARRAY['polynesian', 'human', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Ice Fisher',
@@ -967,15 +783,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Jorōgumo',
@@ -986,15 +794,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'jorogumo_web_curse'),
   ARRAY['japanese', 'yokai', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Jörmungandr',
@@ -1005,15 +805,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'jormungandr_shell'),
   ARRAY['norse', 'beast', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kamapuaʻa',
@@ -1024,15 +816,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'kamapuaa_wild_shift'),
   ARRAY['polynesian', 'god', 'warrior', 'nature'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kamohoali‘i',
@@ -1043,15 +827,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'kamohoalii_oceans_shield'),
   ARRAY['polynesian', 'god', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kanaloa',
@@ -1062,15 +838,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'kanaloa_tide_ward'),
   ARRAY['polynesian', 'god', 'mystic', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kapo',
@@ -1081,15 +849,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'kapo_hex_field'),
   ARRAY['polynesian', 'goddess', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kappa',
@@ -1100,15 +860,7 @@ VALUES (
   NULL,
   ARRAY['japanese', 'yokai', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kaʻahupahau',
@@ -1119,15 +871,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'kaahupahau_harbor_guardian'),
   ARRAY['polynesian', 'goddess', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Ki''i',
@@ -1138,15 +882,7 @@ VALUES (
   NULL,
   ARRAY['polynesian', 'human'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kintarō',
@@ -1157,15 +893,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'kintaro_beast_friend'),
   ARRAY['japanese', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kitsune',
@@ -1176,15 +904,7 @@ VALUES (
   NULL,
   ARRAY['japanese', 'yokai', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Koa Warrior',
@@ -1195,15 +915,7 @@ VALUES (
   NULL,
   ARRAY['polynesian', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kupua',
@@ -1214,15 +926,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'kupua_dual_aspect'),
   ARRAY['polynesian', 'mystic', 'shapeshifter'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kāne',
@@ -1233,15 +937,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'kane_pure_waters'),
   ARRAY['polynesian', 'god', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kānehekili',
@@ -1252,15 +948,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'kanehekili_thunderous_omen'),
   ARRAY['polynesian', 'god', 'mystic', 'storm'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Kū',
@@ -1271,15 +959,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'ku_war_stance'),
   ARRAY['polynesian', 'god', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Lava Scout',
@@ -1290,15 +970,7 @@ VALUES (
   NULL,
   ARRAY['polynesian', 'human'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'La‘amaomao',
@@ -1309,15 +981,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'laamaomao_gale_aura'),
   ARRAY['polynesian', 'goddess', 'mystic', 'wind'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Loki',
@@ -1328,15 +992,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'loki_flip'),
   ARRAY['norse', 'god', 'trickster', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Lono',
@@ -1347,15 +1003,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'lono_fertile_ground'),
   ARRAY['polynesian', 'god', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Milu',
@@ -1366,15 +1014,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'milu_spirit_bind'),
   ARRAY['polynesian', 'god', 'mystic', 'underworld'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Minamoto no Raikō',
@@ -1385,15 +1025,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'minamoto_demon_bane'),
   ARRAY['japanese', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Mokumokuren',
@@ -1404,15 +1036,7 @@ VALUES (
   NULL,
   ARRAY['japanese', 'yokai', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Momotaro',
@@ -1423,15 +1047,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'momotaro_allies_rally'),
   ARRAY['japanese', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Mo‘oinanea',
@@ -1442,15 +1058,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'mooinanea_sacred_spring'),
   ARRAY['polynesian', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Māui',
@@ -1461,15 +1069,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'maui_sun_trick'),
   ARRAY['polynesian', 'human', 'warrior', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Nightmarchers',
@@ -1480,15 +1080,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'nightmarchers_dread_aura'),
   ARRAY['polynesian', 'mystic', 'spirit'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Njord',
@@ -1499,15 +1091,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'njord_sea'),
   ARRAY['norse', 'god', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Noppera-bō',
@@ -1518,15 +1102,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'nopperabo_erase_face'),
   ARRAY['japanese', 'yokai', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Norse Fox',
@@ -1537,15 +1113,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'beast', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Nurarihyon',
@@ -1556,15 +1124,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'nurarihyon_slipstream'),
   ARRAY['japanese', 'yokai'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Odin',
@@ -1575,15 +1135,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'odin_foresight'),
   ARRAY['norse', 'god', 'warrior', 'mystic', 'sky'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Okuri-inu',
@@ -1594,15 +1146,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'okuriinu_hunters_mark'),
   ARRAY['japanese', 'yokai', 'beast'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Oni',
@@ -1613,15 +1157,7 @@ VALUES (
   NULL,
   ARRAY['japanese', 'yokai'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Peasant Archer',
@@ -1632,15 +1168,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Pele',
@@ -1651,15 +1179,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'pele_lava_field'),
   ARRAY['polynesian', 'goddess', 'mystic', 'fire'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Poliʻahu',
@@ -1670,15 +1190,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'poliahu_icy_presence'),
   ARRAY['polynesian', 'goddess', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Ran',
@@ -1689,15 +1201,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'ran_pull'),
   ARRAY['norse', 'goddess', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Raven Scout',
@@ -1708,15 +1212,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Runestone Keeper',
@@ -1727,15 +1223,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Ryūjin',
@@ -1746,15 +1234,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'ryujin_tidal_sweep'),
   ARRAY['japanese', 'god', 'sea', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Shieldmaiden',
@@ -1765,15 +1245,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Sigurd',
@@ -1784,15 +1256,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'sigurd_slayer'),
   ARRAY['norse', 'human', 'warrior', 'hero'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Skadi',
@@ -1803,15 +1267,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'skadi_freeze'),
   ARRAY['norse', 'goddess', 'warrior', 'giant'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Stone Carver',
@@ -1822,15 +1278,7 @@ VALUES (
   NULL,
   ARRAY['polynesian', 'human'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Surtr',
@@ -1841,15 +1289,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'surtr_flames'),
   ARRAY['norse', 'giant', 'warrior', 'fire'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Susanoo',
@@ -1860,15 +1300,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'susanoo_storm_breaker'),
   ARRAY['japanese', 'god', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Tanuki',
@@ -1879,15 +1311,7 @@ VALUES (
   NULL,
   ARRAY['japanese', 'yokai'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Tapa Weaver',
@@ -1898,15 +1322,7 @@ VALUES (
   NULL,
   ARRAY['polynesian', 'human'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Tawara Tōda',
@@ -1917,15 +1333,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'tawara_piercing_shot'),
   ARRAY['japanese', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Temple Drummer',
@@ -1936,15 +1344,7 @@ VALUES (
   NULL,
   ARRAY['polynesian', 'human', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Tengu',
@@ -1955,15 +1355,7 @@ VALUES (
   NULL,
   ARRAY['japanese', 'yokai', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Thor',
@@ -1974,15 +1366,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'thor_push'),
   ARRAY['norse', 'god', 'warrior', 'sky'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Thrall',
@@ -1993,15 +1377,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Torchbearer',
@@ -2012,15 +1388,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Tsuchinoko',
@@ -2031,15 +1399,7 @@ VALUES (
   NULL,
   ARRAY['japanese', 'yokai', 'beast'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Tyr',
@@ -2050,15 +1410,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'tyr_binding_justice'),
   ARRAY['norse', 'god', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Ukupanipo',
@@ -2069,15 +1421,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'ukupanipo_feast_or_famine'),
   ARRAY['polynesian', 'god', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Urashima Tarō',
@@ -2088,15 +1432,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'urashima_time_shift'),
   ARRAY['japanese', 'human', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Ushi-oni',
@@ -2107,15 +1443,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'ushi_oni_shore_fury'),
   ARRAY['japanese', 'yokai', 'beast', 'sea'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Vidar',
@@ -2126,15 +1454,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'vidar_vengeance'),
   ARRAY['norse', 'god', 'warrior'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Village Healer',
@@ -2145,15 +1465,7 @@ VALUES (
   NULL,
   ARRAY['polynesian', 'human', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Polynesian')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Yamabiko',
@@ -2164,15 +1476,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'yamabiko_echo_power'),
   ARRAY['japanese', 'yokai', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Yamata no Orochi',
@@ -2183,15 +1487,7 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'yamata_many_heads'),
   ARRAY['japanese', 'yokai', 'beast'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Young Jarl',
@@ -2202,15 +1498,7 @@ VALUES (
   NULL,
   ARRAY['norse', 'human', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Norse')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
 INSERT INTO cards (name, type, rarity, image_url, power, special_ability_id, tags, set_id)
 VALUES (
   'Yuki-onna',
@@ -2221,12 +1509,4 @@ VALUES (
   (SELECT ability_id FROM special_abilities WHERE id = 'yuki_onna_frost_row'),
   ARRAY['japanese', 'yokai', 'mystic'],
   (SELECT set_id FROM sets WHERE name = 'Japanese')
-)
-ON CONFLICT (name) DO UPDATE SET 
-  type = EXCLUDED.type,
-  rarity = EXCLUDED.rarity,
-  image_url = EXCLUDED.image_url,
-  power = EXCLUDED.power,
-  special_ability_id = EXCLUDED.special_ability_id,
-  tags = EXCLUDED.tags,
-  set_id = EXCLUDED.set_id;
+);
