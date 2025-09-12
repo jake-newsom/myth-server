@@ -783,8 +783,8 @@ const AdminController = {
           const deckId = deckResult.rows[0].deck_id;
 
           // Select random cards for this deck
-          const selectedCards = [];
-          const cardNameCounts = {};
+          const selectedCards: any[] = [];
+          const cardNameCounts: { [key: string]: number } = {};
           let legendaryCount = 0;
 
           const shuffledCards = [...allCards].sort(() => Math.random() - 0.5);
@@ -797,7 +797,8 @@ const AdminController = {
 
             // Check constraints
             if (isLegendary && legendaryCount >= MAX_LEGENDARY_CARDS) continue;
-            if (cardNameCounts[cardName] >= MAX_SAME_NAME_CARDS) continue;
+            if ((cardNameCounts[cardName] || 0) >= MAX_SAME_NAME_CARDS)
+              continue;
 
             // Create user_owned_card entry for AI
             const userCardResult = await client.query(
