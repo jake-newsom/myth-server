@@ -315,6 +315,15 @@ paths:
   /api/admin/user-pack-count/{userId}:
     $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1user-pack-count~1{userId}"
 
+  /api/admin/migrate:
+    $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1migrate"
+
+  /api/admin/seed:
+    $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1seed"
+
+  /api/admin/database-status:
+    $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1database-status"
+
   # System Endpoints - Health Monitoring
   /api/health:
     $ref: "./health.openapi.yaml#/paths/~1health"

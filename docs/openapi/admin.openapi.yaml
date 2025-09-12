@@ -169,6 +169,114 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/admin/migrate:
+    post:
+      tags:
+        - Admin
+      summary: Run database migrations
+      description: Executes all pending database migrations (admin only) - useful for free tier deployments without SSH access
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Migrations completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MigrationResponse"
+        "500":
+          description: Migration failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MigrationErrorResponse"
+        "503":
+          description: Database connection failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/seed:
+    post:
+      tags:
+        - Admin
+      summary: Seed database with initial data
+      description: Executes all queries from database-queries.sql to populate the database with cards, sets, and abilities (admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Database seeding completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeedResponse"
+        "207":
+          description: Database seeding completed with some errors (partial success)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeedPartialResponse"
+        "404":
+          description: Database queries file not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Database connection failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/database-status:
+    get:
+      tags:
+        - Admin
+      summary: Get database status
+      description: Checks database connectivity, table existence, and migration status (admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Database is healthy and properly set up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseStatusResponse"
+        "207":
+          description: Database needs attention (missing tables or migrations)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseStatusResponse"
+        "503":
+          description: Database not accessible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatabaseStatusResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     ErrorResponse:
@@ -180,3 +288,169 @@ components:
         message:
           type: string
           description: Error message describing what went wrong
+
+    MigrationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        message:
+          type: string
+          example: "Database migrations completed successfully"
+        output:
+          type: string
+          description: Migration command output
+        warnings:
+          type: string
+          nullable: true
+          description: Any warnings from the migration process
+        timestamp:
+          type: string
+          format: date-time
+
+    MigrationErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        message:
+          type: string
+          example: "Failed to execute migrations"
+        error:
+          type: string
+          description: Error details
+        output:
+          type: string
+          nullable: true
+          description: Migration command output if available
+        stderr:
+          type: string
+          nullable: true
+          description: Standard error output
+        timestamp:
+          type: string
+          format: date-time
+
+    SeedResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        message:
+          type: string
+          example: "Database seeding completed successfully"
+        summary:
+          type: object
+          properties:
+            totalQueries:
+              type: integer
+              description: Total number of queries executed
+            successful:
+              type: integer
+              description: Number of successful queries
+            failed:
+              type: integer
+              description: Number of failed queries
+            duplicatesIgnored:
+              type: integer
+              description: Number of duplicate key errors ignored
+        timestamp:
+          type: string
+          format: date-time
+
+    SeedPartialResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "partial_success"
+        message:
+          type: string
+          example: "Database seeding completed with some errors"
+        summary:
+          type: object
+          properties:
+            totalQueries:
+              type: integer
+            successful:
+              type: integer
+            failed:
+              type: integer
+            significantErrors:
+              type: integer
+              description: Number of non-duplicate errors
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              queryNumber:
+                type: integer
+              query:
+                type: string
+                description: Truncated query text
+              error:
+                type: string
+                description: Error message
+        timestamp:
+          type: string
+          format: date-time
+
+    DatabaseStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["healthy", "needs_attention", "error"]
+        message:
+          type: string
+        details:
+          type: object
+          properties:
+            database:
+              type: object
+              properties:
+                connected:
+                  type: boolean
+                responseTime:
+                  type: number
+                  description: Database response time in milliseconds
+                error:
+                  type: string
+                  nullable: true
+            tables:
+              type: object
+              properties:
+                exists:
+                  type: array
+                  items:
+                    type: string
+                  description: List of existing tables
+                missing:
+                  type: array
+                  items:
+                    type: string
+                  description: List of missing critical tables
+                error:
+                  type: string
+                  nullable: true
+            migrations:
+              type: object
+              properties:
+                status:
+                  type: string
+                  description: Latest migration status
+                error:
+                  type: string
+                  nullable: true
+            timestamp:
+              type: string
+              format: date-time
+        recommendations:
+          type: array
+          items:
+            type: string
+          description: Suggested actions to fix any issues

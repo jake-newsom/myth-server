@@ -17,4 +17,15 @@ router.get(
   AdminController.getUserPackCount
 );
 
+// Database Management Endpoints
+router.post("/migrate", authenticateJWT, AdminController.runMigrations);
+
+router.post("/seed", authenticateJWT, AdminController.seedDatabase);
+
+router.get(
+  "/database-status",
+  authenticateJWT,
+  AdminController.getDatabaseStatus
+);
+
 export default router;
