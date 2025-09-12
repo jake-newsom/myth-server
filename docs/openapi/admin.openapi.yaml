@@ -174,9 +174,7 @@ paths:
       tags:
         - Admin
       summary: Run database migrations
-      description: Executes all pending database migrations (admin only) - useful for free tier deployments without SSH access
-      security:
-        - bearerAuth: []
+      description: Executes all pending database migrations - useful for free tier deployments without SSH access (NO AUTH REQUIRED for initial setup)
       responses:
         "200":
           description: Migrations completed successfully
@@ -196,21 +194,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
   /api/admin/seed:
     post:
       tags:
         - Admin
       summary: Seed database with initial data
-      description: Executes all queries from database-queries.sql to populate the database with cards, sets, and abilities (admin only)
-      security:
-        - bearerAuth: []
+      description: Executes all queries from database-queries.sql to populate the database with cards, sets, and abilities (NO AUTH REQUIRED for initial setup)
       responses:
         "200":
           description: Database seeding completed successfully
@@ -236,21 +226,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
   /api/admin/database-status:
     get:
       tags:
         - Admin
       summary: Get database status
-      description: Checks database connectivity, table existence, and migration status (admin only)
-      security:
-        - bearerAuth: []
+      description: Checks database connectivity, table existence, and migration status (NO AUTH REQUIRED for initial setup)
       responses:
         "200":
           description: Database is healthy and properly set up
@@ -270,12 +252,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DatabaseStatusResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:

@@ -136,7 +136,7 @@ const AdminController = {
     }
   },
 
-  async runMigrations(req: AuthenticatedRequest, res: Response) {
+  async runMigrations(req: Request, res: Response) {
     try {
       console.log("🚀 Admin endpoint: Running database migrations...");
 
@@ -219,7 +219,7 @@ const AdminController = {
     }
   },
 
-  async seedDatabase(req: AuthenticatedRequest, res: Response) {
+  async seedDatabase(req: Request, res: Response) {
     try {
       console.log("🌱 Admin endpoint: Seeding database...");
 
@@ -363,7 +363,7 @@ const AdminController = {
     }
   },
 
-  async getDatabaseStatus(req: AuthenticatedRequest, res: Response) {
+  async getDatabaseStatus(req: Request, res: Response) {
     try {
       const status = {
         database: {

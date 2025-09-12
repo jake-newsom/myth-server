@@ -2,13 +2,9 @@
 
 Since you don't have SSH access on Render's free tier, I've created API endpoints that you can call to set up your database. These endpoints allow you to run migrations and seed your database with data through HTTP requests.
 
-## 🔐 Authentication Required
+## 🚀 No Authentication Required!
 
-All admin endpoints require JWT authentication. You'll need to:
-
-1. **Create a user account** through your API
-2. **Login to get a JWT token**
-3. **Use the token** in the Authorization header
+The database setup endpoints are **publicly accessible** for initial setup (since you need a database to create users!). Once your database is set up, you should remove or protect these endpoints.
 
 ## 🚀 Setup Process
 
@@ -17,8 +13,7 @@ All admin endpoints require JWT authentication. You'll need to:
 First, check what state your database is in:
 
 ```bash
-curl -X GET "https://your-app.onrender.com/api/admin/database-status" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+curl -X GET "https://your-app.onrender.com/api/admin/database-status"
 ```
 
 **Response will show:**
@@ -34,7 +29,6 @@ Create all the database tables and structure:
 
 ```bash
 curl -X POST "https://your-app.onrender.com/api/admin/migrate" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json"
 ```
 
@@ -51,7 +45,6 @@ Populate your database with cards, sets, and abilities:
 
 ```bash
 curl -X POST "https://your-app.onrender.com/api/admin/seed" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json"
 ```
 
@@ -126,7 +119,15 @@ curl -X POST "https://your-app.onrender.com/api/admin/seed" \
 }
 ```
 
-## 🛠️ How to Get JWT Token
+## 🔒 Security Notice
+
+**IMPORTANT:** These endpoints are currently public to allow initial database setup. Once your database is configured and you have user accounts, you should:
+
+1. **Remove these endpoints** from production, OR
+2. **Add authentication back** to protect them
+3. **Use environment variables** to enable/disable them
+
+## 🛠️ No Authentication Needed
 
 ### 1. Register a User (if not done already)
 
@@ -173,62 +174,32 @@ Here's a bash script to do the complete setup:
 
 # Configuration
 API_BASE="https://your-app.onrender.com"
-USERNAME="admin"
-PASSWORD="your-secure-password"
-EMAIL="admin@yourapp.com"
 
 echo "🚀 Setting up database on Render.com free tier..."
 
-# Step 1: Register user (optional - skip if user exists)
-echo "📝 Registering admin user..."
-curl -X POST "$API_BASE/api/auth/register" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"$USERNAME\",\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}"
+# Step 1: Check database status
+echo "📊 Checking database status..."
+curl -X GET "$API_BASE/api/admin/database-status"
 
 echo -e "\n"
 
-# Step 2: Login to get token
-echo "🔐 Logging in to get JWT token..."
-TOKEN_RESPONSE=$(curl -s -X POST "$API_BASE/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}")
-
-TOKEN=$(echo $TOKEN_RESPONSE | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-
-if [ -z "$TOKEN" ]; then
-  echo "❌ Failed to get JWT token. Check your credentials."
-  exit 1
-fi
-
-echo "✅ Got JWT token"
-
-# Step 3: Check database status
-echo -e "\n📊 Checking database status..."
-curl -X GET "$API_BASE/api/admin/database-status" \
-  -H "Authorization: Bearer $TOKEN"
-
-echo -e "\n"
-
-# Step 4: Run migrations
+# Step 2: Run migrations
 echo -e "\n🗃️ Running database migrations..."
 curl -X POST "$API_BASE/api/admin/migrate" \
-  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json"
 
 echo -e "\n"
 
-# Step 5: Seed database
+# Step 3: Seed database
 echo -e "\n🌱 Seeding database with initial data..."
 curl -X POST "$API_BASE/api/admin/seed" \
-  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json"
 
 echo -e "\n"
 
-# Step 6: Final status check
+# Step 4: Final status check
 echo -e "\n✅ Final database status check..."
-curl -X GET "$API_BASE/api/admin/database-status" \
-  -H "Authorization: Bearer $TOKEN"
+curl -X GET "$API_BASE/api/admin/database-status"
 
 echo -e "\n\n🎉 Database setup complete!"
 ```
@@ -237,19 +208,15 @@ echo -e "\n\n🎉 Database setup complete!"
 
 ### Common Issues:
 
-1. **401 Unauthorized**: JWT token expired or invalid
-
-   - Solution: Login again to get a new token
-
-2. **503 Database Connection Failed**: Database not accessible
+1. **503 Database Connection Failed**: Database not accessible
 
    - Solution: Check if your DATABASE_URL environment variable is set correctly
 
-3. **404 Database queries file not found**: Missing database-queries.sql
+2. **404 Database queries file not found**: Missing database-queries.sql
 
    - Solution: Ensure the file exists in the scripts/ directory
 
-4. **Migration failures**: Schema conflicts or missing dependencies
+3. **Migration failures**: Schema conflicts or missing dependencies
    - Solution: Check the error output and resolve conflicts manually
 
 ### Partial Success Responses:
