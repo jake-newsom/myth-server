@@ -632,6 +632,231 @@ const AdminController = {
       });
     }
   },
+
+  async createAIUser(req: Request, res: Response) {
+    try {
+      console.log("🤖 Admin endpoint: Creating AI user...");
+
+      // Check database connectivity first
+      try {
+        await db.query("SELECT 1");
+      } catch (dbError) {
+        return res.status(503).json({
+          status: "error",
+          message: "Database connection failed",
+          error:
+            dbError instanceof Error
+              ? dbError.message
+              : "Unknown database error",
+        });
+      }
+
+      const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
+      const AI_USERNAME = "AI Opponent";
+      const AI_EMAIL = "ai@mythgame.com";
+
+      // Check if AI user already exists
+      const checkQuery = `SELECT * FROM "users" WHERE user_id = $1`;
+      const { rows } = await db.query(checkQuery, [AI_PLAYER_ID]);
+
+      if (rows.length > 0) {
+        return res.status(200).json({
+          status: "success",
+          message: "AI user already exists",
+          user: rows[0],
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Create AI user with predefined UUID
+      const createQuery = `
+        INSERT INTO "users" (user_id, username, email, password_hash, in_game_currency, created_at, last_login)
+        VALUES ($1, $2, $3, $4, 0, NOW(), NOW())
+      `;
+
+      await db.query(createQuery, [
+        AI_PLAYER_ID,
+        AI_USERNAME,
+        AI_EMAIL,
+        "ai_password_hash", // Dummy password hash since AI doesn't log in
+      ]);
+
+      console.log("✅ AI user created successfully");
+
+      return res.status(201).json({
+        status: "success",
+        message: "AI user created successfully",
+        user: {
+          user_id: AI_PLAYER_ID,
+          username: AI_USERNAME,
+          email: AI_EMAIL,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Admin create AI user endpoint error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during AI user creation",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
+  async createAIDecks(req: Request, res: Response) {
+    try {
+      console.log("🃏 Admin endpoint: Creating AI decks...");
+
+      // Check database connectivity first
+      try {
+        await db.query("SELECT 1");
+      } catch (dbError) {
+        return res.status(503).json({
+          status: "error",
+          message: "Database connection failed",
+          error:
+            dbError instanceof Error
+              ? dbError.message
+              : "Unknown database error",
+        });
+      }
+
+      const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
+      const NUM_DECKS = 10;
+      const CARDS_PER_DECK = 20;
+      const MAX_LEGENDARY_CARDS = 2;
+      const MAX_SAME_NAME_CARDS = 2;
+
+      // Check if AI user exists
+      const userCheck = await db.query(
+        `SELECT * FROM "users" WHERE user_id = $1`,
+        [AI_PLAYER_ID]
+      );
+
+      if (userCheck.rows.length === 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "AI user not found. Please create AI user first.",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Get all available cards
+      const { rows: allCards } = await db.query(`SELECT * FROM "cards"`);
+
+      if (allCards.length === 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "No cards found in the database. Please seed cards first.",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const client = await db.getClient();
+      await client.query("BEGIN");
+
+      try {
+        let createdDecks = 0;
+
+        for (let deckIndex = 0; deckIndex < NUM_DECKS; deckIndex++) {
+          const deckName = `AI Deck ${deckIndex + 1}`;
+
+          // Check if deck already exists
+          const existingDeck = await client.query(
+            `SELECT * FROM "decks" WHERE user_id = $1 AND name = $2`,
+            [AI_PLAYER_ID, deckName]
+          );
+
+          if (existingDeck.rows.length > 0) {
+            console.log(`Deck "${deckName}" already exists, skipping...`);
+            continue;
+          }
+
+          // Create deck
+          const deckResult = await client.query(
+            `INSERT INTO "decks" (user_id, name, description)
+             VALUES ($1, $2, $3) RETURNING deck_id`,
+            [AI_PLAYER_ID, deckName, `Auto-generated AI deck ${deckIndex + 1}`]
+          );
+
+          const deckId = deckResult.rows[0].deck_id;
+
+          // Select random cards for this deck
+          const selectedCards = [];
+          const cardNameCounts = {};
+          let legendaryCount = 0;
+
+          const shuffledCards = [...allCards].sort(() => Math.random() - 0.5);
+
+          for (const card of shuffledCards) {
+            if (selectedCards.length >= CARDS_PER_DECK) break;
+
+            const cardName = card.name;
+            const isLegendary = card.rarity === "legendary";
+
+            // Check constraints
+            if (isLegendary && legendaryCount >= MAX_LEGENDARY_CARDS) continue;
+            if (cardNameCounts[cardName] >= MAX_SAME_NAME_CARDS) continue;
+
+            // Create user_owned_card entry for AI
+            const userCardResult = await client.query(
+              `INSERT INTO "user_owned_cards" (user_id, card_id, level, xp)
+               VALUES ($1, $2, 1, 0) RETURNING user_card_instance_id`,
+              [AI_PLAYER_ID, card.card_id]
+            );
+
+            const userCardInstanceId =
+              userCardResult.rows[0].user_card_instance_id;
+
+            // Add to deck
+            await client.query(
+              `INSERT INTO "deck_cards" (deck_id, user_card_instance_id)
+               VALUES ($1, $2)`,
+              [deckId, userCardInstanceId]
+            );
+
+            selectedCards.push(card);
+            cardNameCounts[cardName] = (cardNameCounts[cardName] || 0) + 1;
+            if (isLegendary) legendaryCount++;
+          }
+
+          createdDecks++;
+          console.log(
+            `✅ Created deck "${deckName}" with ${selectedCards.length} cards`
+          );
+        }
+
+        await client.query("COMMIT");
+
+        return res.status(201).json({
+          status: "success",
+          message: `AI deck creation completed`,
+          details: {
+            totalDecks: NUM_DECKS,
+            createdDecks: createdDecks,
+            skippedDecks: NUM_DECKS - createdDecks,
+            cardsPerDeck: CARDS_PER_DECK,
+            availableCards: allCards.length,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error("Admin create AI decks endpoint error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during AI deck creation",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
 };
 
 export default AdminController;

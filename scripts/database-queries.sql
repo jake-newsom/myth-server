@@ -343,7 +343,7 @@ ON CONFLICT (id) DO UPDATE SET
   trigger_moment = EXCLUDED.trigger_moment,
   parameters = EXCLUDED.parameters;
 INSERT INTO special_abilities (id, name, description, trigger_moment, parameters)
-VALUES ('okuriinu_hunters_mark', 'Hunter's Mark', 'Gains +1 power for each defeated enemy.', 'AnyOnFlip', '{}')
+VALUES ('okuriinu_hunters_mark', 'Hunter''s Mark', 'Gains +1 power for each defeated enemy.', 'AnyOnFlip', '{}')
 ON CONFLICT (id) DO UPDATE SET 
   name = EXCLUDED.name,
   description = EXCLUDED.description,

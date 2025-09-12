@@ -26,4 +26,8 @@ router.post("/seed", AdminController.seedDatabase);
 
 router.get("/database-status", AdminController.getDatabaseStatus);
 
+router.post("/create-ai-user", AdminController.createAIUser);
+
+router.post("/create-ai-decks", AdminController.createAIDecks);
+
 export default router;
