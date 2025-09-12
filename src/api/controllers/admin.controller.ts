@@ -363,6 +363,97 @@ const AdminController = {
     }
   },
 
+  async markMigrationsAsRun(req: Request, res: Response) {
+    try {
+      console.log(
+        "✅ Admin endpoint: Marking duplicate migrations as already run..."
+      );
+
+      // Check database connectivity first
+      try {
+        await db.query("SELECT 1");
+      } catch (dbError) {
+        return res.status(503).json({
+          status: "error",
+          message: "Database connection failed",
+          error:
+            dbError instanceof Error
+              ? dbError.message
+              : "Unknown database error",
+        });
+      }
+
+      // List of migrations to mark as run (these are duplicates of the baseline)
+      const migrationsToMark = [
+        "1747305666855_create-users-table",
+        "1747305686471_create-special-abilities-table",
+        "1747305702109_create-sets-table",
+        "1747305702110_create-cards-table",
+        "1747305720869_create-user-owned-cards-table",
+        "1747305737036_create-decks-table",
+        "1747305760569_create-deck-cards-table",
+        "1747305777476_create-games-table",
+        "1750694457171_create-pack-opening-history-table",
+        "1750694458000_add-dual-currency-system",
+        "1750694459000_create-user-card-xp-pools",
+        "1750694460000_create-xp-transfers-table",
+        "1750700000000_create-friendships-table",
+        "1750710000000_create-leaderboard-system",
+        "1750720000000_create-achievements-system",
+        "1750800000000_create-mail-system",
+        "1750979290019_wonder-picks-system",
+      ];
+
+      let markedCount = 0;
+      const errors: string[] = [];
+
+      for (const migration of migrationsToMark) {
+        try {
+          // Check if migration is already marked as run
+          const existing = await db.query(
+            "SELECT name FROM pgmigrations WHERE name = $1",
+            [migration]
+          );
+
+          if (existing.rows.length === 0) {
+            // Mark as run without executing
+            await db.query(
+              "INSERT INTO pgmigrations (name, run_on) VALUES ($1, NOW())",
+              [migration]
+            );
+            markedCount++;
+            console.log(`✅ Marked ${migration} as run`);
+          } else {
+            console.log(`⏭️  ${migration} already marked as run`);
+          }
+        } catch (error: any) {
+          errors.push(`${migration}: ${error.message}`);
+        }
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: `Marked ${markedCount} migrations as already run`,
+        details: {
+          totalMigrations: migrationsToMark.length,
+          markedAsRun: markedCount,
+          alreadyMarked: migrationsToMark.length - markedCount - errors.length,
+          errors: errors.length,
+        },
+        errors: errors.length > 0 ? errors : null,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Admin mark migrations endpoint error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during marking migrations",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
   async resetMigrations(req: Request, res: Response) {
     try {
       console.log("🔄 Admin endpoint: Resetting migrations...");
