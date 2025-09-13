@@ -711,6 +711,74 @@ export function pushCardAway(
   return null;
 }
 
+export function pullCardsIn(
+  position: BoardPosition,
+  board: GameBoard,
+  playerId: string
+): BaseGameEvent[] {
+  const gameEvents: BaseGameEvent[] = [];
+
+  // Define the four directions: up, down, left, right
+  const directions = [
+    { x: 0, y: -2 }, // up 2 spaces
+    { x: 0, y: 2 }, // down 2 spaces
+    { x: -2, y: 0 }, // left 2 spaces
+    { x: 2, y: 0 }, // right 2 spaces
+  ];
+
+  for (const direction of directions) {
+    const enemyPosition = {
+      x: position.x + direction.x,
+      y: position.y + direction.y,
+    };
+
+    // Check if enemy position is valid
+    if (!isValidPosition(enemyPosition, board.length)) {
+      continue;
+    }
+
+    // Check if there's an enemy card at this position
+    const enemyTile = getTileAtPosition(enemyPosition, board);
+    const enemyCard = enemyTile?.card;
+
+    if (!enemyCard || enemyCard.owner === playerId) {
+      continue; // No card or it's our own card
+    }
+
+    // Calculate the intermediate position (1 space closer to target)
+    const intermediatePosition = {
+      x: position.x + direction.x / 2,
+      y: position.y + direction.y / 2,
+    };
+
+    // Check if intermediate position is empty
+    const intermediateTile = getTileAtPosition(intermediatePosition, board);
+    if (intermediateTile?.card) {
+      continue; // Can't pull if there's a card in the way
+    }
+
+    // Move the enemy card to the intermediate position
+    const currentTile = getTileAtPosition(enemyPosition, board);
+
+    if (currentTile && intermediateTile) {
+      intermediateTile.card = enemyCard;
+      currentTile.card = null;
+
+      gameEvents.push({
+        type: EVENT_TYPES.CARD_MOVED,
+        eventId: uuidv4(),
+        timestamp: Date.now(),
+        cardId: enemyCard.user_card_instance_id,
+        fromPosition: enemyPosition,
+        toPosition: intermediatePosition,
+        animation: "pull",
+      } as CardEvent);
+    }
+  }
+
+  return gameEvents;
+}
+
 // TODO: This function needs proper turn tracking implementation
 export function getAlternatingTurnEffect(
   turnNumber: number,
