@@ -478,7 +478,7 @@ export const norseAbilities: AbilityMap = {
     );
 
     if (strongestEnemy) {
-      return [addTempDebuff(strongestEnemy, 1, -2)];
+      return [addTempDebuff(strongestEnemy, 2, -2)];
     }
     return [];
   },
