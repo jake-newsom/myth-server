@@ -24,6 +24,7 @@ export enum TriggerMoment {
   BoardOnPlace = "BoardOnPlace",
   BeforeCombat = "BeforeCombat",
   AfterCombat = "AfterCombat",
+  OnCombat = "OnCombat",
 }
 
 /**
@@ -101,6 +102,7 @@ export interface InGameCard extends UserCard {
   temporary_effects: TemporaryEffect[];
   current_power: PowerValues;
   owner: string;
+  original_owner: string;
   lockedTurns: number;
   defeats: DefeatRecord[];
 }

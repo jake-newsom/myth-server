@@ -1,4 +1,8 @@
-import { AbilityMap } from "../../types/game-engine.types";
+import {
+  AbilityMap,
+  COMBAT_TYPES,
+  CombatResolverMap,
+} from "../../types/game-engine.types";
 import { InGameCard } from "../../types/card.types";
 import {
   buff,
@@ -15,10 +19,41 @@ import {
   getAllAlliesOnBoard,
   addTempBuff,
   pullCardsIn,
+  pushCardAway,
+  cleanseDebuffs,
 } from "../ability.utils";
+import { drawCardSync } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
 import { v4 as uuidv4 } from "uuid";
 import { TileStatus } from "../../types/game.types";
+
+/**
+ * All norse cards:
+ * - When placed, if losing, gain +1 to all sides
+ *
+ *
+ * Ragnarok:
+ * - Every 3 cards that are defeated make a random tile "ruined" and blocked
+ */
+
+export const norseCombatResolvers: CombatResolverMap = {
+  // Titan Shell: Can only be defeated by Thor.
+  "Titan Shell": (context) => {
+    const { triggerCard } = context;
+
+    if (triggerCard.base_card_data.name !== "Thor") return true;
+
+    return false;
+  },
+
+  // Light Undimmed: Cannot be defeated by special abilities.
+  "Light Undimmed": (context) => {
+    const { combatType } = context;
+    if (combatType === COMBAT_TYPES.SPECIAL) return true;
+
+    return false;
+  },
+};
 
 export const norseAbilities: AbilityMap = {
   // Foresight: Grant +1 to all allies on the board.
@@ -36,6 +71,29 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Thunderous Push: Push all adjacent enemies away 1 space after combat.
+  "Thunderous Push": (context) => {
+    const {
+      triggerCard,
+      position,
+      state: { board },
+    } = context;
+    const gameEvents: BaseGameEvent[] = [];
+
+    if (!position) return [];
+
+    const adjacentEnemies = getEnemiesAdjacentTo(
+      position,
+      board,
+      triggerCard.owner
+    );
+    for (const enemy of adjacentEnemies) {
+      const pushEvent = pushCardAway(enemy, position, board);
+      if (pushEvent) gameEvents.push(pushEvent);
+    }
+
+    return gameEvents;
+  },
+
   // Mother's Blessing: Grant +1 to all adjacent allies.
   "Mother's Blessing": (context) => {
     const {
@@ -52,9 +110,10 @@ export const norseAbilities: AbilityMap = {
     for (const ally of adjacentAllies) {
       gameEvents.push(buff(ally, 1));
     }
+
     return gameEvents;
   },
-  // Light Undimmed: Cannot be defeated by special abilities.
+
   "Watchman's Gate": (context) => {
     const {
       position,
@@ -130,6 +189,23 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Avenge Baldr: Gain +1 to all stats for each ally defeated this game.
+  "Avenge Baldr": (context) => {
+    const {
+      triggerCard,
+      // state: { board },
+    } = context;
+    console.log("Avenge Baldr: ", triggerCard);
+    const gameEvents: BaseGameEvent[] = [];
+    // const defeatedAllies = getCardsByCondition(
+    //   board,
+    //   (card) =>
+    //     card.defeats.length > 0 && card.original_owner === triggerCard.owner
+    // );
+    // for (const ally of defeatedAllies) {
+    //   gameEvents.push(buff(ally, 1));
+    // }
+    return gameEvents;
+  },
 
   // Sea's Protection: Gain +3 if adjacent to a Sea card.
   "Sea's Protection": (context) => {
@@ -166,6 +242,7 @@ export const norseAbilities: AbilityMap = {
     }
     return gameEvents;
   },
+
   // Peaceful Strength: Gain +2 if no adjacent enemies.
   "Peaceful Strength": (context) => {
     const {
@@ -184,11 +261,10 @@ export const norseAbilities: AbilityMap = {
     }
     return gameEvents;
   },
-  // Winter's Grasp: Freeze one adjacent tile for 1 turn.
 
+  // Winter's Grasp: Freeze one adjacent tile for 1 turn.
   "Winter's Grasp": (context) => {
-    console.log("Winter's Grasp");
-    const { position, state } = context;
+    const { position, state, triggerCard } = context;
     const gameEvents: BaseGameEvent[] = [];
     if (!position) return [];
 
@@ -281,8 +357,6 @@ export const norseAbilities: AbilityMap = {
     }
     return [];
   },
-
-  // Titan Shell: Can only be defeated by Thor.
 
   // Primordial Force: Gain +2 to all stats if no adjacent cards.
   "Primordial Force": (context) => {
@@ -384,12 +458,16 @@ export const norseAbilities: AbilityMap = {
   // Drowning Net: Pull enemy cards one tile closer before combat.
 
   "Drowning Net": (context) => {
+    console.log("Drowning Net!");
     const {
       triggerCard,
       position,
       state: { board },
     } = context;
+    const gameEvents: BaseGameEvent[] = [];
     return pullCardsIn(position, board, triggerCard.owner);
+
+    return gameEvents;
   },
 
   // Valkyrie Sisterhood: Gain +2 if adjacent to another Valkyrie.
@@ -410,6 +488,24 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Healing Touch: Cleanse adjacent allies of negative effects.
+  "Healing Touch": (context) => {
+    const {
+      triggerCard,
+      position,
+      state: { board },
+    } = context;
+    const gameEvents: BaseGameEvent[] = [];
+    const adjacentAllies = getAlliesAdjacentTo(
+      position,
+      board,
+      triggerCard.owner
+    );
+    for (const ally of adjacentAllies) {
+      gameEvents.push(cleanseDebuffs(ally, 1000));
+    }
+    return gameEvents;
+  },
+
   "Battle Cry": (context) => {
     const {
       triggerCard,
@@ -430,6 +526,12 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Fated Draw: Draw 1 card.
+  "Fated Draw": (context) => {
+    const { triggerCard, state } = context;
+    const gameEvents: BaseGameEvent[] = [];
+    gameEvents.push(...drawCardSync(state, triggerCard.owner));
+    return gameEvents;
+  },
 
   "Dragon Slayer": (context) => {
     const {
@@ -499,6 +601,17 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Swift Messenger: Draw 2 cards.
+  "Swift Messenger": (context) => {
+    const { triggerCard, state } = context;
+    const gameEvents: BaseGameEvent[] = [];
+
+    // Draw a card for the card owner
+    gameEvents.push(...drawCardSync(state, triggerCard.owner));
+    gameEvents.push(...drawCardSync(state, triggerCard.owner));
+
+    return gameEvents;
+  },
+
   // Past Weaves: Gain +1 to all stats for each destroyed ally.
   "Past Weaves": (context) => {
     const {
@@ -510,7 +623,8 @@ export const norseAbilities: AbilityMap = {
       board,
       (card) => card.defeats.length > 0
     );
-    for (const ally of destroyedAllies) {
+
+    for (let i = 0; i < destroyedAllies.length; i++) {
       gameEvents.push(buff(triggerCard, 1));
     }
     return gameEvents;

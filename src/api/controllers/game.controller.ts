@@ -4,6 +4,7 @@ import { AILogic } from "../../game-engine/ai.logic";
 // import { AbilityRegistry } from "../../game-engine/ability.registry";
 import { GameState, GameAction } from "../../types/game.types";
 import * as validators from "../../game-engine/game.validators";
+import { hydrateGameStateCards } from "../../game-engine/game.utils";
 import * as _ from "lodash";
 
 // Import Services
@@ -175,6 +176,9 @@ class GameController {
         return;
       }
 
+      // Hydrate any missing cards in the game state before sanitizing
+      await hydrateGameStateCards(game.game_state);
+
       // Format response to match startSoloGame structure
       res.status(200).json({
         game_id: game.game_id,
@@ -294,6 +298,10 @@ class GameController {
           res.status(400).json({ error: "Invalid action type" });
           return;
       }
+
+      // Hydrate any missing cards that were drawn during ability execution
+      // This must happen before saving to database so the cache is persisted
+      await hydrateGameStateCards(updatedGameState);
 
       // Process game completion if the status indicates game over
       let winner_id_for_db: string | null = updatedGameState.winner || null;
@@ -465,6 +473,10 @@ class GameController {
           events.push(...drawCardResult.events);
         }
       }
+
+      // Hydrate any missing cards that were drawn during ability execution
+      // This must happen before saving to database so the cache is persisted
+      await hydrateGameStateCards(updatedGameState);
 
       // Process game completion if the status indicates game over
       let winner_id_for_db: string | null = updatedGameState.winner || null;

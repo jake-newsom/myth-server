@@ -5,11 +5,17 @@ import { BoardCell, BoardPosition, GameState, InGameCard } from "./game.types";
  * Consolidated from game-engine directory files
  */
 
+export const COMBAT_TYPES = {
+  STANDARD: "STANDARD",
+  SPECIAL: "SPECIAL",
+} as const;
+
 // Game Events
 export const EVENT_TYPES = {
   GAME_START: "GAME_START",
   TURN_START: "TURN_START",
   CARD_DRAWN: "CARD_DRAWN",
+  CARD_DISCARDED: "CARD_DISCARDED",
   CARD_PLACED: "CARD_PLACED",
   ABILITY_TRIGGERED: "ABILITY_TRIGGERED",
   CARD_POWER_CHANGED: "CARD_POWER_CHANGED",
@@ -54,6 +60,12 @@ export interface TileEvent extends BaseGameEvent {
   position: BoardPosition;
   tile: Pick<BoardCell, "tile_enabled" | "tile_effect">;
 }
+
+export type CombatContext = TriggerContext & {
+  combatType: (typeof COMBAT_TYPES)[keyof typeof COMBAT_TYPES];
+};
+export type CombatResolverMethod = (context: CombatContext) => boolean;
+export type CombatResolverMap = Record<string, CombatResolverMethod>;
 
 export type AbilityMethod = (context: TriggerContext) => BaseGameEvent[];
 export type AbilityMap = Record<string, AbilityMethod>;

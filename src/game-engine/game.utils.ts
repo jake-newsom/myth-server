@@ -10,22 +10,23 @@ import {
   PowerValues,
   TriggerMoment,
 } from "../types/card.types";
-import { GameStatus } from "./game.logic";
+import { GameStatus, GameLogic } from "./game.logic";
 import * as _ from "lodash";
-import { abilities } from "./abilities";
+import { abilities, combatResolvers } from "./abilities";
+import {
+  BaseGameEvent,
+  CardEvent,
+  EVENT_TYPES,
+  TriggerContext,
+  COMBAT_TYPES,
+} from "../types/game-engine.types";
+import { v4 as uuidv4 } from "uuid";
 import {
   getPositionOfCardById,
   updateCurrentPower,
   transferTileEffectToCard,
 } from "./ability.utils";
-import {
-  BaseGameEvent,
-  batchEvents,
-  CardEvent,
-  EVENT_TYPES,
-} from "./game-events";
-import { TriggerContext } from "../types/game-engine.types";
-import { v4 as uuidv4 } from "uuid";
+import { batchEvents } from "./game-events";
 
 /**
  * Creates a new board cell from hydrated card data, transferring tile effects to card if present
@@ -132,7 +133,33 @@ export function resolveCombat(
           const placedCardPower = placedCell.card.current_power[dir.from];
           const adjacentCardPower = adjacentCell.card.current_power[dir.to];
 
-          if (placedCardPower > adjacentCardPower) {
+          let abilityPreventedDefeat = false;
+          if (
+            adjacentCell.card.base_card_data.special_ability?.triggerMoment ===
+            TriggerMoment.OnCombat
+          ) {
+            const combatContext = {
+              triggerCard: adjacentCell.card,
+              position: { x: nx, y: ny },
+              state: newState,
+              combatType: COMBAT_TYPES.STANDARD,
+            };
+
+            const abilityFunction =
+              combatResolvers[
+                adjacentCell.card.base_card_data.special_ability?.name
+              ];
+            if (abilityFunction) {
+              abilityPreventedDefeat = abilityFunction({
+                ...combatContext,
+                triggerCard: adjacentCell.card,
+                position: { x: nx, y: ny },
+                combatType: COMBAT_TYPES.STANDARD,
+              });
+            }
+          }
+
+          if (!abilityPreventedDefeat && placedCardPower > adjacentCardPower) {
             events.push(
               ...flipCard(
                 newState,
@@ -154,6 +181,7 @@ export function resolveCombat(
               },
               animation: "defend",
             } as CardEvent);
+
             events.push(
               ...triggerAbilities(TriggerMoment.OnDefend, {
                 state: newState,
@@ -363,22 +391,6 @@ export function updateAllBoardCards(gameState: GameState) {
 }
 
 /**
- * Draws a card from the player's deck to their hand
- */
-export function drawCard(gameState: GameState, playerId: string): GameState {
-  const newState = _.cloneDeep(gameState);
-  const player =
-    newState.player1.user_id === playerId ? newState.player1 : newState.player2;
-
-  if (player.deck.length > 0) {
-    const drawnInstanceId = player.deck.shift()!;
-    player.hand.push(drawnInstanceId);
-  }
-
-  return newState;
-}
-
-/**
  * Handles game over logic
  */
 export function handleGameOver(gameState: GameState): GameState {
@@ -397,4 +409,135 @@ export function handleGameOver(gameState: GameState): GameState {
   }
 
   return newState;
+}
+
+/**
+ * Synchronous version of drawCard for use in abilities.
+ * Only handles state modification, not card hydration.
+ * Returns events to indicate card was drawn.
+ * NOTE: Cards drawn via this function need to be hydrated separately
+ * using hydrateGameStateCards() before sending to client.
+ */
+export function drawCardSync(
+  gameState: GameState,
+  playerId: string
+): BaseGameEvent[] {
+  const events: BaseGameEvent[] = [];
+
+  // Get the player's deck and hand
+  const player =
+    gameState.player1.user_id === playerId
+      ? gameState.player1
+      : gameState.player2;
+
+  // Check if player can draw a card
+  if (
+    player.deck.length === 0 ||
+    player.hand.length >= gameState.max_cards_in_hand
+  ) {
+    return events; // Cannot draw
+  }
+
+  // Draw the card
+  const drawnInstanceId = player.deck.shift()!;
+  player.hand.push(drawnInstanceId);
+
+  // Create draw event
+  events.push({
+    type: EVENT_TYPES.CARD_DRAWN,
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    sourcePlayerId: playerId,
+    cardId: drawnInstanceId,
+  } as CardEvent);
+
+  return events;
+}
+
+export function discardCardSync(
+  gameState: GameState,
+  playerId: string,
+  cardIndex: number | null = null
+): BaseGameEvent[] {
+  const events: BaseGameEvent[] = [];
+  const player =
+    gameState.player1.user_id === playerId
+      ? gameState.player1
+      : gameState.player2;
+
+  if (cardIndex === null) {
+    cardIndex = _.random(0, player.hand.length - 1);
+  }
+
+  if (cardIndex < 0 || cardIndex >= player.hand.length) {
+    return events; // Invalid index
+  }
+
+  const discardedCardId = player.hand.splice(cardIndex, 1)[0];
+  player.discard_pile.push(discardedCardId);
+
+  events.push({
+    type: EVENT_TYPES.CARD_DISCARDED,
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    sourcePlayerId: playerId,
+    cardId: discardedCardId,
+  } as CardEvent);
+
+  return events;
+}
+
+/**
+ * Hydrates any missing cards in the game state's hydrated_card_data_cache.
+ * This should be called after abilities that use drawCardSync to ensure
+ * all cards in hands are available for the frontend to display.
+ */
+export async function hydrateGameStateCards(
+  gameState: GameState
+): Promise<void> {
+  if (!gameState.hydrated_card_data_cache) {
+    gameState.hydrated_card_data_cache = {};
+  }
+
+  const missingCardIds = new Set<string>();
+
+  // Check player1's hand for missing cards
+  for (const cardId of gameState.player1.hand) {
+    if (!gameState.hydrated_card_data_cache[cardId]) {
+      missingCardIds.add(cardId);
+    }
+  }
+
+  // Check player2's hand for missing cards
+  for (const cardId of gameState.player2.hand) {
+    if (!gameState.hydrated_card_data_cache[cardId]) {
+      missingCardIds.add(cardId);
+    }
+  }
+
+  // Check board cards for missing cards
+  for (const row of gameState.board) {
+    for (const cell of row) {
+      if (cell.card && cell.card.user_card_instance_id) {
+        const cardId = cell.card.user_card_instance_id;
+        if (!gameState.hydrated_card_data_cache[cardId]) {
+          missingCardIds.add(cardId);
+        }
+      }
+    }
+  }
+
+  // Hydrate all missing cards
+  const hydrationPromises = Array.from(missingCardIds).map(async (cardId) => {
+    try {
+      const cardData = await GameLogic.hydrateCardInstance(cardId);
+      if (cardData) {
+        gameState.hydrated_card_data_cache![cardId] = cardData;
+      }
+    } catch (error) {
+      console.error(`Failed to hydrate card ${cardId}:`, error);
+    }
+  });
+
+  await Promise.all(hydrationPromises);
 }

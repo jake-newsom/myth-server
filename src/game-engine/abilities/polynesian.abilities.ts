@@ -1,4 +1,4 @@
-import { AbilityMap } from "../../types/game-engine.types";
+import { AbilityMap, CombatResolverMap } from "../../types/game-engine.types";
 import {
   BoardPosition,
   GameBoard,
@@ -46,6 +46,8 @@ const fillRandomEmptyTileWithWater = (
     });
   }
 };
+
+export const polynesianCombatResolvers: CombatResolverMap = {};
 
 export const polynesianAbilities: AbilityMap = {
   // Lava Field: Fill empty adjacent tiles with lava. Enemy cards placed on lava lose 1 power.

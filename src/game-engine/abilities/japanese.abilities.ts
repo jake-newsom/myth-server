@@ -1,5 +1,5 @@
 import { PowerValues, TileStatus } from "../../types";
-import { AbilityMap } from "../../types/game-engine.types";
+import { AbilityMap, CombatResolverMap } from "../../types/game-engine.types";
 import {
   addTempBuff,
   buff,
@@ -22,6 +22,15 @@ import {
 import { BaseGameEvent } from "../game-events";
 import { flipCard } from "../game.utils";
 import { getPositionOfCardById } from "../ability.utils";
+
+/**
+ * All japanese cards:
+ * - If a Japanese card remains unflipped for 2 turns it gains +2 power
+ * - If a Japanese card is not adjacent to any enemies when place it cannot be defeated next turn
+ * - If a Japanese card is defeated, all adjacent tiles are cursed for 1 turn
+ */
+
+export const japaneseCombatResolvers: CombatResolverMap = {};
 
 export const japaneseAbilities: AbilityMap = {
   // Frost Row: Enemies in the same row lose 1 power this turn.
@@ -131,30 +140,6 @@ export const japaneseAbilities: AbilityMap = {
     }
 
     return [];
-  },
-
-  // Pull enemy cards one tile closer before combat.
-  "Drowning Net": (context) => {
-    const {
-      triggerCard,
-      position,
-      state: { board },
-    } = context;
-    const gameEvents: BaseGameEvent[] = [];
-
-    if (!position) return [];
-
-    // const adjacentEnemies = getEnemiesAdjacentTo(
-    //   position,
-    //   board,
-    //   triggerCard.owner
-    // );
-    // for (const enemy of adjacentEnemies) {
-    //   const pushEvent = pushCardAway(enemy, position, board);
-    //   if (pushEvent) gameEvents.push(pushEvent);
-    // }
-
-    return gameEvents;
   },
 
   // Echo Power: Matches the highest adjacent card's power this turn.

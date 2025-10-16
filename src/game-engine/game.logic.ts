@@ -126,6 +126,7 @@ export class GameLogic {
           power_enhancements: powerEnhancements,
           // InGameCard specific properties
           owner: userIdToVerifyOwnership || "",
+          original_owner: userIdToVerifyOwnership || "",
           current_power: currentPower,
           card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
           card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
@@ -226,7 +227,7 @@ export class GameLogic {
       current_player_id: player1UserId,
       turn_number: 1,
       status: GameStatus.ACTIVE,
-      max_cards_in_hand: 5,
+      max_cards_in_hand: 10,
       initial_cards_to_draw: initialHandSize,
       hydrated_card_data_cache,
       winner: null, // Initialize with no winner
@@ -412,6 +413,25 @@ export class GameLogic {
         // Continue even if this fails, it's not critical
       }
     }
+
+    return { state: newState, events: batchEvents(events, 50) };
+  }
+
+  static async discardCard(
+    currentGameState: GameState,
+    playerId: string,
+    cardIndex: number | null = null
+  ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
+    const events: BaseGameEvent[] = [];
+    const newState = _.cloneDeep(currentGameState);
+    const player = validators.getPlayer(newState, playerId);
+
+    if (cardIndex === null) {
+      cardIndex = _.random(0, player.hand.length - 1);
+    }
+
+    player.discard_pile.push(player.hand[cardIndex]);
+    player.hand.splice(cardIndex, 1);
 
     return { state: newState, events: batchEvents(events, 50) };
   }
