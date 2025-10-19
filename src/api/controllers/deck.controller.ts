@@ -8,6 +8,7 @@ import {
   UpdateDeckRequest,
   AuthenticatedRequest,
 } from "../../types";
+import { RarityUtils } from "../../types/card.types";
 
 /**
  * Validates deck composition based on game rules:
@@ -53,8 +54,8 @@ async function validateDeckComposition(
     }
     const { base_card_id, rarity } = instanceRes.rows[0];
 
-    // Count legendary cards
-    if (rarity === "legendary") {
+    // Count legendary cards (including variants)
+    if (RarityUtils.isLegendary(rarity)) {
       legendaryCount++;
     }
 

@@ -2,6 +2,7 @@
 import CardModel from "../../models/card.model";
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
+import { RarityUtils } from "../../types/card.types";
 
 const CardController = {
   /**
@@ -58,14 +59,13 @@ const CardController = {
       }
 
       // Optional validation of rarity if provided
-      if (
-        rarity &&
-        !["common", "uncommon", "rare", "epic", "legendary"].includes(rarity)
-      ) {
+      const validRarities = RarityUtils.getAllValidRarities();
+      if (rarity && !validRarities.includes(rarity as any)) {
         res.status(400).json({
           error: {
             message:
-              "Invalid rarity value. Must be one of: common, uncommon, rare, epic, legendary",
+              "Invalid rarity value. Must be one of: " +
+              validRarities.join(", "),
           },
         });
         return;

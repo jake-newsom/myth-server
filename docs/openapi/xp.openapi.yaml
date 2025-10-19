@@ -166,6 +166,52 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
+  /api/xp/sacrifice-extras:
+    post:
+      summary: Sacrifice 0 XP card copies automatically
+      description: Automatically sacrifice cards with 0 XP while maintaining a minimum of 2 copies of each base card type
+      tags:
+        - XP
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Extra cards sacrificed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sacrificed_cards:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        base_card_id:
+                          type: string
+                          description: Base card ID (card template)
+                        card_name:
+                          type: string
+                          description: Name of the card type
+                        cards_sacrificed:
+                          type: integer
+                          description: Number of card instances sacrificed for this card type
+                        total_xp_gained:
+                          type: integer
+                          description: Total XP gained from sacrificing all instances of this card type
+                  total_xp_gained:
+                    type: integer
+                    description: Total XP gained from all sacrificed cards
+                  pool_new_total:
+                    type: integer
+                    description: Combined total of all XP pools after sacrifice
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /api/xp/apply:
     post:
       summary: Apply XP from pool to card

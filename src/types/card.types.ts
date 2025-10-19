@@ -7,7 +7,88 @@ export interface PowerValues {
   right: number;
 }
 
-export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+export type Rarity =
+  | "common"
+  | "uncommon"
+  | "rare"
+  | "epic"
+  | "legendary"
+  | "common+"
+  | "uncommon+"
+  | "rare+"
+  | "epic+"
+  | "legendary+"
+  | "common++"
+  | "uncommon++"
+  | "rare++"
+  | "epic++"
+  | "legendary++"
+  | "common+++"
+  | "uncommon+++"
+  | "rare+++"
+  | "epic+++"
+  | "legendary+++";
+
+/**
+ * Utility functions for rarity handling
+ */
+export const RarityUtils = {
+  /**
+   * Get the base rarity (without + suffixes)
+   */
+  getBaseRarity(
+    rarity: Rarity
+  ): "common" | "uncommon" | "rare" | "epic" | "legendary" {
+    return rarity.replace(/\+/g, "") as
+      | "common"
+      | "uncommon"
+      | "rare"
+      | "epic"
+      | "legendary";
+  },
+
+  /**
+   * Check if a rarity is legendary (including variants)
+   */
+  isLegendary(rarity: Rarity): boolean {
+    return rarity.startsWith("legendary");
+  },
+
+  /**
+   * Check if a rarity is rare (including variants)
+   */
+  isRare(rarity: Rarity): boolean {
+    return rarity.startsWith("rare");
+  },
+
+  /**
+   * Get all valid rarities
+   */
+  getAllValidRarities(): Rarity[] {
+    return [
+      "common",
+      "uncommon",
+      "rare",
+      "epic",
+      "legendary",
+      "common+",
+      "uncommon+",
+      "rare+",
+      "epic+",
+      "legendary+",
+      "common++",
+      "uncommon++",
+      "rare++",
+      "epic++",
+      "legendary++",
+      "common+++",
+      "uncommon+++",
+      "rare+++",
+      "epic+++",
+      "legendary+++",
+    ];
+  },
+};
 // Enum that serves as the source of truth for all trigger moments
 export enum TriggerMoment {
   OnPlace = "OnPlace",

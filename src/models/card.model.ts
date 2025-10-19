@@ -6,6 +6,7 @@ import {
   SpecialAbility,
 } from "../types/database.types";
 import { PowerValues, TriggerMoment } from "../types/card.types";
+import PowerUpService from "../services/powerUp.service";
 
 // Helper to format the card instance response
 function formatUserCardInstanceResponse(
@@ -87,6 +88,13 @@ const CardModel = {
     `;
 
     const { rows } = await db.query(query, [userId]);
+
+    // Get power ups for all card instances
+    const instanceIds = rows.map((row) => row.user_card_instance_id);
+    const powerUpsMap = await PowerUpService.getPowerUpsByCardInstances(
+      instanceIds
+    );
+
     return rows.map((row) => {
       const baseCard: BaseCard = {
         card_id: row.card_id,
@@ -104,18 +112,24 @@ const CardModel = {
         tags: row.tags,
       };
 
+      // Get power up data for this instance
+      const powerUp = powerUpsMap.get(row.user_card_instance_id);
+      const powerEnhancements = powerUp
+        ? powerUp.power_up_data
+        : {
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+          };
+
       const instance: UserCardInstance = {
         user_card_instance_id: row.user_card_instance_id,
         user_id: row.user_id,
         card_id: row.card_id,
         level: row.level,
         xp: row.xp,
-        power_enhancements: {
-          top: 0,
-          right: 0,
-          bottom: 0,
-          left: 0,
-        },
+        power_enhancements: powerEnhancements,
       };
 
       const ability: SpecialAbility | null = row.special_ability_id
@@ -213,18 +227,25 @@ const CardModel = {
     if (rows.length === 0) return null;
 
     const row = rows[0];
+
+    // Get power up data for this instance
+    const powerUp = await PowerUpService.getPowerUpByCardInstance(instanceId);
+    const powerEnhancements = powerUp
+      ? powerUp.power_up_data
+      : {
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+        };
+
     const instance: UserCardInstance = {
       user_card_instance_id: row.user_card_instance_id,
       user_id: row.user_id,
       card_id: row.card_id,
       level: row.level,
       xp: row.xp,
-      power_enhancements: {
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-      },
+      power_enhancements: powerEnhancements,
     };
 
     const baseCard: BaseCard = {
@@ -568,6 +589,12 @@ const CardModel = {
     `;
 
     const { rows } = await db.query(query, [instanceIds]);
+
+    // Get power ups for all card instances
+    const powerUpsMap = await PowerUpService.getPowerUpsByCardInstances(
+      instanceIds
+    );
+
     return rows.map((row) => {
       const baseCard: BaseCard = {
         card_id: row.card_id,
@@ -585,18 +612,24 @@ const CardModel = {
         tags: row.tags,
       };
 
+      // Get power up data for this instance
+      const powerUp = powerUpsMap.get(row.user_card_instance_id);
+      const powerEnhancements = powerUp
+        ? powerUp.power_up_data
+        : {
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+          };
+
       const instance: UserCardInstance = {
         user_card_instance_id: row.user_card_instance_id,
         user_id: row.user_id,
         card_id: row.card_id,
         level: row.level,
         xp: row.xp,
-        power_enhancements: {
-          top: 0,
-          right: 0,
-          bottom: 0,
-          left: 0,
-        },
+        power_enhancements: powerEnhancements,
       };
 
       const ability: SpecialAbility | null = row.special_ability_id
@@ -756,6 +789,12 @@ const CardModel = {
       const countParams = queryParams.slice(0, -2);
       const { rows: countRows } = await db.query(countQuery, countParams);
 
+      // Get power ups for all card instances
+      const instanceIds = dataRows.map((row) => row.user_card_instance_id);
+      const powerUpsMap = await PowerUpService.getPowerUpsByCardInstances(
+        instanceIds
+      );
+
       const data = dataRows.map((row) => {
         const baseCard: BaseCard = {
           card_id: row.card_id,
@@ -772,19 +811,24 @@ const CardModel = {
           tags: row.tags,
         };
 
+        // Get power up data for this instance
+        const powerUp = powerUpsMap.get(row.user_card_instance_id);
+        const powerEnhancements = powerUp
+          ? powerUp.power_up_data
+          : {
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+            };
+
         const instance: UserCardInstance = {
           user_card_instance_id: row.user_card_instance_id,
           user_id: row.user_id,
           card_id: row.card_id,
           level: row.level,
           xp: row.xp,
-          power_enhancements: {
-            // Assuming default if not stored
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-          },
+          power_enhancements: powerEnhancements,
         };
 
         const ability: SpecialAbility | null = row.special_ability_id

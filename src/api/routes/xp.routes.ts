@@ -9,6 +9,7 @@ import {
   getXpPool,
   transferXp,
   sacrificeCards,
+  sacrificeExtraCards,
   applyXp,
   getXpTransferHistory,
 } from "../controllers/xp.controller";
@@ -26,6 +27,7 @@ router.get("/history", moderateRateLimit, getXpTransferHistory);
 // Write operations (strict rate limiting to prevent abuse)
 router.post("/transfer", strictRateLimit, transferXp);
 router.post("/sacrifice", strictRateLimit, sacrificeCards);
+router.post("/sacrifice-extras", strictRateLimit, sacrificeExtraCards);
 router.post("/apply", strictRateLimit, applyXp);
 
 export default router;

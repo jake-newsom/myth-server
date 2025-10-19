@@ -43,6 +43,7 @@ export type {
   XpReward,
   XpTransferResult,
   SacrificeResult,
+  SacrificeExtrasResult,
   ApplyXpResult,
 
   // Pack Service Types
@@ -77,6 +78,11 @@ export type {
   FatePick,
   FatePickWithDetails,
   FatePickParticipation,
+
+  // Power Up Service Types
+  ApplyPowerUpRequest,
+  ApplyPowerUpResult,
+  PowerUpValidationResult,
 } from "./service.types";
 
 // Export game engine types

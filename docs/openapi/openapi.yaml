@@ -41,6 +41,8 @@ tags:
     description: Social pack opening and Fate coins
   - name: Mail
     description: In-game mail and inbox system
+  - name: Power Ups
+    description: Card power up and enhancement system
 
 paths:
   # Authentication Endpoints
@@ -262,6 +264,16 @@ paths:
   /api/mail/send/system:
     $ref: "./mail.openapi.yaml#/paths/~1api~1mail~1send~1system"
 
+  # Power Up Endpoints
+  /api/power-ups/apply:
+    $ref: "./powerUp.openapi.yaml#/paths/~1api~1power-ups~1apply"
+
+  /api/power-ups/{userCardInstanceId}:
+    $ref: "./powerUp.openapi.yaml#/paths/~1api~1power-ups~1{userCardInstanceId}"
+
+  /api/power-ups/{userCardInstanceId}/validate:
+    $ref: "./powerUp.openapi.yaml#/paths/~1api~1power-ups~1{userCardInstanceId}~1validate"
+
   # Game Endpoints
   /api/games/solo:
     $ref: "./game.openapi.yaml#/paths/~1api~1games~1solo"
@@ -413,6 +425,10 @@ components:
       $ref: "./mail.openapi.yaml#/components/schemas/MailWithSender"
     MailStats:
       $ref: "./mail.openapi.yaml#/components/schemas/MailStats"
+
+    # Power Up schemas
+    PowerValues:
+      $ref: "./powerUp.openapi.yaml#/components/schemas/PowerValues"
 
     # Active Game schemas
     ActiveGameDetails:

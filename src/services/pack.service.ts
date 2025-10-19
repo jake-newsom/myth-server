@@ -2,6 +2,7 @@ import CardModel from "../models/card.model";
 import SetModel from "../models/set.model";
 import UserModel from "../models/user.model";
 import { Card, SpecialAbility } from "../types/database.types";
+import { RarityUtils } from "../types/card.types";
 
 const CARDS_PER_PACK = 5;
 
@@ -64,35 +65,38 @@ const PackService = {
     // 8. Log the pack opening to history
     await this.logPackOpening(userId, setId, selectedCards);
 
-    // 9. Trigger achievement events for pack opening
+    // 9. Trigger achievement events for pack opening (temporarily disabled)
     try {
-      const AchievementService = await import("./achievement.service");
+      // TODO: Fix achievement database parameter type issue before re-enabling
+      console.log(
+        "Achievement processing temporarily disabled for pack opening"
+      );
 
+      // const AchievementService = await import("./achievement.service");
       // Pack opened event
-      await AchievementService.default.triggerAchievementEvent({
-        userId,
-        eventType: "pack_opened",
-        eventData: {
-          setId,
-          cardsReceived: selectedCards,
-          packsRemaining: updatedUser.pack_count,
-        },
-      });
+      // await AchievementService.default.triggerAchievementEvent({
+      //   userId,
+      //   eventType: "pack_opened",
+      //   eventData: {
+      //     setId,
+      //     cardsReceived: selectedCards,
+      //     packsRemaining: updatedUser.pack_count,
+      //   },
+      // });
 
       // Card collection events for each unique card
-      for (const card of selectedCards) {
-        await AchievementService.default.triggerAchievementEvent({
-          userId,
-          eventType: "card_collected",
-          eventData: {
-            cardId: card.card_id,
-            cardName: card.name,
-            rarity: card.rarity,
-            // Ensure totalUniqueCards is always a number (0 is falsy but valid)
-            totalUniqueCards: 0, // Will be calculated in future implementation
-          },
-        });
-      }
+      // for (const card of selectedCards) {
+      //   await AchievementService.default.triggerAchievementEvent({
+      //     userId,
+      //     eventType: "card_collected",
+      //     eventData: {
+      //       cardId: card.card_id,
+      //       cardName: card.name,
+      //       rarity: card.rarity,
+      //       totalUniqueCards: 0,
+      //     },
+      //   });
+      // }
     } catch (error) {
       console.error("Error processing pack opening achievement events:", error);
       // Don't fail the pack opening process if achievement processing fails
@@ -194,20 +198,77 @@ const PackService = {
       cardsByRarity[card.rarity].push(card);
     });
 
+    // Debug: Log rarity distribution (remove this in production)
+    console.log("Cards by rarity in set:");
+    Object.entries(cardsByRarity).forEach(([rarity, cards]) => {
+      console.log(`  ${rarity}: ${cards.length} cards`);
+    });
+
     const selectedCards: CardWithAbility[] = [];
 
+    let variantCount = 0;
     for (let i = 0; i < count; i++) {
-      // Select a rarity based on weights
-      const rarity = this.selectWeightedRarity();
+      // Select a rarity based on weights (may include variants like "common+")
+      const selectedRarity = this.selectWeightedRarity();
+      const isVariantRarity = selectedRarity.includes("+");
+      console.log(
+        `Card ${i + 1}: Selected rarity = ${selectedRarity} ${
+          isVariantRarity ? "(VARIANT)" : "(BASE)"
+        }`
+      );
 
-      // If no cards of that rarity exist, fall back to any available card
-      const availableCards = cardsByRarity[rarity] || cards;
+      // Try to find cards of the exact variant rarity first
+      let availableCards = cardsByRarity[selectedRarity];
+      let actualRarity = selectedRarity;
+
+      // If no variant cards exist, fall back to base rarity cards
+      if (!availableCards || availableCards.length === 0) {
+        const baseRarity = RarityUtils.getBaseRarity(selectedRarity as any);
+        availableCards = cardsByRarity[baseRarity];
+        // Only use variant rarity if we actually found variant cards
+        actualRarity = baseRarity;
+      }
+
+      // Final fallback to any available cards
+      if (!availableCards || availableCards.length === 0) {
+        availableCards = cards;
+        // Use the card's actual rarity from database
+        actualRarity = selectedRarity; // This will be corrected below
+      }
+
       if (availableCards.length > 0) {
         const randomIndex = Math.floor(Math.random() * availableCards.length);
-        selectedCards.push(availableCards[randomIndex]);
+        const selectedCard = { ...availableCards[randomIndex] };
+
+        // Only count as variant if we selected a variant rarity AND found matching cards
+        const isVariantRarity = selectedRarity.includes("+");
+        if (
+          cardsByRarity[selectedRarity] &&
+          cardsByRarity[selectedRarity].length > 0
+        ) {
+          selectedCard.rarity = selectedRarity as any;
+          if (isVariantRarity) {
+            variantCount++;
+            // console.log(
+            //   `  Selected VARIANT: ${selectedCard.name} (${selectedRarity})`
+            // );
+          } else {
+            // console.log(
+            //   `  Selected base: ${selectedCard.name} (${selectedRarity})`
+            // );
+          }
+        } else {
+          // console.log(
+          //   `  Selected base (fallback): ${selectedCard.name} (${selectedCard.rarity})`
+          // );
+        }
+        // Otherwise, keep the card's original rarity from database
+
+        selectedCards.push(selectedCard);
       }
     }
 
+    // console.log(`Pack complete: ${variantCount}/${count} variant cards`);
     return selectedCards;
   },
 
@@ -245,26 +306,19 @@ const PackService = {
     await db.query(query, [userId, setId, JSON.stringify(cardIds)]);
   },
 
-  async getPackRarityWeights(): Promise<{ [key: string]: number }> {
+  getPackRarityWeights(): { [key: string]: number } {
     // Define rarity weights for pack opening
     // Higher numbers = more likely to appear
     return {
-      common: 50,
-      uncommon: 30,
-      rare: 15,
-      epic: 4,
-      legendary: 1,
+      common: 70,
+      epic: 25,
+      legendary: 5,
     };
   },
 
   selectWeightedRarity(): string {
-    const weights = {
-      common: 50,
-      uncommon: 30,
-      rare: 15,
-      epic: 4,
-      legendary: 1,
-    };
+    const weights = this.getPackRarityWeights();
+    console.log("Current rarity weights:", weights);
 
     const totalWeight = Object.values(weights).reduce(
       (sum, weight) => sum + weight,
@@ -272,14 +326,27 @@ const PackService = {
     );
     let random = Math.random() * totalWeight;
 
+    let selectedRarity = "common"; // fallback
     for (const [rarity, weight] of Object.entries(weights)) {
       random -= weight;
       if (random <= 0) {
-        return rarity;
+        selectedRarity = rarity;
+        break;
       }
     }
 
-    return "common"; // fallback
+    // Add suffix based on probability
+    const suffixRandom = Math.random() * 100; // Convert to percentage
+    // if (suffixRandom < 0.1) {
+    //   return selectedRarity + "+++";
+    // } else if (suffixRandom < 0.6) {
+    //   return selectedRarity + "++";
+    // } else
+    if (suffixRandom < 2) {
+      return selectedRarity + "+";
+    }
+
+    return selectedRarity;
   },
 
   async openMultiplePacks(userId: string, setId: string, count: number) {
@@ -368,35 +435,38 @@ const PackService = {
         // Log the pack opening to history
         await this.logPackOpening(userId, setId, selectedCards);
 
-        // Trigger achievement events for pack opening
+        // Trigger achievement events for pack opening (temporarily disabled)
         try {
-          const AchievementService = await import("./achievement.service");
+          // TODO: Fix achievement database parameter type issue before re-enabling
+          console.log(
+            "Achievement processing temporarily disabled for multiple pack opening"
+          );
 
+          // const AchievementService = await import("./achievement.service");
           // Pack opened event
-          await AchievementService.default.triggerAchievementEvent({
-            userId,
-            eventType: "pack_opened",
-            eventData: {
-              setId,
-              cardsReceived: selectedCards,
-              packsRemaining: userPackCount - packsToUse + packsToBuy - (i + 1),
-            },
-          });
+          // await AchievementService.default.triggerAchievementEvent({
+          //   userId,
+          //   eventType: "pack_opened",
+          //   eventData: {
+          //     setId,
+          //     cardsReceived: selectedCards,
+          //     packsRemaining: userPackCount - packsToUse + packsToBuy - (i + 1),
+          //   },
+          // });
 
           // Card collection events for each unique card
-          for (const card of selectedCards) {
-            await AchievementService.default.triggerAchievementEvent({
-              userId,
-              eventType: "card_collected",
-              eventData: {
-                cardId: card.card_id,
-                cardName: card.name,
-                rarity: card.rarity,
-                // Ensure totalUniqueCards is always a number (0 is falsy but valid)
-                totalUniqueCards: 0, // Will be calculated in future implementation
-              },
-            });
-          }
+          // for (const card of selectedCards) {
+          //   await AchievementService.default.triggerAchievementEvent({
+          //     userId,
+          //     eventType: "card_collected",
+          //     eventData: {
+          //       cardId: card.card_id,
+          //       cardName: card.name,
+          //       rarity: card.rarity,
+          //       totalUniqueCards: 0,
+          //     },
+          //   });
+          // }
         } catch (error) {
           console.error(
             "Error processing pack opening achievement events:",

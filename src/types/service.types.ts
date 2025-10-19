@@ -1,4 +1,4 @@
-import { PowerValues } from "./card.types";
+import { PowerValues, Rarity } from "./card.types";
 import { GameState } from "./game.types";
 import {
   Friendship,
@@ -120,29 +120,46 @@ export interface XpReward {
   card_id: string;
   card_name: string;
   xp_gained: number;
-  efficiency_applied?: boolean;
+  new_xp: number;
+  new_level: number;
 }
 
 export interface XpTransferResult {
   success: boolean;
   message: string;
-  transferred_xp?: number;
-  efficiency_rate?: number;
+  transferred_xp: number;
+  source_cards: { card_id: string; xp_lost: number }[];
+  target_card: { card_id: string; xp_gained: number; new_level: number };
 }
 
 export interface SacrificeResult {
   success: boolean;
   message: string;
-  xp_gained?: number;
-  cards_sacrificed?: number;
+  sacrificed_cards: { card_id: string; xp_value: number }[];
+  total_xp_gained: number;
+  pool_new_total: number;
+}
+
+export interface SacrificeExtrasResult {
+  success: boolean;
+  message: string;
+  sacrificed_cards: {
+    base_card_id: string;
+    card_name: string;
+    cards_sacrificed: number;
+    total_xp_gained: number;
+  }[];
+  total_xp_gained: number;
+  pool_new_total: number;
 }
 
 export interface ApplyXpResult {
   success: boolean;
   message: string;
-  new_level?: number;
-  xp_used?: number;
-  remaining_xp?: number;
+  xp_applied: number;
+  new_card_xp: number;
+  new_card_level: number;
+  pool_remaining: number;
 }
 
 // Pack Service Types
@@ -150,7 +167,7 @@ export interface CardWithAbility {
   card_id: string;
   name: string;
   description?: string;
-  rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+  rarity: Rarity;
   faction?: string;
   cost?: number;
   attack?: number;
@@ -379,6 +396,27 @@ export interface FatePickParticipation {
   user_id: string;
   card_chosen?: string;
   participated_at: Date;
+}
+
+// Power Up Service Types
+export interface ApplyPowerUpRequest {
+  user_card_instance_id: string;
+  power_up_data: PowerValues;
+}
+
+export interface ApplyPowerUpResult {
+  success: boolean;
+  message: string;
+  power_up_count?: number;
+  power_up_data?: PowerValues;
+  error?: string;
+}
+
+export interface PowerUpValidationResult {
+  isValid: boolean;
+  error?: string;
+  current_level?: number;
+  current_power_up_count?: number;
 }
 
 // Note: RateLimitRecord and RateLimitConfig moved to middleware.types.ts

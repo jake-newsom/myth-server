@@ -1,5 +1,6 @@
 import UserModel from "../models/user.model";
-import XpService, { XpReward } from "./xp.service";
+import XpService from "./xp.service";
+import { XpReward } from "../types/service.types";
 import { GameState } from "../types/game.types";
 import db from "../config/db.config";
 import LeaderboardService from "./leaderboard.service";

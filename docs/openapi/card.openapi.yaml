@@ -31,8 +31,30 @@ paths:
           name: rarity
           schema:
             type: string
-            enum: [common, uncommon, rare, epic, legendary]
-          description: Filter cards by rarity
+            enum:
+              [
+                common,
+                uncommon,
+                rare,
+                epic,
+                legendary,
+                common+,
+                uncommon+,
+                rare+,
+                epic+,
+                legendary+,
+                common++,
+                uncommon++,
+                rare++,
+                epic++,
+                legendary++,
+                common+++,
+                uncommon+++,
+                rare+++,
+                epic+++,
+                legendary+++,
+              ]
+          description: Filter cards by rarity (including variant rarities with +, ++, +++)
         - in: query
           name: name
           schema:

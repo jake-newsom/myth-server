@@ -1,4 +1,4 @@
-import { PowerValues, TriggerMoment } from "./card.types";
+import { PowerValues, Rarity, TriggerMoment } from "./card.types";
 import { Request } from "express";
 
 /**
@@ -50,7 +50,7 @@ export interface CardResponse {
   user_card_instance_id?: string;
   base_card_id: string;
   name: string;
-  rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+  rarity: Rarity;
   image_url: string;
   base_power: PowerValues;
   level?: number;

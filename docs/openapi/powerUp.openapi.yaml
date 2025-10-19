@@ -1,0 +1,340 @@
+openapi: 3.0.0
+info:
+  title: Power Up API
+  description: API endpoints for managing user card power ups
+  version: 1.0.0
+
+paths:
+  /api/power-ups/apply:
+    post:
+      summary: Apply a level up boost to a user card
+      description: |
+        Applies a power up enhancement to a user's card instance. Cards can only have 1 power up per level.
+        If the card already has the maximum number of power ups for its level, the request will be rejected.
+      tags:
+        - Power Ups
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_card_instance_id
+                - power_up_data
+              properties:
+                user_card_instance_id:
+                  type: string
+                  format: uuid
+                  description: The ID of the user card instance to apply the power up to
+                  example: "123e4567-e89b-12d3-a456-426614174000"
+                power_up_data:
+                  $ref: "#/components/schemas/PowerValues"
+            examples:
+              basic_power_up:
+                summary: Basic power up example
+                value:
+                  user_card_instance_id: "123e4567-e89b-12d3-a456-426614174000"
+                  power_up_data:
+                    top: 1
+                    bottom: 0
+                    left: 0
+                    right: 1
+      responses:
+        "200":
+          description: Power up applied successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Power up applied successfully! Card now has 1 power up(s)."
+                  data:
+                    type: object
+                    properties:
+                      user_card_instance_id:
+                        type: string
+                        format: uuid
+                        example: "123e4567-e89b-12d3-a456-426614174000"
+                      power_up_count:
+                        type: integer
+                        example: 1
+                      power_up_data:
+                        $ref: "#/components/schemas/PowerValues"
+        "400":
+          description: Bad request - invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing_field:
+                  summary: Missing required field
+                  value:
+                    success: false
+                    error:
+                      message: "user_card_instance_id is required"
+                invalid_power_data:
+                  summary: Invalid power up data
+                  value:
+                    success: false
+                    error:
+                      message: "power_up_data must contain numeric values for top, bottom, left, and right"
+        "401":
+          description: Unauthorized - user not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Card not found or not owned by user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  message: "Card not found or not owned by user"
+        "409":
+          description: Conflict - card already has maximum power ups for its level
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  message: "Card already has maximum power ups for its level (2). Current power ups: 2"
+                details: "Card already has maximum power ups for its level (2). Current power ups: 2"
+
+  /api/power-ups/{userCardInstanceId}:
+    get:
+      summary: Get power up information for a specific user card
+      description: Retrieves the current power up data for a user's card instance
+      tags:
+        - Power Ups
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userCardInstanceId
+          in: path
+          required: true
+          description: The ID of the user card instance
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        "200":
+          description: Power up information retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      user_card_instance_id:
+                        type: string
+                        format: uuid
+                        example: "123e4567-e89b-12d3-a456-426614174000"
+                      power_up_count:
+                        type: integer
+                        example: 1
+                      power_up_data:
+                        $ref: "#/components/schemas/PowerValues"
+                      created_at:
+                        type: string
+                        format: date-time
+                        example: "2023-10-19T10:30:00Z"
+                      updated_at:
+                        type: string
+                        format: date-time
+                        example: "2023-10-19T10:30:00Z"
+              examples:
+                with_power_ups:
+                  summary: Card with power ups
+                  value:
+                    success: true
+                    data:
+                      user_card_instance_id: "123e4567-e89b-12d3-a456-426614174000"
+                      power_up_count: 2
+                      power_up_data:
+                        top: 2
+                        bottom: 1
+                        left: 0
+                        right: 1
+                      created_at: "2023-10-19T10:30:00Z"
+                      updated_at: "2023-10-19T11:45:00Z"
+                no_power_ups:
+                  summary: Card without power ups
+                  value:
+                    success: true
+                    message: "No power ups applied to this card"
+                    data:
+                      user_card_instance_id: "123e4567-e89b-12d3-a456-426614174000"
+                      power_up_count: 0
+                      power_up_data:
+                        top: 0
+                        bottom: 0
+                        left: 0
+                        right: 0
+        "400":
+          description: Bad request - invalid user card instance ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - user not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Card not found or not owned by user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/power-ups/{userCardInstanceId}/validate:
+    get:
+      summary: Validate if a power up can be applied to a user card
+      description: |
+        Checks if a power up can be applied to the specified user card instance.
+        Returns information about the card's current level and power up count.
+      tags:
+        - Power Ups
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userCardInstanceId
+          in: path
+          required: true
+          description: The ID of the user card instance
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      can_apply_power_up:
+                        type: boolean
+                        example: true
+                      current_level:
+                        type: integer
+                        example: 3
+                      current_power_up_count:
+                        type: integer
+                        example: 2
+                      error:
+                        type: string
+                        nullable: true
+                        example: null
+              examples:
+                can_apply:
+                  summary: Power up can be applied
+                  value:
+                    success: true
+                    data:
+                      can_apply_power_up: true
+                      current_level: 3
+                      current_power_up_count: 2
+                      error: null
+                cannot_apply:
+                  summary: Power up cannot be applied
+                  value:
+                    success: true
+                    data:
+                      can_apply_power_up: false
+                      current_level: 2
+                      current_power_up_count: 2
+                      error: "Card already has maximum power ups for its level (2). Current power ups: 2"
+        "400":
+          description: Bad request - invalid user card instance ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - user not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    PowerValues:
+      type: object
+      description: Power values for each direction of a card
+      required:
+        - top
+        - bottom
+        - left
+        - right
+      properties:
+        top:
+          type: integer
+          description: Top power value
+          example: 1
+        bottom:
+          type: integer
+          description: Bottom power value
+          example: 0
+        left:
+          type: integer
+          description: Left power value
+          example: 0
+        right:
+          type: integer
+          description: Right power value
+          example: 1
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              example: "Error message"
+        details:
+          type: string
+          description: Additional error details
+          example: "Detailed error information"
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

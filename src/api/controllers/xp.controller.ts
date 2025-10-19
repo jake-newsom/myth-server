@@ -112,6 +112,30 @@ export const sacrificeCards = async (req: Request, res: Response) => {
   }
 };
 
+export const sacrificeExtraCards = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.user_id;
+
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    // Call XP service to sacrifice extra cards
+    const result = await XpService.sacrificeExtraCards(userId);
+
+    if (result.success) {
+      // Remove success and message properties, return flattened result
+      const { success, message, ...flattenedResult } = result;
+      res.json(flattenedResult);
+    } else {
+      res.status(400).json({ error: result.message });
+    }
+  } catch (error) {
+    console.error("Error sacrificing extra cards:", error);
+    res.status(500).json({ error: "Failed to sacrifice extra cards" });
+  }
+};
+
 export const applyXp = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.user_id;

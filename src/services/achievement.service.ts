@@ -4,6 +4,7 @@ import {
   Achievement,
   UserAchievementWithDetails,
 } from "../types/database.types";
+import { RarityUtils } from "../types/card.types";
 
 interface AchievementProgressEvent {
   userId: string;
@@ -387,8 +388,8 @@ const AchievementService = {
   ): Promise<void> {
     const { rarity, totalUniqueCards } = eventData;
 
-    // Rare collector
-    if (rarity === "rare") {
+    // Rare collector (including variants)
+    if (RarityUtils.isRare(rarity)) {
       const rareCollector =
         await AchievementModel.updateUserAchievementProgress(
           userId,
@@ -406,8 +407,8 @@ const AchievementService = {
       }
     }
 
-    // Legendary hunter
-    if (rarity === "legendary") {
+    // Legendary hunter (including variants)
+    if (RarityUtils.isLegendary(rarity)) {
       const legendaryHunter =
         await AchievementModel.updateUserAchievementProgress(
           userId,

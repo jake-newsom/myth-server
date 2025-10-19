@@ -16,11 +16,33 @@ paths:
       parameters:
         - name: rarity
           in: query
-          description: Filter by card rarity (e.g., common, rare)
+          description: Filter by card rarity (including variant rarities with +, ++, +++)
           required: false
           schema:
             type: string
-            enum: [common, uncommon, rare, epic, legendary]
+            enum:
+              [
+                common,
+                uncommon,
+                rare,
+                epic,
+                legendary,
+                common+,
+                uncommon+,
+                rare+,
+                epic+,
+                legendary+,
+                common++,
+                uncommon++,
+                rare++,
+                epic++,
+                legendary++,
+                common+++,
+                uncommon+++,
+                rare+++,
+                epic+++,
+                legendary+++,
+              ]
         - name: name
           in: query
           description: Filter by card name (case-insensitive, partial match)
@@ -161,7 +183,7 @@ components:
           minimum: 0
         power_enhancements:
           $ref: "#/components/schemas/PowerValues"
-          description: Additional power values from leveling up
+          description: Additional power values from level up boosts applied to the card (accumulated from all power ups)
       required:
         - user_card_instance_id
         - base_card_id

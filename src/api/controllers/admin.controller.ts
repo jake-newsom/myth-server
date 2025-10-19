@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import SetModel from "../../models/set.model";
 import UserModel from "../../models/user.model";
-import { AuthenticatedRequest } from "../../types";
+import { AuthenticatedRequest, RarityUtils } from "../../types";
 import { spawn } from "child_process";
 import { promisify } from "util";
 import { exec } from "child_process";
@@ -793,7 +793,7 @@ const AdminController = {
             if (selectedCards.length >= CARDS_PER_DECK) break;
 
             const cardName = card.name;
-            const isLegendary = card.rarity === "legendary";
+            const isLegendary = RarityUtils.isLegendary(card.rarity);
 
             // Check constraints
             if (isLegendary && legendaryCount >= MAX_LEGENDARY_CARDS) continue;

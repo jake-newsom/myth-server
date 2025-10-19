@@ -2,39 +2,13 @@ import db from "../config/db.config";
 import XpPoolModel from "../models/xpPool.model";
 import UserModel from "../models/user.model";
 import { CardResponse } from "../types/api.types";
-
-export interface XpReward {
-  card_id: string;
-  card_name: string;
-  xp_gained: number;
-  new_xp: number;
-  new_level: number;
-}
-
-export interface XpTransferResult {
-  success: boolean;
-  message: string;
-  transferred_xp: number;
-  source_cards: { card_id: string; xp_lost: number }[];
-  target_card: { card_id: string; xp_gained: number; new_level: number };
-}
-
-export interface SacrificeResult {
-  success: boolean;
-  message: string;
-  sacrificed_cards: { card_id: string; xp_value: number }[];
-  total_xp_gained: number;
-  pool_new_total: number;
-}
-
-export interface ApplyXpResult {
-  success: boolean;
-  message: string;
-  xp_applied: number;
-  new_card_xp: number;
-  new_card_level: number;
-  pool_remaining: number;
-}
+import {
+  XpReward,
+  XpTransferResult,
+  SacrificeResult,
+  SacrificeExtrasResult,
+  ApplyXpResult,
+} from "../types/service.types";
 
 const XpService = {
   // Calculate level from XP (simple formula: level = floor(xp/100) + 1, max level 10)
@@ -247,6 +221,184 @@ const XpService = {
         success: false,
         message:
           error instanceof Error ? error.message : "Card sacrifice failed",
+        sacrificed_cards: [],
+        total_xp_gained: 0,
+        pool_new_total: 0,
+      };
+    } finally {
+      client.release();
+    }
+  },
+
+  // Sacrifice all extra copies of cards, keeping the 2 highest XP instances per base_card_id
+  async sacrificeExtraCards(userId: string): Promise<SacrificeExtrasResult> {
+    const client = await db.getClient();
+
+    try {
+      await client.query("BEGIN");
+
+      // Get all user's cards grouped by base card (card_id) and card name
+      const query = `
+        SELECT 
+          uoc.user_card_instance_id, 
+          uoc.card_id as base_card_id,
+          uoc.level, 
+          uoc.xp, 
+          c.name
+        FROM "user_owned_cards" uoc
+        JOIN "cards" c ON uoc.card_id = c.card_id
+        WHERE uoc.user_id = $1
+        ORDER BY c.name, uoc.xp DESC, uoc.level DESC, uoc.user_card_instance_id
+      `;
+      const { rows } = await client.query(query, [userId]);
+
+      // Group cards by base_card_id to determine which to sacrifice
+      const cardsByBaseId: { [baseCardId: string]: typeof rows } = {};
+      rows.forEach((card) => {
+        if (!cardsByBaseId[card.base_card_id]) {
+          cardsByBaseId[card.base_card_id] = [];
+        }
+        cardsByBaseId[card.base_card_id].push(card);
+      });
+
+      // Determine which cards to sacrifice: only 0 XP cards, keeping minimum 2 per base_card_id
+      const cardsToSacrifice = [];
+      for (const [baseCardId, cards] of Object.entries(cardsByBaseId)) {
+        // Count cards with XP > 0
+        const cardsWithXp = cards.filter((card) => card.xp > 0);
+        const cardsWithZeroXp = cards.filter((card) => card.xp === 0);
+
+        // Calculate how many cards we should keep total (at least 2, or all cards with XP if more than 2)
+        const minKeep = Math.max(2, cardsWithXp.length);
+
+        // If we have more cards than we need to keep, sacrifice the excess 0 XP cards
+        if (cards.length > minKeep) {
+          const excessCount = cards.length - minKeep;
+          // Only sacrifice from 0 XP cards, up to the excess count
+          const toSacrifice = cardsWithZeroXp.slice(
+            0,
+            Math.min(excessCount, cardsWithZeroXp.length)
+          );
+          cardsToSacrifice.push(...toSacrifice);
+        }
+      }
+
+      if (cardsToSacrifice.length === 0) {
+        await client.query("ROLLBACK");
+        return {
+          success: true,
+          message: "No 0 XP card copies found to sacrifice",
+          sacrificed_cards: [],
+          total_xp_gained: 0,
+          pool_new_total: 0,
+        };
+      }
+
+      // Group cards by name for XP pool updates and by base_card_id for response
+      const cardsByName: { [name: string]: typeof cardsToSacrifice } = {};
+      const sacrificeCardsByBaseId: {
+        [baseCardId: string]: typeof cardsToSacrifice;
+      } = {};
+
+      cardsToSacrifice.forEach((card) => {
+        // Group by name for XP pools
+        if (!cardsByName[card.name]) {
+          cardsByName[card.name] = [];
+        }
+        cardsByName[card.name].push(card);
+
+        // Group by base_card_id for response
+        if (!sacrificeCardsByBaseId[card.base_card_id]) {
+          sacrificeCardsByBaseId[card.base_card_id] = [];
+        }
+        sacrificeCardsByBaseId[card.base_card_id].push(card);
+      });
+
+      let totalXpGained = 0;
+      const sacrificedCardsByBaseId = [];
+      const poolUpdates: { [name: string]: number } = {};
+
+      // Calculate XP value for each base card type
+      for (const [baseCardId, cards] of Object.entries(
+        sacrificeCardsByBaseId
+      )) {
+        let baseCardXpGained = 0;
+        const cardName = cards[0].name; // All cards with same base_card_id have same name
+
+        for (const card of cards) {
+          const xpValue = this.calculateSacrificeValue(card.xp, card.level);
+          totalXpGained += xpValue;
+          baseCardXpGained += xpValue;
+
+          // Track XP per card name for pool updates
+          if (!poolUpdates[cardName]) {
+            poolUpdates[cardName] = 0;
+          }
+          poolUpdates[cardName] += xpValue;
+        }
+
+        sacrificedCardsByBaseId.push({
+          base_card_id: baseCardId,
+          card_name: cardName,
+          cards_sacrificed: cards.length,
+          total_xp_gained: baseCardXpGained,
+        });
+      }
+
+      // Delete the extra cards
+      const cardIdsToDelete = cardsToSacrifice.map(
+        (card) => card.user_card_instance_id
+      );
+      await client.query(
+        `DELETE FROM "user_owned_cards" WHERE user_card_instance_id = ANY($1)`,
+        [cardIdsToDelete]
+      );
+
+      // Update XP pools for each card name and log transfers
+      let finalPoolTotal = 0;
+      for (const [cardName, xpAmount] of Object.entries(poolUpdates)) {
+        const updatedPool = await XpPoolModel.addXpToPool(
+          userId,
+          cardName,
+          xpAmount
+        );
+        finalPoolTotal += updatedPool.available_xp;
+
+        // Log the sacrifice for this card name
+        const cardNamesIds = cardsByName[cardName].map(
+          (c) => c.user_card_instance_id
+        );
+        await XpPoolModel.logXpTransfer({
+          user_id: userId,
+          transfer_type: "sacrifice_to_pool",
+          source_card_ids: cardNamesIds,
+          card_name: cardName,
+          xp_transferred: xpAmount,
+          efficiency_rate: 1.0,
+        });
+      }
+
+      await client.query("COMMIT");
+
+      return {
+        success: true,
+        message: `Sacrificed ${
+          cardsToSacrifice.length
+        } cards with 0 XP for ${totalXpGained} XP across ${
+          Object.keys(cardsByName).length
+        } different card types`,
+        sacrificed_cards: sacrificedCardsByBaseId,
+        total_xp_gained: totalXpGained,
+        pool_new_total: finalPoolTotal,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Extra card sacrifice failed",
         sacrificed_cards: [],
         total_xp_gained: 0,
         pool_new_total: 0,

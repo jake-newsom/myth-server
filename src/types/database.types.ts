@@ -1,4 +1,4 @@
-import { PowerValues, TriggerMoment } from "./card.types";
+import { PowerValues, Rarity, TriggerMoment } from "./card.types";
 
 /**
  * Type definitions for database schemas
@@ -70,7 +70,7 @@ export interface Card {
   card_id: string;
   name: string;
   description?: string;
-  rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+  rarity: Rarity;
   faction?: string;
   cost?: number;
   attack?: number;
@@ -209,7 +209,7 @@ export interface Achievement {
   category: "gameplay" | "collection" | "social" | "progression" | "special";
   type: "single" | "progress" | "milestone";
   target_value: number;
-  rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+  rarity: Rarity;
   reward_gold: number;
   reward_gems: number;
   reward_packs: number;
@@ -278,4 +278,13 @@ export interface MailStats {
   unread_mail: number;
   unclaimed_rewards: number;
   expired_mail: number;
+}
+
+export interface UserCardPowerUp {
+  id: string;
+  user_card_instance_id: string;
+  power_up_count: number;
+  power_up_data: PowerValues;
+  created_at: Date;
+  updated_at: Date;
 }
