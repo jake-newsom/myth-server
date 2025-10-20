@@ -337,12 +337,11 @@ const PackService = {
 
     // Add suffix based on probability
     const suffixRandom = Math.random() * 100; // Convert to percentage
-    // if (suffixRandom < 0.1) {
-    //   return selectedRarity + "+++";
-    // } else if (suffixRandom < 0.6) {
-    //   return selectedRarity + "++";
-    // } else
-    if (suffixRandom < 2) {
+    if (suffixRandom < 0.1) {
+      return selectedRarity + "+++";
+    } else if (suffixRandom < 0.6) {
+      return selectedRarity + "++";
+    } else if (suffixRandom < 2) {
       return selectedRarity + "+";
     }
 
