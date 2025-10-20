@@ -52,11 +52,12 @@ class PowerUpService {
           ? powerUpResult.rows[0].power_up_count
           : 0;
 
-      // Cards can only have 1 power up per level
-      if (currentPowerUpCount >= cardLevel) {
+      // Cards can only have (level - 1) power ups
+      const maxPowerUps = cardLevel - 1;
+      if (currentPowerUpCount >= maxPowerUps) {
         return {
           isValid: false,
-          error: `Card already has maximum power ups for its level (${cardLevel}). Current power ups: ${currentPowerUpCount}`,
+          error: `Card already has maximum power ups for its level (${cardLevel}). Maximum allowed: ${maxPowerUps}, Current power ups: ${currentPowerUpCount}`,
           current_level: cardLevel,
           current_power_up_count: currentPowerUpCount,
         };
@@ -114,6 +115,16 @@ class PowerUpService {
           message: "Invalid power up data format",
           error:
             "Power up data must contain numeric values for top, bottom, left, and right",
+        };
+      }
+
+      // Validate that all power up values are non-negative (no reductions allowed)
+      if (top < 0 || bottom < 0 || left < 0 || right < 0) {
+        return {
+          success: false,
+          message: "Invalid power up values",
+          error:
+            "All power up values must be non-negative. Power ups can only add to existing values, not reduce them.",
         };
       }
 

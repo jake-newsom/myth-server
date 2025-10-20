@@ -9,8 +9,9 @@ paths:
     post:
       summary: Apply a level up boost to a user card
       description: |
-        Applies a power up enhancement to a user's card instance. Cards can only have 1 power up per level.
-        If the card already has the maximum number of power ups for its level, the request will be rejected.
+        Applies a power up enhancement to a user's card instance. Cards can only have (level - 1) power ups.
+        For example, a level 5 card can have maximum 4 power ups. If the card already has the maximum number 
+        of power ups for its level, the request will be rejected.
       tags:
         - Power Ups
       security:
@@ -87,6 +88,13 @@ paths:
                     success: false
                     error:
                       message: "power_up_data must contain numeric values for top, bottom, left, and right"
+                negative_values:
+                  summary: Negative power up values
+                  value:
+                    success: false
+                    error:
+                      message: "Invalid power up values"
+                    details: "All power up values must be non-negative. Power ups can only add to existing values, not reduce them."
         "401":
           description: Unauthorized - user not authenticated
           content:
@@ -112,8 +120,8 @@ paths:
               example:
                 success: false
                 error:
-                  message: "Card already has maximum power ups for its level (2). Current power ups: 2"
-                details: "Card already has maximum power ups for its level (2). Current power ups: 2"
+                  message: "Card already has maximum power ups for its level (3). Maximum allowed: 2, Current power ups: 2"
+                details: "Card already has maximum power ups for its level (3). Maximum allowed: 2, Current power ups: 2"
 
   /api/power-ups/{userCardInstanceId}:
     get:
@@ -215,7 +223,7 @@ paths:
       summary: Validate if a power up can be applied to a user card
       description: |
         Checks if a power up can be applied to the specified user card instance.
-        Returns information about the card's current level and power up count.
+        Returns information about the card's current level and power up count. Cards can have maximum (level - 1) power ups.
       tags:
         - Power Ups
       security:
@@ -272,9 +280,9 @@ paths:
                     success: true
                     data:
                       can_apply_power_up: false
-                      current_level: 2
+                      current_level: 3
                       current_power_up_count: 2
-                      error: "Card already has maximum power ups for its level (2). Current power ups: 2"
+                      error: "Card already has maximum power ups for its level (3). Maximum allowed: 2, Current power ups: 2"
         "400":
           description: Bad request - invalid user card instance ID
           content:
@@ -292,7 +300,7 @@ components:
   schemas:
     PowerValues:
       type: object
-      description: Power values for each direction of a card
+      description: Power values for each direction of a card. All values must be non-negative (>= 0) as power ups can only add to existing values, not reduce them.
       required:
         - top
         - bottom
@@ -302,18 +310,22 @@ components:
         top:
           type: integer
           description: Top power value
+          minimum: 0
           example: 1
         bottom:
           type: integer
           description: Bottom power value
+          minimum: 0
           example: 0
         left:
           type: integer
           description: Left power value
+          minimum: 0
           example: 0
         right:
           type: integer
           description: Right power value
+          minimum: 0
           example: 1
 
     ErrorResponse:

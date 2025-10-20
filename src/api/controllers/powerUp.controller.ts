@@ -88,6 +88,8 @@ const PowerUpController = {
           statusCode = 404;
         } else if (result.error?.includes("maximum power ups")) {
           statusCode = 409; // Conflict
+        } else if (result.error?.includes("non-negative")) {
+          statusCode = 400; // Bad Request for negative values
         }
 
         res.status(statusCode).json({
