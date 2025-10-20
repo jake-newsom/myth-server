@@ -310,21 +310,25 @@ const PackService = {
     // Define rarity weights for pack opening
     // Higher numbers = more likely to appear
     return {
-      common: 70,
-      epic: 25,
-      legendary: 5,
+      common: 55,
+      rare: 20,
+      epic: 16,
+      legendary: 6.5,
+      "+": 1.8,
+      "++": 0.5,
+      "+++": 0.2,
     };
   },
 
   selectWeightedRarity(): string {
     const weights = this.getPackRarityWeights();
-    console.log("Current rarity weights:", weights);
 
     const totalWeight = Object.values(weights).reduce(
       (sum, weight) => sum + weight,
       0
     );
     let random = Math.random() * totalWeight;
+    console.log("Random:", random);
 
     let selectedRarity = "common"; // fallback
     for (const [rarity, weight] of Object.entries(weights)) {
@@ -335,14 +339,15 @@ const PackService = {
       }
     }
 
-    // Add suffix based on probability
-    const suffixRandom = Math.random() * 100; // Convert to percentage
-    if (suffixRandom < 0.1) {
-      return selectedRarity + "+++";
-    } else if (suffixRandom < 0.6) {
-      return selectedRarity + "++";
-    } else if (suffixRandom < 2) {
-      return selectedRarity + "+";
+    if (selectedRarity.includes("+")) {
+      const br = Math.random() * 100;
+      if (br < 5) {
+        selectedRarity = `legendary${selectedRarity}`;
+      } else if (br < 30) {
+        selectedRarity = `epic${selectedRarity}`;
+      } else {
+        selectedRarity = `common${selectedRarity}`;
+      }
     }
 
     return selectedRarity;
