@@ -34,6 +34,8 @@ router.post("/trigger-ai-fate-pick", AdminController.triggerAIFatePick);
 
 router.get("/debug-fate-picks", AdminController.debugFatePicks);
 
+router.post("/give-fate-coins", AdminController.giveUserFateCoins);
+
 router.post("/fix-fate-picks-tables", AdminController.fixFatePicksTables);
 
 export default router;

@@ -215,9 +215,35 @@ const FatePickModel = {
     if (rows.length === 0) return null;
 
     const row = rows[0];
+
+    let parsedCards;
+    try {
+      // Handle both string and object cases for original_cards
+      if (typeof row.original_cards === "string") {
+        parsedCards = JSON.parse(row.original_cards);
+      } else if (typeof row.original_cards === "object") {
+        parsedCards = row.original_cards; // Already parsed by PostgreSQL
+      } else {
+        console.warn(
+          "Unexpected original_cards type in getFatePickById:",
+          typeof row.original_cards,
+          row.original_cards
+        );
+        parsedCards = [];
+      }
+    } catch (parseError) {
+      console.error(
+        "Error parsing original_cards in getFatePickById:",
+        parseError,
+        "Raw data:",
+        row.original_cards
+      );
+      parsedCards = [];
+    }
+
     return {
       ...row,
-      original_cards: JSON.parse(row.original_cards),
+      original_cards: parsedCards,
       can_participate: row.can_participate,
       user_has_participated: row.user_has_participated,
     };
@@ -252,10 +278,56 @@ const FatePickModel = {
       costPaid,
     ]);
 
+    const row = rows[0];
+
+    let parsedShuffledPositions;
+    try {
+      // Handle both string and object cases for shuffled_positions
+      if (typeof row.shuffled_positions === "string") {
+        parsedShuffledPositions = JSON.parse(row.shuffled_positions);
+      } else if (typeof row.shuffled_positions === "object") {
+        parsedShuffledPositions = row.shuffled_positions; // Already parsed by PostgreSQL
+      } else {
+        console.warn(
+          "Unexpected shuffled_positions type in createParticipation:",
+          typeof row.shuffled_positions,
+          row.shuffled_positions
+        );
+        parsedShuffledPositions = [0, 1, 2, 3, 4]; // Fallback to default order
+      }
+    } catch (parseError) {
+      console.error(
+        "Error parsing shuffled_positions in createParticipation:",
+        parseError,
+        "Raw data:",
+        row.shuffled_positions
+      );
+      parsedShuffledPositions = [0, 1, 2, 3, 4]; // Fallback to default order
+    }
+
+    let parsedWonCard = null;
+    if (row.won_card) {
+      try {
+        if (typeof row.won_card === "string") {
+          parsedWonCard = JSON.parse(row.won_card);
+        } else if (typeof row.won_card === "object") {
+          parsedWonCard = row.won_card;
+        }
+      } catch (parseError) {
+        console.error(
+          "Error parsing won_card in createParticipation:",
+          parseError,
+          "Raw data:",
+          row.won_card
+        );
+        parsedWonCard = null;
+      }
+    }
+
     return {
-      ...rows[0],
-      shuffled_positions: JSON.parse(rows[0].shuffled_positions),
-      won_card: rows[0].won_card ? JSON.parse(rows[0].won_card) : null,
+      ...row,
+      shuffled_positions: parsedShuffledPositions,
+      won_card: parsedWonCard,
     };
   },
 
@@ -285,8 +357,56 @@ const FatePickModel = {
     }
 
     const participation = participationRows[0];
-    const shuffledPositions = JSON.parse(participation.shuffled_positions);
-    const originalCards = JSON.parse(participation.original_cards);
+
+    let shuffledPositions;
+    try {
+      // Handle both string and object cases for shuffled_positions
+      if (typeof participation.shuffled_positions === "string") {
+        shuffledPositions = JSON.parse(participation.shuffled_positions);
+      } else if (typeof participation.shuffled_positions === "object") {
+        shuffledPositions = participation.shuffled_positions; // Already parsed by PostgreSQL
+      } else {
+        console.warn(
+          "Unexpected shuffled_positions type in selectCardPosition:",
+          typeof participation.shuffled_positions,
+          participation.shuffled_positions
+        );
+        shuffledPositions = [0, 1, 2, 3, 4]; // Fallback to default order
+      }
+    } catch (parseError) {
+      console.error(
+        "Error parsing shuffled_positions in selectCardPosition:",
+        parseError,
+        "Raw data:",
+        participation.shuffled_positions
+      );
+      shuffledPositions = [0, 1, 2, 3, 4]; // Fallback to default order
+    }
+
+    let originalCards;
+    try {
+      // Handle both string and object cases for original_cards
+      if (typeof participation.original_cards === "string") {
+        originalCards = JSON.parse(participation.original_cards);
+      } else if (typeof participation.original_cards === "object") {
+        originalCards = participation.original_cards; // Already parsed by PostgreSQL
+      } else {
+        console.warn(
+          "Unexpected original_cards type in selectCardPosition:",
+          typeof participation.original_cards,
+          participation.original_cards
+        );
+        originalCards = [];
+      }
+    } catch (parseError) {
+      console.error(
+        "Error parsing original_cards in selectCardPosition:",
+        parseError,
+        "Raw data:",
+        participation.original_cards
+      );
+      originalCards = [];
+    }
 
     // Get the actual card at the selected position
     const actualCardIndex = shuffledPositions[selectedPosition];
@@ -310,11 +430,47 @@ const FatePickModel = {
       participationId,
     ]);
 
+    const row = rows[0];
+
+    let parsedShuffledPositions;
+    try {
+      if (typeof row.shuffled_positions === "string") {
+        parsedShuffledPositions = JSON.parse(row.shuffled_positions);
+      } else if (typeof row.shuffled_positions === "object") {
+        parsedShuffledPositions = row.shuffled_positions;
+      } else {
+        parsedShuffledPositions = [0, 1, 2, 3, 4];
+      }
+    } catch (parseError) {
+      console.error(
+        "Error parsing shuffled_positions in selectCardPosition return:",
+        parseError
+      );
+      parsedShuffledPositions = [0, 1, 2, 3, 4];
+    }
+
+    let parsedWonCard;
+    try {
+      if (typeof row.won_card === "string") {
+        parsedWonCard = JSON.parse(row.won_card);
+      } else if (typeof row.won_card === "object") {
+        parsedWonCard = row.won_card;
+      } else {
+        parsedWonCard = null;
+      }
+    } catch (parseError) {
+      console.error(
+        "Error parsing won_card in selectCardPosition return:",
+        parseError
+      );
+      parsedWonCard = null;
+    }
+
     return {
       participation: {
-        ...rows[0],
-        shuffled_positions: JSON.parse(rows[0].shuffled_positions),
-        won_card: JSON.parse(rows[0].won_card),
+        ...row,
+        shuffled_positions: parsedShuffledPositions,
+        won_card: parsedWonCard,
       },
       wonCard,
     };
@@ -336,10 +492,46 @@ const FatePickModel = {
 
     if (rows.length === 0) return null;
 
+    const row = rows[0];
+
+    let parsedShuffledPositions;
+    try {
+      if (typeof row.shuffled_positions === "string") {
+        parsedShuffledPositions = JSON.parse(row.shuffled_positions);
+      } else if (typeof row.shuffled_positions === "object") {
+        parsedShuffledPositions = row.shuffled_positions;
+      } else {
+        parsedShuffledPositions = [0, 1, 2, 3, 4];
+      }
+    } catch (parseError) {
+      console.error(
+        "Error parsing shuffled_positions in getUserParticipation:",
+        parseError
+      );
+      parsedShuffledPositions = [0, 1, 2, 3, 4];
+    }
+
+    let parsedWonCard = null;
+    if (row.won_card) {
+      try {
+        if (typeof row.won_card === "string") {
+          parsedWonCard = JSON.parse(row.won_card);
+        } else if (typeof row.won_card === "object") {
+          parsedWonCard = row.won_card;
+        }
+      } catch (parseError) {
+        console.error(
+          "Error parsing won_card in getUserParticipation:",
+          parseError
+        );
+        parsedWonCard = null;
+      }
+    }
+
     return {
-      ...rows[0],
-      shuffled_positions: JSON.parse(rows[0].shuffled_positions),
-      won_card: rows[0].won_card ? JSON.parse(rows[0].won_card) : null,
+      ...row,
+      shuffled_positions: parsedShuffledPositions,
+      won_card: parsedWonCard,
     };
   },
 
@@ -370,37 +562,98 @@ const FatePickModel = {
 
     const { rows } = await db.query(query, [userId, limit, offset]);
 
-    return rows.map((row) => ({
-      id: row.id,
-      fate_pick_id: row.fate_pick_id,
-      participant_id: row.participant_id,
-      shuffled_positions: JSON.parse(row.shuffled_positions),
-      selected_position: row.selected_position,
-      won_card: row.won_card ? JSON.parse(row.won_card) : null,
-      cost_paid: row.cost_paid,
-      status: row.status,
-      participated_at: row.participated_at,
-      selected_at: row.selected_at,
-      expires_at: row.expires_at,
-      fate_pick: {
-        id: row.fate_pick_id,
-        pack_opening_id: row.pack_opening_id,
-        original_owner_id: row.original_owner_id,
-        original_cards: JSON.parse(row.original_cards),
-        set_id: row.set_id,
-        cost_fate_coins: row.cost_fate_coins,
-        max_participants: row.max_participants,
-        current_participants: row.current_participants,
+    return rows.map((row) => {
+      let parsedOriginalCards;
+      try {
+        // Handle both string and object cases for original_cards
+        if (typeof row.original_cards === "string") {
+          parsedOriginalCards = JSON.parse(row.original_cards);
+        } else if (typeof row.original_cards === "object") {
+          parsedOriginalCards = row.original_cards; // Already parsed by PostgreSQL
+        } else {
+          console.warn(
+            "Unexpected original_cards type in getUserParticipationHistory:",
+            typeof row.original_cards,
+            row.original_cards
+          );
+          parsedOriginalCards = [];
+        }
+      } catch (parseError) {
+        console.error(
+          "Error parsing original_cards in getUserParticipationHistory:",
+          parseError,
+          "Raw data:",
+          row.original_cards
+        );
+        parsedOriginalCards = [];
+      }
+
+      let parsedShuffledPositions;
+      try {
+        if (typeof row.shuffled_positions === "string") {
+          parsedShuffledPositions = JSON.parse(row.shuffled_positions);
+        } else if (typeof row.shuffled_positions === "object") {
+          parsedShuffledPositions = row.shuffled_positions;
+        } else {
+          parsedShuffledPositions = [0, 1, 2, 3, 4];
+        }
+      } catch (parseError) {
+        console.error(
+          "Error parsing shuffled_positions in getUserParticipationHistory:",
+          parseError
+        );
+        parsedShuffledPositions = [0, 1, 2, 3, 4];
+      }
+
+      let parsedWonCard = null;
+      if (row.won_card) {
+        try {
+          if (typeof row.won_card === "string") {
+            parsedWonCard = JSON.parse(row.won_card);
+          } else if (typeof row.won_card === "object") {
+            parsedWonCard = row.won_card;
+          }
+        } catch (parseError) {
+          console.error(
+            "Error parsing won_card in getUserParticipationHistory:",
+            parseError
+          );
+          parsedWonCard = null;
+        }
+      }
+
+      return {
+        id: row.id,
+        fate_pick_id: row.fate_pick_id,
+        participant_id: row.participant_id,
+        shuffled_positions: parsedShuffledPositions,
+        selected_position: row.selected_position,
+        won_card: parsedWonCard,
+        cost_paid: row.cost_paid,
+        status: row.status,
+        participated_at: row.participated_at,
+        selected_at: row.selected_at,
         expires_at: row.expires_at,
-        is_active: row.is_active,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        original_owner_username: row.original_owner_username,
-        set_name: row.set_name,
-        can_participate: false,
-        user_has_participated: true,
-      },
-    }));
+        fate_pick: {
+          id: row.fate_pick_id,
+          pack_opening_id: row.pack_opening_id,
+          original_owner_id: row.original_owner_id,
+          original_cards: parsedOriginalCards,
+          set_id: row.set_id,
+          cost_fate_coins: row.cost_fate_coins,
+          max_participants: row.max_participants,
+          current_participants: row.current_participants,
+          expires_at: row.expires_at,
+          is_active: row.is_active,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          original_owner_username: row.original_owner_username,
+          set_name: row.set_name,
+          can_participate: false,
+          user_has_participated: true,
+        },
+      };
+    });
   },
 
   /**

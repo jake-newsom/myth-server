@@ -992,6 +992,54 @@ const AdminController = {
     }
   },
 
+  async giveUserFateCoins(req: Request, res: Response) {
+    try {
+      console.log("💰 Admin endpoint: Giving user fate coins...");
+
+      const { userId, amount } = req.body;
+
+      if (!userId || amount === undefined) {
+        return res.status(400).json({
+          status: "error",
+          message: "userId and amount are required",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const updateQuery = `
+        UPDATE users 
+        SET fate_coins = fate_coins + $1 
+        WHERE user_id = $2 
+        RETURNING user_id, username, fate_coins;
+      `;
+
+      const { rows } = await db.query(updateQuery, [amount, userId]);
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: `Successfully gave ${amount} fate coins to user`,
+        user: rows[0],
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Admin give fate coins endpoint error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during fate coin update",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
   async fixFatePicksTables(req: Request, res: Response) {
     try {
       console.log("🔧 Admin endpoint: Fixing fate picks tables...");
