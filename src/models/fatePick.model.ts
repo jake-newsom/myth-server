@@ -96,13 +96,23 @@ const FatePickModel = {
       AND wp.current_participants < wp.max_participants
     `;
 
-    let orderBy = `
-      CASE 
-        WHEN wp.original_owner_id = ANY($2) THEN 0 
-        ELSE 1 
-      END,
-      wp.created_at DESC
-    `;
+    let orderBy, queryParams;
+
+    if (friendIds.length > 0) {
+      // If user has friends, prioritize friends' fate picks
+      orderBy = `
+        CASE 
+          WHEN wp.original_owner_id = ANY($2) THEN 0 
+          ELSE 1 
+        END,
+        wp.created_at DESC
+      `;
+      queryParams = [userId, friendIds, limit, offset];
+    } else {
+      // If user has no friends, just order by creation date
+      orderBy = `wp.created_at DESC`;
+      queryParams = [userId, limit, offset];
+    }
 
     const query = `
       SELECT 
@@ -122,22 +132,46 @@ const FatePickModel = {
       JOIN sets s ON wp.set_id = s.set_id
       WHERE ${whereConditions}
       ORDER BY ${orderBy}
-      LIMIT $3 OFFSET $4;
+      LIMIT $${friendIds.length > 0 ? 3 : 2} OFFSET $${
+      friendIds.length > 0 ? 4 : 3
+    };
     `;
 
-    const { rows } = await db.query(query, [
-      userId,
-      friendIds.length > 0 ? friendIds : [userId], // Fallback to avoid empty array
-      limit,
-      offset,
-    ]);
+    const { rows } = await db.query(query, queryParams);
 
-    return rows.map((row) => ({
-      ...row,
-      original_cards: JSON.parse(row.original_cards),
-      can_participate: row.can_participate,
-      user_has_participated: row.user_has_participated,
-    }));
+    return rows.map((row) => {
+      let parsedCards;
+      try {
+        // Handle both string and object cases for original_cards
+        if (typeof row.original_cards === "string") {
+          parsedCards = JSON.parse(row.original_cards);
+        } else if (typeof row.original_cards === "object") {
+          parsedCards = row.original_cards; // Already parsed by PostgreSQL
+        } else {
+          console.warn(
+            "Unexpected original_cards type:",
+            typeof row.original_cards,
+            row.original_cards
+          );
+          parsedCards = [];
+        }
+      } catch (parseError) {
+        console.error(
+          "Error parsing original_cards:",
+          parseError,
+          "Raw data:",
+          row.original_cards
+        );
+        parsedCards = [];
+      }
+
+      return {
+        ...row,
+        original_cards: parsedCards,
+        can_participate: row.can_participate,
+        user_has_participated: row.user_has_participated,
+      };
+    });
   },
 
   /**

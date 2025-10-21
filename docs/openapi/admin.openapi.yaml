@@ -253,6 +253,84 @@ paths:
               schema:
                 $ref: "#/components/schemas/DatabaseStatusResponse"
 
+  /api/admin/create-ai-user:
+    post:
+      tags:
+        - Admin
+      summary: Create AI user
+      description: Creates the AI user with predefined UUID for game automation (NO AUTH REQUIRED for initial setup)
+      responses:
+        "200":
+          description: AI user already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AIUserResponse"
+        "201":
+          description: AI user created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AIUserResponse"
+        "503":
+          description: Database connection failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/create-ai-decks:
+    post:
+      tags:
+        - Admin
+      summary: Create AI decks
+      description: Creates decks for the AI user from available cards (NO AUTH REQUIRED for initial setup)
+      responses:
+        "200":
+          description: AI decks created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AIDecksResponse"
+        "400":
+          description: AI user not found or no cards available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Database connection failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/trigger-ai-fate-pick:
+    post:
+      tags:
+        - Admin
+      summary: Trigger AI fate pick generation
+      description: Manually triggers the automated fate pick generation for the AI user (NO AUTH REQUIRED for testing)
+      responses:
+        "200":
+          description: AI fate pick generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AIFatePickResponse"
+        "400":
+          description: Failed to generate AI fate pick
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     ErrorResponse:
@@ -430,3 +508,80 @@ components:
           items:
             type: string
           description: Suggested actions to fix any issues
+
+    AIUserResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        message:
+          type: string
+          example: "AI user created successfully"
+        user:
+          type: object
+          properties:
+            user_id:
+              type: string
+              format: uuid
+              example: "00000000-0000-0000-0000-000000000000"
+            username:
+              type: string
+              example: "AI Opponent"
+            email:
+              type: string
+              example: "ai@mythgame.com"
+        timestamp:
+          type: string
+          format: date-time
+
+    AIDecksResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        message:
+          type: string
+          example: "AI decks created successfully"
+        decks:
+          type: array
+          items:
+            type: object
+            properties:
+              deck_id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              cards_count:
+                type: integer
+        timestamp:
+          type: string
+          format: date-time
+
+    AIFatePickResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        message:
+          type: string
+          example: "Successfully created automated fate pick from Norse Mythology"
+        data:
+          type: object
+          properties:
+            fatePickId:
+              type: string
+              format: uuid
+              description: ID of the created fate pick
+            setUsed:
+              type: string
+              description: Name of the set used for the fate pick
+            cardsGenerated:
+              type: integer
+              description: Number of cards generated in the pack
+        timestamp:
+          type: string
+          format: date-time

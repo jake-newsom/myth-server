@@ -14,6 +14,7 @@ dotenv.config();
 // Import the API routes
 import apiRoutes from "./api/routes";
 import errorHandler from "./api/middlewares/errorHandler.middleware";
+import AIAutomationService from "./services/aiAutomation.service";
 
 // Setup Swagger
 const swaggerOptions = {
@@ -38,6 +39,9 @@ const swaggerOptions = {
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
 
 const app = express();
+
+// Store the automation scheduler interval ID globally
+let automationSchedulerInterval: NodeJS.Timeout | null = null;
 
 // Middleware
 app.use(compression()); // Enable gzip compression for all responses
@@ -100,8 +104,38 @@ if (require.main === module) {
   httpServer.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
     console.log(`Access at http://localhost:${PORT}`);
+
+    // Start the automated fate pick scheduler
+    try {
+      automationSchedulerInterval =
+        AIAutomationService.startAutomatedFatePickScheduler();
+      console.log("🤖 AI Automation Service started successfully");
+    } catch (error) {
+      console.error("❌ Failed to start AI Automation Service:", error);
+    }
   });
 }
+
+// Graceful shutdown handler
+process.on("SIGTERM", () => {
+  console.log("🛑 SIGTERM received, shutting down gracefully");
+  if (automationSchedulerInterval) {
+    AIAutomationService.stopAutomatedFatePickScheduler(
+      automationSchedulerInterval
+    );
+  }
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  console.log("🛑 SIGINT received, shutting down gracefully");
+  if (automationSchedulerInterval) {
+    AIAutomationService.stopAutomatedFatePickScheduler(
+      automationSchedulerInterval
+    );
+  }
+  process.exit(0);
+});
 
 // Export the app for testing or for use in other files
 export default app;

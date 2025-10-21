@@ -8,6 +8,7 @@ import { exec } from "child_process";
 import db from "../../config/db.config";
 import fs from "fs";
 import path from "path";
+import AIAutomationService from "../../services/aiAutomation.service";
 
 const execAsync = promisify(exec);
 
@@ -853,6 +854,270 @@ const AdminController = {
       return res.status(500).json({
         status: "error",
         message: "Internal server error during AI deck creation",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
+  async triggerAIFatePick(req: Request, res: Response) {
+    try {
+      console.log("🤖 Admin endpoint: Triggering AI fate pick generation...");
+
+      const result = await AIAutomationService.generateAutomatedFatePick();
+
+      if (result.success) {
+        return res.status(200).json({
+          status: "success",
+          message: result.message,
+          data: {
+            fatePickId: result.fatePickId,
+            setUsed: result.setUsed,
+            cardsGenerated: result.cardsGenerated,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        return res.status(400).json({
+          status: "error",
+          message: result.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error("Admin trigger AI fate pick endpoint error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during AI fate pick generation",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
+  async debugFatePicks(req: Request, res: Response) {
+    try {
+      console.log("🔍 Admin endpoint: Debugging fate picks...");
+
+      // Check what tables exist
+      const tablesQuery = `
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        ORDER BY table_name;
+      `;
+
+      const { rows: tables } = await db.query(tablesQuery);
+
+      // Check if fate_picks table exists and get its structure
+      let fatePicksInfo = null;
+      if (tables.some((t) => t.table_name === "fate_picks")) {
+        const columnsQuery = `
+          SELECT column_name, data_type, is_nullable 
+          FROM information_schema.columns 
+          WHERE table_name = 'fate_picks' 
+          ORDER BY column_name;
+        `;
+        const { rows: columns } = await db.query(columnsQuery);
+
+        const countQuery = `SELECT COUNT(*) as count FROM fate_picks;`;
+        const { rows: countRows } = await db.query(countQuery);
+
+        fatePicksInfo = {
+          exists: true,
+          columns: columns,
+          count: parseInt(countRows[0].count),
+        };
+      } else {
+        fatePicksInfo = { exists: false };
+      }
+
+      // Check users table for fate_coins column
+      let usersInfo = null;
+      if (tables.some((t) => t.table_name === "users")) {
+        const userColumnsQuery = `
+          SELECT column_name, data_type, is_nullable 
+          FROM information_schema.columns 
+          WHERE table_name = 'users' 
+          ORDER BY column_name;
+        `;
+        const { rows: userColumns } = await db.query(userColumnsQuery);
+
+        usersInfo = {
+          exists: true,
+          columns: userColumns,
+          hasFateCoins: userColumns.some((c) => c.column_name === "fate_coins"),
+        };
+      }
+
+      // Try to run the fate pick service method directly
+      let serviceTestResult = null;
+      try {
+        const FatePickService = await import("../../services/fatePick.service");
+        const testUserId = "b6e79f65-c758-44be-8f01-c027a0d1370c"; // Test user from registration
+        const result = await FatePickService.default.getAvailableFatePicks(
+          testUserId,
+          1,
+          20
+        );
+        serviceTestResult = result;
+      } catch (serviceError) {
+        serviceTestResult = {
+          error:
+            serviceError instanceof Error
+              ? serviceError.message
+              : "Unknown service error",
+        };
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Debug information collected",
+        debug: {
+          allTables: tables.map((t) => t.table_name),
+          fatePicksTable: fatePicksInfo,
+          usersTable: usersInfo,
+          serviceTest: serviceTestResult,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Admin debug fate picks endpoint error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during debug",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
+  async fixFatePicksTables(req: Request, res: Response) {
+    try {
+      console.log("🔧 Admin endpoint: Fixing fate picks tables...");
+
+      // Check if fate_picks table exists
+      const checkTableQuery = `
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'fate_picks';
+      `;
+
+      const { rows: tableCheck } = await db.query(checkTableQuery);
+
+      if (tableCheck.length > 0) {
+        return res.status(200).json({
+          status: "success",
+          message: "fate_picks table already exists",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Create fate_picks table
+      const createFatePicksTable = `
+        CREATE TABLE fate_picks (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          pack_opening_id UUID NOT NULL,
+          original_owner_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          original_cards JSONB NOT NULL,
+          set_id UUID NOT NULL REFERENCES sets(set_id) ON DELETE CASCADE,
+          cost_fate_coins INTEGER NOT NULL DEFAULT 1,
+          max_participants INTEGER NOT NULL DEFAULT 10,
+          current_participants INTEGER NOT NULL DEFAULT 0,
+          expires_at TIMESTAMP NOT NULL DEFAULT (current_timestamp + INTERVAL '24 hours'),
+          is_active BOOLEAN NOT NULL DEFAULT true,
+          created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+          updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+        );
+      `;
+
+      await db.query(createFatePicksTable);
+
+      // Create fate_pick_participations table
+      const createParticipationsTable = `
+        CREATE TABLE fate_pick_participations (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          fate_pick_id UUID NOT NULL REFERENCES fate_picks(id) ON DELETE CASCADE,
+          participant_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          selected_card_index INTEGER NOT NULL,
+          selected_at TIMESTAMP DEFAULT current_timestamp,
+          expires_at TIMESTAMP NOT NULL,
+          UNIQUE(fate_pick_id, participant_id)
+        );
+      `;
+
+      await db.query(createParticipationsTable);
+
+      // Create pack_opening_history table if it doesn't exist
+      const createPackHistoryTable = `
+        CREATE TABLE IF NOT EXISTS pack_opening_history (
+          pack_opening_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+          set_id UUID NOT NULL REFERENCES sets(set_id) ON DELETE CASCADE,
+          card_ids JSONB NOT NULL,
+          opened_at TIMESTAMP NOT NULL DEFAULT current_timestamp
+        );
+      `;
+
+      await db.query(createPackHistoryTable);
+
+      // Create indexes
+      const createIndexes = [
+        `CREATE INDEX idx_fate_picks_owner ON fate_picks(original_owner_id);`,
+        `CREATE INDEX idx_fate_picks_set ON fate_picks(set_id);`,
+        `CREATE INDEX idx_fate_picks_active_expires ON fate_picks(is_active, expires_at);`,
+        `CREATE INDEX idx_fate_picks_created ON fate_picks(created_at);`,
+        `CREATE INDEX idx_fate_pick_participations_fate_pick ON fate_pick_participations(fate_pick_id);`,
+        `CREATE INDEX idx_fate_pick_participations_participant ON fate_pick_participations(participant_id);`,
+        `CREATE INDEX idx_pack_opening_history_user ON pack_opening_history(user_id);`,
+        `CREATE INDEX idx_pack_opening_history_set ON pack_opening_history(set_id);`,
+      ];
+
+      for (const indexQuery of createIndexes) {
+        try {
+          await db.query(indexQuery);
+        } catch (error) {
+          console.log(
+            `Index creation skipped (may already exist): ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        }
+      }
+
+      // Add constraints
+      const addConstraints = [
+        `ALTER TABLE fate_picks ADD CONSTRAINT fate_picks_cost_check CHECK (cost_fate_coins >= 0);`,
+        `ALTER TABLE fate_picks ADD CONSTRAINT fate_picks_participants_check CHECK (current_participants >= 0 AND current_participants <= max_participants);`,
+      ];
+
+      for (const constraintQuery of addConstraints) {
+        try {
+          await db.query(constraintQuery);
+        } catch (error) {
+          console.log(
+            `Constraint creation skipped (may already exist): ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        }
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "fate_picks and related tables created successfully",
+        tables_created: [
+          "fate_picks",
+          "fate_pick_participations",
+          "pack_opening_history",
+        ],
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Admin fix fate picks tables endpoint error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during table creation",
         error: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString(),
       });

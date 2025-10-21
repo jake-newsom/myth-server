@@ -30,4 +30,10 @@ router.post("/create-ai-user", AdminController.createAIUser);
 
 router.post("/create-ai-decks", AdminController.createAIDecks);
 
+router.post("/trigger-ai-fate-pick", AdminController.triggerAIFatePick);
+
+router.get("/debug-fate-picks", AdminController.debugFatePicks);
+
+router.post("/fix-fate-picks-tables", AdminController.fixFatePicksTables);
+
 export default router;

@@ -103,9 +103,18 @@ const FatePickService = {
       };
     } catch (error) {
       console.error("Error getting available Fate picks:", error);
+      console.error("Error details:", {
+        message: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : "No stack trace",
+        userId,
+        page,
+        limit,
+      });
       return {
         success: false,
-        error: "Failed to retrieve Fate picks",
+        error: `Failed to retrieve Fate picks: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       };
     }
   },
