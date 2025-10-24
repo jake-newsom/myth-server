@@ -15,6 +15,7 @@ dotenv.config();
 import apiRoutes from "./api/routes";
 import errorHandler from "./api/middlewares/errorHandler.middleware";
 import AIAutomationService from "./services/aiAutomation.service";
+import SessionCleanupService from "./services/sessionCleanup.service";
 
 // Setup Swagger
 const swaggerOptions = {
@@ -113,6 +114,14 @@ if (require.main === module) {
     } catch (error) {
       console.error("❌ Failed to start AI Automation Service:", error);
     }
+
+    // Start the session cleanup service
+    try {
+      SessionCleanupService.start();
+      console.log("🧹 Session Cleanup Service started successfully");
+    } catch (error) {
+      console.error("❌ Failed to start Session Cleanup Service:", error);
+    }
   });
 }
 
@@ -124,6 +133,7 @@ process.on("SIGTERM", () => {
       automationSchedulerInterval
     );
   }
+  SessionCleanupService.stop();
   process.exit(0);
 });
 
@@ -134,6 +144,7 @@ process.on("SIGINT", () => {
       automationSchedulerInterval
     );
   }
+  SessionCleanupService.stop();
   process.exit(0);
 });
 

@@ -1,7 +1,7 @@
 import db from "../config/db.config";
 import XpPoolModel from "../models/xpPool.model";
 import UserModel from "../models/user.model";
-import { CardResponse } from "../types/api.types";
+import { Rarity } from "../types/card.types";
 import {
   XpReward,
   XpTransferResult,
@@ -11,15 +11,31 @@ import {
 } from "../types/service.types";
 
 const XpService = {
-  // Calculate level from XP (simple formula: level = floor(xp/100) + 1, max level 10)
+  // Calculate level from XP using new bracket system
   calculateLevel(xp: number): number {
-    const level = Math.floor(xp / 100) + 1;
-    return Math.min(level, 10);
+    if (xp < 300) return 1;
+    if (xp < 1000) return 2; // 300 + 700 = 1000
+    if (xp < 2500) return 3; // 1000 + 1500 = 2500
+    if (xp < 6000) return 4; // 2500 + 3500 = 6000
+    return 5; // Max level 5
   },
 
-  // Calculate XP value of a card for sacrifice (fixed value)
-  calculateSacrificeValue(cardXp: number, cardLevel: number): number {
-    // Sacrificing any card always gives 10 XP to the pool
+  // Calculate XP value of a card for sacrifice based on rarity
+  calculateSacrificeValue(
+    cardXp: number,
+    cardLevel: number,
+    rarity: Rarity
+  ): number {
+    // Base rarity XP values
+    if (rarity === "common") return 10;
+    if (rarity === "rare") return 20;
+    if (rarity === "epic") return 30;
+    if (rarity === "legendary") return 50;
+
+    // Enhanced variants (cards with "+" in them)
+    if (rarity.includes("+")) return 100;
+
+    // Default fallback (for uncommon or any other rarity)
     return 10;
   },
 
@@ -152,7 +168,7 @@ const XpService = {
 
       // Get cards and validate ownership
       const query = `
-        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, c.name
+        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, c.name, c.rarity
         FROM "user_owned_cards" uoc
         JOIN "cards" c ON uoc.card_id = c.card_id
         WHERE uoc.user_card_instance_id = ANY($1) AND uoc.user_id = $2
@@ -175,7 +191,11 @@ const XpService = {
       const sacrificedCards = [];
 
       for (const card of rows) {
-        const xpValue = this.calculateSacrificeValue(card.xp, card.level);
+        const xpValue = this.calculateSacrificeValue(
+          card.xp,
+          card.level,
+          card.rarity
+        );
         totalXpValue += xpValue;
         sacrificedCards.push({
           card_id: card.user_card_instance_id,
@@ -244,7 +264,8 @@ const XpService = {
           uoc.card_id as base_card_id,
           uoc.level, 
           uoc.xp, 
-          c.name
+          c.name,
+          c.rarity
         FROM "user_owned_cards" uoc
         JOIN "cards" c ON uoc.card_id = c.card_id
         WHERE uoc.user_id = $1
@@ -326,7 +347,11 @@ const XpService = {
         const cardName = cards[0].name; // All cards with same base_card_id have same name
 
         for (const card of cards) {
-          const xpValue = this.calculateSacrificeValue(card.xp, card.level);
+          const xpValue = this.calculateSacrificeValue(
+            card.xp,
+            card.level,
+            card.rarity
+          );
           totalXpGained += xpValue;
           baseCardXpGained += xpValue;
 

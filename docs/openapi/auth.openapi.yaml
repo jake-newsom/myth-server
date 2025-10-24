@@ -1,8 +1,93 @@
 openapi: 3.0.0
 info:
   title: Viking Vengeance Authentication API
-  description: API for user registration and authentication
-  version: 1.0.0
+  description: API for user registration and authentication with token-based session management
+  version: 2.0.0
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+        in_game_currency:
+          type: integer
+          description: Legacy field - use gold, gems, and fate_coins instead
+        gold:
+          type: integer
+          description: Primary in-game currency
+        gems:
+          type: integer
+          description: Premium currency
+        fate_coins:
+          type: integer
+          description: Special currency for fate picks
+        total_xp:
+          type: integer
+          description: Total experience points earned
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: Short-lived access token (15 minutes)
+        refreshToken:
+          type: string
+          description: Long-lived refresh token (90 days)
+        expiresAt:
+          type: string
+          format: date-time
+          description: Access token expiration timestamp
+        user:
+          $ref: "#/components/schemas/User"
+
+    RefreshResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: New short-lived access token (15 minutes)
+        refreshToken:
+          type: string
+          description: New long-lived refresh token (90 days)
+        expiresAt:
+          type: string
+          format: date-time
+          description: Access token expiration timestamp
+
+    Session:
+      type: object
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        device_type:
+          type: string
+        user_agent:
+          type: string
+        ip_address:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        is_current:
+          type: boolean
+          description: Whether this is the current session
 
 paths:
   /api/auth/register:
@@ -38,36 +123,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                    description: JWT token for authentication
-                  user:
-                    type: object
-                    properties:
-                      user_id:
-                        type: string
-                        format: uuid
-                      username:
-                        type: string
-                      email:
-                        type: string
-                      in_game_currency:
-                        type: integer
-                        description: Legacy field - use gold, gems, and fate_coins instead
-                      gold:
-                        type: integer
-                        description: Primary in-game currency
-                      gems:
-                        type: integer
-                        description: Premium currency
-                      fate_coins:
-                        type: integer
-                        description: Special currency for fate picks
-                      total_xp:
-                        type: integer
-                        description: Total experience points earned
+                $ref: "#/components/schemas/AuthResponse"
         400:
           description: Bad request (validation error)
         409:
@@ -104,39 +160,111 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  token:
-                    type: string
-                    description: JWT token for authentication
-                  user:
-                    type: object
-                    properties:
-                      user_id:
-                        type: string
-                        format: uuid
-                      username:
-                        type: string
-                      email:
-                        type: string
-                      in_game_currency:
-                        type: integer
-                        description: Legacy field - use gold, gems, and fate_coins instead
-                      gold:
-                        type: integer
-                        description: Primary in-game currency
-                      gems:
-                        type: integer
-                        description: Premium currency
-                      fate_coins:
-                        type: integer
-                        description: Special currency for fate picks
-                      total_xp:
-                        type: integer
-                        description: Total experience points earned
+                $ref: "#/components/schemas/AuthResponse"
         400:
           description: Invalid email or password
         401:
           description: Authentication failed
+        500:
+          description: Server error
+
+  /api/auth/refresh:
+    post:
+      summary: Refresh access token using refresh token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  description: Valid refresh token
+      responses:
+        200:
+          description: Tokens refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResponse"
+        400:
+          description: Refresh token is required
+        401:
+          description: Invalid or expired refresh token
+        500:
+          description: Server error
+
+  /api/auth/logout:
+    post:
+      summary: Logout from current session
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out successfully.
+        401:
+          description: Not authenticated
+        500:
+          description: Server error
+
+  /api/auth/logout-all:
+    post:
+      summary: Logout from all sessions
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Logged out from all devices successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out from all devices successfully.
+        401:
+          description: Not authenticated
+        500:
+          description: Server error
+
+  /api/auth/sessions:
+    get:
+      summary: Get all active sessions for the current user
+      tags:
+        - Authentication
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Sessions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Session"
+        401:
+          description: Not authenticated
         500:
           description: Server error

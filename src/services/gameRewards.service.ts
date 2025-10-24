@@ -132,23 +132,17 @@ const GameRewardsService = {
     const xpRewards = [];
 
     for (const card of playerDeckCards) {
-      let baseXp = 5; // Base XP for participation
+      let baseXp = 20; // Base XP for cards used in games
 
       // Victory bonus
       if (winnerId === userId) {
-        baseXp += gameMode === "solo" ? 15 : 25; // 20 total for solo win, 30 for pvp win
-      } else if (winnerId === null) {
-        baseXp += 5; // Small bonus for tie
+        baseXp += 5; // Extra 5 XP if player wins
       }
-
-      // Add some randomness (±2 XP)
-      const randomBonus = Math.floor(Math.random() * 5) - 2;
-      const finalXp = Math.max(1, baseXp + randomBonus); // Minimum 1 XP
 
       xpRewards.push({
         card_id: card.card_id,
         card_name: card.card_name,
-        xp_gained: finalXp,
+        xp_gained: baseXp,
       });
     }
 
@@ -169,6 +163,52 @@ const GameRewardsService = {
 
     const { rows } = await db.query(query, [deckId]);
     return rows;
+  },
+
+  // Get cards that were actually used by a player during the game
+  getCardsUsedInGame(
+    gameState: GameState,
+    playerId: string
+  ): { card_id: string; card_name: string }[] {
+    const usedCards: { card_id: string; card_name: string }[] = [];
+    const seenCardIds = new Set<string>();
+
+    // Get cards from the board that were originally owned by this player
+    for (let x = 0; x < 4; x++) {
+      for (let y = 0; y < 4; y++) {
+        const tile = gameState.board[x][y];
+        if (tile && tile.card && tile.card.original_owner === playerId) {
+          const cardId = tile.card.user_card_instance_id;
+          if (!seenCardIds.has(cardId)) {
+            seenCardIds.add(cardId);
+            usedCards.push({
+              card_id: cardId,
+              card_name: tile.card.base_card_data.name,
+            });
+          }
+        }
+      }
+    }
+
+    // Get cards from the player's discard pile
+    const player =
+      playerId === gameState.player1.user_id
+        ? gameState.player1
+        : gameState.player2;
+    for (const cardId of player.discard_pile) {
+      if (!seenCardIds.has(cardId)) {
+        const cardData = gameState.hydrated_card_data_cache?.[cardId];
+        if (cardData) {
+          seenCardIds.add(cardId);
+          usedCards.push({
+            card_id: cardId,
+            card_name: cardData.base_card_data.name,
+          });
+        }
+      }
+    }
+
+    return usedCards;
   },
 
   // Main method to process game completion and award rewards
@@ -199,15 +239,15 @@ const GameRewardsService = {
         gameResult.game_duration_seconds
       );
 
-      // Get player's deck cards
-      const deckCards = await this.getPlayerDeckCards(playerDeckId);
+      // Get cards that were actually used in the game
+      const usedCards = this.getCardsUsedInGame(gameState, userId);
 
       // Calculate XP rewards
       const cardXpRewards = this.calculateCardXpRewards(
         userId,
         gameResult.winner,
         gameMode,
-        deckCards
+        usedCards
       );
 
       // Award currency
@@ -257,7 +297,7 @@ const GameRewardsService = {
         //     gameMode,
         //     winnerId: gameResult.winner,
         //     gameDurationSeconds: gameResult.game_duration_seconds,
-        //     cardsUsed: deckCards,
+        //     cardsUsed: usedCards,
         //   },
         // });
 

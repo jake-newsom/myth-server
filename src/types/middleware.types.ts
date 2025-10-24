@@ -12,6 +12,7 @@ export interface AuthenticatedRequest extends Request {
     username: string;
     email: string;
   };
+  sessionId?: string;
 }
 
 // Error handling types
