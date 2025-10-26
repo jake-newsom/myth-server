@@ -65,7 +65,7 @@ router.get(
 router.post(
   "/:fatePickId/participate",
   authMiddleware.protect, // Requires authentication
-  strictRateLimit, // Strict rate limiting for participation (spending currency)
+  moderateRateLimit, // Strict rate limiting for participation (spending currency)
   fatePickController.participateInFatePick
 );
 
@@ -77,7 +77,7 @@ router.post(
 router.post(
   "/:fatePickId/select",
   authMiddleware.protect, // Requires authentication
-  strictRateLimit, // Strict rate limiting for card selection (final action)
+  moderateRateLimit, // Strict rate limiting for card selection (final action)
   fatePickController.selectCardPosition
 );
 

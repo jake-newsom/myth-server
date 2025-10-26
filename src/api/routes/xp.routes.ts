@@ -25,9 +25,9 @@ router.get("/pools/:cardName", moderateRateLimit, getXpPool);
 router.get("/history", moderateRateLimit, getXpTransferHistory);
 
 // Write operations (strict rate limiting to prevent abuse)
-router.post("/transfer", strictRateLimit, transferXp);
-router.post("/sacrifice", strictRateLimit, sacrificeCards);
-router.post("/sacrifice-extras", strictRateLimit, sacrificeExtraCards);
-router.post("/apply", strictRateLimit, applyXp);
+router.post("/transfer", moderateRateLimit, transferXp);
+router.post("/sacrifice", moderateRateLimit, sacrificeCards);
+router.post("/sacrifice-extras", moderateRateLimit, sacrificeExtraCards);
+router.post("/apply", moderateRateLimit, applyXp);
 
 export default router;
