@@ -16,6 +16,7 @@ import apiRoutes from "./api/routes";
 import errorHandler from "./api/middlewares/errorHandler.middleware";
 import AIAutomationService from "./services/aiAutomation.service";
 import SessionCleanupService from "./services/sessionCleanup.service";
+import DailyRewardsService from "./services/dailyRewards.service";
 
 // Setup Swagger
 const swaggerOptions = {
@@ -41,8 +42,9 @@ const swaggerSpec = swaggerJSDoc(swaggerOptions);
 
 const app = express();
 
-// Store the automation scheduler interval ID globally
+// Store the automation scheduler interval IDs globally
 let automationSchedulerInterval: NodeJS.Timeout | null = null;
+let dailyRewardsSchedulerInterval: NodeJS.Timeout | null = null;
 
 // Middleware
 app.use(compression()); // Enable gzip compression for all responses
@@ -122,6 +124,15 @@ if (require.main === module) {
     } catch (error) {
       console.error("❌ Failed to start Session Cleanup Service:", error);
     }
+
+    // Start the daily rewards service
+    try {
+      dailyRewardsSchedulerInterval =
+        DailyRewardsService.startDailyRewardsScheduler();
+      console.log("🎁 Daily Rewards Service started successfully");
+    } catch (error) {
+      console.error("❌ Failed to start Daily Rewards Service:", error);
+    }
   });
 }
 
@@ -133,6 +144,11 @@ process.on("SIGTERM", () => {
       automationSchedulerInterval
     );
   }
+  if (dailyRewardsSchedulerInterval) {
+    DailyRewardsService.stopDailyRewardsScheduler(
+      dailyRewardsSchedulerInterval
+    );
+  }
   SessionCleanupService.stop();
   process.exit(0);
 });
@@ -142,6 +158,11 @@ process.on("SIGINT", () => {
   if (automationSchedulerInterval) {
     AIAutomationService.stopAutomatedFatePickScheduler(
       automationSchedulerInterval
+    );
+  }
+  if (dailyRewardsSchedulerInterval) {
+    DailyRewardsService.stopDailyRewardsScheduler(
+      dailyRewardsSchedulerInterval
     );
   }
   SessionCleanupService.stop();

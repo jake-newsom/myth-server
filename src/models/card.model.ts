@@ -25,6 +25,7 @@ function formatUserCardInstanceResponse(
     xp: instance.xp,
     power_enhancements: instance.power_enhancements,
     tags: baseCard.tags,
+    set_id: baseCard.set_id || null,
     special_ability: ability
       ? {
           ability_id: ability.ability_id,
@@ -56,6 +57,7 @@ function formatStaticCardResponse(
   return {
     ...rest,
     base_card_id: card_id,
+    set_id: baseCard.set_id || null,
     special_ability: baseCard.special_ability
       ? {
           ...baseCard.special_ability,
@@ -214,7 +216,7 @@ const CardModel = {
         c.power->>'right' as base_power_right, 
         c.power->>'bottom' as base_power_bottom, 
         c.power->>'left' as base_power_left, 
-        c.special_ability_id, c.tags,
+        c.special_ability_id, c.set_id, c.tags,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moment as ability_trigger_moment, sa.parameters as ability_parameters,
         sa.id as ability_id_string
@@ -260,6 +262,7 @@ const CardModel = {
         left: parseInt(row.base_power_left, 10),
       },
       special_ability_id: row.special_ability_id,
+      set_id: row.set_id,
       tags: row.tags,
     };
 
@@ -361,7 +364,7 @@ const CardModel = {
               c.power->>'right' as base_power_right, 
               c.power->>'bottom' as base_power_bottom, 
               c.power->>'left' as base_power_left, 
-              c.special_ability_id, c.tags,
+              c.special_ability_id, c.set_id, c.tags,
               sa.ability_id as sa_ability_id, sa.name as sa_name, 
               sa.description as sa_description,
               sa.trigger_moment as sa_trigger_moment, 
@@ -398,7 +401,7 @@ const CardModel = {
                   c.power->>'right' as base_power_right, 
                   c.power->>'bottom' as base_power_bottom, 
                   c.power->>'left' as base_power_left, 
-                  c.special_ability_id, c.tags,
+                  c.special_ability_id, c.set_id, c.tags,
                   sa.ability_id as sa_ability_id, sa.name as sa_name, 
                   sa.description as sa_description,
                   sa.trigger_moment as sa_trigger_moment, 
@@ -438,6 +441,7 @@ const CardModel = {
                   left: parseInt(row.base_power_left, 10),
                 },
                 special_ability_id: row.special_ability_id,
+                set_id: row.set_id,
                 tags: row.tags,
                 special_ability: row.sa_ability_id
                   ? {
@@ -481,6 +485,7 @@ const CardModel = {
             left: parseInt(row.base_power_left, 10),
           },
           special_ability_id: row.special_ability_id,
+          set_id: row.set_id,
           tags: row.tags,
           special_ability: row.sa_ability_id
             ? {
@@ -520,7 +525,7 @@ const CardModel = {
         c.power->>'right' as base_power_right,
         c.power->>'bottom' as base_power_bottom, 
         c.power->>'left' as base_power_left,
-        c.special_ability_id, c.tags,
+        c.special_ability_id, c.set_id, c.tags,
         sa.ability_id as sa_ability_id, sa.name as sa_name, sa.description as sa_description,
         sa.trigger_moment as sa_trigger_moment, sa.parameters as sa_parameters
       FROM "cards" c
@@ -551,6 +556,7 @@ const CardModel = {
         left: parseInt(row.base_power_left, 10),
       },
       special_ability_id: row.special_ability_id,
+      set_id: row.set_id,
       tags: row.tags,
       special_ability: row.sa_ability_id
         ? {
@@ -655,7 +661,7 @@ const CardModel = {
              power->>'right' as base_power_right, 
              power->>'bottom' as base_power_bottom, 
              power->>'left' as base_power_left, 
-             special_ability_id, tags
+             special_ability_id, set_id, tags
       FROM "cards" 
       WHERE name = $1;
     `;
@@ -674,6 +680,7 @@ const CardModel = {
         left: parseInt(row.base_power_left, 10),
       },
       special_ability_id: row.special_ability_id,
+      set_id: row.set_id,
       tags: row.tags,
     };
   },
@@ -688,7 +695,7 @@ const CardModel = {
              power->>'right' as base_power_right, 
              power->>'bottom' as base_power_bottom, 
              power->>'left' as base_power_left, 
-             special_ability_id, tags
+             special_ability_id, set_id, tags
       FROM "cards"
       WHERE name = ANY($1::text[]);
     `;
@@ -705,6 +712,7 @@ const CardModel = {
         left: parseInt(row.base_power_left, 10),
       },
       special_ability_id: row.special_ability_id,
+      set_id: row.set_id,
       tags: row.tags,
     }));
   },
@@ -765,7 +773,7 @@ const CardModel = {
           c.power->>'right' as base_power_right, 
           c.power->>'bottom' as base_power_bottom, 
           c.power->>'left' as base_power_left,
-          c.special_ability_id, c.tags,
+          c.special_ability_id, c.set_id, c.tags,
           sa.name as ability_name, sa.description as ability_description, 
           sa.trigger_moment as ability_trigger_moment, sa.parameters as ability_parameters,
           sa.id as ability_id_string 
@@ -808,6 +816,7 @@ const CardModel = {
             left: parseInt(row.base_power_left, 10),
           },
           special_ability_id: row.special_ability_id,
+          set_id: row.set_id,
           tags: row.tags,
         };
 

@@ -22,6 +22,7 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
     rarity: card.rarity,
     image_url: card.image_url,
     base_power: card.base_power,
+    set_id: card.set_id,
     special_ability: card.special_ability
       ? {
           id: card.special_ability.ability_id,

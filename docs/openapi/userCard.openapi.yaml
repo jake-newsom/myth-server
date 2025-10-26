@@ -147,6 +147,11 @@ components:
           type: string
         base_power:
           $ref: "#/components/schemas/PowerValues"
+        set_id:
+          type: string
+          format: uuid
+          description: Identifier for the set this card belongs to
+          nullable: true
         special_ability:
           $ref: "#/components/schemas/SpecialAbility"
           nullable: true
@@ -157,6 +162,7 @@ components:
         - rarity
         - image_url
         - base_power
+        - set_id
 
     UserCard:
       type: object

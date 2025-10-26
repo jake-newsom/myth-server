@@ -56,6 +56,7 @@ export interface CardResponse {
   level?: number;
   xp?: number;
   tags: string[];
+  set_id: string | null;
   special_ability: {
     ability_id: string;
     name: string;

@@ -154,6 +154,7 @@ export interface BaseCard {
   rarity: Rarity;
   image_url: string;
   base_power: PowerValues;
+  set_id: string | null;
   special_ability: SpecialAbility | null;
 }
 

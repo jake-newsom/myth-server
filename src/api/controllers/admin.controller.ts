@@ -9,6 +9,7 @@ import db from "../../config/db.config";
 import fs from "fs";
 import path from "path";
 import AIAutomationService from "../../services/aiAutomation.service";
+import DailyRewardsService from "../../services/dailyRewards.service";
 
 const execAsync = promisify(exec);
 
@@ -1166,6 +1167,44 @@ const AdminController = {
       return res.status(500).json({
         status: "error",
         message: "Internal server error during table creation",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
+  async triggerDailyRewards(req: Request, res: Response) {
+    try {
+      console.log(
+        "🎁 Admin endpoint: Triggering daily rewards distribution..."
+      );
+
+      const result = await DailyRewardsService.runDailyRewards();
+
+      if (result.success) {
+        return res.status(200).json({
+          status: "success",
+          message: result.message,
+          data: {
+            usersProcessed: result.usersProcessed,
+            fateCoinsDistributed: result.fateCoinsDistributed,
+            packsDistributed: result.packsDistributed,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        return res.status(500).json({
+          status: "error",
+          message: result.message,
+          error: result.error,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch (error) {
+      console.error("Admin trigger daily rewards endpoint error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during daily rewards distribution",
         error: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString(),
       });

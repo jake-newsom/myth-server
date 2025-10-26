@@ -175,6 +175,11 @@ components:
           items:
             type: string
           example: ["undead", "assassin"]
+        set_id:
+          type: string
+          format: uuid
+          description: Identifier for the set this card belongs to
+          nullable: true
         special_ability:
           $ref: "#/components/schemas/SpecialAbilityInfo"
           nullable: true
@@ -201,6 +206,7 @@ components:
         - rarity
         - image_url
         - tags
+        - set_id
         - base_power
 
     SpecialAbilityInfo:
@@ -249,6 +255,11 @@ components:
             type: string
           example: ["god", "warrior"]
           description: Tags associated with the card
+        set_id:
+          type: string
+          format: uuid
+          description: Identifier for the set this card belongs to
+          nullable: true
         special_ability:
           type: object
           nullable: true
@@ -285,6 +296,7 @@ components:
         - image_url
         - base_power
         - tags
+        - set_id
 
     StaticCardCollectionResponse:
       type: object

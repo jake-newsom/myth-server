@@ -28,6 +28,7 @@ const formatDeckCardInstanceResponse = (
     xp: instance.xp,
     power_enhancements: instance.power_enhancements,
     tags: baseCard.tags,
+    set_id: baseCard.set_id || null,
     special_ability: ability
       ? {
           ability_id: ability.ability_id,
@@ -125,7 +126,7 @@ const DeckModel = {
         c.power->>'right' as base_power_right, 
         c.power->>'bottom' as base_power_bottom, 
         c.power->>'left' as base_power_left,
-        c.special_ability_id, c.tags,
+        c.special_ability_id, c.set_id, c.tags,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moment as ability_trigger, sa.parameters as ability_parameters,
         sa.id as ability_id_string
@@ -151,6 +152,7 @@ const DeckModel = {
           left: parseInt(row.base_power_left, 10),
         },
         special_ability_id: row.special_ability_id,
+        set_id: row.set_id,
         tags: row.tags,
       };
       const instance: UserCardInstance = {

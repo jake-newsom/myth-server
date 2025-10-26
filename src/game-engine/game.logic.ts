@@ -44,7 +44,7 @@ export class GameLogic {
           c.card_id as base_card_id, c.name, c.rarity, c.image_url, 
           c.power->>'top' as base_power_top, c.power->>'right' as base_power_right, 
           c.power->>'bottom' as base_power_bottom, c.power->>'left' as base_power_left, 
-          c.tags, c.special_ability_id,
+          c.tags, c.special_ability_id, c.set_id,
           sa.name as ability_name, sa.description as ability_description, 
           sa.trigger_moment as ability_trigger, sa.parameters as ability_parameters
         FROM "user_owned_cards" uci
@@ -97,6 +97,7 @@ export class GameLogic {
           rarity: row.rarity,
           image_url: row.image_url,
           base_power: basePower,
+          set_id: row.set_id || null,
           special_ability: specialAbility,
         };
 

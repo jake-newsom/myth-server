@@ -585,3 +585,60 @@ components:
         timestamp:
           type: string
           format: date-time
+
+  /api/admin/trigger-daily-rewards:
+    post:
+      tags:
+        - Admin
+      summary: Trigger daily rewards distribution
+      description: Manually triggers the distribution of fate coins and packs to eligible users (admin only)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Daily rewards distributed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Successfully distributed 15 fate coins and 23 packs to eligible users"
+                  data:
+                    type: object
+                    properties:
+                      usersProcessed:
+                        type: integer
+                        description: Number of users who received rewards
+                      fateCoinsDistributed:
+                        type: integer
+                        description: Total fate coins distributed
+                      packsDistributed:
+                        type: integer
+                        description: Total packs distributed
+                  timestamp:
+                    type: string
+                    format: date-time
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  message:
+                    type: string
+                    example: "Internal server error during daily rewards distribution"
+                  error:
+                    type: string
+                    description: Error details
+                  timestamp:
+                    type: string
+                    format: date-time

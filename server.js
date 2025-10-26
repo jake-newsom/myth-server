@@ -20,8 +20,9 @@ const io = new Server(httpServer, {
 
 initializeSocketManager(io); // Pass the 'io' instance to your socket manager
 
-// Store the automation scheduler interval ID
+// Store the automation scheduler interval IDs
 let automationSchedulerInterval = null;
+let dailyRewardsSchedulerInterval = null;
 
 httpServer.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
@@ -36,6 +37,15 @@ httpServer.listen(PORT, () => {
   } catch (error) {
     console.error("❌ Failed to start AI Automation Service:", error);
   }
+
+  // Start the daily rewards scheduler
+  try {
+    const DailyRewardsService = require("./dist/services/dailyRewards.service").default;
+    dailyRewardsSchedulerInterval = DailyRewardsService.startDailyRewardsScheduler();
+    console.log("🎁 Daily Rewards Service started successfully");
+  } catch (error) {
+    console.error("❌ Failed to start Daily Rewards Service:", error);
+  }
 });
 
 // Graceful shutdown handler
@@ -45,6 +55,10 @@ process.on('SIGTERM', () => {
     const AIAutomationService = require("./dist/services/aiAutomation.service").default;
     AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerInterval);
   }
+  if (dailyRewardsSchedulerInterval) {
+    const DailyRewardsService = require("./dist/services/dailyRewards.service").default;
+    DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerInterval);
+  }
   process.exit(0);
 });
 
@@ -53,6 +67,10 @@ process.on('SIGINT', () => {
   if (automationSchedulerInterval) {
     const AIAutomationService = require("./dist/services/aiAutomation.service").default;
     AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerInterval);
+  }
+  if (dailyRewardsSchedulerInterval) {
+    const DailyRewardsService = require("./dist/services/dailyRewards.service").default;
+    DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerInterval);
   }
   process.exit(0);
 });

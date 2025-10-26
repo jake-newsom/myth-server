@@ -38,4 +38,6 @@ router.post("/give-fate-coins", AdminController.giveUserFateCoins);
 
 router.post("/fix-fate-picks-tables", AdminController.fixFatePicksTables);
 
+router.post("/trigger-daily-rewards", AdminController.triggerDailyRewards);
+
 export default router;
