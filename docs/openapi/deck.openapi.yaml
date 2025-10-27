@@ -221,15 +221,40 @@ components:
             message:
               type: string
               description: Error message
-            statusCode:
-              type: integer
-              description: HTTP status code
             code:
               type: string
+              description: Error code for programmatic handling
+            type:
+              type: string
+              description: Error type classification
+            timestamp:
+              type: string
+              format: date-time
+              description: When the error occurred
+            path:
+              type: string
+              description: API endpoint where error occurred
+            method:
+              type: string
+              description: HTTP method used
+            suggestion:
+              type: string
               nullable: true
-              description: Optional error code for client-side handling
+              description: Helpful suggestion for resolving the error
+            details:
+              type: object
+              nullable: true
+              description: Additional error details
+            field:
+              type: string
+              nullable: true
+              description: Field name for validation errors for client-side handling
           required:
             - message
-            - statusCode
+            - code
+            - type
+            - timestamp
+            - path
+            - method
       required:
         - error

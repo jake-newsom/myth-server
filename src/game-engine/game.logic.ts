@@ -20,8 +20,9 @@ import {
 } from "./game-events";
 
 import { v4 as uuidv4 } from "uuid";
-
-const BOARD_SIZE = 4;
+import PowerUpService from "../services/powerUp.service";
+import logger from "../utils/logger";
+import { GAME_CONFIG } from "../config/constants";
 
 import { GameStatus, TileEvent, TileStatus } from "../types";
 export { GameStatus };
@@ -30,6 +31,127 @@ export { GameStatus };
 // rather than as part of the status enum
 
 export class GameLogic {
+  // Batch helper to fetch and cache details for multiple UserCardInstances
+  static async hydrateCardInstances(
+    instanceIds: string[],
+    userIdToVerifyOwnership?: string
+  ): Promise<Map<string, InGameCard>> {
+    const hydratedCards = new Map<string, InGameCard>();
+
+    if (instanceIds.length === 0) {
+      return hydratedCards;
+    }
+
+    try {
+      const placeholders = instanceIds
+        .map((_, index) => `$${index + (userIdToVerifyOwnership ? 2 : 1)}`)
+        .join(",");
+      const query = `
+        SELECT 
+          uci.user_card_instance_id, uci.level, uci.xp, uci.user_id,
+          c.card_id as base_card_id, c.name, c.rarity, c.image_url, 
+          c.power->>'top' as base_power_top, c.power->>'right' as base_power_right, 
+          c.power->>'bottom' as base_power_bottom, c.power->>'left' as base_power_left, 
+          c.tags, c.special_ability_id, c.set_id,
+          sa.name as ability_name, sa.description as ability_description, 
+          sa.trigger_moment as ability_trigger, sa.parameters as ability_parameters
+        FROM "user_owned_cards" uci
+        JOIN "cards" c ON uci.card_id = c.card_id
+        LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
+        WHERE uci.user_card_instance_id IN (${placeholders}) ${
+        userIdToVerifyOwnership ? "AND uci.user_id = $1" : ""
+      };
+      `;
+
+      const params = userIdToVerifyOwnership
+        ? [userIdToVerifyOwnership, ...instanceIds]
+        : instanceIds;
+
+      const { rows } = await db.query(query, params);
+
+      // Get power ups for all instances in batch
+      const powerUpsMap = await PowerUpService.getPowerUpsByCardInstances(
+        instanceIds
+      );
+
+      for (const row of rows) {
+        const levelBonus = 0; // Keep consistent with single hydration
+
+        const basePower = {
+          top: parseInt(row.base_power_top, 10),
+          right: parseInt(row.base_power_right, 10),
+          bottom: parseInt(row.base_power_bottom, 10),
+          left: parseInt(row.base_power_left, 10),
+        };
+
+        // Get power up data for this instance
+        const powerUp = powerUpsMap.get(row.user_card_instance_id);
+        const powerEnhancements = powerUp?.power_up_data || {
+          top: 0,
+          right: 0,
+          bottom: 0,
+          left: 0,
+        };
+
+        const currentPower = {
+          top: basePower.top + levelBonus + powerEnhancements.top,
+          right: basePower.right + levelBonus + powerEnhancements.right,
+          bottom: basePower.bottom + levelBonus + powerEnhancements.bottom,
+          left: basePower.left + levelBonus + powerEnhancements.left,
+        };
+
+        const hydratedCard: InGameCard = {
+          user_card_instance_id: row.user_card_instance_id,
+          base_card_id: row.base_card_id,
+          base_card_data: {
+            card_id: row.base_card_id,
+            name: row.name,
+            rarity: row.rarity,
+            image_url: row.image_url,
+            base_power: basePower,
+            set_id: row.set_id,
+            tags: row.tags,
+            special_ability: row.ability_name
+              ? {
+                  ability_id: row.special_ability_id,
+                  id: row.special_ability_id,
+                  name: row.ability_name,
+                  description: row.ability_description,
+                  triggerMoment: row.ability_trigger as TriggerMoment,
+                  parameters: row.ability_parameters,
+                }
+              : null,
+          },
+          level: row.level,
+          xp: row.xp,
+          power_enhancements: powerEnhancements,
+          current_power: currentPower,
+          owner: row.user_id,
+          original_owner: row.user_id,
+          card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
+          card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
+          temporary_effects: [],
+          lockedTurns: 0,
+          defeats: [],
+        };
+
+        hydratedCards.set(row.user_card_instance_id, hydratedCard);
+      }
+
+      return hydratedCards;
+    } catch (error) {
+      logger.error(
+        "Error in batch hydrateCardInstances",
+        {
+          instanceIds: instanceIds.length,
+          userIdToVerifyOwnership,
+        },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return hydratedCards;
+    }
+  }
+
   // Helper to fetch and cache details for a UserCardInstance
   static async hydrateCardInstance(
     instanceId: string,
@@ -176,10 +298,10 @@ export class GameLogic {
     const p2DeckShuffled = shuffleDeck([...player2UserCardInstanceIds]);
     const initialHandSize = 5;
 
-    const board = Array(BOARD_SIZE)
+    const board = Array(GAME_CONFIG.BOARD_SIZE)
       .fill(null)
       .map(() =>
-        Array(BOARD_SIZE).fill(
+        Array(GAME_CONFIG.BOARD_SIZE).fill(
           gameUtils.createBoardCell(null, "normal").boardCell
         )
       );
@@ -351,15 +473,14 @@ export class GameLogic {
 
       return { state: newState, events };
     } catch (error) {
-      console.error(
-        `[DEBUG] Error in placeCard: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      console.error(
-        `[DEBUG] Error stack: ${
-          error instanceof Error ? error.stack : "No stack trace"
-        }`
+      logger.error(
+        "Error in placeCard",
+        {
+          playerId,
+          position: position ? `${position.x},${position.y}` : "unknown",
+          userCardInstanceId,
+        },
+        error instanceof Error ? error : new Error(String(error))
       );
       throw error;
     }

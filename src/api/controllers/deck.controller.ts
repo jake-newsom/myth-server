@@ -9,6 +9,7 @@ import {
   AuthenticatedRequest,
 } from "../../types";
 import { RarityUtils } from "../../types/card.types";
+import { DECK_CONFIG } from "../../config/constants";
 
 /**
  * Validates deck composition based on game rules:
@@ -21,38 +22,51 @@ async function validateDeckComposition(
   instanceIds: string[],
   client: PoolClient
 ): Promise<void> {
-  const DECK_SIZE = 20;
-  const MAX_IDENTICAL_BASE_CARDS = 2;
-  const MAX_LEGENDARY_CARDS = 2;
-
-  if (instanceIds.length !== DECK_SIZE) {
+  if (instanceIds.length !== DECK_CONFIG.DECK_SIZE) {
     throw {
       statusCode: 400,
-      message: `Deck must contain exactly ${DECK_SIZE} cards. Found: ${instanceIds.length}.`,
+      message: `Deck must contain exactly ${DECK_CONFIG.DECK_SIZE} cards. Found: ${instanceIds.length}.`,
+    };
+  }
+
+  // Batch query to fetch all instance details at once (fixes N+1 query issue)
+  const instancePlaceholders = instanceIds
+    .map((_, index) => `$${index + 2}`)
+    .join(",");
+  const batchInstanceQuery = `
+    SELECT uci.user_card_instance_id, uci.card_id as base_card_id, c.rarity, c.name
+    FROM "user_owned_cards" uci 
+    JOIN "cards" c ON uci.card_id = c.card_id
+    WHERE uci.user_card_instance_id IN (${instancePlaceholders}) AND uci.user_id = $1;
+  `;
+
+  const instanceRes = await client.query(batchInstanceQuery, [
+    userId,
+    ...instanceIds,
+  ]);
+
+  // Check if all instances were found
+  if (instanceRes.rows.length !== instanceIds.length) {
+    const foundInstanceIds = new Set(
+      instanceRes.rows.map((row) => row.user_card_instance_id)
+    );
+    const missingInstances = instanceIds.filter(
+      (id) => !foundInstanceIds.has(id)
+    );
+    throw {
+      statusCode: 400,
+      message: `Card instances not found or not owned by user: ${missingInstances.join(
+        ", "
+      )}.`,
     };
   }
 
   let legendaryCount = 0;
-  const baseCardCounts = new Map<string, number>(); // To count instances of the same base card
+  const baseCardCounts = new Map<string, number>();
 
-  for (const instanceId of instanceIds) {
-    // Fetch instance details to get its base_card_id and then base card rarity
-    // This query is inefficient if done one by one in a loop.
-    // A better approach would be to fetch all instance details in one go.
-    const instanceQuery = `
-      SELECT uci.card_id as base_card_id, c.rarity 
-      FROM "user_owned_cards" uci 
-      JOIN "cards" c ON uci.card_id = c.card_id
-      WHERE uci.user_card_instance_id = $1 AND uci.user_id = $2;
-    `;
-    const instanceRes = await client.query(instanceQuery, [instanceId, userId]);
-    if (instanceRes.rows.length === 0) {
-      throw {
-        statusCode: 400,
-        message: `Card instance ${instanceId} not found or not owned by user.`,
-      };
-    }
-    const { base_card_id, rarity } = instanceRes.rows[0];
+  // Process all instances in a single loop
+  for (const row of instanceRes.rows) {
+    const { base_card_id, rarity } = row;
 
     // Count legendary cards (including variants)
     if (RarityUtils.isLegendary(rarity)) {
@@ -66,19 +80,25 @@ async function validateDeckComposition(
     );
   }
 
-  if (legendaryCount > MAX_LEGENDARY_CARDS) {
+  if (legendaryCount > DECK_CONFIG.MAX_LEGENDARY_CARDS) {
     throw {
       statusCode: 400,
-      message: `Deck cannot contain more than ${MAX_LEGENDARY_CARDS} Legendary cards. Found: ${legendaryCount}.`,
+      message: `Deck cannot contain more than ${DECK_CONFIG.MAX_LEGENDARY_CARDS} Legendary cards. Found: ${legendaryCount}.`,
     };
   }
 
+  // Create a map of card IDs to names for better error messages
+  const cardIdToName = new Map<string, string>();
+  for (const row of instanceRes.rows) {
+    cardIdToName.set(row.base_card_id, row.name);
+  }
+
   for (const [cardId, count] of baseCardCounts.entries()) {
-    if (count > MAX_IDENTICAL_BASE_CARDS) {
-      // Need card name for better error message, could fetch it.
+    if (count > DECK_CONFIG.MAX_IDENTICAL_BASE_CARDS) {
+      const cardName = cardIdToName.get(cardId) || `Card ID: ${cardId}`;
       throw {
         statusCode: 400,
-        message: `Deck cannot contain more than ${MAX_IDENTICAL_BASE_CARDS} copies of the same base card (Card ID: ${cardId}). Found: ${count}.`,
+        message: `Deck cannot contain more than ${DECK_CONFIG.MAX_IDENTICAL_BASE_CARDS} copies of the same base card (${cardName}). Found: ${count}.`,
       };
     }
   }

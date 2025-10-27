@@ -1,4 +1,5 @@
 import db from "../config/db.config";
+import logger from "../utils/logger";
 
 interface FatePick {
   id: string;
@@ -148,19 +149,23 @@ const FatePickModel = {
         } else if (typeof row.original_cards === "object") {
           parsedCards = row.original_cards; // Already parsed by PostgreSQL
         } else {
-          console.warn(
-            "Unexpected original_cards type:",
-            typeof row.original_cards,
-            row.original_cards
-          );
+          logger.warn("Unexpected original_cards type in fate pick", {
+            fatePickId: row.id,
+            dataType: typeof row.original_cards,
+            rawData: String(row.original_cards).substring(0, 100),
+          });
           parsedCards = [];
         }
       } catch (parseError) {
-        console.error(
-          "Error parsing original_cards:",
-          parseError,
-          "Raw data:",
-          row.original_cards
+        logger.error(
+          "Error parsing original_cards in fate pick",
+          {
+            fatePickId: row.id,
+            rawData: String(row.original_cards).substring(0, 100),
+          },
+          parseError instanceof Error
+            ? parseError
+            : new Error(String(parseError))
         );
         parsedCards = [];
       }

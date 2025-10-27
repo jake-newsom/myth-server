@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { RateLimitError } from "./errorHandler.middleware";
+import { RATE_LIMIT_CONFIG } from "../../config/constants";
 
 // In-memory rate limiting store (for production, consider Redis)
 interface RateLimitRecord {
@@ -66,6 +67,15 @@ class RateLimitStore {
 // Global rate limit store instance
 const globalStore = new RateLimitStore();
 
+// Graceful shutdown handler for rate limit store
+process.on("SIGTERM", () => {
+  globalStore.destroy();
+});
+
+process.on("SIGINT", () => {
+  globalStore.destroy();
+});
+
 // Rate limiting middleware factory
 export const createRateLimit = (config: RateLimitConfig) => {
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -107,52 +117,52 @@ export const createRateLimit = (config: RateLimitConfig) => {
 
 // Strict rate limiting for sensitive operations (XP transfers, pack purchases)
 export const strictRateLimit = createRateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  maxRequests: 5, // 5 requests per minute
+  windowMs: RATE_LIMIT_CONFIG.STRICT.WINDOW_MS,
+  maxRequests: RATE_LIMIT_CONFIG.STRICT.MAX_REQUESTS,
   message: "Too many sensitive operations. Please wait before trying again.",
 });
 
 // Moderate rate limiting for API calls
 export const moderateRateLimit = createRateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  maxRequests: 120, // 120 requests per minute (2 per second average)
+  windowMs: RATE_LIMIT_CONFIG.MODERATE.WINDOW_MS,
+  maxRequests: RATE_LIMIT_CONFIG.MODERATE.MAX_REQUESTS,
   message: "Too many API requests. Please slow down.",
 });
 
 // Lenient rate limiting for general endpoints
 export const lenientRateLimit = createRateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  maxRequests: 100, // 100 requests per minute
+  windowMs: RATE_LIMIT_CONFIG.LENIENT.WINDOW_MS,
+  maxRequests: RATE_LIMIT_CONFIG.LENIENT.MAX_REQUESTS,
   message: "Too many requests. Please try again later.",
 });
 
 // Authentication rate limiting (prevent brute force)
 export const authRateLimit = createRateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 5, // 5 attempts per 15 minutes
+  windowMs: RATE_LIMIT_CONFIG.AUTH.WINDOW_MS,
+  maxRequests: RATE_LIMIT_CONFIG.AUTH.MAX_REQUESTS,
   message:
     "Too many authentication attempts. Please wait 15 minutes before trying again.",
 });
 
 // Pack opening rate limiting (prevent rapid pack opening)
 export const packOpeningRateLimit = createRateLimit({
-  windowMs: 10 * 1000, // 10 seconds
-  maxRequests: 3, // 3 pack openings per 10 seconds
+  windowMs: RATE_LIMIT_CONFIG.PACK_OPENING.WINDOW_MS,
+  maxRequests: RATE_LIMIT_CONFIG.PACK_OPENING.MAX_REQUESTS,
   message:
     "Pack opening too quickly. Please wait a moment between pack openings.",
 });
 
 // Game action rate limiting (prevent rapid game actions)
 export const gameActionRateLimit = createRateLimit({
-  windowMs: 10 * 1000, // 10 seconds
-  maxRequests: 100, // 100 actions per 10 seconds (10 per second average)
+  windowMs: RATE_LIMIT_CONFIG.GAME_ACTION.WINDOW_MS,
+  maxRequests: RATE_LIMIT_CONFIG.GAME_ACTION.MAX_REQUESTS,
   message: "Game actions too rapid. Please wait between actions.",
 });
 
 // AI action rate limiting (more lenient for automated AI moves)
 export const aiActionRateLimit = createRateLimit({
-  windowMs: 1 * 1000, // 1 second
-  maxRequests: 30, // 30 AI actions per second
+  windowMs: RATE_LIMIT_CONFIG.AI_ACTION.WINDOW_MS,
+  maxRequests: RATE_LIMIT_CONFIG.AI_ACTION.MAX_REQUESTS,
   message: "AI actions too rapid. Please wait between AI moves.",
 });
 

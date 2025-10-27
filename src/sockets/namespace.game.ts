@@ -14,6 +14,7 @@ import { GameLogic, GameStatus } from "../game-engine/game.logic";
 import { AILogic } from "../game-engine/ai.logic";
 import { clearActiveMatch } from "../api/controllers/matchmaking.controller";
 import { sanitizeGameStateForPlayer } from "../utils/sanitize";
+import logger from "../utils/logger";
 
 /**
  * Set up the `/game` Socket.IO namespace. Handles authentication and initial
@@ -116,39 +117,38 @@ export function setupGameNamespace(io: Server): void {
           );
         }
 
-        // Log player's hand
-        const playerHand =
-          playerNumber === 1
-            ? game.game_state.player1.hand
-            : game.game_state.player2.hand;
-        console.log(
-          `[/game] Player ${playerNumber}'s hand has ${
-            playerHand.length
-          } cards: ${JSON.stringify(playerHand)}`
-        );
-
         // Create sanitized game state
         const sanitizedGameState = sanitizeGameStateForPlayer(
           game.game_state,
           userId
         );
 
-        // Log sanitized card data
-        if (sanitizedGameState.hydrated_card_data_cache) {
-          console.log(
-            `[/game] Sanitized hydrated_card_data_cache has ${
-              Object.keys(sanitizedGameState.hydrated_card_data_cache).length
-            } entries`
-          );
-          console.log(
-            `[/game] Card cache keys: ${JSON.stringify(
-              Object.keys(sanitizedGameState.hydrated_card_data_cache)
-            )}`
-          );
-        } else {
-          console.log(
-            `[/game] WARNING: Sanitized game state has no hydrated_card_data_cache!`
-          );
+        // Log game join for debugging (only in development)
+        if (process.env.NODE_ENV !== "production") {
+          const playerHand =
+            playerNumber === 1
+              ? game.game_state.player1.hand
+              : game.game_state.player2.hand;
+
+          logger.debug("Player joined game", {
+            gameId: payload.gameId,
+            userId,
+            playerNumber,
+            handSize: playerHand.length,
+            cacheEntries: sanitizedGameState.hydrated_card_data_cache
+              ? Object.keys(sanitizedGameState.hydrated_card_data_cache).length
+              : 0,
+          });
+
+          if (!sanitizedGameState.hydrated_card_data_cache) {
+            logger.warn(
+              "Sanitized game state missing hydrated_card_data_cache",
+              {
+                gameId: payload.gameId,
+                userId,
+              }
+            );
+          }
         }
 
         // Emit confirmation back only to this socket.

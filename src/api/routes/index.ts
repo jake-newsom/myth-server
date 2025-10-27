@@ -18,7 +18,7 @@ import fatePickRoutes from "./fatePick.routes";
 import mailRoutes from "./mail.routes";
 import healthRoutes from "./health.routes";
 import powerUpRoutes from "./powerUp.routes";
-import { handleErrors } from "../middlewares/error.middleware";
+import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
 import matchmakingRoutes from "./matchmaking.routes";
@@ -47,7 +47,7 @@ router.use("/health", healthRoutes);
 router.use("/power-ups", powerUpRoutes);
 
 // Global error handler
-router.use(handleErrors);
+router.use(errorHandler);
 
 // 404 Handler for any undefined API routes
 router.use("*", (_, res) => {

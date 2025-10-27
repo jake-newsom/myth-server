@@ -3,8 +3,7 @@ import { GameState, BoardPosition, TileStatus } from "../types/game.types";
 import { InGameCard } from "../types/card.types";
 import * as _ from "lodash";
 import * as validators from "./game.validators";
-
-const BOARD_SIZE = 4;
+import { GAME_CONFIG, AI_CONFIG } from "../config/constants";
 
 export class AILogic {
   // Evaluate move needs to use the current_power of the hydrated card instance
@@ -36,9 +35,9 @@ export class AILogic {
       const ny = position.y + dir.dy;
       if (
         nx >= 0 &&
-        nx < BOARD_SIZE &&
+        nx < GAME_CONFIG.BOARD_SIZE &&
         ny >= 0 &&
-        ny < BOARD_SIZE &&
+        ny < GAME_CONFIG.BOARD_SIZE &&
         tempBoard[ny][nx] !== null &&
         tempBoard[ny][nx]!.card
       ) {
@@ -54,7 +53,7 @@ export class AILogic {
         }
       }
     }
-    score += potentialFlips * 100;
+    score += potentialFlips * AI_CONFIG.MOVE_EVALUATION.FLIP_BONUS;
     // Add sum of card's current power stats to score
     score +=
       cardToPlay.current_power.top +
@@ -65,11 +64,12 @@ export class AILogic {
     // Positional bonus for strategic positions (corners and center have higher value)
     if (
       (position.x === 0 && position.y === 0) || // top-left corner
-      (position.x === BOARD_SIZE - 1 && position.y === 0) || // top-right corner
-      (position.x === 0 && position.y === BOARD_SIZE - 1) || // bottom-left corner
-      (position.x === BOARD_SIZE - 1 && position.y === BOARD_SIZE - 1) // bottom-right corner
+      (position.x === GAME_CONFIG.BOARD_SIZE - 1 && position.y === 0) || // top-right corner
+      (position.x === 0 && position.y === GAME_CONFIG.BOARD_SIZE - 1) || // bottom-left corner
+      (position.x === GAME_CONFIG.BOARD_SIZE - 1 &&
+        position.y === GAME_CONFIG.BOARD_SIZE - 1) // bottom-right corner
     ) {
-      score += 50; // Corners are strategically valuable
+      score += AI_CONFIG.MOVE_EVALUATION.CORNER_BONUS; // Corners are strategically valuable
     }
 
     return score;
@@ -101,8 +101,8 @@ export class AILogic {
         cardData = fetchedCard;
       }
 
-      for (let y = 0; y < BOARD_SIZE; y++) {
-        for (let x = 0; x < BOARD_SIZE; x++) {
+      for (let y = 0; y < GAME_CONFIG.BOARD_SIZE; y++) {
+        for (let x = 0; x < GAME_CONFIG.BOARD_SIZE; x++) {
           const placeResult = validators.canPlaceOnTile(currentGameState, {
             x,
             y,
@@ -128,7 +128,11 @@ export class AILogic {
     possibleMoves.sort((a, b) => b.score - a.score);
     const topN = Math.min(
       possibleMoves.length,
-      aiDifficulty === "hard" ? 1 : aiDifficulty === "medium" ? 3 : 5
+      aiDifficulty === AI_CONFIG.DIFFICULTY_LEVELS.HARD
+        ? AI_CONFIG.MOVE_SELECTION.HARD_TOP_MOVES
+        : aiDifficulty === AI_CONFIG.DIFFICULTY_LEVELS.MEDIUM
+        ? AI_CONFIG.MOVE_SELECTION.MEDIUM_TOP_MOVES
+        : AI_CONFIG.MOVE_SELECTION.EASY_TOP_MOVES
     );
     const chosenMove = possibleMoves[Math.floor(Math.random() * topN)];
 

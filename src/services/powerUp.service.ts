@@ -6,6 +6,7 @@ import {
   ApplyPowerUpResult,
   PowerUpValidationResult,
 } from "../types";
+import logger from "../utils/logger";
 
 class PowerUpService {
   /**
@@ -274,7 +275,13 @@ class PowerUpService {
 
       return powerUpsMap;
     } catch (error) {
-      console.error("Error fetching power ups data:", error);
+      logger.error(
+        "Error fetching power ups data",
+        {
+          instanceCount: userCardInstanceIds.length,
+        },
+        error instanceof Error ? error : new Error(String(error))
+      );
       return powerUpsMap;
     }
   }

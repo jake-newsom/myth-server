@@ -9,15 +9,16 @@ import {
   SacrificeExtrasResult,
   ApplyXpResult,
 } from "../types/service.types";
+import { XP_CONFIG, RARITY_MULTIPLIERS } from "../config/constants";
 
 const XpService = {
   // Calculate level from XP using new bracket system
   calculateLevel(xp: number): number {
-    if (xp < 300) return 1;
-    if (xp < 1000) return 2; // 300 + 700 = 1000
-    if (xp < 2500) return 3; // 1000 + 1500 = 2500
-    if (xp < 6000) return 4; // 2500 + 3500 = 6000
-    return 5; // Max level 5
+    if (xp < XP_CONFIG.LEVEL_THRESHOLDS.LEVEL_2) return 1;
+    if (xp < XP_CONFIG.LEVEL_THRESHOLDS.LEVEL_3) return 2;
+    if (xp < XP_CONFIG.LEVEL_THRESHOLDS.LEVEL_4) return 3;
+    if (xp < XP_CONFIG.LEVEL_THRESHOLDS.LEVEL_5) return 4;
+    return XP_CONFIG.MAX_LEVEL;
   },
 
   // Calculate XP value of a card for sacrifice based on rarity
