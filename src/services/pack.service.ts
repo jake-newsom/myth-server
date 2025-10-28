@@ -341,9 +341,9 @@ const PackService = {
 
     if (selectedRarity.includes("+")) {
       const br = Math.random() * 100;
-      if (br < 5) {
+      if (br < 20) {
         selectedRarity = `legendary${selectedRarity}`;
-      } else if (br < 30) {
+      } else if (br < 55) {
         selectedRarity = `epic${selectedRarity}`;
       } else {
         selectedRarity = `common${selectedRarity}`;
