@@ -3,6 +3,7 @@ import SetModel from "../models/set.model";
 import UserModel from "../models/user.model";
 import { Card, SpecialAbility } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
+import logger from "../utils/logger";
 
 const CARDS_PER_PACK = 5;
 
@@ -68,7 +69,7 @@ const PackService = {
     // 9. Trigger achievement events for pack opening (temporarily disabled)
     try {
       // TODO: Fix achievement database parameter type issue before re-enabling
-      console.log(
+      logger.debug(
         "Achievement processing temporarily disabled for pack opening"
       );
 
@@ -98,7 +99,11 @@ const PackService = {
       //   });
       // }
     } catch (error) {
-      console.error("Error processing pack opening achievement events:", error);
+      logger.error(
+        "Error processing pack opening achievement events",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
       // Don't fail the pack opening process if achievement processing fails
     }
 
@@ -129,7 +134,11 @@ const PackService = {
         );
       }
     } catch (error) {
-      console.error("Error creating fate pick from pack opening:", error);
+      logger.error(
+        "Error creating fate pick from pack opening",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
       // Don't fail the pack opening process if fate pick creation fails
     }
 
@@ -198,10 +207,14 @@ const PackService = {
       cardsByRarity[card.rarity].push(card);
     });
 
-    // Debug: Log rarity distribution (remove this in production)
-    console.log("Cards by rarity in set:");
-    Object.entries(cardsByRarity).forEach(([rarity, cards]) => {
-      console.log(`  ${rarity}: ${cards.length} cards`);
+    // Log rarity distribution for debugging
+    logger.debug("Cards by rarity in set", {
+      rarityDistribution: Object.fromEntries(
+        Object.entries(cardsByRarity).map(([rarity, cards]) => [
+          rarity,
+          cards.length,
+        ])
+      ),
     });
 
     const selectedCards: CardWithAbility[] = [];
@@ -211,11 +224,11 @@ const PackService = {
       // Select a rarity based on weights (may include variants like "common+")
       const selectedRarity = this.selectWeightedRarity();
       const isVariantRarity = selectedRarity.includes("+");
-      console.log(
-        `Card ${i + 1}: Selected rarity = ${selectedRarity} ${
-          isVariantRarity ? "(VARIANT)" : "(BASE)"
-        }`
-      );
+      logger.debug("Pack card selection", {
+        cardNumber: i + 1,
+        selectedRarity,
+        isVariant: isVariantRarity,
+      });
 
       // Try to find cards of the exact variant rarity first
       let availableCards = cardsByRarity[selectedRarity];
@@ -328,7 +341,6 @@ const PackService = {
       0
     );
     let random = Math.random() * totalWeight;
-    console.log("Random:", random);
 
     let selectedRarity = "common"; // fallback
     for (const [rarity, weight] of Object.entries(weights)) {
@@ -341,10 +353,12 @@ const PackService = {
 
     if (selectedRarity.includes("+")) {
       const br = Math.random() * 100;
-      if (br < 20) {
+      if (br < 15) {
         selectedRarity = `legendary${selectedRarity}`;
-      } else if (br < 55) {
+      } else if (br < 35) {
         selectedRarity = `epic${selectedRarity}`;
+      } else if (br < 65) {
+        selectedRarity = `rare${selectedRarity}`;
       } else {
         selectedRarity = `common${selectedRarity}`;
       }
@@ -442,7 +456,7 @@ const PackService = {
         // Trigger achievement events for pack opening (temporarily disabled)
         try {
           // TODO: Fix achievement database parameter type issue before re-enabling
-          console.log(
+          logger.debug(
             "Achievement processing temporarily disabled for multiple pack opening"
           );
 
@@ -472,9 +486,10 @@ const PackService = {
           //   });
           // }
         } catch (error) {
-          console.error(
-            "Error processing pack opening achievement events:",
-            error
+          logger.error(
+            "Error processing pack opening achievement events",
+            {},
+            error instanceof Error ? error : new Error(String(error))
           );
           // Don't fail the pack opening process if achievement processing fails
         }
@@ -506,7 +521,11 @@ const PackService = {
             );
           }
         } catch (error) {
-          console.error("Error creating fate pick from pack opening:", error);
+          logger.error(
+            "Error creating fate pick from pack opening",
+            {},
+            error instanceof Error ? error : new Error(String(error))
+          );
           // Don't fail the pack opening process if fate pick creation fails
         }
 
@@ -523,7 +542,11 @@ const PackService = {
         remainingGems: updatedUser?.gems ?? 0,
       };
     } catch (error) {
-      console.error("Error in openMultiplePacks:", error);
+      logger.error(
+        "Error in openMultiplePacks",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
       return {
         success: false,
         message:
