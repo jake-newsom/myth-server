@@ -41,6 +41,7 @@ const PackController = {
         packs: result.packs,
         remainingPacks: result.remainingPacks,
         remainingGems: result.remainingGems,
+        godPacks: result.godPacks || [], // Include God Pack information
       });
     } catch (error) {
       console.error("Error opening packs:", error);

@@ -6,6 +6,7 @@ import { RarityUtils } from "../types/card.types";
 import logger from "../utils/logger";
 
 const CARDS_PER_PACK = 5;
+const GOD_PACK_CHANCE = 1 / 2000; // 1 in 2000 chance
 
 interface CardWithAbility extends Card {
   special_ability: {
@@ -20,6 +21,7 @@ interface CardWithAbility extends Card {
 interface PackOpenResult {
   cards: CardWithAbility[];
   remainingPacks: number;
+  isGodPack?: boolean;
 }
 
 const PackService = {
@@ -51,8 +53,15 @@ const PackService = {
       throw new Error("No cards available in this set");
     }
 
-    // 5. Randomly select 5 cards (with replacement allowed)
-    const selectedCards = this.selectRandomCards(setCards, CARDS_PER_PACK);
+    // 5. Check for God Pack and select cards accordingly
+    const isGodPack = this.isGodPack();
+    const selectedCards = isGodPack
+      ? this.selectGodPackCards(setCards, CARDS_PER_PACK)
+      : this.selectRandomCards(setCards, CARDS_PER_PACK);
+
+    if (isGodPack) {
+      logger.info("God Pack opened!", { userId, setId });
+    }
 
     // 6. Remove one pack from user's total pack count
     const updatedUser = await UserModel.removePacks(userId, 1);
@@ -145,6 +154,7 @@ const PackService = {
     return {
       cards: selectedCards,
       remainingPacks: updatedUser.pack_count,
+      isGodPack,
     };
   },
 
@@ -192,6 +202,86 @@ const PackService = {
           }
         : null,
     }));
+  },
+
+  isGodPack(): boolean {
+    return Math.random() < GOD_PACK_CHANCE;
+  },
+
+  selectGodPackCards(
+    cards: CardWithAbility[],
+    count: number
+  ): CardWithAbility[] {
+    // God Pack rarity distribution: 50% legendary, 20% epic, 15% rare, 15% common
+    // All cards must be variant (+/++/+++)
+    const godPackRarities = ["legendary", "epic", "rare", "common"];
+    const godPackWeights = [50, 20, 15, 15]; // Percentages
+    const variantTypes = ["+", "++", "+++"];
+
+    // Group cards by base rarity
+    const cardsByRarity: { [key: string]: CardWithAbility[] } = {};
+    cards.forEach((card) => {
+      const baseRarity = RarityUtils.getBaseRarity(card.rarity as any);
+      if (!cardsByRarity[baseRarity]) {
+        cardsByRarity[baseRarity] = [];
+      }
+      cardsByRarity[baseRarity].push(card);
+    });
+
+    const selectedCards: CardWithAbility[] = [];
+
+    for (let i = 0; i < count; i++) {
+      // Select base rarity based on God Pack weights
+      const random = Math.random() * 100;
+      let selectedBaseRarity = "common";
+      let cumulativeWeight = 0;
+
+      for (let j = 0; j < godPackRarities.length; j++) {
+        cumulativeWeight += godPackWeights[j];
+        if (random <= cumulativeWeight) {
+          selectedBaseRarity = godPackRarities[j];
+          break;
+        }
+      }
+
+      // Randomly select a variant type (+, ++, or +++)
+      const variantType =
+        variantTypes[Math.floor(Math.random() * variantTypes.length)];
+      const targetRarity = `${selectedBaseRarity}${variantType}`;
+
+      // Try to find cards of the target variant rarity first
+      let availableCards = cardsByRarity[targetRarity];
+      let actualRarity = targetRarity;
+
+      // If no variant cards exist, fall back to base rarity cards but still assign variant
+      if (!availableCards || availableCards.length === 0) {
+        availableCards = cardsByRarity[selectedBaseRarity];
+        // We'll still assign the variant rarity even if the card doesn't exist in that variant
+      }
+
+      // Final fallback to any available cards
+      if (!availableCards || availableCards.length === 0) {
+        availableCards = cards;
+      }
+
+      if (availableCards.length > 0) {
+        const randomIndex = Math.floor(Math.random() * availableCards.length);
+        const selectedCard = { ...availableCards[randomIndex] };
+
+        // Force the variant rarity for God Pack
+        selectedCard.rarity = targetRarity as any;
+        selectedCards.push(selectedCard);
+      }
+    }
+
+    logger.info("God Pack cards selected", {
+      cardRarities: selectedCards.map((card) => ({
+        name: card.name,
+        rarity: card.rarity,
+      })),
+    });
+
+    return selectedCards;
   },
 
   selectRandomCards(
@@ -434,6 +524,7 @@ const PackService = {
 
     // Open the packs - but don't use openPack directly as it checks pack count each time
     const packs: any[] = [];
+    const godPacks: number[] = []; // Track which pack numbers are God Packs
 
     try {
       // Get all cards from this set
@@ -444,8 +535,20 @@ const PackService = {
 
       // Process each pack
       for (let i = 0; i < count; i++) {
-        // Select cards for this pack
-        const selectedCards = this.selectRandomCards(setCards, CARDS_PER_PACK);
+        // Check for God Pack and select cards accordingly
+        const isGodPack = this.isGodPack();
+        const selectedCards = isGodPack
+          ? this.selectGodPackCards(setCards, CARDS_PER_PACK)
+          : this.selectRandomCards(setCards, CARDS_PER_PACK);
+
+        if (isGodPack) {
+          logger.info("God Pack opened in multiple pack opening!", {
+            userId,
+            setId,
+            packNumber: i + 1,
+          });
+          godPacks.push(i); // Track this pack as a God Pack (0-indexed)
+        }
 
         // Add the selected cards to user's collection
         await this.addCardsToUserCollection(userId, selectedCards);
@@ -540,6 +643,7 @@ const PackService = {
         packs,
         remainingPacks: updatedUser?.pack_count ?? 0,
         remainingGems: updatedUser?.gems ?? 0,
+        godPacks, // Include which packs were God Packs
       };
     } catch (error) {
       logger.error(

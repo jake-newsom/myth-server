@@ -6,6 +6,8 @@ paths:
       summary: Open one or more card packs
       description: |
         Opens one or more packs from a specific set. If the user owns enough packs, those are used. If not, the remaining packs are purchased for 100 gems each (with a 10% discount if opening 10 or more packs at once). Returns an array of pack results.
+
+        Each pack has a 1 in 2000 chance of being a "God Pack" containing only variant cards (+/++/+++) with enhanced rarity distribution: 50% legendary, 20% epic, 15% rare, 15% common.
       security:
         - bearerAuth: []
       requestBody:
@@ -51,6 +53,12 @@ paths:
                     type: integer
                     description: Number of gems remaining after purchase
                     example: 900
+                  godPacks:
+                    type: array
+                    items:
+                      type: integer
+                    description: Array of pack indices (0-based) that were God Packs
+                    example: [2, 7]
         "400":
           description: Bad request - not enough resources, invalid set ID, or set not released
           content:
@@ -105,8 +113,27 @@ components:
           description: Name of the card
         rarity:
           type: string
-          enum: [common, uncommon, rare, epic, legendary]
-          description: Rarity of the card
+          enum:
+            [
+              common,
+              uncommon,
+              rare,
+              epic,
+              legendary,
+              "common+",
+              "common++",
+              "common+++",
+              "rare+",
+              "rare++",
+              "rare+++",
+              "epic+",
+              "epic++",
+              "epic+++",
+              "legendary+",
+              "legendary++",
+              "legendary+++",
+            ]
+          description: Rarity of the card (including variant rarities with +, ++, +++)
         image_url:
           type: string
           format: uri
