@@ -45,7 +45,8 @@ export function createBoardCell(
         temporary_effects: [],
         card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
         card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
-        power_enhancements: { top: 0, bottom: 0, left: 0, right: 0 },
+        // Preserve the power_enhancements from the hydrated card data (includes power-ups)
+        power_enhancements: playedCardData.power_enhancements,
         current_power: { ...playedCardData.base_card_data.base_power },
       }
     : null;

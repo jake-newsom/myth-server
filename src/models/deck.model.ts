@@ -10,6 +10,7 @@ import {
 import { DeckDetailResponse, CardResponse } from "../types/api.types"; // For formatting output
 import CardModel from "./card.model"; // For fetching base card details for validation
 import { PowerValues } from "../types/card.types"; // Import PowerValues if needed, though CardResponse includes it
+import PowerUpService from "../services/powerUp.service";
 
 // Helper to format card instances for deck response (similar to the one in CardModel)
 const formatDeckCardInstanceResponse = (
@@ -139,6 +140,14 @@ const DeckModel = {
     `;
     const cardsResult = await client.query(cardsQuery, [deckId, userId]);
 
+    // Get power ups for all card instances
+    const instanceIds = cardsResult.rows.map(
+      (row) => row.user_card_instance_id
+    );
+    const powerUpsMap = await PowerUpService.getPowerUpsByCardInstances(
+      instanceIds
+    );
+
     const cardDetails = cardsResult.rows.map((row) => {
       const baseCard: BaseCard = {
         card_id: row.base_card_id,
@@ -155,18 +164,25 @@ const DeckModel = {
         set_id: row.set_id,
         tags: row.tags,
       };
+
+      // Get power up data for this instance
+      const powerUp = powerUpsMap.get(row.user_card_instance_id);
+      const powerEnhancements = powerUp
+        ? powerUp.power_up_data
+        : {
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+          };
+
       const instance: UserCardInstance = {
         user_card_instance_id: row.user_card_instance_id,
         user_id: userId,
         card_id: row.base_card_id,
         level: row.level,
         xp: row.xp,
-        power_enhancements: {
-          top: 0,
-          right: 0,
-          bottom: 0,
-          left: 0,
-        },
+        power_enhancements: powerEnhancements,
       };
       const ability: SpecialAbility | null = row.special_ability_id
         ? {

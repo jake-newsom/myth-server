@@ -223,20 +223,23 @@ export class GameLogic {
           special_ability: specialAbility,
         };
 
-        // Calculate current power (base + level bonus)
-        const currentPower = {
-          top: basePower.top + levelBonus,
-          right: basePower.right + levelBonus,
-          bottom: basePower.bottom + levelBonus,
-          left: basePower.left + levelBonus,
-        };
-
-        // Empty power enhancements (will be populated elsewhere if needed)
-        const powerEnhancements = {
+        // Get power up data for this instance
+        const powerUp = await PowerUpService.getPowerUpByCardInstance(
+          instanceId
+        );
+        const powerEnhancements = powerUp?.power_up_data || {
           top: 0,
           right: 0,
           bottom: 0,
           left: 0,
+        };
+
+        // Calculate current power (base + level bonus + power enhancements)
+        const currentPower = {
+          top: basePower.top + levelBonus + powerEnhancements.top,
+          right: basePower.right + levelBonus + powerEnhancements.right,
+          bottom: basePower.bottom + levelBonus + powerEnhancements.bottom,
+          left: basePower.left + levelBonus + powerEnhancements.left,
         };
 
         // Create the full InGameCard structure according to the interface
