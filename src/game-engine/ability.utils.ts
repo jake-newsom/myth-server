@@ -862,3 +862,24 @@ export function protectFromDefeat(
     cardId: card.user_card_instance_id,
   } as CardEvent;
 }
+
+export function blockTile(
+  position: BoardPosition,
+  board: GameBoard,
+  turns = 2,
+  animationLabel = "frozen"
+): BaseGameEvent | undefined {
+  // if this is the last open tile on the board, return undefined
+  const openTiles = board.flat().filter((tile) => tile.card === null);
+  console.log("open tiles: ", openTiles);
+  if (openTiles.length <= 1) return undefined;
+
+  const tile = getTileAtPosition(position, board);
+  if (!tile) return undefined;
+
+  return setTileStatus(tile, position, {
+    status: TileStatus.Blocked,
+    turns_left: turns,
+    animation_label: animationLabel,
+  });
+}

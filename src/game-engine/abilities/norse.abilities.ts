@@ -21,6 +21,7 @@ import {
   pullCardsIn,
   pushCardAway,
   cleanseDebuffs,
+  blockTile,
 } from "../ability.utils";
 import { drawCardSync } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
@@ -121,17 +122,38 @@ export const norseAbilities: AbilityMap = {
     } = context;
     const gameEvents: BaseGameEvent[] = [];
 
+    // Get all adjacent positions that are valid and empty
     const adjacentPositions = getAdjacentPositions(position, board.length);
-    for (const pos of adjacentPositions) {
+    const validTargets = adjacentPositions.filter((pos) => {
+      const tile = getTileAtPosition(pos, board);
+      return (
+        tile && !tile.card && tile.tile_effect?.status !== TileStatus.Blocked
+      );
+    });
+
+    // Count current open tiles on the entire board
+    const openTiles = board
+      .flat()
+      .filter(
+        (tile) =>
+          tile.card === null && tile.tile_effect?.status !== TileStatus.Blocked
+      );
+
+    // Calculate how many tiles we can safely block (leave at least 1 open)
+    const maxTilesToBlock = Math.max(0, openTiles.length - 1);
+    const tilesToBlock = Math.min(validTargets.length, maxTilesToBlock);
+
+    // Block the calculated number of tiles
+    for (let i = 0; i < tilesToBlock; i++) {
+      const pos = validTargets[i];
       const tile = getTileAtPosition(pos, board);
       if (tile) {
-        gameEvents.push(
-          setTileStatus(tile, pos, {
-            status: TileStatus.Blocked,
-            turns_left: 2,
-            animation_label: "frozen",
-          })
-        );
+        const event = setTileStatus(tile, pos, {
+          status: TileStatus.Blocked,
+          turns_left: 2,
+          animation_label: "frozen",
+        });
+        gameEvents.push(event);
       }
     }
 
@@ -276,19 +298,15 @@ export const norseAbilities: AbilityMap = {
 
     if (adjacentPositions.length > 0) {
       const randomIndex = Math.floor(Math.random() * adjacentPositions.length);
-      const tile = getTileAtPosition(
+      const event = blockTile(
         adjacentPositions[randomIndex],
-        state.board
+        state.board,
+        2,
+        "frozen"
       );
-      console.log("tile", tile);
-      if (tile)
-        gameEvents.push(
-          setTileStatus(tile, adjacentPositions[randomIndex], {
-            status: TileStatus.Blocked,
-            turns_left: 2,
-            animation_label: "frozen",
-          })
-        );
+      if (event) {
+        gameEvents.push(event);
+      }
     }
 
     return gameEvents;
