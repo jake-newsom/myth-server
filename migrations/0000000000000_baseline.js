@@ -1,7 +1,8 @@
 /**
  * CONSOLIDATED BASELINE MIGRATION
  * This migration creates the complete initial schema for fresh installations.
- * It consolidates all the functionality from the individual migrations.
+ * It consolidates all the functionality from the individual migrations including:
+ * - User card power-ups functionality (previously 1760897872806_add-user-card-power-ups)
  * 
  * @type {import('node-pg-migrate').ColumnDefinitions | undefined}
  */
@@ -242,6 +243,43 @@ exports.up = (pgm) => {
   // Add constraints to user_owned_cards
   pgm.addConstraint("user_owned_cards", "level_check", { check: "level > 0" });
   pgm.addConstraint("user_owned_cards", "xp_check", { check: "xp >= 0" });
+
+  // Create user_card_power_ups table
+  pgm.createTable("user_card_power_ups", {
+    id: {
+      type: "uuid",
+      primaryKey: true,
+      default: pgm.func("uuid_generate_v4()"),
+    },
+    user_card_instance_id: {
+      type: "uuid",
+      notNull: true,
+      references: "user_owned_cards(user_card_instance_id)",
+      onDelete: "CASCADE",
+      unique: true, // One power up record per card instance
+    },
+    power_up_count: {
+      type: "integer",
+      notNull: true,
+      default: 0,
+      check: "power_up_count >= 0",
+    },
+    power_up_data: {
+      type: "jsonb",
+      notNull: true,
+      default: '{"top": 0, "bottom": 0, "left": 0, "right": 0}',
+    },
+    created_at: {
+      type: "timestamp with time zone",
+      notNull: true,
+      default: pgm.func("now()"),
+    },
+    updated_at: {
+      type: "timestamp with time zone",
+      notNull: true,
+      default: pgm.func("now()"),
+    },
+  });
 
   // Create decks table
   pgm.createTable("decks", {
@@ -1108,6 +1146,9 @@ exports.up = (pgm) => {
   pgm.createIndex("user_owned_cards", "card_id");
   pgm.createIndex("user_owned_cards", ["user_id", "card_id"]);
   
+  // User card power ups indexes
+  pgm.createIndex("user_card_power_ups", "user_card_instance_id");
+  
   pgm.createIndex("decks", "user_id");
   pgm.createIndex("deck_cards", "deck_id");
   pgm.createIndex("deck_cards", "user_card_instance_id");
@@ -1550,6 +1591,24 @@ exports.up = (pgm) => {
     EXECUTE FUNCTION update_fate_pick_participant_count();
   `);
 
+  // User card power ups trigger and function
+  pgm.sql(`
+    CREATE OR REPLACE FUNCTION update_updated_at_column()
+    RETURNS TRIGGER AS $$
+    BEGIN
+        NEW.updated_at = now();
+        RETURN NEW;
+    END;
+    $$ language 'plpgsql';
+  `);
+
+  pgm.sql(`
+    CREATE TRIGGER update_user_card_power_ups_updated_at
+    BEFORE UPDATE ON user_card_power_ups
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+  `);
+
   // Insert starter achievements
   pgm.sql(`
     INSERT INTO achievements (achievement_key, title, description, category, type, target_value, rarity, reward_gold, reward_gems, sort_order) VALUES
@@ -1591,6 +1650,7 @@ exports.up = (pgm) => {
  */
 exports.down = (pgm) => {
   // Drop triggers first
+  pgm.sql("DROP TRIGGER IF EXISTS update_user_card_power_ups_updated_at ON user_card_power_ups;");
   pgm.sql("DROP TRIGGER IF EXISTS update_fate_pick_participant_count_trigger ON fate_pick_participations;");
   pgm.sql("DROP TRIGGER IF EXISTS update_fate_picks_updated_at_trigger ON fate_picks;");
   pgm.sql("DROP TRIGGER IF EXISTS set_mail_claimed_at_trigger ON mail;");
@@ -1605,6 +1665,7 @@ exports.down = (pgm) => {
   pgm.sql("DROP TRIGGER IF EXISTS prevent_duplicate_friendships_trigger ON friendships;");
 
   // Drop functions
+  pgm.sql("DROP FUNCTION IF EXISTS update_updated_at_column();");
   pgm.sql("DROP FUNCTION IF EXISTS update_fate_pick_participant_count();");
   pgm.sql("DROP FUNCTION IF EXISTS cleanup_expired_fate_picks();");
   pgm.sql("DROP FUNCTION IF EXISTS update_fate_picks_updated_at();");
@@ -1637,6 +1698,7 @@ exports.down = (pgm) => {
   pgm.dropTable("games");
   pgm.dropTable("deck_cards");
   pgm.dropTable("decks");
+  pgm.dropTable("user_card_power_ups");
   pgm.dropTable("user_owned_cards");
   pgm.dropTable("cards");
   pgm.dropTable("special_abilities");
