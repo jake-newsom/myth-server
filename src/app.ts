@@ -17,6 +17,7 @@ import errorHandler from "./api/middlewares/errorHandler.middleware";
 import AIAutomationService from "./services/aiAutomation.service";
 import SessionCleanupService from "./services/sessionCleanup.service";
 import DailyRewardsService from "./services/dailyRewards.service";
+import StartupService from "./services/startup.service";
 
 // Setup Swagger
 const swaggerOptions = {
@@ -104,9 +105,16 @@ if (require.main === module) {
     );
   }
 
-  httpServer.listen(PORT, () => {
+  httpServer.listen(PORT, async () => {
     console.log(`Server is running on port ${PORT}`);
     console.log(`Access at http://localhost:${PORT}`);
+
+    // Run startup initialization
+    try {
+      await StartupService.initialize();
+    } catch (error) {
+      console.error("❌ Startup initialization failed:", error);
+    }
 
     // Start the automated fate pick scheduler
     try {

@@ -24,10 +24,18 @@ initializeSocketManager(io); // Pass the 'io' instance to your socket manager
 let automationSchedulerInterval = null;
 let dailyRewardsSchedulerInterval = null;
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, async () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Socket.IO initialized and listening.`);
   console.log(`Access at http://localhost:${PORT}`);
+  
+  // Run startup initialization
+  try {
+    const StartupService = require("./dist/services/startup.service").default;
+    await StartupService.initialize();
+  } catch (error) {
+    console.error("❌ Startup initialization failed:", error);
+  }
   
   // Start the automated fate pick scheduler
   try {
