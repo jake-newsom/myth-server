@@ -43,6 +43,10 @@ tags:
     description: In-game mail and inbox system
   - name: Power Ups
     description: Card power up and enhancement system
+  - name: Daily Shop
+    description: Daily shop with rotating mythology cards
+  - name: Daily Shop Admin
+    description: Administrative functions for daily shop management
 
 paths:
   # Authentication Endpoints
@@ -273,6 +277,28 @@ paths:
 
   /api/power-ups/{userCardInstanceId}/validate:
     $ref: "./powerUp.openapi.yaml#/paths/~1api~1power-ups~1{userCardInstanceId}~1validate"
+
+  # Daily Shop Endpoints
+  /api/daily-shop:
+    $ref: "./dailyShop.openapi.yaml#/paths/~1api~1daily-shop"
+
+  /api/daily-shop/purchase:
+    $ref: "./dailyShop.openapi.yaml#/paths/~1api~1daily-shop~1purchase"
+
+  /api/daily-shop/admin/config:
+    $ref: "./dailyShop.openapi.yaml#/paths/~1api~1daily-shop~1admin~1config"
+
+  /api/daily-shop/admin/refresh:
+    $ref: "./dailyShop.openapi.yaml#/paths/~1api~1daily-shop~1admin~1refresh"
+
+  /api/daily-shop/admin/stats:
+    $ref: "./dailyShop.openapi.yaml#/paths/~1api~1daily-shop~1admin~1stats"
+
+  /api/daily-shop/admin/rotations:
+    $ref: "./dailyShop.openapi.yaml#/paths/~1api~1daily-shop~1admin~1rotations"
+
+  /api/daily-shop/admin/reset-limits:
+    $ref: "./dailyShop.openapi.yaml#/paths/~1api~1daily-shop~1admin~1reset-limits"
 
   # Game Endpoints
   /api/games/solo:

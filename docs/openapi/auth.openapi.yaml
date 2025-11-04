@@ -168,6 +168,286 @@ paths:
         500:
           description: Server error
 
+  /api/auth/facebook:
+    post:
+      summary: Authenticate with Facebook
+      description: Login or register using Facebook OAuth token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - accessToken
+              properties:
+                accessToken:
+                  type: string
+                  description: Facebook access token obtained from Facebook SDK
+                  example: "EAABwzLixnjYBOZCZCZC..."
+      responses:
+        200:
+          description: Login successful (existing user)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        201:
+          description: Registration successful (new user)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        400:
+          description: Facebook access token is required
+        401:
+          description: Invalid Facebook access token
+        409:
+          description: Email already exists with local account
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "An account with this email already exists. Please log in with your email and password first, then link your Facebook account in settings."
+                      code:
+                        type: string
+                        example: "EMAIL_ALREADY_EXISTS"
+        500:
+          description: Server error
+
+  /api/auth/facebook/callback:
+    get:
+      summary: Facebook OAuth callback
+      description: Handles the OAuth callback from Facebook for web-based authentication flow
+      tags:
+        - Authentication
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Authorization code from Facebook
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: State parameter for CSRF protection
+        - name: error
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Error code if authentication failed
+        - name: error_description
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Human-readable error description
+      responses:
+        302:
+          description: Redirects to client application with authentication result
+          headers:
+            Location:
+              schema:
+                type: string
+                example: "https://yourapp.com/auth/success?accessToken=...&refreshToken=..."
+
+  /api/auth/facebook/deauthorize:
+    post:
+      summary: Facebook deauthorization callback
+      description: Handles deauthorization requests from Facebook when users remove the app
+      tags:
+        - Authentication
+        - Compliance
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - signed_request
+              properties:
+                signed_request:
+                  type: string
+                  description: Signed request from Facebook containing user ID
+      responses:
+        200:
+          description: Deauthorization processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    description: Confirmation URL for the user
+                    example: "https://yourapp.com/account-deauthorized"
+
+  /api/auth/facebook/data-deletion:
+    post:
+      summary: Facebook data deletion callback
+      description: Handles data deletion requests from Facebook for GDPR compliance
+      tags:
+        - Authentication
+        - Compliance
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - signed_request
+              properties:
+                signed_request:
+                  type: string
+                  description: Signed request from Facebook containing user ID
+      responses:
+        200:
+          description: Data deletion request processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    description: Status URL for tracking deletion progress
+                    example: "https://yourapp.com/data-deletion-status?code=DEL_123456789"
+                  confirmation_code:
+                    type: string
+                    description: Unique code for tracking the deletion request
+                    example: "DEL_1640995200000_abcd1234"
+
+  /api/auth/facebook/link:
+    post:
+      summary: Link Facebook account to existing user
+      description: Links a Facebook account to the currently authenticated user
+      tags:
+        - Authentication
+        - Account Management
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - accessToken
+              properties:
+                accessToken:
+                  type: string
+                  description: Facebook access token obtained from Facebook SDK
+                  example: "EAABwzLixnjYBOZCZCZC..."
+      responses:
+        200:
+          description: Facebook account linked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Facebook account linked successfully"
+                  user:
+                    $ref: "#/components/schemas/User"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Facebook access token is required."
+        401:
+          description: Unauthorized or invalid Facebook token
+        409:
+          description: Conflict - Facebook account already linked or email mismatch
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "This Facebook account is already linked to another user."
+                      code:
+                        type: string
+                        enum:
+                          [
+                            "FACEBOOK_ALREADY_LINKED",
+                            "FACEBOOK_ALREADY_EXISTS",
+                            "EMAIL_MISMATCH",
+                          ]
+        500:
+          description: Server error
+
+  /api/auth/facebook/unlink:
+    delete:
+      summary: Unlink Facebook account from user
+      description: Removes the Facebook account link from the currently authenticated user
+      tags:
+        - Authentication
+        - Account Management
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Facebook account unlinked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Facebook account unlinked successfully"
+                  user:
+                    $ref: "#/components/schemas/User"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "No Facebook account is currently linked."
+                      code:
+                        type: string
+                        enum: ["PRIMARY_AUTH_METHOD"]
+        401:
+          description: Not authenticated
+        500:
+          description: Server error
+
   /api/auth/refresh:
     post:
       summary: Refresh access token using refresh token

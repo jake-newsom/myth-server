@@ -187,8 +187,9 @@ const XpService = {
       }
       const cardName = cardNames[0];
 
-      // Calculate total XP value
+      // Calculate total XP value and card fragments
       let totalXpValue = 0;
+      const totalCardFragments = cardIds.length; // 1 fragment per card sacrificed
       const sacrificedCards = [];
 
       for (const card of rows) {
@@ -217,6 +218,9 @@ const XpService = {
         totalXpValue
       );
 
+      // Award card fragments
+      await UserModel.updateCardFragments(userId, totalCardFragments);
+
       // Log the sacrifice
       await XpPoolModel.logXpTransfer({
         user_id: userId,
@@ -231,9 +235,10 @@ const XpService = {
 
       return {
         success: true,
-        message: `Sacrificed ${cardIds.length} ${cardName}(s) for ${totalXpValue} XP`,
+        message: `Sacrificed ${cardIds.length} ${cardName}(s) for ${totalXpValue} XP and ${totalCardFragments} Card Fragments`,
         sacrificed_cards: sacrificedCards,
         total_xp_gained: totalXpValue,
+        total_card_fragments_gained: totalCardFragments,
         pool_new_total: updatedPool.available_xp,
       };
     } catch (error) {
@@ -244,6 +249,7 @@ const XpService = {
           error instanceof Error ? error.message : "Card sacrifice failed",
         sacrificed_cards: [],
         total_xp_gained: 0,
+        total_card_fragments_gained: 0,
         pool_new_total: 0,
       };
     } finally {
@@ -312,6 +318,7 @@ const XpService = {
           message: "No 0 XP card copies found to sacrifice",
           sacrificed_cards: [],
           total_xp_gained: 0,
+          total_card_fragments_gained: 0,
           pool_new_total: 0,
         };
       }
@@ -337,6 +344,7 @@ const XpService = {
       });
 
       let totalXpGained = 0;
+      const totalCardFragments = cardsToSacrifice.length; // 1 fragment per card sacrificed
       const sacrificedCardsByBaseId = [];
       const poolUpdates: { [name: string]: number } = {};
 
@@ -404,17 +412,23 @@ const XpService = {
         });
       }
 
+      // Award card fragments
+      if (totalCardFragments > 0) {
+        await UserModel.updateCardFragments(userId, totalCardFragments);
+      }
+
       await client.query("COMMIT");
 
       return {
         success: true,
         message: `Sacrificed ${
           cardsToSacrifice.length
-        } cards with 0 XP for ${totalXpGained} XP across ${
+        } cards with 0 XP for ${totalXpGained} XP and ${totalCardFragments} Card Fragments across ${
           Object.keys(cardsByName).length
         } different card types`,
         sacrificed_cards: sacrificedCardsByBaseId,
         total_xp_gained: totalXpGained,
+        total_card_fragments_gained: totalCardFragments,
         pool_new_total: finalPoolTotal,
       };
     } catch (error) {
@@ -427,6 +441,7 @@ const XpService = {
             : "Extra card sacrifice failed",
         sacrificed_cards: [],
         total_xp_gained: 0,
+        total_card_fragments_gained: 0,
         pool_new_total: 0,
       };
     } finally {

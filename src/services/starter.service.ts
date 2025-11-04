@@ -23,7 +23,7 @@ const STARTER_DECK_CONFIG = {
   name: "Norse Starter Deck",
 };
 
-const STARTER_PACKS_QUANTITY = 3;
+const STARTER_PACKS_QUANTITY = 10; // Temporarily increased for testing - will be reduced before launch
 
 const StarterService = {
   async grantStarterCards(

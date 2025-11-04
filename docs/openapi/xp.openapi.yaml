@@ -157,6 +157,9 @@ paths:
                           type: integer
                   total_xp_gained:
                     type: integer
+                  total_card_fragments_gained:
+                    type: integer
+                    description: Number of card fragments gained from sacrifice
                   pool_new_total:
                     type: integer
         "400":
@@ -202,6 +205,9 @@ paths:
                   total_xp_gained:
                     type: integer
                     description: Total XP gained from all sacrificed cards
+                  total_card_fragments_gained:
+                    type: integer
+                    description: Number of card fragments gained from sacrifice
                   pool_new_total:
                     type: integer
                     description: Combined total of all XP pools after sacrifice

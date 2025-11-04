@@ -137,6 +137,7 @@ export interface SacrificeResult {
   message: string;
   sacrificed_cards: { card_id: string; xp_value: number }[];
   total_xp_gained: number;
+  total_card_fragments_gained: number;
   pool_new_total: number;
 }
 
@@ -150,6 +151,7 @@ export interface SacrificeExtrasResult {
     total_xp_gained: number;
   }[];
   total_xp_gained: number;
+  total_card_fragments_gained: number;
   pool_new_total: number;
 }
 

@@ -39,6 +39,7 @@ export interface UserProfile {
   gold: number;
   gems: number;
   fate_coins: number;
+  card_fragments: number;
   total_xp: number;
   pack_count: number;
   created_at: string; // ISO Date string

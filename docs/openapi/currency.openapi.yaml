@@ -27,6 +27,12 @@ paths:
                   gems:
                     type: integer
                     description: Gems balance
+                  fate_coins:
+                    type: integer
+                    description: Fate coins balance
+                  card_fragments:
+                    type: integer
+                    description: Card fragments balance
                   total_xp:
                     type: integer
                     description: Total XP balance
@@ -162,7 +168,7 @@ paths:
               properties:
                 currency:
                   type: string
-                  enum: [gold, gems, fate_coins]
+                  enum: [gold, gems, fate_coins, card_fragments]
                   description: Type of currency to award
                 amount:
                   type: integer
@@ -222,6 +228,9 @@ components:
         fate_coins:
           type: integer
           description: Fate coins balance
+        card_fragments:
+          type: integer
+          description: Card fragments balance
 
     PackPrice:
       type: object

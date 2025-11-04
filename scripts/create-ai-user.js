@@ -25,8 +25,8 @@ async function createAIUser() {
 
     // Create AI user with predefined UUID
     const createQuery = `
-      INSERT INTO "users" (user_id, username, email, password_hash, in_game_currency, created_at, last_login)
-      VALUES ($1, $2, $3, $4, 0, NOW(), NOW())
+      INSERT INTO "users" (user_id, username, email, password_hash, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login)
+      VALUES ($1, $2, $3, $4, 0, 0, 0, 2, 0, 10, NOW(), NOW())
     `;
 
     // No need for a real password since AI won't log in

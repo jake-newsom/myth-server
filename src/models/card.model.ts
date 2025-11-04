@@ -865,6 +865,23 @@ const CardModel = {
       throw error;
     }
   },
+
+  /**
+   * Add a card to user's collection
+   */
+  async addCardToUser(
+    userId: string,
+    cardId: string
+  ): Promise<UserCardInstance> {
+    const query = `
+      INSERT INTO "user_owned_cards" (user_id, card_id, level, xp)
+      VALUES ($1, $2, 1, 0)
+      RETURNING user_card_instance_id, user_id, card_id, level, xp, created_at;
+    `;
+
+    const { rows } = await db.query(query, [userId, cardId]);
+    return rows[0];
+  },
 };
 
 export default CardModel;

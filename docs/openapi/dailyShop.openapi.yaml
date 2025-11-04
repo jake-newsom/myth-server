@@ -1,0 +1,654 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance Daily Shop API
+  description: API endpoints for the daily shop system with mythology-based card rotations
+  version: 1.0.0
+
+paths:
+  /api/daily-shop:
+    get:
+      summary: Get daily shop offerings
+      description: Get current daily shop offerings personalized for the authenticated user
+      tags:
+        - Daily Shop
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Daily shop data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: object
+                    properties:
+                      shop_date:
+                        type: string
+                        format: date
+                        description: Current shop date (YYYY-MM-DD)
+                      offerings:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ShopOffering"
+                      user_purchases:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ShopPurchase"
+                      purchase_limits:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                        description: Daily purchase limits per item type
+                      reset_costs:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                        description: Gem cost to reset purchase limits per item type
+                      user_currencies:
+                        $ref: "#/components/schemas/UserCurrencies"
+                  timestamp:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/daily-shop/purchase:
+    post:
+      summary: Purchase item from daily shop
+      description: Purchase an item from the daily shop
+      tags:
+        - Daily Shop
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - offering_id
+              properties:
+                offering_id:
+                  type: string
+                  format: uuid
+                  description: ID of the shop offering to purchase
+                quantity:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                  description: Quantity to purchase
+                use_reset:
+                  type: boolean
+                  default: false
+                  description: Whether to use gems to reset purchase limit if exceeded
+      responses:
+        "200":
+          description: Purchase completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      purchase:
+                        $ref: "#/components/schemas/ShopPurchase"
+                      new_currency_balance:
+                        type: integer
+                        description: Updated balance of the currency used
+                      card_received:
+                        $ref: "#/components/schemas/UserCardInstance"
+                      packs_received:
+                        type: integer
+                        description: Number of packs received (if applicable)
+                  timestamp:
+                    type: string
+                    format: date-time
+        "400":
+          description: Purchase failed (insufficient currency, limit reached, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/daily-shop/admin/config:
+    get:
+      summary: Get shop configuration
+      description: Get current daily shop configuration (admin only)
+      tags:
+        - Daily Shop Admin
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Shop configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ShopConfig"
+                  timestamp:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    put:
+      summary: Update shop configuration
+      description: Update daily shop configuration (admin only)
+      tags:
+        - Daily Shop Admin
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - item_type
+              properties:
+                item_type:
+                  $ref: "#/components/schemas/ShopItemType"
+                daily_limit:
+                  type: integer
+                  minimum: 1
+                price:
+                  type: integer
+                  minimum: 1
+                currency:
+                  $ref: "#/components/schemas/CurrencyType"
+                daily_availability:
+                  type: integer
+                  minimum: 1
+                is_active:
+                  type: boolean
+                reset_price_gems:
+                  type: integer
+                  minimum: 1
+      responses:
+        "200":
+          description: Configuration updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/ShopConfig"
+                  timestamp:
+                    type: string
+                    format: date-time
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/daily-shop/admin/refresh:
+    post:
+      summary: Refresh shop offerings
+      description: Manually refresh daily shop offerings (admin only)
+      tags:
+        - Daily Shop Admin
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                shop_date:
+                  type: string
+                  format: date
+                  description: Date to refresh (defaults to current date)
+      responses:
+        "200":
+          description: Shop offerings refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/daily-shop/admin/stats:
+    get:
+      summary: Get shop statistics
+      description: Get daily shop purchase statistics (admin only)
+      tags:
+        - Daily Shop Admin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: shop_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Date to get stats for (defaults to current date)
+      responses:
+        "200":
+          description: Shop statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: object
+                    properties:
+                      shop_date:
+                        type: string
+                        format: date
+                      statistics:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ShopStats"
+                  timestamp:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/daily-shop/admin/rotations:
+    get:
+      summary: Get rotation states
+      description: Get current mythology rotation states (admin only)
+      tags:
+        - Daily Shop Admin
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Rotation states retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ShopRotation"
+                  timestamp:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/daily-shop/admin/reset-limits:
+    post:
+      summary: Reset user purchase limits
+      description: Reset a user's daily purchase limits (admin only)
+      tags:
+        - Daily Shop Admin
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                shop_date:
+                  type: string
+                  format: date
+                  description: Date to reset (defaults to current date)
+                item_type:
+                  $ref: "#/components/schemas/ShopItemType"
+                  description: Specific item type to reset (omit to reset all)
+      responses:
+        "200":
+          description: Purchase limits reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  schemas:
+    ShopItemType:
+      type: string
+      enum:
+        - legendary_card
+        - epic_card
+        - enhanced_card
+        - pack
+      description: Type of item available in the daily shop
+
+    CurrencyType:
+      type: string
+      enum:
+        - gold
+        - gems
+        - card_fragments
+        - fate_coins
+      description: Currency types used in the shop
+
+    ShopOffering:
+      type: object
+      properties:
+        offering_id:
+          type: string
+          format: uuid
+        shop_date:
+          type: string
+          format: date
+        item_type:
+          $ref: "#/components/schemas/ShopItemType"
+        card_id:
+          type: string
+          format: uuid
+          nullable: true
+        mythology:
+          type: string
+          nullable: true
+          enum: [norse, japanese, polynesian]
+        price:
+          type: integer
+        currency:
+          $ref: "#/components/schemas/CurrencyType"
+        slot_number:
+          type: integer
+    card:
+      type: object
+      nullable: true
+      properties:
+        card_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        rarity:
+          type: string
+        image_url:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        set_id:
+          type: string
+          format: uuid
+          nullable: true
+        base_power:
+          type: object
+          properties:
+            top:
+              type: integer
+            right:
+              type: integer
+            bottom:
+              type: integer
+            left:
+              type: integer
+          required:
+            - top
+            - right
+            - bottom
+            - left
+        special_ability:
+          type: object
+          nullable: true
+          properties:
+            ability_id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            description:
+              type: string
+            trigger_moment:
+              type: string
+            parameters:
+              type: object
+              additionalProperties: true
+
+    ShopPurchase:
+      type: object
+      properties:
+        purchase_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        offering_id:
+          type: string
+          format: uuid
+        shop_date:
+          type: string
+          format: date
+        item_type:
+          $ref: "#/components/schemas/ShopItemType"
+        quantity_purchased:
+          type: integer
+        total_cost:
+          type: integer
+        currency_used:
+          $ref: "#/components/schemas/CurrencyType"
+        resets_used:
+          type: integer
+        purchased_at:
+          type: string
+          format: date-time
+
+    ShopConfig:
+      type: object
+      properties:
+        config_id:
+          type: string
+          format: uuid
+        item_type:
+          $ref: "#/components/schemas/ShopItemType"
+        daily_limit:
+          type: integer
+        price:
+          type: integer
+        currency:
+          $ref: "#/components/schemas/CurrencyType"
+        daily_availability:
+          type: integer
+        is_active:
+          type: boolean
+        reset_price_gems:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ShopRotation:
+      type: object
+      properties:
+        rotation_id:
+          type: string
+          format: uuid
+        mythology:
+          type: string
+        item_type:
+          $ref: "#/components/schemas/ShopItemType"
+        current_card_index:
+          type: integer
+        last_updated:
+          type: string
+          format: date-time
+
+    ShopStats:
+      type: object
+      properties:
+        item_type:
+          $ref: "#/components/schemas/ShopItemType"
+        total_purchases:
+          type: integer
+        total_quantity:
+          type: integer
+        total_revenue:
+          type: integer
+        currency_used:
+          $ref: "#/components/schemas/CurrencyType"
+        unique_buyers:
+          type: integer
+
+    UserCurrencies:
+      type: object
+      properties:
+        gold:
+          type: integer
+        gems:
+          type: integer
+        card_fragments:
+          type: integer
+        fate_coins:
+          type: integer
+
+    UserCardInstance:
+      type: object
+      properties:
+        user_card_instance_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        card_id:
+          type: string
+          format: uuid
+        level:
+          type: integer
+        xp:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        message:
+          type: string
+        error:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    BadRequestError:
+      description: Invalid request data
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

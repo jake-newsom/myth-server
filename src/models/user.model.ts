@@ -6,19 +6,44 @@ import { User } from "../types/database.types";
 interface UserCreateInput {
   username: string;
   email: string;
-  password: string;
+  password?: string;
+  facebook_id?: string;
+  auth_provider?: "local" | "facebook";
 }
 
 const UserModel = {
-  async create({ username, email, password }: UserCreateInput): Promise<User> {
-    const hashedPassword = await bcrypt.hash(password, config.bcryptSaltRounds);
+  async create({
+    username,
+    email,
+    password,
+    facebook_id,
+    auth_provider = "local",
+  }: UserCreateInput): Promise<User> {
+    let hashedPassword = null;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, config.bcryptSaltRounds);
+    }
+
     const query = `
-      INSERT INTO "users" (username, email, password_hash, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      INSERT INTO "users" (username, email, password_hash, facebook_id, auth_provider, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+      RETURNING user_id, username, email, facebook_id, auth_provider, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
 
-    const values = [username, email, hashedPassword, 0, 0, 0, 0, 0, 0];
+    const values = [
+      username,
+      email,
+      hashedPassword,
+      facebook_id,
+      auth_provider,
+      0, // in_game_currency
+      0, // gold
+      0, // gems
+      2, // fate_coins - start new users with 2 fate coins
+      0, // card_fragments - start new users with 0 card fragments
+      0, // total_xp
+      0, // pack_count
+    ];
     const { rows } = await db.query(query, values);
     return rows[0];
   },
@@ -35,8 +60,14 @@ const UserModel = {
     return rows[0] || null;
   },
 
+  async findByFacebookId(facebookId: string): Promise<User | null> {
+    const query = `SELECT * FROM "users" WHERE facebook_id = $1;`;
+    const { rows } = await db.query(query, [facebookId]);
+    return rows[0] || null;
+  },
+
   async findById(userId: string): Promise<User | null> {
-    const query = `SELECT user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
+    const query = `SELECT user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
     const { rows } = await db.query(query, [userId]);
     return rows[0] || null;
   },
@@ -53,7 +84,7 @@ const UserModel = {
       UPDATE "users" 
       SET in_game_currency = in_game_currency + $2 
       WHERE user_id = $1
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login_at;
     `;
     const { rows } = await db.query(query, [userId, amount]);
     return rows[0] || null;
@@ -65,7 +96,7 @@ const UserModel = {
       UPDATE "users" 
       SET gold = gold + $2 
       WHERE user_id = $1 AND gold + $2 >= 0
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, amount]);
     return rows[0] || null;
@@ -76,7 +107,7 @@ const UserModel = {
       UPDATE "users" 
       SET gems = gems + $2 
       WHERE user_id = $1 AND gems + $2 >= 0
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, amount]);
     return rows[0] || null;
@@ -91,7 +122,7 @@ const UserModel = {
       UPDATE "users" 
       SET gold = gold + $2, gems = gems + $3 
       WHERE user_id = $1 AND gold + $2 >= 0 AND gems + $3 >= 0
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, goldAmount, gemsAmount]);
     return rows[0] || null;
@@ -102,7 +133,7 @@ const UserModel = {
       UPDATE "users" 
       SET total_xp = total_xp + $2 
       WHERE user_id = $1
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, amount]);
     return rows[0] || null;
@@ -120,7 +151,7 @@ const UserModel = {
       UPDATE "users" 
       SET pack_count = pack_count + $2 
       WHERE user_id = $1
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, quantity]);
     return rows[0] || null;
@@ -138,7 +169,7 @@ const UserModel = {
       UPDATE "users" 
       SET pack_count = pack_count - $2 
       WHERE user_id = $1
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, quantity]);
     return rows[0] || null;
@@ -150,7 +181,7 @@ const UserModel = {
       UPDATE "users" 
       SET pack_count = $2 
       WHERE user_id = $1
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, quantity]);
     return rows[0] || null;
@@ -162,7 +193,7 @@ const UserModel = {
       UPDATE "users" 
       SET gold = gold - $2 
       WHERE user_id = $1 AND gold >= $2
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, amount]);
     return rows[0] || null;
@@ -173,7 +204,7 @@ const UserModel = {
       UPDATE "users" 
       SET gems = gems - $2 
       WHERE user_id = $1 AND gems >= $2
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, amount]);
     return rows[0] || null;
@@ -185,7 +216,7 @@ const UserModel = {
       UPDATE "users" 
       SET fate_coins = fate_coins + $2 
       WHERE user_id = $1 AND fate_coins + $2 >= 0
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, amount]);
     return rows[0] || null;
@@ -196,7 +227,7 @@ const UserModel = {
       UPDATE "users" 
       SET fate_coins = fate_coins - $2 
       WHERE user_id = $1 AND fate_coins >= $2
-      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
     `;
     const { rows } = await db.query(query, [userId, amount]);
     return rows[0] || null;
@@ -206,6 +237,41 @@ const UserModel = {
     const query = `SELECT fate_coins FROM "users" WHERE user_id = $1;`;
     const { rows } = await db.query(query, [userId]);
     return rows[0]?.fate_coins || 0;
+  },
+
+  // Card fragments methods
+  async updateCardFragments(
+    userId: string,
+    amount: number
+  ): Promise<User | null> {
+    const query = `
+      UPDATE "users" 
+      SET card_fragments = card_fragments + $2 
+      WHERE user_id = $1 AND card_fragments + $2 >= 0
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
+    `;
+    const { rows } = await db.query(query, [userId, amount]);
+    return rows[0] || null;
+  },
+
+  async spendCardFragments(
+    userId: string,
+    amount: number
+  ): Promise<User | null> {
+    const query = `
+      UPDATE "users" 
+      SET card_fragments = card_fragments - $2 
+      WHERE user_id = $1 AND card_fragments >= $2
+      RETURNING user_id, username, email, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, created_at, last_login as last_login_at;
+    `;
+    const { rows } = await db.query(query, [userId, amount]);
+    return rows[0] || null;
+  },
+
+  async getCardFragments(userId: string): Promise<number> {
+    const query = `SELECT card_fragments FROM "users" WHERE user_id = $1;`;
+    const { rows } = await db.query(query, [userId]);
+    return rows[0]?.card_fragments || 0;
   },
 };
 

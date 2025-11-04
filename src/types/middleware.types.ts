@@ -11,6 +11,9 @@ export interface AuthenticatedRequest extends Request {
     user_id: string;
     username: string;
     email: string;
+    facebook_id?: string;
+    auth_provider: "local" | "facebook";
+    password_hash?: string;
   };
   sessionId?: string;
 }

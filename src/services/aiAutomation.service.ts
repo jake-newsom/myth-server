@@ -3,6 +3,7 @@ import PackService from "./pack.service";
 import FatePickService from "./fatePick.service";
 import UserModel from "../models/user.model";
 import db from "../config/db.config";
+import * as cron from "node-cron";
 
 // AI Player ID constant (matches the one used in game controller)
 const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
@@ -192,35 +193,41 @@ const AIAutomationService = {
 
   /**
    * Start the automated fate pick generation scheduler
-   * Runs every 30 minutes
+   * Runs every 30 minutes using cron
    */
-  startAutomatedFatePickScheduler(): NodeJS.Timeout {
+  startAutomatedFatePickScheduler(): cron.ScheduledTask {
     console.log("🕒 Starting automated fate pick scheduler (every 30 minutes)");
 
-    // Run immediately on startup (optional)
-    // this.generateAutomatedFatePick();
+    // Set up cron job for every 30 minutes
+    const task = cron.schedule(
+      "*/30 * * * *",
+      async () => {
+        console.log("⏰ Running scheduled automated fate pick generation...");
+        const result = await this.generateAutomatedFatePick();
 
-    // Set up interval for every 30 minutes (30 * 60 * 1000 milliseconds)
-    const intervalId = setInterval(async () => {
-      console.log("⏰ Running scheduled automated fate pick generation...");
-      const result = await this.generateAutomatedFatePick();
-
-      if (result.success) {
-        console.log(`✅ Scheduled fate pick created: ${result.message}`);
-      } else {
-        console.error(`❌ Scheduled fate pick failed: ${result.message}`);
+        if (result.success) {
+          console.log(`✅ Scheduled fate pick created: ${result.message}`);
+        } else {
+          console.error(`❌ Scheduled fate pick failed: ${result.message}`);
+        }
+      },
+      {
+        timezone: "UTC",
       }
-    }, 30 * 60 * 1000); // 30 minutes
+    );
 
-    return intervalId;
+    return task;
   },
 
   /**
    * Stop the automated fate pick generation scheduler
    */
-  stopAutomatedFatePickScheduler(intervalId: NodeJS.Timeout): void {
+  stopAutomatedFatePickScheduler(task: cron.ScheduledTask): void {
     console.log("🛑 Stopping automated fate pick scheduler");
-    clearInterval(intervalId);
+    if (task) {
+      task.stop();
+      task.destroy();
+    }
   },
 };
 

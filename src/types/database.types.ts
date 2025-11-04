@@ -9,11 +9,14 @@ export interface User {
   user_id: string;
   username: string;
   email: string;
-  password_hash: string;
+  password_hash?: string;
+  facebook_id?: string;
+  auth_provider: "local" | "facebook";
   in_game_currency: number; // Legacy field - will be phased out
   gold: number;
   gems: number;
   fate_coins: number;
+  card_fragments: number;
   total_xp: number;
   pack_count: number;
   created_at: Date;
@@ -287,4 +290,82 @@ export interface UserCardPowerUp {
   power_up_data: PowerValues;
   created_at: Date;
   updated_at: Date;
+}
+
+// Daily Shop System Types
+export type ShopItemType =
+  | "legendary_card"
+  | "epic_card"
+  | "enhanced_card"
+  | "pack";
+export type CurrencyType = "gold" | "gems" | "card_fragments" | "fate_coins";
+
+export interface DailyShopConfig {
+  config_id: string;
+  item_type: ShopItemType;
+  daily_limit: number;
+  price: number;
+  currency: CurrencyType;
+  daily_availability: number;
+  is_active: boolean;
+  reset_price_gems: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface DailyShopOffering {
+  offering_id: string;
+  shop_date: Date | string;
+  item_type: ShopItemType;
+  card_id?: string;
+  mythology?: string;
+  price: number;
+  currency: CurrencyType;
+  slot_number: number;
+  created_at: Date;
+}
+
+export interface DailyShopOfferingWithCard extends DailyShopOffering {
+  card?: {
+    card_id: string;
+    name: string;
+    rarity: Rarity;
+    image_url: string;
+    tags: string[];
+    set_id?: string | null;
+    base_power: {
+      top: number;
+      right: number;
+      bottom: number;
+      left: number;
+    };
+    special_ability?: {
+      ability_id: string;
+      name: string;
+      description: string;
+      trigger_moment: string;
+      parameters: Record<string, any>;
+    } | null;
+  };
+}
+
+export interface DailyShopPurchase {
+  purchase_id: string;
+  user_id: string;
+  offering_id: string;
+  shop_date: Date | string;
+  item_type: ShopItemType;
+  quantity_purchased: number;
+  total_cost: number;
+  currency_used: CurrencyType;
+  resets_used: number;
+  purchased_at: Date;
+}
+
+export interface DailyShopRotation {
+  rotation_id: string;
+  mythology: string;
+  item_type: ShopItemType;
+  current_card_index: number;
+  last_updated: Date;
 }

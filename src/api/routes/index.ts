@@ -18,6 +18,7 @@ import fatePickRoutes from "./fatePick.routes";
 import mailRoutes from "./mail.routes";
 import healthRoutes from "./health.routes";
 import powerUpRoutes from "./powerUp.routes";
+import dailyShopRoutes from "./dailyShop.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -45,6 +46,7 @@ router.use("/fate-picks", fatePickRoutes);
 router.use("/mail", mailRoutes);
 router.use("/health", healthRoutes);
 router.use("/power-ups", powerUpRoutes);
+router.use("/daily-shop", dailyShopRoutes);
 
 // Global error handler
 router.use(errorHandler);

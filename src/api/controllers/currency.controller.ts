@@ -22,6 +22,8 @@ export const getCurrencies = async (req: Request, res: Response) => {
     res.json({
       gold: user.gold,
       gems: user.gems,
+      fate_coins: user.fate_coins,
+      card_fragments: user.card_fragments,
       total_xp: user.total_xp,
       // Legacy field for backward compatibility
       in_game_currency: user.in_game_currency,

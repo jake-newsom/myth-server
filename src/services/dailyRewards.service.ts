@@ -1,5 +1,7 @@
 import db from "../config/db.config";
 import UserModel from "../models/user.model";
+import * as cron from "node-cron";
+import DailyShopService from "./dailyShop.service";
 
 interface DailyRewardResult {
   success: boolean;
@@ -229,36 +231,87 @@ const DailyRewardsService = {
   },
 
   /**
-   * Start the automated daily rewards scheduler
-   * Runs every 12 hours (43200000 milliseconds)
+   * Start the automated daily rewards and shop scheduler
+   * Runs at 12:00 AM and 12:00 PM UTC daily
    */
-  startDailyRewardsScheduler(): NodeJS.Timeout {
-    console.log("🕒 Starting daily rewards scheduler (every 12 hours)");
+  startDailyRewardsScheduler(): cron.ScheduledTask[] {
+    console.log(
+      "🕒 Starting daily rewards and shop scheduler (12:00 AM & 12:00 PM UTC)"
+    );
 
-    // Run immediately on startup (optional - commented out to avoid giving rewards on every restart)
-    // this.runDailyRewards();
+    const tasks: cron.ScheduledTask[] = [];
 
-    // Set up interval for every 12 hours (12 * 60 * 60 * 1000 milliseconds)
-    const intervalId = setInterval(async () => {
-      console.log("⏰ Running scheduled daily rewards distribution...");
-      const result = await this.runDailyRewards();
+    // Schedule for 12:00 AM UTC (midnight) - Daily shop refresh and rewards
+    const midnightTask = cron.schedule(
+      "0 0 * * *",
+      async () => {
+        console.log("🌙 Running midnight UTC scheduled tasks...");
 
-      if (result.success) {
-        console.log(`✅ Scheduled daily rewards completed: ${result.message}`);
-      } else {
-        console.error(`❌ Scheduled daily rewards failed: ${result.message}`);
+        try {
+          // Generate new daily shop offerings
+          await DailyShopService.generateDailyOfferings();
+          console.log("🏪 Daily shop offerings refreshed for new day");
+
+          // Run daily rewards distribution
+          const result = await this.runDailyRewards();
+          if (result.success) {
+            console.log(
+              `✅ Midnight daily rewards completed: ${result.message}`
+            );
+          } else {
+            console.error(
+              `❌ Midnight daily rewards failed: ${result.message}`
+            );
+          }
+        } catch (error) {
+          console.error("❌ Error in midnight scheduled tasks:", error);
+        }
+      },
+      {
+        timezone: "UTC",
       }
-    }, 12 * 60 * 60 * 1000); // 12 hours
+    );
 
-    return intervalId;
+    // Schedule for 12:00 PM UTC (noon) - Additional rewards distribution
+    const noonTask = cron.schedule(
+      "0 12 * * *",
+      async () => {
+        console.log("☀️ Running noon UTC scheduled tasks...");
+
+        try {
+          // Run daily rewards distribution
+          const result = await this.runDailyRewards();
+          if (result.success) {
+            console.log(`✅ Noon daily rewards completed: ${result.message}`);
+          } else {
+            console.error(`❌ Noon daily rewards failed: ${result.message}`);
+          }
+        } catch (error) {
+          console.error("❌ Error in noon scheduled tasks:", error);
+        }
+      },
+      {
+        timezone: "UTC",
+      }
+    );
+
+    tasks.push(midnightTask, noonTask);
+
+    console.log("✅ Daily rewards and shop scheduler started successfully");
+    return tasks;
   },
 
   /**
    * Stop the automated daily rewards scheduler
    */
-  stopDailyRewardsScheduler(intervalId: NodeJS.Timeout): void {
-    console.log("🛑 Stopping daily rewards scheduler");
-    clearInterval(intervalId);
+  stopDailyRewardsScheduler(tasks: cron.ScheduledTask[]): void {
+    console.log("🛑 Stopping daily rewards and shop scheduler");
+    tasks.forEach((task) => {
+      if (task) {
+        task.stop();
+        task.destroy();
+      }
+    });
   },
 };
 

@@ -42,9 +42,9 @@ const swaggerSpec = swaggerJSDoc(swaggerOptions);
 
 const app = express();
 
-// Store the automation scheduler interval IDs globally
-let automationSchedulerInterval: NodeJS.Timeout | null = null;
-let dailyRewardsSchedulerInterval: NodeJS.Timeout | null = null;
+// Store the automation scheduler tasks globally
+let automationSchedulerTask: any = null;
+let dailyRewardsSchedulerTasks: any[] = [];
 
 // Middleware
 app.use(compression()); // Enable gzip compression for all responses
@@ -110,7 +110,7 @@ if (require.main === module) {
 
     // Start the automated fate pick scheduler
     try {
-      automationSchedulerInterval =
+      automationSchedulerTask =
         AIAutomationService.startAutomatedFatePickScheduler();
       console.log("🤖 AI Automation Service started successfully");
     } catch (error) {
@@ -125,13 +125,16 @@ if (require.main === module) {
       console.error("❌ Failed to start Session Cleanup Service:", error);
     }
 
-    // Start the daily rewards service
+    // Start the daily rewards and shop service
     try {
-      dailyRewardsSchedulerInterval =
+      dailyRewardsSchedulerTasks =
         DailyRewardsService.startDailyRewardsScheduler();
-      console.log("🎁 Daily Rewards Service started successfully");
+      console.log("🎁 Daily Rewards and Shop Service started successfully");
     } catch (error) {
-      console.error("❌ Failed to start Daily Rewards Service:", error);
+      console.error(
+        "❌ Failed to start Daily Rewards and Shop Service:",
+        error
+      );
     }
   });
 }
@@ -139,15 +142,11 @@ if (require.main === module) {
 // Graceful shutdown handler
 process.on("SIGTERM", () => {
   console.log("🛑 SIGTERM received, shutting down gracefully");
-  if (automationSchedulerInterval) {
-    AIAutomationService.stopAutomatedFatePickScheduler(
-      automationSchedulerInterval
-    );
+  if (automationSchedulerTask) {
+    AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerTask);
   }
-  if (dailyRewardsSchedulerInterval) {
-    DailyRewardsService.stopDailyRewardsScheduler(
-      dailyRewardsSchedulerInterval
-    );
+  if (dailyRewardsSchedulerTasks.length > 0) {
+    DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerTasks);
   }
   SessionCleanupService.stop();
   process.exit(0);
@@ -155,15 +154,11 @@ process.on("SIGTERM", () => {
 
 process.on("SIGINT", () => {
   console.log("🛑 SIGINT received, shutting down gracefully");
-  if (automationSchedulerInterval) {
-    AIAutomationService.stopAutomatedFatePickScheduler(
-      automationSchedulerInterval
-    );
+  if (automationSchedulerTask) {
+    AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerTask);
   }
-  if (dailyRewardsSchedulerInterval) {
-    DailyRewardsService.stopDailyRewardsScheduler(
-      dailyRewardsSchedulerInterval
-    );
+  if (dailyRewardsSchedulerTasks.length > 0) {
+    DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerTasks);
   }
   SessionCleanupService.stop();
   process.exit(0);
