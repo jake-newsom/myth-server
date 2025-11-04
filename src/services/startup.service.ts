@@ -14,7 +14,9 @@ const StartupService = {
       // Check if shop configuration exists
       const configs = await DailyShopModel.getShopConfig();
       if (configs.length === 0) {
-        logger.warn("⚠️ No shop configuration found. Shop will not function until configured.");
+        logger.warn(
+          "⚠️ No shop configuration found. Shop will not function until configured."
+        );
         return;
       }
 
@@ -26,21 +28,29 @@ const StartupService = {
 
       if (offerings.length === 0) {
         logger.info(`🔧 No offerings found for ${shopDate}, generating now...`);
-        
+
         try {
           await DailyShopService.generateDailyOfferings(shopDate);
-          
+
           // Verify offerings were created
-          const newOfferings = await DailyShopModel.getTodaysOfferings(shopDate);
-          logger.info(`🎉 Generated ${newOfferings.length} daily shop offerings for ${shopDate}`);
+          const newOfferings = await DailyShopModel.getTodaysOfferings(
+            shopDate
+          );
+          logger.info(
+            `🎉 Generated ${newOfferings.length} daily shop offerings for ${shopDate}`
+          );
         } catch (error) {
-          logger.error("❌ Failed to generate daily shop offerings:", error as any);
+          logger.error(
+            "❌ Failed to generate daily shop offerings:",
+            error as any
+          );
           // Don't throw - let the server continue running
         }
       } else {
-        logger.info(`✅ Found ${offerings.length} existing offerings for ${shopDate}`);
+        logger.info(
+          `✅ Found ${offerings.length} existing offerings for ${shopDate}`
+        );
       }
-
     } catch (error) {
       logger.error("❌ Error initializing daily shop:", error as any);
       // Don't throw - let the server continue running even if shop init fails
@@ -52,7 +62,7 @@ const StartupService = {
    */
   async initialize(): Promise<void> {
     logger.info("🚀 Running startup initialization...");
-    
+
     try {
       await this.initializeDailyShop();
       logger.info("✅ Startup initialization completed successfully");
@@ -60,7 +70,7 @@ const StartupService = {
       logger.error("❌ Startup initialization failed:", error as any);
       // Don't throw - let the server continue running
     }
-  }
+  },
 };
 
 export default StartupService;
