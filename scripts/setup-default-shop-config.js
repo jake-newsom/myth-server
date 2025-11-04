@@ -11,7 +11,7 @@ async function setupDefaultShopConfig() {
     const defaultConfigs = [
       {
         item_type: 'legendary_card',
-        daily_limit: 1,
+        daily_limit: 3, // Can buy each of the 3 legendary cards (1 per mythology)
         price: 100,
         currency: 'card_fragments',
         daily_availability: 3, // 1 per mythology
@@ -19,7 +19,7 @@ async function setupDefaultShopConfig() {
       },
       {
         item_type: 'epic_card',
-        daily_limit: 1,
+        daily_limit: 3, // Can buy each of the 3 epic cards (1 per mythology)
         price: 50,
         currency: 'card_fragments',
         daily_availability: 3, // 1 per mythology
@@ -27,7 +27,7 @@ async function setupDefaultShopConfig() {
       },
       {
         item_type: 'enhanced_card',
-        daily_limit: 1,
+        daily_limit: 2, // Can buy each of the 2 enhanced cards
         price: 25,
         currency: 'gold',
         daily_availability: 2, // 2 random enhanced cards
@@ -35,7 +35,7 @@ async function setupDefaultShopConfig() {
       },
       {
         item_type: 'pack',
-        daily_limit: 3,
+        daily_limit: 3, // Can buy 3 packs total (packs are not unique items)
         price: 50,
         currency: 'gold',
         daily_availability: 1, // Unlimited availability but limited purchases

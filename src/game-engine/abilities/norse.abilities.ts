@@ -88,8 +88,8 @@ export const norseAbilities: AbilityMap = {
       triggerCard.owner
     );
     for (const enemy of adjacentEnemies) {
-      const pushEvent = pushCardAway(enemy, position, board);
-      if (pushEvent) gameEvents.push(pushEvent);
+      const pushEvents = pushCardAway(enemy, position, board);
+      gameEvents.push(...pushEvents);
     }
 
     return gameEvents;

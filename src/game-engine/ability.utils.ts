@@ -650,11 +650,48 @@ export function getAllAlliesOnBoard(
   return getCardsByCondition(board, (card) => card.owner === playerId);
 }
 
+/**
+ * Applies tile effects to a card when it moves to a new position
+ * Returns events for any tile effects that were applied
+ */
+export function applyTileEffectsToMovedCard(
+  card: InGameCard,
+  newPosition: BoardPosition,
+  board: GameBoard
+): BaseGameEvent[] {
+  const events: BaseGameEvent[] = [];
+  const newTile = getTileAtPosition(newPosition, board);
+
+  if (newTile?.tile_effect) {
+    const tileEffectTransferred = transferTileEffectToCard(
+      card,
+      newTile.tile_effect
+    );
+
+    if (tileEffectTransferred) {
+      // Update the card's current power after applying tile effect
+      card.current_power = updateCurrentPower(card);
+
+      events.push({
+        type: EVENT_TYPES.CARD_POWER_CHANGED,
+        eventId: uuidv4(),
+        timestamp: Date.now(),
+        cardId: card.user_card_instance_id,
+        position: newPosition,
+      } as CardEvent);
+    }
+  }
+
+  return events;
+}
+
 export function pushCardAway(
   card: InGameCard,
   fromPosition: BoardPosition,
   board: GameBoard
-): BaseGameEvent | null {
+): BaseGameEvent[] {
+  const events: BaseGameEvent[] = [];
+
   // Find the card's current position
   let cardPosition: BoardPosition | null = null;
   for (let y = 0; y < board.length; y++) {
@@ -669,7 +706,7 @@ export function pushCardAway(
     if (cardPosition) break;
   }
 
-  if (!cardPosition) return null;
+  if (!cardPosition) return events;
 
   // Calculate push direction (away from the triggering position)
   const deltaX = cardPosition.x - fromPosition.x;
@@ -686,7 +723,7 @@ export function pushCardAway(
     !isValidPosition(newPosition, board.length) ||
     getTileAtPosition(newPosition, board)?.card
   ) {
-    return null; // Can't push if destination is invalid or occupied
+    return events; // Can't push if destination is invalid or occupied
   }
 
   // Move the card
@@ -697,7 +734,7 @@ export function pushCardAway(
     newTile.card = card;
     currentTile.card = null;
 
-    return {
+    events.push({
       type: EVENT_TYPES.CARD_MOVED,
       eventId: uuidv4(),
       timestamp: Date.now(),
@@ -705,10 +742,13 @@ export function pushCardAway(
       fromPosition: cardPosition,
       toPosition: newPosition,
       animation: "push",
-    } as CardEvent;
+    } as CardEvent);
+
+    // Apply tile effects to the moved card
+    events.push(...applyTileEffectsToMovedCard(card, newPosition, board));
   }
 
-  return null;
+  return events;
 }
 
 export function pullCardsIn(
@@ -773,6 +813,11 @@ export function pullCardsIn(
         toPosition: intermediatePosition,
         animation: "pull",
       } as CardEvent);
+
+      // Apply tile effects to the moved card
+      gameEvents.push(
+        ...applyTileEffectsToMovedCard(enemyCard, intermediatePosition, board)
+      );
     }
   }
 
