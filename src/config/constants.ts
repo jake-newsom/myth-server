@@ -54,11 +54,57 @@ export const AI_CONFIG = {
     FLIP_BONUS: 100,
     CORNER_BONUS: 50,
     CENTER_BONUS: 25,
+    EDGE_BONUS: 15,
+    // Ability-related scoring
+    ABILITY_BASE_VALUE: 80,
+    BUFF_ALLY_VALUE: 40,
+    DEBUFF_ENEMY_VALUE: 35,
+    DRAW_CARD_VALUE: 70,
+    FLIP_ENEMY_VALUE: 120,
+    BOARD_CONTROL_VALUE: 30,
+    TILE_MANIPULATION_VALUE: 25,
+    PROTECTION_VALUE: 60,
+    // Strategic positioning
+    DEFENSIVE_POSITION_BONUS: 20,
+    OFFENSIVE_POSITION_BONUS: 35,
+    SYNERGY_BONUS: 45,
   },
   MOVE_SELECTION: {
     EASY_TOP_MOVES: 5,
     MEDIUM_TOP_MOVES: 3,
     HARD_TOP_MOVES: 1,
+  },
+  LOOKAHEAD: {
+    EASY_DEPTH: 0, // No lookahead, immediate evaluation only
+    MEDIUM_DEPTH: 1, // 1 move lookahead
+    HARD_DEPTH: 2, // 2 moves lookahead
+    MAX_TIME_MS: 3000, // Maximum time for move calculation
+  },
+  DIFFICULTY_WEIGHTS: {
+    EASY: {
+      IMMEDIATE_FLIPS: 1.0,
+      CARD_POWER: 0.8,
+      ABILITY_IMPACT: 0.3,
+      POSITIONAL: 0.5,
+      FUTURE_POTENTIAL: 0.1,
+      RANDOMNESS: 0.3, // 30% random factor
+    },
+    MEDIUM: {
+      IMMEDIATE_FLIPS: 1.0,
+      CARD_POWER: 1.0,
+      ABILITY_IMPACT: 0.7,
+      POSITIONAL: 0.8,
+      FUTURE_POTENTIAL: 0.5,
+      RANDOMNESS: 0.15, // 15% random factor
+    },
+    HARD: {
+      IMMEDIATE_FLIPS: 1.0,
+      CARD_POWER: 1.0,
+      ABILITY_IMPACT: 1.0,
+      POSITIONAL: 1.0,
+      FUTURE_POTENTIAL: 0.9,
+      RANDOMNESS: 0.05, // 5% random factor
+    },
   },
 } as const;
 
