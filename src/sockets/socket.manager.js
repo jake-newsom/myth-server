@@ -4,6 +4,7 @@ const { setupGameNamespace } = require("./namespace.game");
 const db = require("../config/db.config").default; // Access the database
 const GameLogic = require("../game-engine/game.logic").GameLogic; // Import GameLogic class for game actions
 const UserModel = require("../models/user.model").default; // Import UserModel for updating currency
+const { matchmakingQueue } = require("../api/controllers/matchmaking.controller"); // Import matchmaking queue for cleanup
 
 /**
  * In-memory store for active games and player sockets
@@ -376,6 +377,13 @@ function initializeSocketManager(io) {
 
       // Remove from user socket mapping
       userSocketMap.delete(userId);
+
+      // Clean up matchmaking queue on disconnect
+      const queueIndex = matchmakingQueue.findIndex((p) => p.userId === userId);
+      if (queueIndex > -1) {
+        matchmakingQueue.splice(queueIndex, 1);
+        console.log(`User ${userId} removed from matchmaking queue due to disconnect`);
+      }
 
       // Find any games this user was part of and update their status
       for (const [gameId, gameData] of activeGames.entries()) {

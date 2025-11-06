@@ -12,7 +12,10 @@ import {
 import { TurnManager } from "./turn.manager";
 import { GameLogic, GameStatus } from "../game-engine/game.logic";
 import { AILogic } from "../game-engine/ai.logic";
-import { clearActiveMatch } from "../api/controllers/matchmaking.controller";
+import {
+  clearActiveMatch,
+  matchmakingQueue,
+} from "../api/controllers/matchmaking.controller";
 import { sanitizeGameStateForPlayer } from "../utils/sanitize";
 import logger from "../utils/logger";
 
@@ -379,6 +382,15 @@ export function setupGameNamespace(io: Server): void {
     // Clean-up on disconnect – Phase 1 does not require advanced logic.
     socket.on("disconnect", (reason) => {
       console.log(`[/game] Disconnect – userId=${userId}: ${reason}`);
+
+      // Clean up matchmaking queue on disconnect
+      const queueIndex = matchmakingQueue.findIndex((p) => p.userId === userId);
+      if (queueIndex > -1) {
+        matchmakingQueue.splice(queueIndex, 1);
+        console.log(
+          `User ${userId} removed from matchmaking queue due to disconnect`
+        );
+      }
 
       // Optionally: handle cleanup when all sockets for a player disconnect
       // (Grace period logic – Phase-5)

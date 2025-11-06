@@ -60,20 +60,47 @@ const MatchmakingController = {
       }
 
       // Prevent joining if already in queue or an active match
-      if (
-        matchmakingQueue.find((p) => p.userId === userId) ||
-        activeMatches.has(userId)
-      ) {
+      const existingQueueEntry = matchmakingQueue.find(
+        (p) => p.userId === userId
+      );
+      const hasActiveMatch = activeMatches.has(userId);
+
+      if (existingQueueEntry || hasActiveMatch) {
         // If already matched, return existing gameId
-        if (activeMatches.has(userId)) {
+        if (hasActiveMatch) {
           return res.status(200).json({
             status: "matched",
             gameId: activeMatches.get(userId),
           });
         }
-        return res.status(400).json({
-          error: { message: "Already in queue or an active match." },
-        });
+
+        // If in queue, check if entry is stale (older than 5 minutes)
+        if (existingQueueEntry) {
+          const now = new Date();
+          const entryAge =
+            now.getTime() - existingQueueEntry.timestamp.getTime();
+          const staleThreshold = 5 * 60 * 1000; // 5 minutes
+
+          if (entryAge > staleThreshold) {
+            // Remove stale entry and allow rejoin
+            const index = matchmakingQueue.findIndex(
+              (p) => p.userId === userId
+            );
+            if (index > -1) {
+              matchmakingQueue.splice(index, 1);
+              console.log(
+                `Removed stale queue entry for user ${userId}, age: ${Math.floor(
+                  entryAge / 1000
+                )}s`
+              );
+            }
+          } else {
+            // Entry is fresh, user is legitimately in queue
+            return res.status(400).json({
+              error: { message: "Already in queue or an active match." },
+            });
+          }
+        }
       }
 
       // Check if there's someone else waiting in the queue
@@ -315,4 +342,4 @@ const MatchmakingController = {
   },
 };
 
-export { MatchmakingController, clearActiveMatch };
+export { MatchmakingController, clearActiveMatch, matchmakingQueue };

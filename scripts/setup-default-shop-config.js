@@ -1,3 +1,6 @@
+// Load environment variables from .env file
+require('dotenv').config();
+
 const db = require("../dist/config/db.config.js").default;
 
 /**
@@ -28,7 +31,7 @@ async function setupDefaultShopConfig() {
       {
         item_type: 'enhanced_card',
         daily_limit: 2, // Can buy each of the 2 enhanced cards
-        price: 25,
+        price: 1000,
         currency: 'gold',
         daily_availability: 2, // 2 random enhanced cards
         reset_price_gems: 20
