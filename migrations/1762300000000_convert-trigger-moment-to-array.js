@@ -30,7 +30,7 @@ exports.up = (pgm) => {
   // Make the new column not null and set default
   pgm.alterColumn("special_abilities", "trigger_moments", {
     notNull: true,
-    default: "'{}'::trigger_moment[]"
+    default: pgm.func("ARRAY[]::trigger_moment[]")
   });
 
   // Drop the old trigger_moment column
