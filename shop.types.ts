@@ -25,7 +25,7 @@ export interface ShopCard {
     ability_id: string;
     name: string;
     description: string;
-    trigger_moment: string;
+    trigger_moments: string[];
     parameters: Record<string, any>;
   } | null;
 }

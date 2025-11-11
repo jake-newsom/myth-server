@@ -4,6 +4,7 @@ import { AI_CONFIG, GAME_CONFIG } from "../config/constants";
 import * as _ from "lodash";
 import * as validators from "./game.validators";
 import { GameLogic } from "./game.logic";
+import { simulationContext } from "./simulation.context";
 
 interface MoveEvaluation {
   cardInstanceId: string;
@@ -210,13 +211,15 @@ export class LookaheadEngine {
     try {
       const clonedState = _.cloneDeep(gameState);
 
-      // Use GameLogic to simulate the move
-      const result = await GameLogic.placeCard(
-        clonedState,
-        playerId,
-        cardInstanceId,
-        position
-      );
+      // Use GameLogic to simulate the move within simulation context
+      const result = await simulationContext.withSimulation(async () => {
+        return await GameLogic.placeCard(
+          clonedState,
+          playerId,
+          cardInstanceId,
+          position
+        );
+      });
 
       return result.state;
     } catch (error) {

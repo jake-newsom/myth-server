@@ -3,6 +3,27 @@ import { InGameCard } from "../types/card.types";
 import { TriggerMoment } from "../types/card.types";
 import { AI_CONFIG } from "../config/constants";
 import * as _ from "lodash";
+
+// Helper function to safely check if an ability has a specific trigger
+function hasTrigger(ability: any, trigger: TriggerMoment): boolean {
+  if (!ability) return false;
+  if (!ability.triggerMoments) return false;
+  
+  // Handle PostgreSQL array format or ensure it's a JavaScript array
+  let triggerMoments = ability.triggerMoments;
+  
+  // If it's a string that looks like a PostgreSQL array, parse it
+  if (typeof triggerMoments === 'string') {
+    if (triggerMoments.startsWith('{') && triggerMoments.endsWith('}')) {
+      triggerMoments = triggerMoments.slice(1, -1).split(',').map(t => t.trim()).filter(t => t.length > 0);
+    } else {
+      triggerMoments = [triggerMoments];
+    }
+  }
+  
+  if (!Array.isArray(triggerMoments)) return false;
+  return triggerMoments.includes(trigger);
+}
 import {
   getAdjacentCards,
   getAlliesAdjacentTo,
@@ -33,13 +54,32 @@ export class AbilityAnalyzer {
 
     const ability = card.base_card_data.special_ability;
     const abilityName = ability.name;
-    const triggerMoment = ability.triggerMoment;
+    
+    // Safely get trigger moments array
+    let triggerMoments: any = ability.triggerMoments || [];
+    
+    // Handle PostgreSQL array format
+    if (typeof triggerMoments === 'string') {
+      if (triggerMoments.startsWith('{') && triggerMoments.endsWith('}')) {
+        triggerMoments = triggerMoments.slice(1, -1).split(',').map((t: string) => t.trim()).filter((t: string) => t.length > 0);
+      } else {
+        triggerMoments = [triggerMoments];
+      }
+    }
+    
+    if (!Array.isArray(triggerMoments)) {
+      triggerMoments = [];
+    }
 
     // Base value for having an ability
     score += AI_CONFIG.MOVE_EVALUATION.ABILITY_BASE_VALUE * 0.5;
 
     // Evaluate based on trigger moment (when does it activate?)
-    score += this.evaluateTriggerTiming(triggerMoment);
+    // Evaluate trigger timing - take the best timing from all triggers
+    if (triggerMoments.length > 0) {
+      const bestTriggerScore = Math.max(...triggerMoments.map((tm: TriggerMoment) => this.evaluateTriggerTiming(tm)));
+      score += bestTriggerScore;
+    }
 
     // Evaluate specific ability effects
     score += this.evaluateSpecificAbility(
@@ -285,8 +325,10 @@ export class AbilityAnalyzer {
     for (const adjacentCard of adjacentCards) {
       if (
         adjacentCard.owner === aiPlayerId &&
-        adjacentCard.base_card_data.special_ability?.triggerMoment ===
+        hasTrigger(
+          adjacentCard.base_card_data.special_ability,
           TriggerMoment.AnyOnFlip
+        )
       ) {
         score += AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 0.8;
       }
@@ -301,8 +343,10 @@ export class AbilityAnalyzer {
     for (const cardId of aiPlayer.hand) {
       const handCard = gameState.hydrated_card_data_cache?.[cardId];
       if (
-        handCard?.base_card_data.special_ability?.triggerMoment ===
-        TriggerMoment.HandOnPlace
+        hasTrigger(
+          handCard?.base_card_data.special_ability,
+          TriggerMoment.HandOnPlace
+        )
       ) {
         score += AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 0.6;
       }

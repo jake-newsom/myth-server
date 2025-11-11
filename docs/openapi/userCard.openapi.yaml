@@ -113,9 +113,11 @@ components:
           format: uuid
         description:
           type: string
-        triggerMoment:
-          type: string
-          enum: [OnPlace, OnFlip, OnFlipped, OnTurnStart, OnTurnEnd]
+        triggerMoments:
+          type: array
+          items:
+            type: string
+            enum: [OnPlace, OnFlip, OnFlipped, OnTurnStart, OnTurnEnd, OnRoundEnd, OnRoundStart, AnyOnFlip, AnyOnFlipped, OnDefend, AnyOnDefend, HandOnFlip, BoardOnFlip, HandOnPlace, HandOnDefend, BoardOnPlace, BeforeCombat, AfterCombat, OnCombat]
         parameters:
           type: object
           description: Additional parameters for the ability
@@ -125,7 +127,7 @@ components:
         - name
         - ability_id
         - description
-        - triggerMoment
+        - triggerMoments
         - parameters
 
     BaseCardData:

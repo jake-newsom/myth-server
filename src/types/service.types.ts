@@ -181,7 +181,7 @@ export interface CardWithAbility {
   tags: string[];
   ability_name?: string;
   ability_description?: string;
-  trigger_moment?: string;
+  trigger_moments?: string[];
   ability_parameters?: Record<string, any>;
 }
 

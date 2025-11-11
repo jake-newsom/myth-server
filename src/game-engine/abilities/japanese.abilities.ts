@@ -1,5 +1,6 @@
 import { PowerValues, TileStatus } from "../../types";
 import { AbilityMap, CombatResolverMap } from "../../types/game-engine.types";
+import { simulationContext } from "../simulation.context";
 import {
   addTempBuff,
   buff,
@@ -18,6 +19,11 @@ import {
   getCardsInSameColumn,
   removeTemporaryBuffs,
   getOpponentId,
+  getDiagonallyAdjacentCards,
+  getRandomCard,
+  destroyCardAtPosition,
+  createOrUpdateBuff,
+  removeBuffsByCondition,
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { flipCard } from "../game.utils";
@@ -33,6 +39,44 @@ import { getPositionOfCardById } from "../ability.utils";
 export const japaneseCombatResolvers: CombatResolverMap = {};
 
 export const japaneseAbilities: AbilityMap = {
+  // Moon's Balance: Each round drain the strongest enemy for -1 and grant +1 to the weakest ally
+  "Moon's Balance": (context) => {
+    const { triggerCard, state } = context;
+    const gameEvents: BaseGameEvent[] = [];
+
+    const enemies = getCardsByCondition(
+      state.board,
+      (card) => card.owner !== triggerCard.owner
+    );
+    if (enemies.length === 0) return [];
+
+    const strongestEnemy = enemies.reduce((strongest, current) => {
+      return getCardTotalPower(current) > getCardTotalPower(strongest)
+        ? current
+        : strongest;
+    });
+
+    if (strongestEnemy) {
+      gameEvents.push(debuff(strongestEnemy, -1));
+    }
+
+    const allies = getCardsByCondition(
+      state.board,
+      (card) => card.owner === triggerCard.owner
+    );
+    const weakestAlly = allies.reduce((weakest, current) => {
+      return getCardTotalPower(current) < getCardTotalPower(weakest)
+        ? current
+        : weakest;
+    });
+
+    if (weakestAlly) {
+      gameEvents.push(addTempBuff(weakestAlly, 1000, 1));
+    }
+
+    return gameEvents;
+  },
+
   // Frost Row: Enemies in the same row lose 1 power this turn.
   "Frost Row": (context) => {
     const {
@@ -83,35 +127,73 @@ export const japaneseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Slipstream: Gains +1 power if placed next to an already defeated card.
+  // Slipstream: Each round steals a blessing from a random enemy
   Slipstream: (context) => {
     const {
-      position,
       triggerCard,
       state: { board },
     } = context;
 
-    if (!position) return [];
+    const gameEvents: BaseGameEvent[] = [];
 
-    const adjacentCards = getAdjacentCards(position, board);
-    const hasAdjacentDefeated = adjacentCards.some(
-      (card) => card.defeats.length > 0
-    );
+    const enemies = getCardsByCondition(
+      board,
+      (card) => card.owner !== triggerCard.owner
+    ).filter((card) => {
+      card.temporary_effects.length > 0 &&
+        card.temporary_effects.some((effect) => {
+          const totalPower = Object.values(effect.power).reduce(
+            (sum, val) => sum + val,
+            0
+          );
+          return totalPower > 0;
+        });
+    });
+    if (enemies.length === 0) return [];
 
-    if (hasAdjacentDefeated) {
-      return [addTempBuff(triggerCard, 1000, 1)];
+    const randomEnemy = enemies[Math.floor(Math.random() * enemies.length)];
+    if (randomEnemy) {
+      //select a random buff from the enemy
+      const buffs = randomEnemy.temporary_effects.filter((effect) => {
+        const totalPower = Object.values(effect.power).reduce(
+          (sum, val) => sum + val,
+          0
+        );
+        return totalPower > 0;
+      });
+      const randomBuff = buffs[Math.floor(Math.random() * buffs.length)];
+      //remove the buff from the enemy
+      gameEvents.push(
+        removeBuffsByCondition(
+          randomEnemy,
+          (effect) => effect.name === randomBuff.name
+        )
+      );
+      // add the buff to trigger card
+      gameEvents.push(
+        createOrUpdateBuff(
+          triggerCard,
+          1000,
+          randomBuff.power,
+          randomBuff.name ?? "Slipstream",
+          randomBuff.data
+        )
+      );
+    }
+
+    return gameEvents;
+  },
+
+  // Hunter's Mark: When an ally is defeted, grant -1 to the attacker
+  "Hunter's Mark": (context) => {
+    simulationContext.debugLog("Hunter's Mark: ", context);
+    const { flippedBy } = context;
+
+    if (flippedBy) {
+      return [debuff(flippedBy, -1, "Hunter's Mark")];
     }
 
     return [];
-  },
-
-  // Hunter's Mark: Gains +1 power for each defeated enemy.
-  "Hunter's Mark": (context) => {
-    const { triggerCard } = context;
-
-    // This should get called once for each card that is flipped by the trigger card,
-    // so just buff by 1
-    return [buff(triggerCard, 1)];
   },
 
   // Vengeful Bite: When defeated, the attacker loses 1 power permanently.
@@ -230,51 +312,54 @@ export const japaneseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Steadfast Guard: Adjacent allies gain +1 power if attacked but not defeated.
+  // Benkei
+  // Steadfast Guard: Gain +1 for each adjacent enemy
+  // OLD: adjacent allies gain +1 power if attacked but not defeated.
   "Steadfast Guard": (context) => {
     const {
       triggerCard,
-      flippedCard,
+      position,
       state: { board },
     } = context;
-    const gameEvents: BaseGameEvent[] = [];
 
-    const benkeiPosition = getPositionOfCardById(
-      triggerCard.user_card_instance_id,
-      board
-    );
-    if (!benkeiPosition) return [];
-
-    const allies = getAlliesAdjacentTo(
-      benkeiPosition,
+    const adjacentEnemies = getEnemiesAdjacentTo(
+      position,
       board,
       triggerCard.owner
     );
-    const allieIds = allies.map((ally) => ally.user_card_instance_id);
 
-    if (flippedCard && allieIds.includes(flippedCard.user_card_instance_id)) {
-      gameEvents.push(addTempBuff(flippedCard, 1000, 1));
-    }
+    return [addTempBuff(triggerCard, 1000, adjacentEnemies.length)];
 
-    return gameEvents;
+    // const benkeiPosition = getPositionOfCardById(
+    //   triggerCard.user_card_instance_id,
+    //   board
+    // );
+    // if (!benkeiPosition) return [];
+
+    // const allies = getAlliesAdjacentTo(
+    //   benkeiPosition,
+    //   board,
+    //   triggerCard.owner
+    // );
+    // const allieIds = allies.map((ally) => ally.user_card_instance_id);
+
+    // if (flippedCard && allieIds.includes(flippedCard.user_card_instance_id)) {
+    //   gameEvents.push(addTempBuff(flippedCard, 1000, 1));
+    // }
   },
 
-  // Demon Bane: Gains +2 power if adjacent to a YOKAI.
+  // Demon Bane: Gains +1 power when any demon is defeated
   "Demon Bane": (context) => {
     const {
-      position,
       triggerCard,
-      state: { board },
+      flippedCardId,
+      state: { hydrated_card_data_cache },
     } = context;
 
-    if (!position) return [];
-
-    const adjacentYokai = getAdjacentCards(position, board, { tag: "yokai" });
-
-    if (adjacentYokai.length > 0) {
-      return [addTempBuff(triggerCard, 1000, 2)];
+    const flippedCard = hydrated_card_data_cache?.[flippedCardId!];
+    if (flippedCard?.base_card_data.tags?.includes("demon")) {
+      return [createOrUpdateBuff(triggerCard, 1000, 1, "Demon Bane")];
     }
-
     return [];
   },
 
@@ -282,20 +367,23 @@ export const japaneseAbilities: AbilityMap = {
   "Beast Friend": (context) => {
     const {
       triggerCard,
+      position,
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
 
-    const allyBeasts = getCardsByCondition(
+    const adjacentEnemies = getEnemiesAdjacentTo(
+      position,
       board,
-      (card) =>
-        card.owner === triggerCard.owner &&
-        card.base_card_data.tags?.includes("beast")
+      triggerCard.owner
     );
 
-    for (const beast of allyBeasts) {
-      gameEvents.push(addTempBuff(beast, 1000, 1));
-    }
+    const buffAmount = adjacentEnemies.filter(
+      (enemy) => getCardTotalPower(enemy) > getCardTotalPower(triggerCard)
+    ).length;
+    gameEvents.push(
+      createOrUpdateBuff(triggerCard, 1000, buffAmount, "Beast Friend")
+    );
 
     return gameEvents;
   },
@@ -358,8 +446,126 @@ export const japaneseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Radiant Blessing: Adjacent allies gain +1 power for one turn.
+  // Radiant Blessing: Grant +1 to a random ally when an ally is defeated
   "Radiant Blessing": (context) => {
+    const { originalTriggerCard, triggerCard, state } = context;
+    const gameEvents: BaseGameEvent[] = [];
+
+    if (originalTriggerCard?.owner !== triggerCard.owner) {
+      const randomAlly = getRandomCard(state.board, {
+        ownerId: triggerCard.owner,
+      });
+      if (randomAlly) {
+        gameEvents.push(addTempBuff(randomAlly, 1000, 1));
+      }
+    }
+
+    return gameEvents;
+  },
+
+  // Storm Breaker: Destroy the strongest enemy BEAST or DRAGON, gain +2 after.
+  "Storm Breaker": (context) => {
+    const {
+      triggerCard,
+      state: { board },
+    } = context;
+
+    const gameEvents: BaseGameEvent[] = [];
+
+    const enemyBeastsAndDragons = getCardsByCondition(
+      board,
+      (card) =>
+        (card.base_card_data.tags?.includes("beast") ||
+          card.base_card_data.tags?.includes("dragon")) &&
+        card.owner !== triggerCard.owner
+    );
+
+    if (enemyBeastsAndDragons.length > 0) {
+      const strongestEnemy = enemyBeastsAndDragons.reduce(
+        (strongest, current) => {
+          return getCardTotalPower(current) > getCardTotalPower(strongest)
+            ? current
+            : strongest;
+        }
+      );
+      if (strongestEnemy) {
+        const enemyPosition = getPositionOfCardById(
+          strongestEnemy.user_card_instance_id,
+          board
+        );
+        if (enemyPosition) {
+          const destroyEvent = destroyCardAtPosition(
+            enemyPosition,
+            board,
+            "destroy"
+          );
+          if (destroyEvent) {
+            gameEvents.push(destroyEvent);
+            gameEvents.push(addTempBuff(triggerCard, 1000, 2));
+          }
+        }
+      }
+    }
+
+    return gameEvents;
+  },
+
+  // Warrior's Aura: Allies in the same row gain +1 every turn
+  "Warrior's Aura": (context) => {
+    const { position, triggerCard, state } = context;
+    const gameEvents: BaseGameEvent[] = [];
+
+    if (!position) return [];
+
+    const alliesInRow = getCardsInSameRow(
+      position,
+      state.board,
+      getOpponentId(triggerCard.owner, state)
+    );
+
+    for (const ally of alliesInRow) {
+      const event = addTempBuff(ally, 1000, 1);
+      if (event) gameEvents.push({ ...event, animation: "warrior-aura" });
+    }
+
+    return gameEvents;
+  },
+
+  // Many Heads: Gains +1 power for each adjacent enemy.
+  // -1 power to enemies in the same row and column
+  "Many Heads": (context) => {
+    const {
+      position,
+      triggerCard,
+      state: { board },
+    } = context;
+    const gameEvents: BaseGameEvent[] = [];
+    if (!position) return [];
+
+    const adjacentEnemiesInRow = getCardsInSameRow(
+      position,
+      board,
+      triggerCard.owner
+    );
+    const adjacentEnemiesInColumn = getCardsInSameColumn(
+      position,
+      board,
+      triggerCard.owner
+    );
+
+    const adjacentEnemies = [
+      ...adjacentEnemiesInRow,
+      ...adjacentEnemiesInColumn,
+    ];
+    for (const enemy of adjacentEnemies) {
+      gameEvents.push(debuff(enemy, -1));
+    }
+
+    return gameEvents;
+  },
+
+  // Tidal Sweep: Defeats enemies diagonally if they have lower total power
+  "Tidal Sweep": (context) => {
     const {
       position,
       triggerCard,
@@ -369,21 +575,54 @@ export const japaneseAbilities: AbilityMap = {
 
     if (!position) return [];
 
-    const adjacentAllies = getAlliesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner
-    );
+    const enemies = getDiagonallyAdjacentCards(position, board, {
+      owner: "enemy",
+      playerId: triggerCard.owner,
+    });
+    for (const enemy of enemies) {
+      if (getCardTotalPower(enemy) < getCardTotalPower(triggerCard)) {
+        const enemyPosition = getPositionOfCardById(
+          enemy.user_card_instance_id,
+          board
+        );
+        if (!enemyPosition) continue;
 
-    for (const ally of adjacentAllies) {
-      gameEvents.push(addTempBuff(ally, 2, 1));
+        gameEvents.push(
+          ...flipCard(context.state, enemyPosition, enemy, triggerCard)
+        );
+      }
     }
 
     return gameEvents;
   },
 
-  // Storm Breaker: Defeat strongest enemy in the same row regardless of power.
-  "Storm Breaker": (context) => {
+  // Bone Chill: All adjacent enemies lose 1 power.
+  "Bone Chill": (context) => {
+    const {
+      position,
+      triggerCard,
+      state: { board },
+    } = context;
+    const gameEvents: BaseGameEvent[] = [];
+
+    if (!position) return [];
+
+    const adjacentEnemies = getEnemiesAdjacentTo(
+      position,
+      board,
+      triggerCard.owner
+    );
+
+    for (const enemy of adjacentEnemies) {
+      gameEvents.push(debuff(enemy, -1));
+    }
+
+    return gameEvents;
+  },
+};
+
+/**
+  ## DEFEAT STRONGEST ENEMY IN THE SAME ROW 
     const {
       position,
       triggerCard,
@@ -417,102 +656,5 @@ export const japaneseAbilities: AbilityMap = {
         }
       }
     }
-
-    return [];
-  },
-
-  // Warrior's Aura: Adjacent friendly cards gain +1 power.
-  "Warrior's Aura": (context) => {
-    const {
-      position,
-      triggerCard,
-      state: { board },
-    } = context;
-    const gameEvents: BaseGameEvent[] = [];
-
-    if (!position) return [];
-
-    const adjacentAllies = getAlliesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner
-    );
-
-    for (const ally of adjacentAllies) {
-      gameEvents.push(addTempBuff(ally, 1000, 1));
-    }
-
-    return gameEvents;
-  },
-
-  // Many Heads: Gains +1 power for each adjacent enemy.
-  "Many Heads": (context) => {
-    const {
-      position,
-      triggerCard,
-      state: { board },
-    } = context;
-
-    if (!position) return [];
-
-    const adjacentEnemies = getEnemiesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner
-    );
-
-    if (adjacentEnemies.length > 0) {
-      return [addTempBuff(triggerCard, 1000, adjacentEnemies.length)];
-    }
-
-    return [];
-  },
-
-  // Tidal Sweep: Enemies in the same column lose 1 power this turn.
-  "Tidal Sweep": (context) => {
-    const {
-      position,
-      triggerCard,
-      state: { board },
-    } = context;
-    const gameEvents: BaseGameEvent[] = [];
-
-    if (!position) return [];
-
-    const enemiesInColumn = getCardsInSameColumn(
-      position,
-      board,
-      triggerCard.owner
-    );
-
-    for (const enemy of enemiesInColumn) {
-      gameEvents.push(addTempDebuff(enemy, 3, -1));
-    }
-
-    return gameEvents;
-  },
-
-  // Bone Chill: All adjacent enemies lose 1 power.
-  "Bone Chill": (context) => {
-    const {
-      position,
-      triggerCard,
-      state: { board },
-    } = context;
-    const gameEvents: BaseGameEvent[] = [];
-
-    if (!position) return [];
-
-    const adjacentEnemies = getEnemiesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner
-    );
-
-    for (const enemy of adjacentEnemies) {
-      gameEvents.push(debuff(enemy, -1));
-    }
-
-    return gameEvents;
-  },
-};
+  
+ */

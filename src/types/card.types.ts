@@ -96,16 +96,27 @@ export enum TriggerMoment {
   OnFlipped = "OnFlipped",
   OnTurnStart = "OnTurnStart",
   OnTurnEnd = "OnTurnEnd",
-  AnyOnFlip = "AnyOnFlip",
+  OnRoundEnd = "OnRoundEnd",
+  OnRoundStart = "OnRoundStart",
   OnDefend = "OnDefend",
-  AnyOnDefend = "AnyOnDefend",
   HandOnFlip = "HandOnFlip",
   BoardOnFlip = "BoardOnFlip",
-  HandOnPlace = "HandOnPlace",
   BoardOnPlace = "BoardOnPlace",
   BeforeCombat = "BeforeCombat",
   AfterCombat = "AfterCombat",
   OnCombat = "OnCombat",
+
+  AnyOnPlace = "AnyOnPlace",
+  AnyOnFlip = "AnyOnFlip",
+  AnyOnFlipped = "AnyOnFlipped",
+  AnyOnDefend = "AnyOnDefend",
+
+  HandOnTurnStart = "HandOnTurnStart",
+  HandOnTurnEnd = "HandOnTurnEnd",
+  HandOnRoundStart = "HandOnRoundStart",
+  HandOnRoundEnd = "HandOnRoundEnd",
+  HandOnPlace = "HandOnPlace",
+  HandOnDefend = "HandOnDefend",
 }
 
 /**

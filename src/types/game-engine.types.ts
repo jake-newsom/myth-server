@@ -1,5 +1,5 @@
 import { BoardCell, BoardPosition, GameState, InGameCard } from "./game.types";
-
+import { TriggerMoment } from "./card.types";
 /**
  * Game Engine specific type definitions
  * Consolidated from game-engine directory files
@@ -64,7 +64,15 @@ export interface TileEvent extends BaseGameEvent {
 export type CombatContext = TriggerContext & {
   combatType: (typeof COMBAT_TYPES)[keyof typeof COMBAT_TYPES];
 };
-export type CombatResolverMethod = (context: CombatContext) => boolean;
+
+export type CombatResolverResult = {
+  preventDefeat: boolean;
+  events?: BaseGameEvent[];
+};
+
+export type CombatResolverMethod = (
+  context: CombatContext
+) => boolean | CombatResolverResult;
 export type CombatResolverMap = Record<string, CombatResolverMethod>;
 
 export type AbilityMethod = (context: TriggerContext) => BaseGameEvent[];
@@ -81,6 +89,8 @@ export enum GameStatus {
 export type TriggerContext = {
   state: GameState;
   triggerCard: InGameCard;
+  triggerMoment: TriggerMoment;
+  originalTriggerCard?: InGameCard;
   flippedCard?: InGameCard;
   flippedBy?: InGameCard;
   flippedCardId?: string;

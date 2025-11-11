@@ -108,7 +108,7 @@ const DailyShopModel = {
         c.power->>'left' as card_power_left,
         c.special_ability_id as card_special_ability_id,
         sa.name as ability_name, sa.description as ability_description, 
-        sa.trigger_moment as ability_trigger_moment, sa.parameters as ability_parameters,
+        sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
       FROM daily_shop_offerings dso
       LEFT JOIN cards c ON dso.card_id = c.card_id
@@ -148,7 +148,7 @@ const DailyShopModel = {
                   ability_id: row.card_special_ability_id,
                   name: row.ability_name,
                   description: row.ability_description,
-                  trigger_moment: row.ability_trigger_moment,
+                  trigger_moments: row.ability_trigger_moments || [],
                   parameters: row.ability_parameters,
                 }
               : null,

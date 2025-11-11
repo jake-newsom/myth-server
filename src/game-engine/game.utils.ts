@@ -20,11 +20,42 @@ import {
   TriggerContext,
   COMBAT_TYPES,
 } from "../types/game-engine.types";
+
+// Helper function to safely check if an ability has a specific trigger
+function hasTrigger(ability: any, trigger: TriggerMoment): boolean {
+  if (!ability) return false;
+
+  if (!ability.triggerMoments) return false;
+
+  // Handle PostgreSQL array format or ensure it's a JavaScript array
+  let triggerMoments = ability.triggerMoments;
+
+  // If it's a string that looks like a PostgreSQL array, parse it
+  if (typeof triggerMoments === "string") {
+    if (triggerMoments.startsWith("{") && triggerMoments.endsWith("}")) {
+      // PostgreSQL array format: {OnPlace,OnTurnStart} or {OnPlace, OnTurnStart}
+      triggerMoments = triggerMoments
+        .slice(1, -1)
+        .split(",")
+        .map((t) => t.trim()) // Remove spaces around trigger names
+        .filter((t) => t.length > 0);
+    } else {
+      // Single string value, convert to array
+      triggerMoments = [triggerMoments];
+    }
+  }
+
+  if (!Array.isArray(triggerMoments)) return false;
+
+  return triggerMoments.includes(trigger);
+}
 import { v4 as uuidv4 } from "uuid";
+import { simulationContext } from "./simulation.context";
 import {
   getPositionOfCardById,
   updateCurrentPower,
   transferTileEffectToCard,
+  getAllAlliesOnBoard,
 } from "./ability.utils";
 import { batchEvents } from "./game-events";
 
@@ -42,7 +73,7 @@ export function createBoardCell(
     ? {
         ...playedCardData,
         owner: playerId,
-        temporary_effects: [],
+        temporary_effects: [...playedCardData.temporary_effects], // Preserve existing temporary effects
         card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
         card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
         // Preserve the power_enhancements from the hydrated card data (includes power-ups)
@@ -106,6 +137,7 @@ export function resolveCombat(
         ...triggerAbilities(TriggerMoment.BeforeCombat, {
           state: newState,
           triggerCard: placedCell.card,
+          triggerMoment: TriggerMoment.BeforeCombat,
           position,
         })
       );
@@ -135,28 +167,94 @@ export function resolveCombat(
           const adjacentCardPower = adjacentCell.card.current_power[dir.to];
 
           let abilityPreventedDefeat = false;
+
+          // Check if the defending card has its own combat resolver
           if (
-            adjacentCell.card.base_card_data.special_ability?.triggerMoment ===
-            TriggerMoment.OnCombat
+            hasTrigger(
+              adjacentCell.card.base_card_data.special_ability,
+              TriggerMoment.OnCombat
+            )
           ) {
             const combatContext = {
               triggerCard: adjacentCell.card,
+              triggerMoment: TriggerMoment.OnCombat,
               position: { x: nx, y: ny },
               state: newState,
               combatType: COMBAT_TYPES.STANDARD,
             };
 
-            const abilityFunction =
-              combatResolvers[
-                adjacentCell.card.base_card_data.special_ability?.name
-              ];
+            const abilityName =
+              adjacentCell.card.base_card_data.special_ability?.name;
+            const abilityFunction = abilityName
+              ? combatResolvers[abilityName]
+              : undefined;
             if (abilityFunction) {
-              abilityPreventedDefeat = abilityFunction({
+              const result = abilityFunction({
                 ...combatContext,
                 triggerCard: adjacentCell.card,
                 position: { x: nx, y: ny },
                 combatType: COMBAT_TYPES.STANDARD,
               });
+
+              // Handle both boolean and CombatResolverResult returns
+              if (typeof result === "boolean") {
+                abilityPreventedDefeat = result;
+              } else {
+                abilityPreventedDefeat = result.preventDefeat;
+                if (result.events) {
+                  events.push(...result.events);
+                }
+              }
+            }
+          }
+
+          // Check if any ally has a protection ability (like Harbor Guardian)
+          if (!abilityPreventedDefeat && placedCardPower > adjacentCardPower) {
+            const allAllies = getAllAlliesOnBoard(
+              newState.board,
+              adjacentCell.card.owner
+            );
+            for (const ally of allAllies) {
+              if (
+                ally.user_card_instance_id ===
+                adjacentCell.card.user_card_instance_id
+              )
+                continue;
+
+              if (
+                ally.base_card_data.special_ability &&
+                combatResolvers[ally.base_card_data.special_ability.name]
+              ) {
+                const protectionContext = {
+                  triggerCard: ally,
+                  triggerMoment: TriggerMoment.OnCombat,
+                  position: { x: nx, y: ny },
+                  state: newState,
+                  combatType: COMBAT_TYPES.STANDARD,
+                  flippedCard: adjacentCell.card,
+                  flippedBy: placedCell.card,
+                };
+
+                const protectionResult =
+                  combatResolvers[ally.base_card_data.special_ability.name](
+                    protectionContext
+                  );
+
+                if (typeof protectionResult === "boolean") {
+                  if (protectionResult) {
+                    abilityPreventedDefeat = true;
+                    break;
+                  }
+                } else {
+                  if (protectionResult.preventDefeat) {
+                    abilityPreventedDefeat = true;
+                    if (protectionResult.events) {
+                      events.push(...protectionResult.events);
+                    }
+                    break;
+                  }
+                }
+              }
             }
           }
 
@@ -187,6 +285,7 @@ export function resolveCombat(
               ...triggerAbilities(TriggerMoment.OnDefend, {
                 state: newState,
                 triggerCard: adjacentCell.card,
+                triggerMoment: TriggerMoment.OnDefend,
                 flippedCard: adjacentCell.card,
                 flippedBy: placedCell.card,
                 position,
@@ -202,6 +301,7 @@ export function resolveCombat(
         ...triggerAbilities(TriggerMoment.AfterCombat, {
           state: newState,
           triggerCard: placedCell.card,
+          triggerMoment: TriggerMoment.AfterCombat,
           position,
         })
       );
@@ -228,6 +328,7 @@ export function flipCard(
   target: InGameCard,
   source: InGameCard
 ): BaseGameEvent[] {
+  simulationContext.debugLog(`function flipCard`);
   /**
    * Check various ways a card could be protected from defeat.
    */
@@ -245,6 +346,7 @@ export function flipCard(
     ...triggerAbilities(TriggerMoment.OnFlip, {
       state,
       triggerCard: source,
+      triggerMoment: TriggerMoment.OnFlip,
       flippedCardId: target.user_card_instance_id,
       position,
     })
@@ -276,6 +378,7 @@ export function flipCard(
     ...triggerAbilities(TriggerMoment.OnFlipped, {
       state,
       triggerCard: target,
+      triggerMoment: TriggerMoment.OnFlipped,
       flippedBy: source,
       position: targetPosition,
     })
@@ -283,45 +386,42 @@ export function flipCard(
   return events;
 }
 
-export function turnEndAbilities(state: GameState): BaseGameEvent[] {
+export function triggerAbilities(
+  trigger: TriggerMoment,
+  context: Omit<TriggerContext, "triggerCard"> & { triggerCard?: InGameCard }
+): BaseGameEvent[] {
   const events: BaseGameEvent[] = [];
+  const { state } = context;
 
-  for (let y = 0; y < state.board.length; y++) {
-    for (let x = 0; x < state.board[y].length; x++) {
-      const cell = state.board[y][x];
-      if (cell.card && cell.card.base_card_data.special_ability) {
-        const ability = cell.card.base_card_data.special_ability;
-        if (ability.triggerMoment === TriggerMoment.OnTurnEnd) {
-          events.push(
-            ...triggerAbilities(TriggerMoment.OnTurnEnd, {
-              state,
-              triggerCard: cell.card,
-              position: { x, y },
-            })
-          );
-        }
+  // check the specific card
+  if (context.triggerCard) {
+    const triggerCard = context.triggerCard;
+    if (triggerCard.base_card_data.special_ability) {
+      const ability = triggerCard.base_card_data.special_ability;
+      if (hasTrigger(ability, trigger) && abilities[ability.name]) {
+        // Create a properly typed context with required triggerCard
+        const contextWithTrigger: TriggerContext = {
+          ...context,
+          triggerCard,
+          triggerMoment: trigger,
+        };
+        events.push(...abilities[ability.name]?.(contextWithTrigger));
+        updateAllBoardCards(state);
       }
     }
   }
 
-  return events;
+  events.push(...triggerIndirectAbilities(trigger, context));
+
+  return batchEvents(events, 100);
 }
 
-export function triggerAbilities(
+export function triggerIndirectAbilities(
   trigger: TriggerMoment,
-  context: TriggerContext
+  context: Omit<TriggerContext, "triggerCard"> & { triggerCard?: InGameCard }
 ): BaseGameEvent[] {
   const events: BaseGameEvent[] = [];
-  const { triggerCard, state } = context;
-
-  // check the specific card
-  if (triggerCard.base_card_data.special_ability) {
-    const ability = triggerCard.base_card_data.special_ability;
-    if (ability.triggerMoment === trigger && abilities[ability.name]) {
-      events.push(...abilities[ability.name]?.(context));
-      updateAllBoardCards(state);
-    }
-  }
+  const { state, triggerCard = null } = context;
 
   let playerOrder = [];
   if (state.current_player_id === state.player1.user_id) {
@@ -336,40 +436,62 @@ export function triggerAbilities(
       const card = state.hydrated_card_data_cache?.[cardId];
       if (card && card.base_card_data.special_ability) {
         const ability = card.base_card_data.special_ability;
-        if (ability.triggerMoment === `Hand${trigger}`) {
-          events.push(...abilities[ability.name]?.(context));
+        if (hasTrigger(ability, `Hand${trigger}` as TriggerMoment)) {
+          const contextWithTrigger: TriggerContext = {
+            ...context,
+            triggerCard: card,
+            triggerMoment: `Hand${trigger}` as TriggerMoment,
+          };
+          if (triggerCard) {
+            contextWithTrigger.originalTriggerCard = triggerCard;
+          }
+          events.push(...abilities[ability.name]?.(contextWithTrigger));
         }
       }
     }
   }
 
+  // Update all hand cards after processing hand abilities
+  updateAllHandCards(state);
+
   // Check for "Any" variants
+  const lifecycleTriggers = [
+    TriggerMoment.OnRoundStart,
+    TriggerMoment.OnRoundEnd,
+    TriggerMoment.OnTurnStart,
+    TriggerMoment.OnTurnEnd,
+  ];
   for (const row of state.board) {
     for (const cell of row) {
       if (cell.card && cell.card.base_card_data.special_ability) {
         const ability = cell.card.base_card_data.special_ability;
-        if (ability.triggerMoment === `Any${trigger}`) {
-          context;
-          events.push(
-            ...abilities[ability.name]?.({ ...context, triggerCard: cell.card })
-          );
+
+        const hasAnyTrigger = hasTrigger(
+          ability,
+          `Any${trigger}` as TriggerMoment
+        );
+        const hasLifecycleTrigger =
+          lifecycleTriggers.includes(trigger) && hasTrigger(ability, trigger);
+
+        if (hasAnyTrigger || hasLifecycleTrigger) {
+          const anyContext: TriggerContext = {
+            ...context,
+            triggerCard: cell.card,
+            triggerMoment: `Any${trigger}` as TriggerMoment,
+          };
+
+          if (triggerCard) {
+            anyContext.originalTriggerCard = triggerCard;
+          }
+
+          const abilityEvents = abilities[ability.name]?.(anyContext);
+          if (abilityEvents) {
+            events.push(...abilityEvents);
+          }
         }
       }
     }
   }
-
-  // for (const player of playerOrder) {
-  //   for (const cardId of player.hand) {
-  //     const card = state.hydrated_card_data_cache?.[cardId];
-  //     if (card && card.base_card_data.special_ability) {
-  //       const ability = card.base_card_data.special_ability;
-  //       if (ability.triggerMoment === `Any${trigger}`) {
-  //         events.push(...abilities[ability.name]?.(context));
-  //       }
-  //     }
-  //   }
-  // }
-
   return batchEvents(events, 100);
 }
 
@@ -387,6 +509,24 @@ export function updateAllBoardCards(gameState: GameState) {
       if (cachedCard) {
         cachedCard.current_power = cell.card.current_power;
       }
+    }
+  }
+}
+
+export function updateAllHandCards(gameState: GameState) {
+  // Update player1's hand cards
+  for (const cardId of gameState.player1.hand) {
+    const card = gameState.hydrated_card_data_cache?.[cardId];
+    if (card) {
+      card.current_power = updateCurrentPower(card);
+    }
+  }
+
+  // Update player2's hand cards
+  for (const cardId of gameState.player2.hand) {
+    const card = gameState.hydrated_card_data_cache?.[cardId];
+    if (card) {
+      card.current_power = updateCurrentPower(card);
     }
   }
 }

@@ -25,6 +25,7 @@ import logger from "../utils/logger";
 import { GAME_CONFIG } from "../config/constants";
 
 import { GameStatus, TileEvent, TileStatus } from "../types";
+import { simulationContext } from "./simulation.context";
 export { GameStatus };
 
 // Note: Game winner is stored in the winner_id column in the database
@@ -54,7 +55,7 @@ export class GameLogic {
           c.power->>'bottom' as base_power_bottom, c.power->>'left' as base_power_left, 
           c.tags, c.special_ability_id, c.set_id,
           sa.name as ability_name, sa.description as ability_description, 
-          sa.trigger_moment as ability_trigger, sa.parameters as ability_parameters
+          sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters
         FROM "user_owned_cards" uci
         JOIN "cards" c ON uci.card_id = c.card_id
         LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
@@ -117,7 +118,8 @@ export class GameLogic {
                   id: row.special_ability_id,
                   name: row.ability_name,
                   description: row.ability_description,
-                  triggerMoment: row.ability_trigger as TriggerMoment,
+                  triggerMoments:
+                    (row.ability_triggers as TriggerMoment[]) || [],
                   parameters: row.ability_parameters,
                 }
               : null,
@@ -168,7 +170,7 @@ export class GameLogic {
           c.power->>'bottom' as base_power_bottom, c.power->>'left' as base_power_left, 
           c.tags, c.special_ability_id, c.set_id,
           sa.name as ability_name, sa.description as ability_description, 
-          sa.trigger_moment as ability_trigger, sa.parameters as ability_parameters
+          sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters
         FROM "user_owned_cards" uci
         JOIN "cards" c ON uci.card_id = c.card_id
         LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
@@ -206,7 +208,7 @@ export class GameLogic {
               name: row.ability_name,
               ability_id: row.special_ability_id,
               description: row.ability_description,
-              triggerMoment: row.ability_trigger,
+              triggerMoments: row.ability_triggers || [],
               parameters: row.ability_parameters || {},
             }
           : null;
@@ -424,6 +426,7 @@ export class GameLogic {
         ...triggerAbilities(TriggerMoment.OnPlace, {
           state: newState,
           triggerCard: newBoardCell.card!,
+          triggerMoment: TriggerMoment.OnPlace,
           position,
         })
       );
@@ -607,9 +610,14 @@ export class GameLogic {
       newState.current_player_id === newState.player1.user_id
         ? newState.player2.user_id
         : newState.player1.user_id;
-    newState.turn_number++;
 
-    events.push(...gameUtils.turnEndAbilities(newState));
+    events.push(
+      ...gameUtils.triggerIndirectAbilities(TriggerMoment.OnTurnEnd, {
+        state: newState,
+        triggerMoment: TriggerMoment.OnTurnEnd,
+        position: { x: 0, y: 0 },
+      })
+    );
 
     events.push({
       type: EVENT_TYPES.TURN_END,
@@ -618,6 +626,25 @@ export class GameLogic {
       timestamp: Date.now(),
       sourcePlayerId: playerId,
     });
+
+    if (newState.turn_number % 2 === 0) {
+      events.push(
+        ...gameUtils.triggerAbilities(TriggerMoment.OnRoundEnd, {
+          state: newState,
+          triggerMoment: TriggerMoment.OnRoundEnd,
+          position: { x: 0, y: 0 },
+        })
+      );
+      events.push(
+        ...gameUtils.triggerAbilities(TriggerMoment.OnRoundStart, {
+          state: newState,
+          triggerMoment: TriggerMoment.OnRoundStart,
+          position: { x: 0, y: 0 },
+        })
+      );
+    }
+
+    newState.turn_number++;
 
     return { state: newState, events };
   }

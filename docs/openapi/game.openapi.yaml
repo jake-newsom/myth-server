@@ -429,8 +429,11 @@ components:
                       type: string
                     description:
                       type: string
-                    trigger_moment:
-                      type: string
+                    trigger_moments:
+                      type: array
+                      items:
+                        type: string
+                        enum: [OnPlace, OnFlip, OnFlipped, OnTurnStart, OnTurnEnd, OnRoundEnd, OnRoundStart, AnyOnFlip, AnyOnFlipped, OnDefend, AnyOnDefend, HandOnFlip, BoardOnFlip, HandOnPlace, HandOnDefend, BoardOnPlace, BeforeCombat, AfterCombat, OnCombat]
                     parameters:
                       type: object
         tile_status:
@@ -581,8 +584,11 @@ components:
                   ability_description:
                     type: string
                     nullable: true
-                  ability_trigger_moment:
-                    type: string
+                  ability_trigger_moments:
+                    type: array
+                    items:
+                      type: string
+                      enum: [OnPlace, OnFlip, OnFlipped, OnTurnStart, OnTurnEnd, OnRoundEnd, OnRoundStart, AnyOnFlip, AnyOnFlipped, OnDefend, AnyOnDefend, HandOnFlip, BoardOnFlip, HandOnPlace, HandOnDefend, BoardOnPlace, BeforeCombat, AfterCombat, OnCombat]
                     nullable: true
                   user_card_instance_id:
                     type: string

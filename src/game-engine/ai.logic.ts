@@ -300,9 +300,6 @@ export class AILogic {
       }
 
       const stats = this.lookaheadEngine.getStats();
-      console.log(
-        `[AI] Lookahead evaluated ${stats.nodesEvaluated} nodes in ${stats.timeMs}ms`
-      );
     }
 
     // Phase 3: Select move based on difficulty
@@ -318,23 +315,6 @@ export class AILogic {
     );
 
     const chosenMove = possibleMoves[Math.floor(Math.random() * topN)];
-
-    const elapsed = Date.now() - startTime;
-    console.log(
-      `[AI] Move decision took ${elapsed}ms (difficulty: ${aiDifficulty})`
-    );
-    console.log(
-      `[AI] Chosen move score: ${chosenMove.score.toFixed(
-        2
-      )} (top ${topN} from ${possibleMoves.length} options)`
-    );
-
-    // Log ability usage if card has special ability
-    if (chosenMove.card?.base_card_data.special_ability) {
-      console.log(
-        `[AI] Playing ${chosenMove.card.base_card_data.name} with ability: ${chosenMove.card.base_card_data.special_ability.name}`
-      );
-    }
 
     return {
       action_type: "placeCard",

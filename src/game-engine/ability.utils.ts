@@ -1,4 +1,9 @@
-import { EffectType, InGameCard, PowerValues } from "../types/card.types";
+import {
+  EffectType,
+  InGameCard,
+  PowerValues,
+  TemporaryEffect,
+} from "../types/card.types";
 import {
   BoardCell,
   BoardPosition,
@@ -7,6 +12,7 @@ import {
   TileEffect,
   TileStatus,
 } from "../types/game.types";
+import { simulationContext } from "./simulation.context";
 import {
   BaseGameEvent,
   CardEvent,
@@ -43,6 +49,12 @@ export function transferTileEffectToCard(
     type: EffectType.TilePowerBonus,
     power: { ...tileEffect.power },
     duration: tileEffect.effect_duration ?? 1000,
+    name: tileEffect.animation_label,
+    data: {
+      animation: tileEffect.animation_label,
+      terrain: tileEffect.terrain,
+      originalTileEffect: tileEffect.animation_label,
+    },
   };
 
   card.temporary_effects.push(temporaryEffect);
@@ -188,6 +200,90 @@ export function addTempDebuff(
   } as CardEvent;
 }
 
+export function createOrUpdateBuff(
+  card: InGameCard,
+  duration: number,
+  power: number | Partial<PowerValues>,
+  name: string,
+  data?: Record<string, any>
+): BaseGameEvent {
+  //create the initial buff if it doesn't exist
+  if (!card.temporary_effects.some((effect) => effect.name === name)) {
+    addTempBuff(card, duration, 0, name, data);
+  }
+
+  //increase the value by whatever was provided
+  const existingBuff = card.temporary_effects.find(
+    (effect) => effect.name === name
+  );
+  if (existingBuff) {
+    if (typeof power === "number") {
+      existingBuff.power.top! += power;
+      existingBuff.power.bottom! += power;
+      existingBuff.power.left! += power;
+      existingBuff.power.right! += power;
+    } else {
+      existingBuff.power.top! += power.top || 0;
+      existingBuff.power.bottom! += power.bottom || 0;
+      existingBuff.power.left! += power.left || 0;
+      existingBuff.power.right! += power.right || 0;
+    }
+  }
+
+  //sync to state?
+  card.current_power = updateCurrentPower(card);
+
+  return {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    animation: data?.animation || "buff",
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    cardId: card.user_card_instance_id,
+  } as CardEvent;
+}
+
+export function createOrUpdateDebuff(
+  card: InGameCard,
+  duration: number,
+  power: number | Partial<PowerValues>,
+  name: string,
+  data?: Record<string, any>
+): BaseGameEvent {
+  //create the initial debuff if it doesn't exist
+  if (!card.temporary_effects.some((effect) => effect.name === name)) {
+    addTempDebuff(card, duration, 0, { name, ...data });
+  }
+
+  //increase the value by whatever was provided
+  const existingDebuff = card.temporary_effects.find(
+    (effect) => effect.name === name
+  );
+  if (existingDebuff) {
+    if (typeof power === "number") {
+      existingDebuff.power.top! -= power;
+      existingDebuff.power.bottom! -= power;
+      existingDebuff.power.left! -= power;
+      existingDebuff.power.right! -= power;
+    } else {
+      existingDebuff.power.top! -= power.top || 0;
+      existingDebuff.power.bottom! -= power.bottom || 0;
+      existingDebuff.power.left! -= power.left || 0;
+      existingDebuff.power.right! -= power.right || 0;
+    }
+  }
+
+  //sync to state?
+  card.current_power = updateCurrentPower(card);
+
+  return {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    animation: data?.animation || "debuff",
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    cardId: card.user_card_instance_id,
+  } as CardEvent;
+}
+
 export const getPositionOfCardById = (
   cardId: string,
   board: GameBoard
@@ -257,6 +353,21 @@ export const getAdjacentPositions = (
   return directions.filter((pos) => isValidPosition(pos, boardSize));
 };
 
+export const getDiagonallyAdjacentPositions = (
+  position: BoardPosition,
+  boardSize: number
+): BoardPosition[] => {
+  const { x, y } = position;
+  const directions = [
+    { x: x - 1, y: y - 1 },
+    { x: x + 1, y: y - 1 },
+    { x: x - 1, y: y + 1 },
+    { x: x + 1, y: y + 1 },
+  ];
+
+  return directions.filter((pos) => isValidPosition(pos, boardSize));
+};
+
 export const getTileAtPosition = (
   position: BoardPosition,
   board: GameBoard
@@ -288,6 +399,45 @@ export const getAdjacentCards = (
     .filter((card) => {
       return card || options?.includeEmpty;
     }) as InGameCard[];
+
+  if (options?.owner && options?.playerId) {
+    cards = cards.filter((card) => {
+      if (options.owner === "ally") {
+        return card?.owner === options.playerId;
+      } else {
+        return card?.owner !== options.playerId;
+      }
+    });
+  }
+
+  if (options?.tag) {
+    cards = cards.filter(
+      (card) => card && card.base_card_data.tags?.includes(options.tag!)
+    );
+  }
+
+  if (options?.name) {
+    cards = cards.filter((card) => card?.base_card_data.name === options.name);
+  }
+
+  return cards;
+};
+
+export const getDiagonallyAdjacentCards = (
+  position: BoardPosition,
+  board: GameBoard,
+  options?: {
+    owner?: "ally" | "enemy";
+    playerId?: string;
+    tag?: string;
+    includeEmpty?: boolean;
+    name?: string;
+  }
+): InGameCard[] => {
+  const positions = getDiagonallyAdjacentPositions(position, board.length);
+  let cards = positions
+    .map((pos) => getTileAtPosition(pos, board)?.card)
+    .filter((card) => card) as InGameCard[];
 
   if (options?.owner && options?.playerId) {
     cards = cards.filter((card) => {
@@ -537,6 +687,32 @@ export const setTileStatus = (
   } as TileEvent;
 };
 
+export const getRandomEmptyTile = (
+  board: GameBoard
+): { position: BoardPosition; tile: BoardCell } | null => {
+  const emptyTiles: Array<{ position: BoardPosition; tile: BoardCell }> = [];
+
+  // Iterate through all tiles on the board
+  for (let y = 0; y < board.length; y++) {
+    for (let x = 0; x < board[y].length; x++) {
+      const tile = board[y][x];
+      // Check if tile has no card and no tile effect
+      if (tile && !tile.card && !tile.tile_effect) {
+        emptyTiles.push({ position: { x, y }, tile });
+      }
+    }
+  }
+
+  // Return null if no empty tiles found
+  if (emptyTiles.length === 0) {
+    return null;
+  }
+
+  // Return a random empty tile with its position
+  const randomIndex = Math.floor(Math.random() * emptyTiles.length);
+  return emptyTiles[randomIndex];
+};
+
 export function getCardsInSameRow(
   position: BoardPosition,
   board: GameBoard,
@@ -587,6 +763,24 @@ export function removeTemporaryBuffs(card: InGameCard): BaseGameEvent {
     });
   }
 
+  return {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    animation: "buff-removed",
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    cardId: card.user_card_instance_id,
+  } as CardEvent;
+}
+
+export function removeBuffsByCondition(
+  card: InGameCard,
+  condition: (effect: TemporaryEffect) => boolean
+): BaseGameEvent {
+  if (card.temporary_effects) {
+    card.temporary_effects = card.temporary_effects.filter(
+      (effect) => !condition(effect)
+    );
+  }
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
     animation: "buff-removed",
@@ -650,6 +844,28 @@ export function getAllAlliesOnBoard(
   return getCardsByCondition(board, (card) => card.owner === playerId);
 }
 
+export function getCardHighestPower(card: InGameCard): {
+  key: "top" | "bottom" | "left" | "right";
+  value: number;
+} {
+  const keys: Array<"top" | "bottom" | "left" | "right"> = [
+    "top",
+    "bottom",
+    "left",
+    "right",
+  ];
+  let maxKey: "top" | "bottom" | "left" | "right" = "top";
+  let maxValue = card.current_power.top;
+
+  for (const key of keys) {
+    if (card.current_power[key] > maxValue) {
+      maxValue = card.current_power[key];
+      maxKey = key;
+    }
+  }
+
+  return { key: maxKey, value: maxValue };
+}
 /**
  * Applies tile effects to a card when it moves to a new position
  * Returns events for any tile effects that were applied
@@ -916,7 +1132,7 @@ export function blockTile(
 ): BaseGameEvent | undefined {
   // if this is the last open tile on the board, return undefined
   const openTiles = board.flat().filter((tile) => tile.card === null);
-  console.log("open tiles: ", openTiles);
+  simulationContext.debugLog("open tiles: ", openTiles);
   if (openTiles.length <= 1) return undefined;
 
   const tile = getTileAtPosition(position, board);
@@ -927,4 +1143,65 @@ export function blockTile(
     turns_left: turns,
     animation_label: animationLabel,
   });
+}
+
+/**
+ * Gets a random card from the board with optional filtering by tags and owner ID
+ * @param board - The game board to search
+ * @param options - Optional filtering parameters
+ * @returns A random card matching the criteria, or null if none found
+ */
+export function getRandomCard(
+  board: GameBoard,
+  options?: {
+    tags?: string[];
+    ownerId?: string;
+    excludeOwnerId?: string;
+    excludeCardId?: string;
+  }
+): InGameCard | null {
+  let cards = getCardsByCondition(board, (card) => {
+    // Filter by owner ID if specified
+    if (options?.ownerId && card.owner !== options.ownerId) {
+      return false;
+    }
+
+    // Exclude specific owner ID if specified
+    if (options?.excludeOwnerId && card.owner === options.excludeOwnerId) {
+      return false;
+    }
+
+    // Exclude specific card ID if specified
+    if (
+      options?.excludeCardId &&
+      card.user_card_instance_id === options.excludeCardId
+    ) {
+      return false;
+    }
+
+    // Filter by tags if specified (card must have ALL specified tags)
+    if (options?.tags && options.tags.length > 0) {
+      const cardTags = card.base_card_data.tags || [];
+      return options.tags.every((tag) => cardTags.includes(tag));
+    }
+
+    return true;
+  });
+
+  if (cards.length === 0) {
+    return null;
+  }
+
+  // Return a random card from the filtered results
+  const randomIndex = Math.floor(Math.random() * cards.length);
+  return cards[randomIndex];
+}
+
+export function getRandomSide(): "top" | "bottom" | "left" | "right" {
+  const sides = ["top", "bottom", "left", "right"] as const;
+  return sides[Math.floor(Math.random() * sides.length)];
+}
+
+export function chooseRandomCard(cards: InGameCard[]): InGameCard {
+  return cards[Math.floor(Math.random() * cards.length)];
 }

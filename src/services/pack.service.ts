@@ -171,7 +171,7 @@ const PackService = {
         c.power->>'left' as base_power_left,
         c.special_ability_id, c.set_id, c.tags,
         sa.ability_id as sa_ability_id, sa.name as sa_name, sa.description as sa_description,
-        sa.trigger_moment as sa_trigger_moment, sa.parameters as sa_parameters
+        sa.trigger_moments as sa_trigger_moments, sa.parameters as sa_parameters
       FROM "cards" c
       LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
       WHERE c.set_id = $1;
@@ -197,7 +197,7 @@ const PackService = {
             ability_id: row.sa_ability_id,
             name: row.sa_name,
             description: row.sa_description,
-            triggerMoment: row.sa_trigger_moment,
+            triggerMoments: row.sa_trigger_moments || [],
             parameters: row.sa_parameters,
           }
         : null,

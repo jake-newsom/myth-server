@@ -31,7 +31,7 @@ function formatUserCardInstanceResponse(
           ability_id: ability.ability_id,
           name: ability.name,
           description: ability.description,
-          triggerMoment: ability.triggerMoment,
+          triggerMoments: ability.triggerMoments,
           parameters: ability.parameters,
         }
       : null,
@@ -45,7 +45,7 @@ function formatStaticCardResponse(
       ability_id: string;
       name: string;
       description: string;
-      triggerMoment: string;
+      triggerMoments: string[];
       parameters: any;
     } | null;
   }
@@ -61,8 +61,8 @@ function formatStaticCardResponse(
     special_ability: baseCard.special_ability
       ? {
           ...baseCard.special_ability,
-          triggerMoment: baseCard.special_ability
-            .triggerMoment as TriggerMoment,
+          triggerMoments: baseCard.special_ability
+            .triggerMoments as TriggerMoment[],
         }
       : null,
   };
@@ -80,7 +80,7 @@ const CardModel = {
         c.power->>'left' as base_power_left,
         c.special_ability_id, c.set_id, c.tags,
         sa.name as ability_name, sa.description as ability_description, 
-        sa.trigger_moment as ability_trigger_moment, sa.parameters as ability_parameters,
+        sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
       FROM "user_owned_cards" uoc
       JOIN "cards" c ON uoc.card_id = c.card_id
@@ -140,7 +140,7 @@ const CardModel = {
             id: row.ability_id_string || "",
             name: row.ability_name,
             description: row.ability_description,
-            triggerMoment: row.ability_trigger_moment,
+            triggerMoments: row.ability_trigger_moments || [],
             parameters: row.ability_parameters,
           }
         : null;
@@ -218,7 +218,7 @@ const CardModel = {
         c.power->>'left' as base_power_left, 
         c.special_ability_id, c.set_id, c.tags,
         sa.name as ability_name, sa.description as ability_description, 
-        sa.trigger_moment as ability_trigger_moment, sa.parameters as ability_parameters,
+        sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
       FROM "user_owned_cards" uoc
       JOIN "cards" c ON uoc.card_id = c.card_id
@@ -272,7 +272,7 @@ const CardModel = {
           id: row.ability_id_string || "",
           name: row.ability_name,
           description: row.ability_description,
-          triggerMoment: row.ability_trigger_moment,
+          triggerMoments: row.ability_trigger_moments || [],
           parameters: row.ability_parameters,
         }
       : null;
@@ -367,7 +367,7 @@ const CardModel = {
               c.special_ability_id, c.set_id, c.tags,
               sa.ability_id as sa_ability_id, sa.name as sa_name, 
               sa.description as sa_description,
-              sa.trigger_moment as sa_trigger_moment, 
+              sa.trigger_moments as sa_trigger_moments, 
               sa.parameters as sa_parameters
         FROM "cards" c
         LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
@@ -404,7 +404,7 @@ const CardModel = {
                   c.special_ability_id, c.set_id, c.tags,
                   sa.ability_id as sa_ability_id, sa.name as sa_name, 
                   sa.description as sa_description,
-                  sa.trigger_moment as sa_trigger_moment, 
+                  sa.trigger_moments as sa_trigger_moments, 
                   sa.parameters as sa_parameters
             FROM "cards" c
             LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
@@ -448,7 +448,7 @@ const CardModel = {
                       ability_id: row.sa_ability_id,
                       name: row.sa_name,
                       description: row.sa_description,
-                      triggerMoment: row.sa_trigger_moment,
+                      triggerMoments: row.sa_trigger_moments || [],
                       parameters: row.sa_parameters,
                     }
                   : null,
@@ -492,7 +492,7 @@ const CardModel = {
                 ability_id: row.sa_ability_id,
                 name: row.sa_name,
                 description: row.sa_description,
-                triggerMoment: row.sa_trigger_moment,
+                triggerMoments: row.sa_trigger_moments || [],
                 parameters: row.sa_parameters,
               }
             : null,
@@ -527,7 +527,7 @@ const CardModel = {
         c.power->>'left' as base_power_left,
         c.special_ability_id, c.set_id, c.tags,
         sa.ability_id as sa_ability_id, sa.name as sa_name, sa.description as sa_description,
-        sa.trigger_moment as sa_trigger_moment, sa.parameters as sa_parameters
+        sa.trigger_moments as sa_trigger_moments, sa.parameters as sa_parameters
       FROM "cards" c
       LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
       WHERE c.card_id = $1;
@@ -541,7 +541,7 @@ const CardModel = {
         ability_id: string;
         name: string;
         description: string;
-        triggerMoment: string;
+        triggerMoments: string[];
         parameters: any;
       } | null;
     } = {
@@ -563,7 +563,7 @@ const CardModel = {
             ability_id: row.sa_ability_id,
             name: row.sa_name,
             description: row.sa_description,
-            triggerMoment: row.sa_trigger_moment,
+            triggerMoments: row.sa_trigger_moments || [],
             parameters: row.sa_parameters,
           }
         : null,
@@ -585,7 +585,7 @@ const CardModel = {
         c.power->>'left' as base_power_left,
         c.special_ability_id, c.set_id, c.tags,
         sa.name as ability_name, sa.description as ability_description, 
-        sa.trigger_moment as ability_trigger_moment, sa.parameters as ability_parameters,
+        sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
       FROM "user_owned_cards" uoc
       JOIN "cards" c ON uoc.card_id = c.card_id
@@ -644,7 +644,7 @@ const CardModel = {
             id: row.ability_id_string || "",
             name: row.ability_name,
             description: row.ability_description,
-            triggerMoment: row.ability_trigger_moment,
+            triggerMoments: row.ability_trigger_moments || [],
             parameters: row.ability_parameters,
           }
         : null;
@@ -775,7 +775,7 @@ const CardModel = {
           c.power->>'left' as base_power_left,
           c.special_ability_id, c.set_id, c.tags,
           sa.name as ability_name, sa.description as ability_description, 
-          sa.trigger_moment as ability_trigger_moment, sa.parameters as ability_parameters,
+          sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
           sa.id as ability_id_string 
         FROM "user_owned_cards" uoc
         JOIN "cards" c ON uoc.card_id = c.card_id
@@ -846,7 +846,7 @@ const CardModel = {
               id: row.ability_id_string || "",
               name: row.ability_name,
               description: row.ability_description,
-              triggerMoment: row.ability_trigger_moment,
+              triggerMoments: row.ability_trigger_moments || [],
               parameters: row.ability_parameters,
             }
           : null;

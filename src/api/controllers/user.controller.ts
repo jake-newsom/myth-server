@@ -29,7 +29,7 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
           name: card.special_ability.name,
           ability_id: card.special_ability.ability_id,
           description: card.special_ability.description,
-          triggerMoment: card.special_ability.triggerMoment,
+          triggerMoments: card.special_ability.triggerMoments,
           parameters: card.special_ability.parameters,
         }
       : null,

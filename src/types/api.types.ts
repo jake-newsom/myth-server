@@ -62,7 +62,7 @@ export interface CardResponse {
     ability_id: string;
     name: string;
     description: string;
-    triggerMoment: TriggerMoment;
+    triggerMoments: TriggerMoment[];
     parameters: Record<string, any>;
   } | null;
   power_enhancements?: PowerValues;

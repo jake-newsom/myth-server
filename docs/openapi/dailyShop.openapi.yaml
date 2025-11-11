@@ -478,8 +478,11 @@ components:
               type: string
             description:
               type: string
-            trigger_moment:
-              type: string
+            trigger_moments:
+              type: array
+              items:
+                type: string
+                enum: [OnPlace, OnFlip, OnFlipped, OnTurnStart, OnTurnEnd, OnRoundEnd, OnRoundStart, AnyOnFlip, AnyOnFlipped, OnDefend, AnyOnDefend, HandOnFlip, BoardOnFlip, HandOnPlace, HandOnDefend, BoardOnPlace, BeforeCombat, AfterCombat, OnCombat]
             parameters:
               type: object
               additionalProperties: true

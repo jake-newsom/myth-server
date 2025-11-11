@@ -4,6 +4,7 @@ import {
   CombatResolverMap,
 } from "../../types/game-engine.types";
 import { InGameCard } from "../../types/card.types";
+import { simulationContext } from "../simulation.context";
 import {
   buff,
   debuff,
@@ -22,6 +23,11 @@ import {
   pushCardAway,
   cleanseDebuffs,
   blockTile,
+  getCardHighestPower,
+  getCardTotalPower,
+  destroyCardAtPosition,
+  getPositionOfCardById,
+  createOrUpdateBuff,
 } from "../ability.utils";
 import { drawCardSync } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
@@ -71,7 +77,7 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Thunderous Push: Push all adjacent enemies away 1 space after combat.
+  // Thunderous Push: Strike all enemies with lightning granting -1 on a random side
   "Thunderous Push": (context) => {
     const {
       triggerCard,
@@ -81,15 +87,31 @@ export const norseAbilities: AbilityMap = {
     const gameEvents: BaseGameEvent[] = [];
 
     if (!position) return [];
-
-    const adjacentEnemies = getEnemiesAdjacentTo(
-      position,
+    const enemyCards = getCardsByCondition(
       board,
-      triggerCard.owner
+      (card) => card.owner !== triggerCard.owner
     );
-    for (const enemy of adjacentEnemies) {
-      const pushEvents = pushCardAway(enemy, position, board);
-      gameEvents.push(...pushEvents);
+
+    //OWEN
+    for (const enemy of enemyCards) {
+      const sides = ["top", "bottom", "left", "right"] as const;
+      const randomSide = sides[Math.floor(Math.random() * sides.length)];
+      gameEvents.push(
+        addTempDebuff(
+          enemy,
+          1000,
+          { [randomSide]: -1 },
+          {
+            animation: "lightning",
+            ...(getPositionOfCardById(enemy.user_card_instance_id, board) && {
+              position: getPositionOfCardById(
+                enemy.user_card_instance_id,
+                board
+              )!,
+            }),
+          }
+        )
+      );
     }
 
     return gameEvents;
@@ -115,46 +137,38 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
+  //After 3 rounds all played cards lose -1 and grant cards in your hand +1
   "Watchman's Gate": (context) => {
     const {
-      position,
-      state: { board },
+      triggerCard,
+      state: { board, player1, player2, hydrated_card_data_cache },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
 
-    // Get all adjacent positions that are valid and empty
-    const adjacentPositions = getAdjacentPositions(position, board.length);
-    const validTargets = adjacentPositions.filter((pos) => {
-      const tile = getTileAtPosition(pos, board);
-      return (
-        tile && !tile.card && tile.tile_effect?.status !== TileStatus.Blocked
-      );
-    });
-
-    // Count current open tiles on the entire board
-    const openTiles = board
-      .flat()
-      .filter(
-        (tile) =>
-          tile.card === null && tile.tile_effect?.status !== TileStatus.Blocked
-      );
-
-    // Calculate how many tiles we can safely block (leave at least 1 open)
-    const maxTilesToBlock = Math.max(0, openTiles.length - 1);
-    const tilesToBlock = Math.min(validTargets.length, maxTilesToBlock);
-
-    // Block the calculated number of tiles
-    for (let i = 0; i < tilesToBlock; i++) {
-      const pos = validTargets[i];
-      const tile = getTileAtPosition(pos, board);
-      if (tile) {
-        const event = setTileStatus(tile, pos, {
-          status: TileStatus.Blocked,
-          turns_left: 2,
-          animation_label: "frozen",
+    const existingBuff = triggerCard.temporary_effects.find(
+      (effect) => effect.name === "Watchman's Gate"
+    );
+    if (existingBuff) {
+      if (existingBuff.data?.rounds === 3) {
+        const allCards = getCardsByCondition(board, (card) => true);
+        for (const card of allCards) {
+          gameEvents.push(debuff(card, -1));
+        }
+        const player =
+          player1.user_id === triggerCard.owner ? player1 : player2;
+        for (const cardId of player.hand) {
+          const card = hydrated_card_data_cache?.[cardId];
+          if (card) {
+            gameEvents.push(addTempBuff(card, 1000, 1));
+          }
+        }
+      } else {
+        createOrUpdateBuff(triggerCard, 3, 0, "Watchman's Gate", {
+          rounds: existingBuff.data?.rounds + 1,
         });
-        gameEvents.push(event);
       }
+    } else {
+      createOrUpdateBuff(triggerCard, 3, 0, "Watchman's Gate", { rounds: 0 });
     }
 
     return gameEvents;
@@ -216,7 +230,7 @@ export const norseAbilities: AbilityMap = {
       triggerCard,
       // state: { board },
     } = context;
-    console.log("Avenge Baldr: ", triggerCard);
+    simulationContext.debugLog("Avenge Baldr: ", triggerCard);
     const gameEvents: BaseGameEvent[] = [];
     // const defeatedAllies = getCardsByCondition(
     //   board,
@@ -294,7 +308,7 @@ export const norseAbilities: AbilityMap = {
       position,
       state.board.length
     ).filter((pos) => getTileAtPosition(pos, state.board)?.card === null);
-    console.log("adjacentPositions", adjacentPositions);
+    simulationContext.debugLog("adjacentPositions", adjacentPositions);
 
     if (adjacentPositions.length > 0) {
       const randomIndex = Math.floor(Math.random() * adjacentPositions.length);
@@ -476,7 +490,7 @@ export const norseAbilities: AbilityMap = {
   // Drowning Net: Pull enemy cards one tile closer before combat.
 
   "Drowning Net": (context) => {
-    console.log("Drowning Net!");
+    simulationContext.debugLog("Drowning Net!");
     const {
       triggerCard,
       position,
@@ -551,18 +565,20 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
+  //Gain +1 for each Dragon on the board
   "Dragon Slayer": (context) => {
     const {
       triggerCard,
-      position,
+
       state: { board },
     } = context;
-    const adjacentSeaCards = getAdjacentCards(position, board, {
-      tag: "dragon",
-    });
 
-    if (adjacentSeaCards.length > 0) {
-      return [buff(triggerCard, 3)];
+    const dragonsOnBoard = getCardsByCondition(board, (card) =>
+      card.base_card_data.tags.includes("dragon")
+    );
+
+    if (dragonsOnBoard.length > 0) {
+      return [buff(triggerCard, dragonsOnBoard.length)];
     }
     return [];
   },
@@ -585,37 +601,66 @@ export const norseAbilities: AbilityMap = {
     return [];
   },
 
+  //Equalize all cards highest power
   "Binding Justice": (context) => {
     const {
       triggerCard,
-      position,
       state: { board },
     } = context;
-    const strongestEnemy = getStrongestAdjacentEnemy(
-      position,
+    const gameEvents: BaseGameEvent[] = [];
+
+    const allCards = getCardsByCondition(
       board,
-      triggerCard.owner
+      (card) => card.user_card_instance_id !== triggerCard.user_card_instance_id
+    );
+    const cardsHighestPowers = allCards.map(
+      (card) => getCardHighestPower(card).value
+    );
+    const meanHighestPower = Math.floor(
+      cardsHighestPowers.reduce((a, b) => a + b, 0) / cardsHighestPowers.length
     );
 
-    if (strongestEnemy) {
-      return [addTempDebuff(strongestEnemy, 2, -2)];
+    for (const card of allCards) {
+      const highestPower = getCardHighestPower(card).value;
+      const diff = meanHighestPower - highestPower;
+      gameEvents.push(addTempBuff(card, 1000, diff));
     }
-    return [];
+    return gameEvents;
   },
 
+  //Destroys a weaker adjacent enemy each round, afterwards gains +1 to one side
   "Devourer's Surge": (context) => {
     const {
       triggerCard,
       position,
       state: { board },
     } = context;
+    const gameEvents: BaseGameEvent[] = [];
+
+    const FenrirTotalPower = getCardTotalPower(triggerCard);
     const adjacentEnemies = getEnemiesAdjacentTo(
       position,
       board,
       triggerCard.owner
-    );
+    ).filter((enemy) => getCardTotalPower(enemy) < FenrirTotalPower);
 
-    return [buff(triggerCard, adjacentEnemies.length)];
+    if (adjacentEnemies.length > 0) {
+      const randomEnemy =
+        adjacentEnemies[Math.floor(Math.random() * adjacentEnemies.length)];
+      const destroyEvent = destroyCardAtPosition(
+        getPositionOfCardById(randomEnemy.user_card_instance_id, board)!,
+        board,
+        "destroy"
+      );
+      if (destroyEvent) {
+        gameEvents.push(destroyEvent);
+        //Gain +1 to a random side
+        const sides = ["top", "bottom", "left", "right"] as const;
+        const randomSide = sides[Math.floor(Math.random() * sides.length)];
+        gameEvents.push(addTempBuff(triggerCard, 1000, { [randomSide]: 1 }));
+      }
+    }
+    return gameEvents;
   },
 
   // Swift Messenger: Draw 2 cards.

@@ -35,7 +35,7 @@ const formatDeckCardInstanceResponse = (
           ability_id: ability.ability_id,
           name: ability.name,
           description: ability.description,
-          triggerMoment: ability.triggerMoment,
+          triggerMoments: ability.triggerMoments,
           parameters: ability.parameters,
         }
       : null,
@@ -129,7 +129,7 @@ const DeckModel = {
         c.power->>'left' as base_power_left,
         c.special_ability_id, c.set_id, c.tags,
         sa.name as ability_name, sa.description as ability_description, 
-        sa.trigger_moment as ability_trigger, sa.parameters as ability_parameters,
+        sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
         sa.id as ability_id_string
       FROM "deck_cards" dc
       JOIN "user_owned_cards" uci ON dc.user_card_instance_id = uci.user_card_instance_id
@@ -190,7 +190,7 @@ const DeckModel = {
             id: row.ability_id_string || row.special_ability_id,
             name: row.ability_name,
             description: row.ability_description,
-            triggerMoment: row.ability_trigger,
+            triggerMoments: row.ability_triggers || [],
             parameters: row.ability_parameters,
           }
         : null;

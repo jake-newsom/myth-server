@@ -65,7 +65,7 @@ export interface SpecialAbility {
   id: string;
   name: string;
   description: string;
-  triggerMoment: TriggerMoment;
+  triggerMoments: TriggerMoment[];
   parameters: Record<string, any>;
 }
 
@@ -343,7 +343,7 @@ export interface DailyShopOfferingWithCard extends DailyShopOffering {
       ability_id: string;
       name: string;
       description: string;
-      trigger_moment: string;
+      trigger_moments: string[];
       parameters: Record<string, any>;
     } | null;
   };
