@@ -229,30 +229,37 @@ export const GAME_REWARDS = {
 
 // Story Mode Configuration
 export const STORY_MODE_CONFIG = {
-  // Default reward values for story modes
+  // Default reward values for story modes (by difficulty level 1-5)
   DEFAULT_REWARDS: {
     FIRST_WIN: {
-      EASY: { gold: 100, gems: 5, card_xp: 50 },
-      MEDIUM: { gold: 150, gems: 10, card_xp: 75 },
-      HARD: { gold: 200, gems: 15, card_xp: 100 },
-      LEGENDARY: { gold: 300, gems: 25, card_xp: 150, fate_coins: 1 }
+      LEVEL_1: { gold: 100, gems: 5, card_xp: 50 },
+      LEVEL_2: { gold: 150, gems: 8, card_xp: 75 },
+      LEVEL_3: { gold: 200, gems: 12, card_xp: 100 },
+      LEVEL_4: { gold: 250, gems: 18, card_xp: 125 },
+      LEVEL_5: { gold: 300, gems: 25, card_xp: 150, fate_coins: 1 }
     },
     REPEAT_WIN: {
-      EASY: { gold: 25, card_xp: 15 },
-      MEDIUM: { gold: 35, card_xp: 20 },
-      HARD: { gold: 50, card_xp: 30 },
-      LEGENDARY: { gold: 75, card_xp: 40 }
+      LEVEL_1: { gold: 25, card_xp: 15 },
+      LEVEL_2: { gold: 35, card_xp: 20 },
+      LEVEL_3: { gold: 50, card_xp: 30 },
+      LEVEL_4: { gold: 60, card_xp: 35 },
+      LEVEL_5: { gold: 75, card_xp: 40 }
     }
   },
   
   // Unlock requirements templates
   UNLOCK_TEMPLATES: {
-    // No requirements - available from start
+    // No requirements - available from start (first chapter, first difficulty)
     STARTER: {},
     
-    // Require completing previous story
-    SEQUENTIAL: (prerequisiteStoryId: string) => ({
-      prerequisite_stories: [prerequisiteStoryId]
+    // Require completing previous difficulty in same chapter
+    DIFFICULTY_PROGRESSION: (previousDifficultyId: string) => ({
+      prerequisite_stories: [previousDifficultyId]
+    }),
+    
+    // Require completing last difficulty of previous chapter
+    CHAPTER_PROGRESSION: (previousChapterLastDifficultyId: string) => ({
+      prerequisite_stories: [previousChapterLastDifficultyId]
     }),
     
     // Require user level
@@ -279,29 +286,39 @@ export const STORY_MODE_CONFIG = {
     })
   },
   
-  // Story mode difficulty settings
+  // Story mode difficulty settings (by level 1-5)
   DIFFICULTY_SETTINGS: {
-    EASY: {
-      ai_difficulty: 'easy' as const,
-      description: 'Perfect for beginners learning the game',
+    LEVEL_1: {
+      ai_card_level: 1,
+      description: 'Easy — AI uses base card stats',
       recommended_level: 1
     },
-    MEDIUM: {
-      ai_difficulty: 'medium' as const,
-      description: 'Balanced challenge for intermediate players',
+    LEVEL_2: {
+      ai_card_level: 2,
+      description: 'Normal — +1 to one side per card',
+      recommended_level: 3
+    },
+    LEVEL_3: {
+      ai_card_level: 3,
+      description: 'Hard — +2 across two sides total',
       recommended_level: 5
     },
-    HARD: {
-      ai_difficulty: 'hard' as const,
-      description: 'Tough opponents for experienced players',
-      recommended_level: 10
+    LEVEL_4: {
+      ai_card_level: 4,
+      description: 'Expert — +3 total (one per side up to level)',
+      recommended_level: 8
     },
-    LEGENDARY: {
-      ai_difficulty: 'hard' as const,
-      description: 'Ultimate challenge with special rewards',
-      recommended_level: 15
+    LEVEL_5: {
+      ai_card_level: 5,
+      description: 'Mythic — +4 total, optimized AI placement logic',
+      recommended_level: 12
     }
   },
+  
+  // Campaign structure
+  CHAPTERS: 10,
+  DIFFICULTIES_PER_CHAPTER: 5,
+  TOTAL_ENTRIES: 50, // 10 chapters × 5 difficulties
   
   // Validation limits
   LIMITS: {

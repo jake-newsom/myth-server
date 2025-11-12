@@ -28,11 +28,13 @@ export class StoryModeController {
         return;
       }
 
-      // Validate difficulty
-      const validDifficulties: StoryDifficulty[] = ['easy', 'medium', 'hard', 'legendary'];
-      if (!validDifficulties.includes(createRequest.difficulty)) {
+      // Validate difficulty (must be 1-5)
+      if (!createRequest.difficulty || 
+          typeof createRequest.difficulty !== 'number' || 
+          createRequest.difficulty < 1 || 
+          createRequest.difficulty > 5) {
         res.status(400).json({
-          error: `Invalid difficulty. Must be one of: ${validDifficulties.join(', ')}`
+          error: 'Invalid difficulty. Must be an integer between 1 and 5'
         });
         return;
       }
@@ -76,12 +78,13 @@ export class StoryModeController {
         return;
       }
 
-      // Validate difficulty if provided
-      if (updateRequest.difficulty) {
-        const validDifficulties: StoryDifficulty[] = ['easy', 'medium', 'hard', 'legendary'];
-        if (!validDifficulties.includes(updateRequest.difficulty)) {
+      // Validate difficulty if provided (must be 1-5)
+      if (updateRequest.difficulty !== undefined) {
+        if (typeof updateRequest.difficulty !== 'number' || 
+            updateRequest.difficulty < 1 || 
+            updateRequest.difficulty > 5) {
           res.status(400).json({
-            error: `Invalid difficulty. Must be one of: ${validDifficulties.join(', ')}`
+            error: 'Invalid difficulty. Must be an integer between 1 and 5'
           });
           return;
         }

@@ -632,32 +632,51 @@ export const norseAbilities: AbilityMap = {
   "Devourer's Surge": (context) => {
     const {
       triggerCard,
-      position,
       state: { board },
     } = context;
+    simulationContext.debugLog("Devourer's Surge!");
     const gameEvents: BaseGameEvent[] = [];
 
     const FenrirTotalPower = getCardTotalPower(triggerCard);
+    const position = getPositionOfCardById(
+      triggerCard.user_card_instance_id,
+      board
+    );
+    if (!position) return [];
+
+    simulationContext.debugLog("FenrirTotalPower", FenrirTotalPower);
+    simulationContext.debugLog("position", position);
+
+    simulationContext.debugLog("triggerCard.owner", triggerCard.owner);
     const adjacentEnemies = getEnemiesAdjacentTo(
       position,
       board,
       triggerCard.owner
-    ).filter((enemy) => getCardTotalPower(enemy) < FenrirTotalPower);
+    ).filter((enemy) => {
+      const enemyTotalPower = getCardTotalPower(enemy);
+      simulationContext.debugLog("enemyTotalPower", enemyTotalPower);
+      return enemyTotalPower < FenrirTotalPower;
+    });
+    simulationContext.debugLog("adjacentEnemies", adjacentEnemies);
 
     if (adjacentEnemies.length > 0) {
+      simulationContext.debugLog("adjacentEnemies", adjacentEnemies);
       const randomEnemy =
         adjacentEnemies[Math.floor(Math.random() * adjacentEnemies.length)];
+      simulationContext.debugLog("randomEnemy", randomEnemy);
       const destroyEvent = destroyCardAtPosition(
         getPositionOfCardById(randomEnemy.user_card_instance_id, board)!,
         board,
         "destroy"
       );
+      simulationContext.debugLog("destroyEvent", destroyEvent);
       if (destroyEvent) {
         gameEvents.push(destroyEvent);
         //Gain +1 to a random side
         const sides = ["top", "bottom", "left", "right"] as const;
         const randomSide = sides[Math.floor(Math.random() * sides.length)];
         gameEvents.push(addTempBuff(triggerCard, 1000, { [randomSide]: 1 }));
+        simulationContext.debugLog("addTempBuff", addTempBuff);
       }
     }
     return gameEvents;

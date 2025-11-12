@@ -1,6 +1,8 @@
 // Story Mode Types and Interfaces
 
-export type StoryDifficulty = 'easy' | 'medium' | 'hard' | 'legendary';
+// Difficulty levels: 1-5 (corresponds to AI card levels)
+// Level 1 = Easy, Level 2 = Normal, Level 3 = Hard, Level 4 = Expert, Level 5 = Mythic
+export type StoryDifficulty = 1 | 2 | 3 | 4 | 5;
 
 export type RewardType = 'first_win' | 'repeat_win' | 'achievement' | 'milestone';
 

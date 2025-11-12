@@ -7,9 +7,17 @@ info:
 components:
   schemas:
     StoryDifficulty:
-      type: string
-      enum: [easy, medium, hard, legendary]
-      description: Difficulty level for story mode
+      type: integer
+      minimum: 1
+      maximum: 5
+      description: |
+        Difficulty level for story mode (1-5).
+        - Level 1: Easy — AI uses base card stats
+        - Level 2: Normal — +1 to one side per card
+        - Level 3: Hard — +2 across two sides total
+        - Level 4: Expert — +3 total (one per side up to level)
+        - Level 5: Mythic — +4 total, optimized AI placement logic
+      example: 1
 
     RewardType:
       type: string

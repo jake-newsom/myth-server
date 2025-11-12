@@ -27,6 +27,12 @@ export class StoryModeService {
   
   // Helper method to convert database row to StoryModeConfig
   private static rowToStoryModeConfig(row: StoryModeConfigRow): StoryModeConfig {
+    // PostgreSQL JSONB columns are automatically parsed by pg driver
+    // Handle both cases: already parsed object or JSON string
+    const unlockRequirements = typeof row.unlock_requirements === 'string' 
+      ? JSON.parse(row.unlock_requirements)
+      : row.unlock_requirements;
+    
     return {
       story_id: row.story_id,
       name: row.name,
@@ -35,7 +41,7 @@ export class StoryModeService {
       ai_deck_id: row.ai_deck_id,
       order_index: row.order_index,
       is_active: row.is_active,
-      unlock_requirements: JSON.parse(row.unlock_requirements),
+      unlock_requirements: unlockRequirements,
       created_at: new Date(row.created_at),
       updated_at: new Date(row.updated_at)
     };
@@ -43,11 +49,17 @@ export class StoryModeService {
 
   // Helper method to convert database row to StoryModeReward
   private static rowToStoryModeReward(row: StoryModeRewardRow): StoryModeReward {
+    // PostgreSQL JSONB columns are automatically parsed by pg driver
+    // Handle both cases: already parsed object or JSON string
+    const rewardData = typeof row.reward_data === 'string'
+      ? JSON.parse(row.reward_data)
+      : row.reward_data;
+    
     return {
       reward_id: row.reward_id,
       story_id: row.story_id,
       reward_type: row.reward_type,
-      reward_data: JSON.parse(row.reward_data),
+      reward_data: rewardData,
       is_active: row.is_active,
       created_at: new Date(row.created_at)
     };
@@ -354,7 +366,11 @@ export class StoryModeService {
         return false;
       }
 
-      const requirements: UnlockRequirements = JSON.parse(storyResult.rows[0].unlock_requirements);
+      // PostgreSQL JSONB columns are automatically parsed by pg driver
+      const rawRequirements = storyResult.rows[0].unlock_requirements;
+      const requirements: UnlockRequirements = typeof rawRequirements === 'string'
+        ? JSON.parse(rawRequirements)
+        : rawRequirements;
 
       // If no requirements, it's unlocked
       if (!requirements || Object.keys(requirements).length === 0) {
@@ -514,7 +530,11 @@ export class StoryModeService {
         `, [storyId, rewardType]);
 
         for (const rewardRow of rewardsResult.rows) {
-          const rewardData: RewardData = JSON.parse(rewardRow.reward_data);
+          // PostgreSQL JSONB columns are automatically parsed by pg driver
+          const rawRewardData = rewardRow.reward_data;
+          const rewardData: RewardData = typeof rawRewardData === 'string'
+            ? JSON.parse(rawRewardData)
+            : rawRewardData;
           
           // Merge rewards
           if (rewardData.gold) rewardsEarned.gold = (rewardsEarned.gold || 0) + rewardData.gold;
