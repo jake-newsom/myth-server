@@ -237,6 +237,18 @@ export class AILogic {
         cardData = fetchedCard;
       }
 
+      // Evaluate if this card should be held in hand
+      const holdValue = this.abilityAnalyzer.evaluateHandHoldValue(
+        currentGameState,
+        cardData as InGameCard,
+        aiPlayer.user_id
+      );
+
+      // If hold value is very high and we have other cards, skip evaluating this card for placement
+      if (holdValue > 100 && aiPlayer.hand.length > 1) {
+        continue; // Hold this card, don't consider playing it
+      }
+
       // Evaluate each valid position
       for (let y = 0; y < GAME_CONFIG.BOARD_SIZE; y++) {
         for (let x = 0; x < GAME_CONFIG.BOARD_SIZE; x++) {
@@ -254,10 +266,15 @@ export class AILogic {
               aiDifficulty
             );
 
+            // Adjust score based on hold value
+            // Negative hold value means "play it now" and boosts the score
+            // Positive hold value means "consider holding" and reduces the score
+            const adjustedScore = baseScore - (holdValue * 0.5);
+
             possibleMoves.push({
               user_card_instance_id: instanceIdInHand,
               position: { x, y },
-              score: baseScore,
+              score: adjustedScore,
               card: cardData as InGameCard,
             });
           }

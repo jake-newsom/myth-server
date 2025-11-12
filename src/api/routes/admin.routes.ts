@@ -1,6 +1,7 @@
 import { Router } from "express";
 import AdminController from "../controllers/admin.controller";
 import { authenticateJWT } from "../middlewares/auth.middleware";
+import adminStoryModeRoutes from "./admin.storyMode.routes";
 
 const router = Router();
 
@@ -39,5 +40,8 @@ router.post("/give-fate-coins", AdminController.giveUserFateCoins);
 router.post("/fix-fate-picks-tables", AdminController.fixFatePicksTables);
 
 router.post("/trigger-daily-rewards", AdminController.triggerDailyRewards);
+
+// Story Mode Admin Routes
+router.use("/story-modes", adminStoryModeRoutes);
 
 export default router;

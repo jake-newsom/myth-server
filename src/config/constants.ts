@@ -68,6 +68,30 @@ export const AI_CONFIG = {
     DEFENSIVE_POSITION_BONUS: 20,
     OFFENSIVE_POSITION_BONUS: 35,
     SYNERGY_BONUS: 45,
+    
+    // Ability category multipliers
+    PERMANENT_BUFF_MULTIPLIER: 2.0, // Permanent buffs worth 2x temporary
+    RECURRING_EFFECT_MULTIPLIER: 1.5, // Effects that trigger multiple times
+    INVINCIBILITY_MULTIPLIER: 2.5, // Extreme defensive value
+    COMEBACK_MULTIPLIER: 1.8, // When behind, comeback mechanics boosted
+    SCALING_ABILITY_MULTIPLIER: 1.4, // Abilities that grow over time
+    
+    // Game phase multipliers
+    EARLY_GAME_DRAW_MULTIPLIER: 1.5, // Card draw more valuable early
+    EARLY_GAME_TERRAIN_MULTIPLIER: 1.4, // Terrain setup valuable early
+    LATE_GAME_FINISHER_MULTIPLIER: 1.4, // Finisher abilities late game
+    LATE_GAME_DRAW_MULTIPLIER: 0.7, // Card draw less valuable late
+    
+    // Hand-hold evaluation thresholds
+    HAND_HOLD_HIGH_THRESHOLD: 100, // Skip playing if hold value above this
+    HAND_HOLD_ADJUSTMENT_FACTOR: 0.5, // How much to adjust score by hold value
+    
+    // Position requirement penalties/bonuses
+    POSITION_REQUIREMENT_MET_BONUS: 200, // Large bonus when requirement met
+    POSITION_REQUIREMENT_FAILED_PENALTY: 300, // Large penalty when failed
+    ADJACENCY_SYNERGY_BONUS: 150, // Strong synergy when adjacent requirement met
+    ISOLATION_REQUIREMENT_BONUS: 180, // Isolation requirements met
+    TERRAIN_REQUIREMENT_BONUS: 250, // Essential terrain requirements
   },
   MOVE_SELECTION: {
     EASY_TOP_MOVES: 5,
@@ -201,6 +225,91 @@ export const GAME_REWARDS = {
   MAX_BONUS_GOLD: 200,
   XP_PER_CARD_USED: 10,
   WIN_XP_MULTIPLIER: 1.5,
+} as const;
+
+// Story Mode Configuration
+export const STORY_MODE_CONFIG = {
+  // Default reward values for story modes
+  DEFAULT_REWARDS: {
+    FIRST_WIN: {
+      EASY: { gold: 100, gems: 5, card_xp: 50 },
+      MEDIUM: { gold: 150, gems: 10, card_xp: 75 },
+      HARD: { gold: 200, gems: 15, card_xp: 100 },
+      LEGENDARY: { gold: 300, gems: 25, card_xp: 150, fate_coins: 1 }
+    },
+    REPEAT_WIN: {
+      EASY: { gold: 25, card_xp: 15 },
+      MEDIUM: { gold: 35, card_xp: 20 },
+      HARD: { gold: 50, card_xp: 30 },
+      LEGENDARY: { gold: 75, card_xp: 40 }
+    }
+  },
+  
+  // Unlock requirements templates
+  UNLOCK_TEMPLATES: {
+    // No requirements - available from start
+    STARTER: {},
+    
+    // Require completing previous story
+    SEQUENTIAL: (prerequisiteStoryId: string) => ({
+      prerequisite_stories: [prerequisiteStoryId]
+    }),
+    
+    // Require user level
+    LEVEL_GATED: (minLevel: number) => ({
+      min_user_level: minLevel
+    }),
+    
+    // Require multiple story completions
+    WIN_GATED: (minWins: number) => ({
+      min_total_story_wins: minWins
+    }),
+    
+    // Complex requirements
+    ADVANCED: (requirements: {
+      prerequisiteStories?: string[];
+      minLevel?: number;
+      minWins?: number;
+      requiredAchievements?: string[];
+    }) => ({
+      prerequisite_stories: requirements.prerequisiteStories,
+      min_user_level: requirements.minLevel,
+      min_total_story_wins: requirements.minWins,
+      required_achievements: requirements.requiredAchievements
+    })
+  },
+  
+  // Story mode difficulty settings
+  DIFFICULTY_SETTINGS: {
+    EASY: {
+      ai_difficulty: 'easy' as const,
+      description: 'Perfect for beginners learning the game',
+      recommended_level: 1
+    },
+    MEDIUM: {
+      ai_difficulty: 'medium' as const,
+      description: 'Balanced challenge for intermediate players',
+      recommended_level: 5
+    },
+    HARD: {
+      ai_difficulty: 'hard' as const,
+      description: 'Tough opponents for experienced players',
+      recommended_level: 10
+    },
+    LEGENDARY: {
+      ai_difficulty: 'hard' as const,
+      description: 'Ultimate challenge with special rewards',
+      recommended_level: 15
+    }
+  },
+  
+  // Validation limits
+  LIMITS: {
+    MAX_NAME_LENGTH: 100,
+    MAX_DESCRIPTION_LENGTH: 500,
+    MAX_ORDER_INDEX: 999,
+    MAX_REWARDS_PER_STORY: 10
+  }
 } as const;
 
 // Error Codes

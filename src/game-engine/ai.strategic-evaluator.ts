@@ -1,4 +1,4 @@
-import { GameState, BoardPosition } from "../types/game.types";
+import { GameState, BoardPosition, TileTerrain } from "../types/game.types";
 import { InGameCard, PowerValues } from "../types/card.types";
 import { AI_CONFIG, GAME_CONFIG } from "../config/constants";
 import {
@@ -28,8 +28,245 @@ export class StrategicEvaluator {
     score += this.evaluateDefensiveValue(gameState, card, position, aiPlayerId);
     score += this.evaluateOffensiveValue(gameState, card, position, aiPlayerId);
     score += this.evaluateTerritoryControl(gameState, position, aiPlayerId);
+    score += this.evaluateAbilityPositionRequirements(gameState, card, position, aiPlayerId);
 
     return score;
+  }
+
+  /**
+   * Evaluates if the position meets ability-specific requirements
+   * Returns large positive bonus if requirements met, large penalty if not met but required
+   */
+  evaluateAbilityPositionRequirements(
+    gameState: GameState,
+    card: InGameCard,
+    position: BoardPosition,
+    aiPlayerId: string
+  ): number {
+    if (!card.base_card_data.special_ability) {
+      return 0;
+    }
+
+    const abilityName = card.base_card_data.special_ability.name;
+    const board = gameState.board;
+    let score = 0;
+
+    const { x, y } = position;
+    const maxIndex = GAME_CONFIG.BOARD_SIZE - 1;
+    const isEdge = x === 0 || x === maxIndex || y === 0 || y === maxIndex;
+    const isCorner = (x === 0 || x === maxIndex) && (y === 0 || y === maxIndex);
+    const isCenter = x > 0 && x < maxIndex && y > 0 && y < maxIndex;
+
+    const adjacentCards = getAdjacentCards(position, board);
+    const adjacentAllies = getAlliesAdjacentTo(position, board, aiPlayerId);
+    const adjacentEnemies = getEnemiesAdjacentTo(position, board, aiPlayerId);
+
+    // === EDGE REQUIREMENTS ===
+    if (abilityName === "Shore Fury") {
+      // MUST be on edge for +2 bonus
+      if (isEdge) {
+        score += 200; // Huge bonus - requirement met
+      } else {
+        score -= 300; // Massive penalty - ability won't work
+      }
+    }
+
+    // === ISOLATION REQUIREMENTS ===
+    else if (abilityName === "Primordial Force") {
+      // +2 to all if NO adjacent cards
+      if (adjacentCards.length === 0) {
+        score += 180; // Huge bonus
+      } else {
+        score -= 100; // Penalty for each adjacent card
+        score -= adjacentCards.length * 50;
+      }
+    } else if (abilityName === "Peaceful Strength") {
+      // +2 if no adjacent enemies
+      if (adjacentEnemies.length === 0) {
+        score += 120;
+      } else {
+        score -= 80; // Penalty if adjacent to enemies
+      }
+    }
+
+    // === ADJACENCY REQUIREMENTS (Tribal/Synergy) ===
+    else if (abilityName === "Sea's Protection") {
+      // +3 if adjacent to Sea card
+      const hasSeaAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Sea"));
+      if (hasSeaAdjacent) {
+        score += 150; // Strong bonus
+      } else {
+        score -= 60; // Penalty if condition not met
+      }
+    } else if (abilityName === "Valkyrie Sisterhood") {
+      // +2 if adjacent to Valkyrie
+      const hasValkyrieAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Valkyrie"));
+      if (hasValkyrieAdjacent) {
+        score += 130;
+      } else {
+        score -= 50;
+      }
+    } else if (abilityName === "Worthy Opponent") {
+      // +1 to all if adjacent to Thor
+      const hasThorAdjacent = adjacentAllies.some((c) => c.base_card_data.name === "Thor");
+      if (hasThorAdjacent) {
+        score += 120;
+      } else {
+        score -= 40;
+      }
+    } else if (abilityName === "Bride Demand") {
+      // +3 Right if adjacent to Goddess (should be to the LEFT of Goddess)
+      const hasGoddessAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Goddess"));
+      if (hasGoddessAdjacent) {
+        score += 140;
+      } else {
+        score -= 50;
+      }
+    }
+
+    // === TERRAIN REQUIREMENTS ===
+    else if (abilityName === "Sacred Spring") {
+      // MUST be on water/ocean tile
+      const tile = board[y][x];
+      const isWaterTile = tile?.tile_effect?.terrain === TileTerrain.Ocean;
+      if (isWaterTile) {
+        score += 250; // Essential requirement
+      } else {
+        score -= 400; // Huge penalty - ability won't work at all
+      }
+    }
+
+    // === CENTRAL POSITIONING FOR RECURRING EFFECTS ===
+    else if (
+      abilityName === "Warrior's Aura" ||
+      abilityName === "Vengeful Bite" ||
+      abilityName === "Devourer's Surge" ||
+      abilityName === "Moon's Balance"
+    ) {
+      // Recurring effects benefit from central, protected positions
+      if (isCenter) {
+        score += 80; // Central for max effect
+      } else if (isCorner) {
+        score += 40; // Corner for safety
+      }
+      // These need to survive multiple rounds
+      if (adjacentAllies.length >= 2) {
+        score += 60; // Protected by allies
+      }
+    }
+
+    // === MULTI-TARGET POSITIONING ===
+    else if (
+      abilityName === "Flames of Muspelheim" ||
+      abilityName === "Bone Chill" ||
+      abilityName === "Icy Presence" ||
+      abilityName === "Web Curse" ||
+      abilityName === "Hex Field"
+    ) {
+      // These abilities affect adjacent cards/tiles - maximize adjacency
+      if (isCenter) {
+        score += 100; // Can affect 4 adjacents
+      } else if (!isCorner) {
+        score += 50; // Edge: 3 adjacents
+      }
+      // Bonus for each enemy adjacent (for offensive abilities)
+      if (abilityName === "Flames of Muspelheim" || abilityName === "Bone Chill" || abilityName === "Icy Presence") {
+        score += adjacentEnemies.length * 40;
+      }
+    }
+
+    // === ALLY-BUFF POSITIONING ===
+    else if (
+      abilityName === "Mother's Blessing" ||
+      abilityName === "Battle Cry" ||
+      abilityName === "Poet's Rhythm" ||
+      abilityName === "Warrior's Blessing" ||
+      abilityName === "Allies Rally"
+    ) {
+      // These buff adjacent allies - place next to many allies
+      if (adjacentAllies.length >= 3) {
+        score += 150; // Optimal: 3+ allies
+      } else if (adjacentAllies.length === 2) {
+        score += 80; // Good: 2 allies
+      } else if (adjacentAllies.length === 1) {
+        score += 30; // OK: 1 ally
+      } else {
+        score -= 60; // Bad: no allies to buff
+      }
+    }
+
+    // === ENEMY-ADJACENT POSITIONING ===
+    else if (abilityName === "Steadfast Guard" || abilityName === "Beast Friend") {
+      // These get stronger with adjacent enemies
+      if (adjacentEnemies.length >= 3) {
+        score += 140;
+      } else if (adjacentEnemies.length === 2) {
+        score += 80;
+      } else if (adjacentEnemies.length === 1) {
+        score += 30;
+      } else {
+        score -= 50; // Wasted potential
+      }
+    }
+
+    // === DEFENSIVE ANCHOR POSITIONING (Invincibility) ===
+    else if (
+      abilityName === "Titan Shell" ||
+      abilityName === "Light Undimmed" ||
+      abilityName === "Ocean's Shield"
+    ) {
+      // These are defensive anchors - center or strategic points
+      if (isCenter) {
+        score += 140; // Lock down center
+      } else if (x === 1 || x === 2 || y === 1 || y === 2) {
+        score += 80; // Near-center positions
+      }
+    }
+
+    // === ROW/COLUMN EFFECT POSITIONING ===
+    else if (abilityName === "Frost Row" || abilityName === "Piercing Shot" || abilityName === "Many Heads") {
+      // These affect entire rows/columns - position where most enemies are
+      const enemiesInRow = this.countEnemiesInRow(gameState, y, aiPlayerId);
+      const enemiesInColumn = this.countEnemiesInColumn(gameState, x, aiPlayerId);
+      
+      if (abilityName === "Frost Row") {
+        score += enemiesInRow * 50;
+      } else if (abilityName === "Piercing Shot") {
+        score += enemiesInColumn * 50;
+      } else if (abilityName === "Many Heads") {
+        score += (enemiesInRow + enemiesInColumn) * 30;
+      }
+    }
+
+    return score;
+  }
+
+  /**
+   * Counts enemies in a specific row
+   */
+  private countEnemiesInRow(gameState: GameState, row: number, aiPlayerId: string): number {
+    let count = 0;
+    for (let x = 0; x < GAME_CONFIG.BOARD_SIZE; x++) {
+      const cell = gameState.board[row][x];
+      if (cell?.card && cell.card.owner !== aiPlayerId) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Counts enemies in a specific column
+   */
+  private countEnemiesInColumn(gameState: GameState, column: number, aiPlayerId: string): number {
+    let count = 0;
+    for (let y = 0; y < GAME_CONFIG.BOARD_SIZE; y++) {
+      const cell = gameState.board[y][column];
+      if (cell?.card && cell.card.owner !== aiPlayerId) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**

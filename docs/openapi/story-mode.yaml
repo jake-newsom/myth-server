@@ -1,0 +1,946 @@
+openapi: 3.0.0
+info:
+  title: Story Mode API
+  version: 1.0.0
+  description: API endpoints for story mode configuration and gameplay
+
+components:
+  schemas:
+    StoryDifficulty:
+      type: string
+      enum: [easy, medium, hard, legendary]
+      description: Difficulty level for story mode
+
+    RewardType:
+      type: string
+      enum: [first_win, repeat_win, achievement, milestone]
+      description: Type of reward
+
+    UnlockRequirements:
+      type: object
+      properties:
+        prerequisite_stories:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Array of story IDs that must be completed first
+        min_user_level:
+          type: integer
+          minimum: 1
+          description: Minimum user level required
+        required_achievements:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Array of achievement IDs required
+        min_total_story_wins:
+          type: integer
+          minimum: 0
+          description: Minimum number of total story wins required
+        custom_conditions:
+          type: object
+          additionalProperties: true
+          description: Custom unlock conditions for future extensibility
+
+    RewardData:
+      type: object
+      properties:
+        gold:
+          type: integer
+          minimum: 0
+          description: Gold reward amount
+        gems:
+          type: integer
+          minimum: 0
+          description: Gems reward amount
+        fate_coins:
+          type: integer
+          minimum: 0
+          description: Fate coins reward amount
+        card_fragments:
+          type: integer
+          minimum: 0
+          description: Card fragments reward amount
+        specific_cards:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Array of specific card IDs to reward
+        random_cards:
+          type: object
+          properties:
+            count:
+              type: integer
+              minimum: 1
+            rarity:
+              type: string
+            set_id:
+              type: string
+              format: uuid
+          description: Random card reward configuration
+        packs:
+          type: array
+          items:
+            type: object
+            properties:
+              set_id:
+                type: string
+                format: uuid
+              count:
+                type: integer
+                minimum: 1
+          description: Pack rewards
+        card_xp:
+          type: integer
+          minimum: 0
+          description: Card XP reward amount
+        achievements:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Achievement IDs to unlock
+        custom_rewards:
+          type: object
+          additionalProperties: true
+          description: Custom rewards for future extensibility
+
+    StoryModeConfig:
+      type: object
+      required:
+        - story_id
+        - name
+        - difficulty
+        - ai_deck_id
+        - order_index
+        - is_active
+        - unlock_requirements
+        - created_at
+        - updated_at
+      properties:
+        story_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+          description: Display name for the story mode opponent
+        description:
+          type: string
+          maxLength: 500
+          description: Flavor text or description of the opponent
+        difficulty:
+          $ref: '#/components/schemas/StoryDifficulty'
+        ai_deck_id:
+          type: string
+          format: uuid
+          description: The AI deck this story mode uses
+        order_index:
+          type: integer
+          minimum: 0
+          maximum: 999
+          description: Order in which story modes should be displayed
+        is_active:
+          type: boolean
+          description: Whether this story mode is currently available
+        unlock_requirements:
+          $ref: '#/components/schemas/UnlockRequirements'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StoryModeReward:
+      type: object
+      required:
+        - reward_id
+        - story_id
+        - reward_type
+        - reward_data
+        - is_active
+        - created_at
+      properties:
+        reward_id:
+          type: string
+          format: uuid
+        story_id:
+          type: string
+          format: uuid
+        reward_type:
+          $ref: '#/components/schemas/RewardType'
+        reward_data:
+          $ref: '#/components/schemas/RewardData'
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    UserStoryProgress:
+      type: object
+      required:
+        - progress_id
+        - user_id
+        - story_id
+        - times_completed
+        - total_attempts
+        - created_at
+        - updated_at
+      properties:
+        progress_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        story_id:
+          type: string
+          format: uuid
+        times_completed:
+          type: integer
+          minimum: 0
+          description: Number of times user has beaten this story mode
+        first_completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the user first beat this story mode
+        last_completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the user last beat this story mode
+        best_completion_time:
+          type: integer
+          nullable: true
+          description: Best completion time in seconds
+        total_attempts:
+          type: integer
+          minimum: 0
+          description: Total number of attempts (wins + losses)
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    StoryModeWithRewards:
+      allOf:
+        - $ref: '#/components/schemas/StoryModeConfig'
+        - type: object
+          required:
+            - rewards
+          properties:
+            rewards:
+              type: array
+              items:
+                $ref: '#/components/schemas/StoryModeReward'
+
+    StoryModeWithProgress:
+      allOf:
+        - $ref: '#/components/schemas/StoryModeWithRewards'
+        - type: object
+          required:
+            - is_unlocked
+            - can_play
+          properties:
+            user_progress:
+              $ref: '#/components/schemas/UserStoryProgress'
+              nullable: true
+            is_unlocked:
+              type: boolean
+              description: Whether the user meets unlock requirements
+            can_play:
+              type: boolean
+              description: Whether the user can currently play this story mode
+
+    StoryModeListResponse:
+      type: object
+      required:
+        - story_modes
+        - total_count
+      properties:
+        story_modes:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoryModeWithProgress'
+        total_count:
+          type: integer
+
+    CreateStoryModeRequest:
+      type: object
+      required:
+        - name
+        - difficulty
+        - ai_deck_id
+        - rewards
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        difficulty:
+          $ref: '#/components/schemas/StoryDifficulty'
+        ai_deck_id:
+          type: string
+          format: uuid
+        order_index:
+          type: integer
+          minimum: 0
+          maximum: 999
+        unlock_requirements:
+          $ref: '#/components/schemas/UnlockRequirements'
+        rewards:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            required:
+              - reward_type
+              - reward_data
+            properties:
+              reward_type:
+                $ref: '#/components/schemas/RewardType'
+              reward_data:
+                $ref: '#/components/schemas/RewardData'
+              is_active:
+                type: boolean
+                default: true
+
+    UpdateStoryModeRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 500
+        difficulty:
+          $ref: '#/components/schemas/StoryDifficulty'
+        ai_deck_id:
+          type: string
+          format: uuid
+        order_index:
+          type: integer
+          minimum: 0
+          maximum: 999
+        is_active:
+          type: boolean
+        unlock_requirements:
+          $ref: '#/components/schemas/UnlockRequirements'
+
+    StoryGameStartRequest:
+      type: object
+      required:
+        - story_id
+        - player_deck_id
+      properties:
+        story_id:
+          type: string
+          format: uuid
+        player_deck_id:
+          type: string
+          format: uuid
+
+    StoryGameStartResponse:
+      type: object
+      required:
+        - game_id
+        - story_config
+      properties:
+        game_id:
+          type: string
+          description: Unique identifier for the started game
+        story_config:
+          $ref: '#/components/schemas/StoryModeConfig'
+        ai_deck_preview:
+          type: object
+          properties:
+            name:
+              type: string
+            card_count:
+              type: integer
+
+    StoryGameCompletionRewards:
+      type: object
+      required:
+        - rewards_earned
+        - is_first_win
+        - new_progress
+      properties:
+        rewards_earned:
+          $ref: '#/components/schemas/RewardData'
+        is_first_win:
+          type: boolean
+        new_progress:
+          $ref: '#/components/schemas/UserStoryProgress'
+        unlocked_stories:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Story IDs that were unlocked by this completion
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+paths:
+  /api/story-modes:
+    get:
+      summary: Get available story modes for the authenticated user
+      tags: [Story Mode]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of available story modes with user progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoryModeListResponse'
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/story-modes/start:
+    post:
+      summary: Start a story mode game
+      tags: [Story Mode]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoryGameStartRequest'
+      responses:
+        '200':
+          description: Story game started successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                  - $ref: '#/components/schemas/StoryGameStartResponse'
+        '400':
+          description: Invalid request or requirements not met
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/story-modes/progress:
+    get:
+      summary: Get user's story mode progress for all story modes
+      tags: [Story Mode]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User's story mode progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  progress:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserStoryProgress'
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/story-modes/progress/{storyId}:
+    get:
+      summary: Get user's progress for a specific story mode
+      tags: [Story Mode]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: storyId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Story mode ID
+      responses:
+        '200':
+          description: User's progress for the specified story mode
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  progress:
+                    $ref: '#/components/schemas/UserStoryProgress'
+                    nullable: true
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/story-modes/complete:
+    post:
+      summary: Process story mode game completion (internal endpoint)
+      tags: [Story Mode]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - story_id
+                - game_result
+              properties:
+                story_id:
+                  type: string
+                  format: uuid
+                game_result:
+                  type: object
+                  description: Game result object
+                completion_time_seconds:
+                  type: integer
+                  description: Time taken to complete the game in seconds
+      responses:
+        '200':
+          description: Story completion processed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                  - $ref: '#/components/schemas/StoryGameCompletionRewards'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/story-modes/{storyId}/unlock-status:
+    get:
+      summary: Check if user can unlock a specific story mode
+      tags: [Story Mode]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: storyId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Story mode ID
+      responses:
+        '200':
+          description: Unlock status for the story mode
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  story_id:
+                    type: string
+                    format: uuid
+                  is_unlocked:
+                    type: boolean
+        '400':
+          description: Invalid story ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  # Admin endpoints
+  /api/admin/story-modes:
+    get:
+      summary: Get all story mode configurations (admin)
+      tags: [Admin - Story Mode]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of all story mode configurations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  story_modes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StoryModeWithRewards'
+                  total_count:
+                    type: integer
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+    post:
+      summary: Create a new story mode configuration
+      tags: [Admin - Story Mode]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStoryModeRequest'
+      responses:
+        '201':
+          description: Story mode created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  story_mode:
+                    $ref: '#/components/schemas/StoryModeWithRewards'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/admin/story-modes/{storyId}:
+    get:
+      summary: Get a specific story mode configuration
+      tags: [Admin - Story Mode]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: storyId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Story mode ID
+      responses:
+        '200':
+          description: Story mode configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  story_mode:
+                    $ref: '#/components/schemas/StoryModeWithRewards'
+        '404':
+          description: Story mode not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+    put:
+      summary: Update a story mode configuration
+      tags: [Admin - Story Mode]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: storyId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Story mode ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStoryModeRequest'
+      responses:
+        '200':
+          description: Story mode updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  story_mode:
+                    $ref: '#/components/schemas/StoryModeWithRewards'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          description: Story mode not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+    delete:
+      summary: Delete a story mode configuration
+      tags: [Admin - Story Mode]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: storyId
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Story mode ID
+      responses:
+        '200':
+          description: Story mode deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '404':
+          description: Story mode not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '401':
+          description: User not authenticated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string

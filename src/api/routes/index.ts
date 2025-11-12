@@ -19,6 +19,7 @@ import mailRoutes from "./mail.routes";
 import healthRoutes from "./health.routes";
 import powerUpRoutes from "./powerUp.routes";
 import dailyShopRoutes from "./dailyShop.routes";
+import storyModeRoutes from "./storyMode.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -47,6 +48,7 @@ router.use("/mail", mailRoutes);
 router.use("/health", healthRoutes);
 router.use("/power-ups", powerUpRoutes);
 router.use("/daily-shop", dailyShopRoutes);
+router.use("/story-modes", storyModeRoutes);
 
 // Global error handler
 router.use(errorHandler);

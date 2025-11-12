@@ -1,0 +1,562 @@
+[
+    {
+      "special_abilities.name": "Watchman's Gate",
+      "special_abilities.description": "After 3 rounds all played cards lose -1 and grant cards in your hand +1",
+      "suggested_use": {
+        "when_to_play": "Early to mid-game. This is a long-term strategic play. The AI should deploy this when it anticipates controlling the board in the late game and wants a decisive advantage on future draws. **Crucially, the AI should play this if the majority of its currently played cards are disposable or have high base stats to absorb the -1 penalty, or if the opponent has more cards on the board.**",
+        "best_grid_placement": "Center (B2, B3, C2, C3) or a semi-central position. Since the effect takes 3 rounds to trigger and impacts the entire board (yours and the opponent's), placing it centrally helps ensure it survives long enough to activate, as central cards are generally harder to isolate and defeat early on. Placing it too close to an edge makes it an easy target for a strong single-sided attack."
+      }
+    },
+    {
+      "special_abilities.name": "Thunderous Push",
+      "special_abilities.description": "Strike all enemies with lightning granting -1 on a random side ",
+      "suggested_use": {
+        "when_to_play": "When the opponent has a **critical mass** of cards (3 or more) on the board, especially if they are clustered. This card is best used as a proactive measure to weaken the opponent's board-state globally before a major exchange of cards. The AI should prioritize playing this when it has a strong board and can exploit the weakened enemy stats immediately.",
+        "best_grid_placement": "Any open tile that allows for maximum adjacency to enemy cards on the turn of placement, but generally a **safe corner or edge** (A1, A4, D1, D4) if the AI has no immediate plans to challenge the center. The ability is global, so the placement's primary goal is survivability, unless the AI intends to use the card's base power for a flip on the current turn."
+      }
+    },
+    {
+      "special_abilities.name": "Foresight",
+      "special_abilities.description": "Grant +1 to all allies on the board.",
+      "suggested_use": {
+        "when_to_play": "Mid to late game, when the AI has established a strong presence (at least 3-4 allies). This is an excellent momentum card. It should be played right before the AI makes a move that could potentially flip multiple enemy cards, as the +1 boost increases the chance of multiple successful flips in one turn.",
+        "best_grid_placement": "A contested position, such as a center edge (A2, B1, D3, C4) or a central spot. The AI should aim to play this card *last* in a combo turn to lock down the board, using its base power to flip an adjacent card, while simultaneously boosting its existing allies for subsequent turns."
+      }
+    },
+    {
+      "special_abilities.name": "Silent Vengeance",
+      "special_abilities.description": "If Odin has been defeated, gain +3 to all stats.",
+      "suggested_use": {
+        "when_to_play": "Only play this card **after** Odin has been defeated. If Odin is on the opponent's side, the AI should prioritize defeating it first using other cards, and then play this card as a high-value threat immediately after. It transforms into one of the strongest defensive/offensive cards in the game when activated.",
+        "best_grid_placement": "An area the AI wants to lock down permanently, such as a **critical center square (B2/B3/C2/C3)**. The +3 to all sides makes it nearly impossible to defeat without highly specialized counters, effectively securing the card and up to four adjacent tiles for the remainder of the game."
+      }
+    },
+    {
+      "special_abilities.name": "Sea's Protection",
+      "special_abilities.description": "Gain +3 if adjacent to a Sea card.",
+      "suggested_use": {
+        "when_to_play": "This is a reactive or combo card. The AI should play it immediately adjacent to a friendly 'Sea' card, or play a 'Sea' card first and then this card in the same turn. It is used to instantly create a highly powerful, localized defensive/offensive threat to flip a strong enemy card or defend a weak flank.",
+        "best_grid_placement": "Directly adjacent to a Sea card (friendly only). Ideal spots are along the **center edges** to leverage the high power against contested cards, for example, playing it at B3 if a friendly Sea card is at B2."
+      }
+    },
+    {
+      "special_abilities.name": "Poet's Rhythm",
+      "special_abilities.description": "Adjacent allies gain +1 for a round.",
+      "suggested_use": {
+        "when_to_play": "A highly effective **push** card. The AI should use this when it has multiple (2-3) adjacent allies that are in a position to challenge enemy cards *this turn*. This is best used to secure a successful flip in a close comparison, or to protect friendly cards from an immediate counter-flip on the opponent's next turn.",
+        "best_grid_placement": "A tile surrounded by multiple friendly cards that are adjacent to enemy cards. An ideal spot is a **central position (B2, C3)** with established allied cards on three sides, preparing for an aggressive push into enemy territory."
+      }
+    },
+    {
+      "special_abilities.name": "Mother's Blessing",
+      "special_abilities.description": "Grant +1 to all adjacent allies.",
+      "suggested_use": {
+        "when_to_play": "Similar to 'Poet's Rhythm', but the bonus is permanent, making it a powerful **booster**. It should be played when the AI needs to permanently fortify a defensive perimeter or boost the stats of key cards that are often challenged. Best used on high-value allies that the opponent is trying to flip.",
+        "best_grid_placement": "A central position that is entirely surrounded by friendly cards. For maximum permanent effect, play it at a square like **B2 or C3** where it can affect three or four already-played allies, creating a powerful, fortified core."
+      }
+    },
+    {
+      "special_abilities.name": "Light Undimmed",
+      "special_abilities.description": "Cannot be defeated by special abilities.",
+      "suggested_use": {
+        "when_to_play": "Defensive counter-play. The AI should use this card when the opponent is relying heavily on ability-based flips or destruction (e.g., 'Thunderous Push,' 'Storm Breaker,' 'Tidal Sweep,' 'Flames of Muspelheim'). It's a fantastic **anchor** card to prevent the opponent from breaking a solid formation with a single ability.",
+        "best_grid_placement": "A **critical edge or corner (A1, D4)**, or a key position the opponent frequently targets with ability cards. Placing it on an edge minimizes the number of sides that can be challenged by base power comparisons, making the ability a high-value defensive asset."
+      }
+    },
+    {
+      "special_abilities.name": "Avenge Baldr",
+      "special_abilities.description": "Gain +1 to all stats for each ally defeated this game.",
+      "suggested_use": {
+        "when_to_play": "Late game, or when the AI is losing the attrition war. This card is a **comeback mechanic** or a high-reward finisher. The AI should hold onto it until 3-4 allied cards have been defeated, transforming it into a high-stat powerhouse for a major flip.",
+        "best_grid_placement": "A **central square (B2, B3, C2, C3)** to maximize its impact on adjacent cards. When fully powered, its base stats will be so high that it can challenge any card and hold the central board, allowing the AI to rapidly flip multiple enemy cards and regain control."
+      }
+    },
+    {
+      "special_abilities.name": "Peaceful Strength",
+      "special_abilities.description": "Gain +2 if no adjacent enemies.",
+      "suggested_use": {
+        "when_to_play": "A defensive or consolidation card. Best played early to mid-game to defend an existing friendly perimeter. The AI should use it to **reinforce a friendly cluster** that is not currently being challenged, ensuring the opponent cannot easily break in on the next turn. It's a card that secures an area.",
+        "best_grid_placement": "Any tile **adjacent to only friendly cards or empty spaces**. It is perfect for a **corner or edge** (e.g., A2, B4) where the AI already has allies, to create a strong, consolidated flank that is difficult for the opponent to assault."
+      }
+    },
+    {
+      "special_abilities.name": "Winter's Grasp",
+      "special_abilities.description": "Freeze one adjacent tile for 1 turn.",
+      "suggested_use": {
+        "when_to_play": "A disruption/control card. The AI should use this when an opponent is preparing to play a high-threat card in an adjacent empty tile, or when the AI needs to **stall a critical position** to buy time for a combo. It's an excellent way to neutralize an opponent's turn without spending a high-power card.",
+        "best_grid_placement": "Any tile adjacent to a **key empty square** the opponent is likely to target. For example, playing it at B2 to freeze C2, denying the opponent access to a central position for a turn."
+      }
+    },
+    {
+      "special_abilities.name": "Warrior’s Aura",
+      "special_abilities.description": "Grant +1 to allies in the same row each round",
+      "suggested_use": {
+        "when_to_play": "A sustained-effect booster. Best used early to mid-game to establish a powerful, continuous threat along a specific row. The AI should play this in a row that is already (or will be) densely populated with friendly cards to get maximum value from the recurring +1.",
+        "best_grid_placement": "A **corner or edge position in a high-priority row** (e.g., A1, A4, D1, D4) that the AI plans to fill with allies. Placing it on an edge minimizes vulnerability while maximizing the number of affected allies along the row."
+      }
+    },
+    {
+      "special_abilities.name": "Hunter’s Mark",
+      "special_abilities.description": "When an ally is defeated, drain -1 from the attacker",
+      "suggested_use": {
+        "when_to_play": "A strong defensive deterrent. This card is best played when the AI anticipates a major hostile flip on the current or next turn. It acts as a **punishment** mechanism, weakening the enemy card that successfully flips an ally, making that attacker vulnerable to an immediate counter-flip on the AI's subsequent turn.",
+        "best_grid_placement": "An area of **high conflict**, such as a central position (B2, C3) or adjacent to a weak/disposable allied card. The goal is to ensure the ability triggers by placing it where allied cards are most likely to be defeated."
+      }
+    },
+    {
+      "special_abilities.name": "Bone Chill",
+      "special_abilities.description": "All adjacent enemies lose 1 power.",
+      "suggested_use": {
+        "when_to_play": "A localized debuff used for immediate offensive benefit. The AI should play this when it needs to successfully flip 2 or more adjacent enemy cards, or to defend an adjacent friendly card from an immediate counter-flip. The instantaneous effect can swing multiple comparisons in the AI's favor.",
+        "best_grid_placement": "A position adjacent to **2 or 3 enemy cards**. A **center-edge position (B1, C4)** that borders multiple enemies is ideal for maximum effect."
+      }
+    },
+    {
+      "special_abilities.name": "Storm Breaker",
+      "special_abilities.description": "Destroy the strongest enemy BEAST or DRAGON, gain +2 after.",
+      "suggested_use": {
+        "when_to_play": "Targeted removal. This card is a **high-value counter** that must be reserved for when a strong enemy 'Beast' or 'Dragon' card is on the board. The +2 bonus it gains after destruction makes it a formidable force for the rest of the game, so it's best played to maximize that long-term boost.",
+        "best_grid_placement": "A position where its newly gained **+2 power** is best leveraged, such as a square that allows it to challenge multiple strong enemy cards *after* the destruction effect triggers. A **central position (B2, C3)** is usually best to maximize the reach of its permanent buff."
+      }
+    },
+    {
+      "special_abilities.name": "Tidal Sweep",
+      "special_abilities.description": "Defeats enemies diagonally if they have lower total power",
+      "suggested_use": {
+        "when_to_play": "A surprising attack that is not blocked by orthogonal defenses. Best used when there is an enemy with low total power in a **diagonal position** that the AI cannot reach orthogonally. It's a great tool for 'sniping' weak backline cards or cards that are used for their abilities rather than their stats.",
+        "best_grid_placement": "Any tile that has a diagonal line-of-sight to a weak, targetable enemy card. The corners (A1, A4, D1, D4) are excellent for this as they offer two diagonal targets, making a move like playing on **A1 to defeat a card at B2** a strong opening."
+      }
+    },
+    {
+      "special_abilities.name": "Many Heads",
+      "special_abilities.description": "Grant -1 to enemies in the same row or column",
+      "suggested_use": {
+        "when_to_play": "A widespread debuff for a major turn. The AI should play this when it needs to weaken a large number of enemies across a row or column to secure multiple flips in the current turn. This is best used to set up a sweeping move where the AI plays several cards in a row to take over a large section of the grid.",
+        "best_grid_placement": "A card that is in a row or column with the **maximum number of enemy cards**. Playing it at **A1, A4, D1, or D4** is often optimal as it affects 3 other squares in the row and 3 in the column, allowing it to potentially debuff up to 6 unique cards."
+      }
+    },
+    {
+      "special_abilities.name": "Trickster's Gambit",
+      "special_abilities.description": "Flip 4 random cards on the board with 50% chance.",
+      "suggested_use": {
+        "when_to_play": "A high-risk, high-reward ability for the late game. Best played when the game is close, and a single successful random flip could win the game, or when the AI is losing and has little to lose. It's a desperate measure or a chaotic finisher.",
+        "best_grid_placement": "A **safe, defensive position (e.g., a corner)**. Since the effect is global and random, the placement should prioritize the card's survivability or its base power for an immediate, non-random flip on the turn it is played."
+      }
+    },
+    {
+      "special_abilities.name": "Soul Lock",
+      "special_abilities.description": "Enemies Hel defeats become permanent allies.",
+      "suggested_use": {
+        "when_to_play": "The ultimate control card. The AI should play this when 'Hel' (the card) is adjacent to a high-value enemy card. This should be played strategically to defeat the strongest enemy card possible and steal it, permanently changing the balance of power.",
+        "best_grid_placement": "Directly adjacent to the **highest value enemy card** that Hel can successfully defeat with its current power. This requires careful calculation of Hel's power vs. the enemy's adjacent power."
+      }
+    },
+    {
+      "special_abilities.name": "Primordial Force",
+      "special_abilities.description": "Gain +2 to all stats if no adjacent cards.",
+      "suggested_use": {
+        "when_to_play": "An exceptional opening card. The AI should play this on an empty board or in an isolated area to immediately establish a high-stat powerhouse. It's a great way to initiate a threat in a new area of the grid.",
+        "best_grid_placement": "An **isolated corner (A1, D4)** or an **unoccupied center square (B2)** early in the game. It creates a powerful anchor that is only vulnerable on the edges it borders."
+      }
+    },
+    {
+      "special_abilities.name": "Flames of Muspelheim",
+      "special_abilities.description": "Destroys the strongest adjacent enemy and reduces others by 1.",
+      "suggested_use": {
+        "when_to_play": "A powerful tactical nuke. Best used when the AI is surrounded by enemies, especially if there is one very strong card and multiple weaker ones. It acts as an area-of-effect removal and debuff, clearing a path for friendly cards to follow.",
+        "best_grid_placement": "A position adjacent to the **strongest enemy card** that needs to be removed. An ideal spot would be a square adjacent to 3 enemy cards, where the strongest is removed and the other two are weakened, such as a center square that is deep in enemy territory."
+      }
+    },
+    {
+      "special_abilities.name": "Bride Demand",
+      "special_abilities.description": "Gain +3 Right if adjacent to a Goddess card.",
+      "suggested_use": {
+        "when_to_play": "A highly targeted offensive boost. The AI should play this card to the left of a friendly 'Goddess' card to gain a massive +3 boost to its Right power. This is used specifically to defeat an enemy card that is placed immediately to the right of the Bride Demand card.",
+        "best_grid_placement": "Immediately **to the left of a friendly 'Goddess' card** and adjacent to a strong enemy card on its right. For example, play at B2 if a Goddess is at C2, and an enemy needs to be flipped at B3."
+      }
+    },
+    {
+      "special_abilities.name": "Worthy Opponent",
+      "special_abilities.description": "Gain +1 to all stats if adjacent to Thor.",
+      "suggested_use": {
+        "when_to_play": "A combo booster. The AI should play this card immediately adjacent to a friendly 'Thor' card to permanently gain +1 to all stats. This is a great way to turn a mid-level card into a formidable defensive and offensive threat.",
+        "best_grid_placement": "Directly adjacent to a friendly 'Thor' card, in a position that maximizes the number of sides facing enemy cards. A **central position** next to Thor is best to leverage the +1 on all four sides."
+      }
+    },
+    {
+      "special_abilities.name": "Drowning Net",
+      "special_abilities.description": "Pull enemy cards one tile closer before combat.",
+      "suggested_use": {
+        "when_to_play": "A positional trap/enabler. The AI should use this to pull a key enemy card into an unfavorable position, such as pulling a strong enemy into an area where it can be immediately challenged by multiple friendly cards, or pulled into a trap tile (e.g., a Lava Field).",
+        "best_grid_placement": "A position that allows the pull to maximize adjacent enemy flips. For example, playing at **C3** to pull an enemy from C4 to C3, immediately exposing it to potential attacks from the cards at B3 and D3."
+      }
+    },
+    {
+      "special_abilities.name": "Valkyrie Sisterhood",
+      "special_abilities.description": "Gain +2 if adjacent to another Valkyrie.",
+      "suggested_use": {
+        "when_to_play": "A powerful tribal synergy. The AI should play this card adjacent to a friendly 'Valkyrie' card to gain a powerful, immediate +2 boost, allowing it to easily flip a strong enemy card in a key position.",
+        "best_grid_placement": "Directly adjacent to a friendly 'Valkyrie' card, aiming for a comparison with an enemy card that the base power of the 'Valkyrie Sisterhood' card wouldn't normally win. A **center-edge position** (e.g., B3 next to a Valkyrie at B2) is good for offensive power."
+      }
+    },
+    {
+      "special_abilities.name": "Healing Touch",
+      "special_abilities.description": "Cleanse adjacent allies of negative effects.",
+      "suggested_use": {
+        "when_to_play": "A defensive utility play. The AI should use this card when 1 or more adjacent friendly cards are debuffed (e.g., by 'Bone Chill,' 'Many Heads,' 'Web Curse'). It should be played to maintain the strength of key friendly cards that are essential to holding the line.",
+        "best_grid_placement": "A tile adjacent to the **most strategically important cursed ally**. For example, playing it at C3 to cleanse a high-power card at C2 that has been debuffed by the opponent."
+      }
+    },
+    {
+      "special_abilities.name": "Battle Cry",
+      "special_abilities.description": "Boost adjacent allies by +1.",
+      "suggested_use": {
+        "when_to_play": "A temporary offensive boost. The AI should play this card to enable multiple adjacent friendly cards to flip their respective enemy counterparts on the current turn. This is an aggressive move designed to turn a defensive line into a wave of attack.",
+        "best_grid_placement": "A position that is adjacent to **2-3 friendly cards** that are currently in a close comparison with enemy cards. A **central position** is ideal for maximum adjacency (e.g., B2)."
+      }
+    },
+    {
+      "special_abilities.name": "Fated Draw",
+      "special_abilities.description": "Draw 1 card.",
+      "suggested_use": {
+        "when_to_play": "A pure utility card. The AI should play this when its hand is weak or when it needs to reach a key combo piece. It's best used to end a turn when there are no other high-impact moves, or when the board position is stable.",
+        "best_grid_placement": "A **safe corner or edge (A1, D4)**, or any tile that doesn't risk a high-value flip. The card's ability is independent of placement, so survivability or minimizing risk on a weak side is the priority."
+      }
+    },
+    {
+      "special_abilities.name": "Venomous Presence",
+      "special_abilities.description": "Reduce the strongest adjacent enemy card's power by 2.",
+      "suggested_use": {
+        "when_to_play": "Targeted debuff. The AI should play this card when it needs to neutralize a single, highly powerful adjacent enemy card that is defending a key area. The -2 debuff is often enough to swing the comparison in the AI's favor, allowing the card to be defeated.",
+        "best_grid_placement": "Directly adjacent to the **single strongest enemy card** that the AI wants to defeat. For example, playing at B3 to target an enemy at B2, allowing a flip against a high-value card."
+      }
+    },
+    {
+      "special_abilities.name": "Swift Messenger",
+      "special_abilities.description": "Draw 2 cards.",
+      "suggested_use": {
+        "when_to_play": "High-value utility. Similar to 'Fated Draw' but better. Use this when the hand is poor, or the AI needs to fish for a specific combo or high-power finisher. It allows the AI to refill its options quickly.",
+        "best_grid_placement": "A **safe corner or edge** where the card is unlikely to be challenged and the comparison side is weak. The ability is global, so the AI should prioritize using the base power to defend a position."
+      }
+    },
+    {
+      "special_abilities.name": "Past Weaves",
+      "special_abilities.description": "Gain +1 to all stats for each destroyed ally.",
+      "suggested_use": {
+        "when_to_play": "A less common, but powerful comeback mechanic. Only use this when the AI has been losing the board war (2+ allies destroyed). It's a late-game card that becomes a major threat after heavy attrition.",
+        "best_grid_placement": "A **central square (B2, C3)** to maximize its offensive and defensive reach once it is fully powered up from destroyed allies. The high stats make it a permanent anchor."
+      }
+    },
+    {
+      "special_abilities.name": "Radiant Blessing",
+      "special_abilities.description": "When an ally is defeated, grant +1 to a random ally",
+      "suggested_use": {
+        "when_to_play": "A mitigating effect against defeat. The AI should play this when it anticipates a major enemy flip in the next turn, or when it is using 'disposable' cards to draw out the opponent's strong plays. The ability softens the blow of defeat by boosting another card.",
+        "best_grid_placement": "A **central defensive position (B2, C3)** where it is protected, but can observe all adjacent allies. Its passive, global effect on defeat means placement should prioritize its own defense."
+      }
+    },
+    {
+      "special_abilities.name": "Icy Presence",
+      "special_abilities.description": "Adjacent enemies lose 1 power.",
+      "suggested_use": {
+        "when_to_play": "A localized, permanent debuff. Similar to 'Bone Chill', but the effect is continuous, making it a stronger defensive lock-down card. The AI should use this to create a permanent 'no-fly zone' around a key area, making it difficult for the opponent to play strong cards nearby.",
+        "best_grid_placement": "A **center-edge position (B1, C4)** adjacent to multiple enemy-controlled tiles. The continuous -1 power makes it a nightmare for the opponent to successfully attack the area."
+      }
+    },
+    {
+      "special_abilities.name": "Gale Aura",
+      "special_abilities.description": "Push adjacent enemies away 1 tile.",
+      "suggested_use": {
+        "when_to_play": "A positional defensive move. The AI should use this to **break up an enemy cluster** or push a powerful adjacent enemy card into a worse position (e.g., pushing it to an empty tile where it can't challenge another friendly card). It's a great defensive move to prevent a successful enemy chain-flip.",
+        "best_grid_placement": "Directly adjacent to the **highest-threat enemy cluster** that the AI wants to disperse. A position that pushes a card off a strategic point (e.g., pushing a card from C3 to D3) is ideal."
+      }
+    },
+    {
+      "special_abilities.name": "Rain's Blessing",
+      "special_abilities.description": "Fill an empty tile with water. Allies placed after her gain +1 to a random side.",
+      "suggested_use": {
+        "when_to_play": "A setup/synergy card. The AI should use this to **create a 'Water' tile** to set up other cards that benefit from Water (e.g., 'Sea's Protection', 'Sacred Spring'). It's best used to prepare for a powerful combo turn.",
+        "best_grid_placement": "A position adjacent to a **key empty tile** that the AI wants to turn into a Water Tile. Playing it at B2 and creating a Water tile at C2 is a strong mid-game control play."
+      }
+    },
+    {
+      "special_abilities.name": "Dread Aura",
+      "special_abilities.description": "Enemy abilities are disabled next turn.",
+      "suggested_use": {
+        "when_to_play": "A counter-ability. The AI should play this when it anticipates the opponent using a high-impact ability card on their next turn (e.g., 'Storm Breaker,' 'Flames of Muspelheim,' 'Trickster's Gambit'). It neutralizes the opponent's core strategy for a turn.",
+        "best_grid_placement": "A **safe corner or edge** (A1, D4) or a defensive central position (B2). The ability is global and does not depend on adjacency, so placement should prioritize survivability or a successful base-power flip."
+      }
+    },
+    {
+      "special_abilities.name": "Thunderous Omen",
+      "special_abilities.description": "Strike a random enemy with lightning, reducing a random power by 1.",
+      "suggested_use": {
+        "when_to_play": "A general-purpose debuff. Best used when the opponent has 2-3 cards on the board and the AI is looking to apply persistent pressure. The random nature makes it best used when any enemy debuff is beneficial.",
+        "best_grid_placement": "A **safe corner or edge** where the card is protected. The effect is random and global, so the placement should focus on the card's base comparison power to secure or challenge an adjacent position."
+      }
+    },
+    {
+      "special_abilities.name": "Frost Row",
+      "special_abilities.description": "Enemies in the same row lose 1 power this turn.",
+      "suggested_use": {
+        "when_to_play": "A row-wide offensive boost. The AI should play this when it needs to successfully flip 2 or more enemy cards in the same row on the current turn. It's an excellent tactical card for a decisive row-sweep.",
+        "best_grid_placement": "A position in the **row with the maximum number of enemy cards** that the AI is challenging. For example, playing it at B1 or B4 to debuff the entire row B and enable multiple flips."
+      }
+    },
+    {
+      "special_abilities.name": "Shore Fury",
+      "special_abilities.description": "Gains +2 power if placed on an edge.",
+      "suggested_use": {
+        "when_to_play": "A high-power offensive card. The AI should play this card only on an edge tile to gain the +2 bonus, allowing it to easily defeat a strong adjacent enemy card along that edge.",
+        "best_grid_placement": "Any tile on the **outer perimeter (Row A, Row D, Column 1, Column 4)** that is adjacent to a strong enemy card the AI wants to flip. For example, playing at A3 to flip an enemy at B3."
+      }
+    },
+    {
+      "special_abilities.name": "Echo Power",
+      "special_abilities.description": "Matches the highest adjacent card’s power this turn.",
+      "suggested_use": {
+        "when_to_play": "A powerful defensive or offensive tool. The AI should play this card to defend an open flank against a high-power enemy, or to flip a card that has one high value and weaker other sides. It should be played when the adjacent enemy's power is higher than the card's base power to gain a massive temporary boost.",
+        "best_grid_placement": "Directly adjacent to the **highest-power side** of an enemy or ally. For example, playing at B2 to defend against an enemy at B3 that has an 8 on its left side."
+      }
+    },
+    {
+      "special_abilities.name": "Time Shift",
+      "special_abilities.description": "Remove all temporary buffs from a random enemy in the same column.",
+      "suggested_use": {
+        "when_to_play": "A targeted counter-buff. The AI should play this when an enemy in the same column has been significantly boosted by temporary effects (e.g., 'Poet's Rhythm', 'Warrior's Blessing', 'Battle Cry'). This is a great way to neutralize a major enemy offensive push.",
+        "best_grid_placement": "Any tile in the **column with the most-boosted enemy card**. Playing at A3 or D3 to cleanse a highly buffed card in the center of Column 3 (C3) is a high-value play."
+      }
+    },
+    {
+      "special_abilities.name": "Piercing Shot",
+      "special_abilities.description": "Enemies in the same column permanently lose 1 power.",
+      "suggested_use": {
+        "when_to_play": "A powerful, permanent column-wide debuff. The AI should use this early to mid-game to establish persistent control over a key column. This makes all future attacks against cards in that column easier.",
+        "best_grid_placement": "A position in the **column with the most enemy cards** that the AI expects to challenge throughout the game. For example, playing at A2 to debuff the entire Column 2, which is often a contested center column."
+      }
+    },
+    {
+      "special_abilities.name": "Devourer's Surge",
+      "special_abilities.description": "Destroys a weaker adjacent enemy each round, afterwards gains +1 to one side",
+      "suggested_use": {
+        "when_to_play": "An engine of destruction and growth. The AI should play this next to a weak, disposable enemy card to trigger the destruction and gain the permanent +1 stat boost immediately. This card gets stronger the longer it is on the board.",
+        "best_grid_placement": "A **central position (B2, C3)** adjacent to a weaker enemy. This allows it to repeatedly destroy weak adjacent cards and become an unstoppable force in the late game."
+      }
+    },
+    {
+      "special_abilities.name": "Allies Rally",
+      "special_abilities.description": "Adjacent allies gain +1 power for a round.",
+      "suggested_use": {
+        "when_to_play": "A short-term offensive boost. Very similar to 'Poet's Rhythm' and 'Battle Cry.' The AI should use this to turn a defensive perimeter into an offensive one, securing multiple flips in a single turn against adjacent enemy cards.",
+        "best_grid_placement": "A tile adjacent to **2 or 3 friendly cards** that are engaging enemy cards. A central, offensive position (e.g., C3) is best for reach."
+      }
+    },
+    {
+      "special_abilities.name": "Web Curse",
+      "special_abilities.description": "Adjacent tiles are cursed and drain all power for 1 round.",
+      "suggested_use": {
+        "when_to_play": "A powerful defensive stall/trap. The AI should play this when an adjacent enemy card poses a major threat, or when the opponent is relying on a card's high power to defend its position. It effectively disables up to four adjacent cards for one turn.",
+        "best_grid_placement": "A position adjacent to **multiple high-power enemy cards**. Playing it at a center square (B2) adjacent to three strong enemies will effectively neutralize the core of the opponent's formation for a turn."
+      }
+    },
+    {
+      "special_abilities.name": "Spirit Bind",
+      "special_abilities.description": "If defeated, the attacker loses 1 power permanently.",
+      "suggested_use": {
+        "when_to_play": "A strong deterrent. The AI should play this on an open flank or a position the opponent needs to take but will suffer for. It acts as a passive penalty, making the opponent think twice before challenging it with a key card.",
+        "best_grid_placement": "A **key defensive position** (e.g., B2, C3) or adjacent to the opponent's strongest card. The AI is essentially betting that the opponent must defeat it, and thus will pay the permanent cost on a critical attacking card."
+      }
+    },
+    {
+      "special_abilities.name": "Titan Shell",
+      "special_abilities.description": "Can only be defeated by Thor.",
+      "suggested_use": {
+        "when_to_play": "The ultimate defensive anchor. The AI should play this card when the opponent has already played 'Thor,' or when the opponent doesn't use the 'Thor' card in their deck. It's a game-winner if the opponent cannot counter the ability.",
+        "best_grid_placement": "A **center square (B2, C3)** to lock down the core of the board. If the opponent has no 'Thor,' this card is functionally invincible and will secure up to four adjacent tiles permanently."
+      }
+    },
+    {
+      "special_abilities.name": "Steadfast Guard",
+      "special_abilities.description": "Gain +1 for each adjacent enemy",
+      "suggested_use": {
+        "when_to_play": "A defensive counter-attack card. The AI should play this when it is surrounded by enemy cards, instantly transforming a poor defensive position into a highly-stat-boosted card that can successfully flip one or more of the adjacent enemy cards.",
+        "best_grid_placement": "A contested position adjacent to **2-3 enemy cards**. A center-edge or central square that is deep in enemy territory (e.g., C3 surrounded by enemies at B3, C2, C4, D3)."
+      }
+    },
+    {
+      "special_abilities.name": "Erase Face",
+      "special_abilities.description": "Remove all buffs from adjacent enemies.",
+      "suggested_use": {
+        "when_to_play": "Localized counter-buff. The AI should play this when one or more adjacent enemy cards have been permanently or temporarily boosted (e.g., 'Mother's Blessing', 'Worthy Opponent'). It should be used to neutralize an opponent's key, powerful threat.",
+        "best_grid_placement": "A position adjacent to the **highest-value buffed enemy card**. For example, playing at A2 to neutralize an enemy at B2 that has received a +3 boost from a combo."
+      }
+    },
+    {
+      "special_abilities.name": "Warrior's Blessing",
+      "special_abilities.description": "Grant +2 to adjacent allies for a turn.",
+      "suggested_use": {
+        "when_to_play": "A powerful, temporary offensive push. The AI should use this to secure multiple flips in a single turn against enemy cards that are adjacent to the boosted allies. It's a high-impact play for a decisive attack.",
+        "best_grid_placement": "A tile adjacent to **2-3 friendly cards** that are poised to attack enemy cards. A central position (B2) is ideal for maximizing the reach of the +2 boost."
+      }
+    },
+    {
+      "special_abilities.name": "Hex Field",
+      "special_abilities.description": "Curse all empty adjacent tiles for 1 round.",
+      "suggested_use": {
+        "when_to_play": "A disruption/area denial card. The AI should play this to prevent the opponent from playing high-power cards on the newly cursed tiles on the opponent's next turn. It's an excellent way to slow down the opponent's expansion or protect an open flank.",
+        "best_grid_placement": "A position adjacent to **multiple empty, contested tiles** that the opponent is likely to target. For example, playing at A2 to curse A1, B1, and A3, blocking off a large section of the opening board."
+      }
+    },
+    {
+      "special_abilities.name": "Ocean's Shield",
+      "special_abilities.description": "Cannot be defeated by enemies with lower total power.",
+      "suggested_use": {
+        "when_to_play": "A strong defensive anchor. The AI should play this card to defend a key area against average-power enemy cards. It's a card that forces the opponent to use one of their highest-stat cards or a specific ability to defeat it.",
+        "best_grid_placement": "A **key central position (B2, C3)** to lock down the board. This card is almost impossible to defeat if it has a high total power, forcing the opponent to commit a huge card to the position."
+      }
+    },
+    {
+      "special_abilities.name": "Vengeful Bite",
+      "special_abilities.description": "-1 to all adjacent enemies at the end each round",
+      "suggested_use": {
+        "when_to_play": "A sustained, localized debuff engine. The AI should play this to slowly grind down adjacent enemy cards, making them progressively easier to flip over several turns. It's a long-term strategic play.",
+        "best_grid_placement": "A **center-edge position (B1, C4)** adjacent to multiple enemy cards. The card's survivability is key, so playing it in a fortified area is best to ensure the effect triggers multiple times."
+      }
+    },
+    {
+      "special_abilities.name": "Dragon Slayer",
+      "special_abilities.description": "Gain +1 for each Dragon on the board",
+      "suggested_use": {
+        "when_to_play": "A counter-tribal card. The AI should hold this card until 2 or more 'Dragon' cards are on the board (friendly or enemy). It's an excellent way to gain a massive stat boost and counter a Dragon-heavy opponent's strategy.",
+        "best_grid_placement": "A **central position** to maximize the offensive/defensive reach of the high-power stats. The card is instantly empowered by existing Dragons, making it a high-threat finisher."
+      }
+    },
+    {
+      "special_abilities.name": "Lava Field",
+      "special_abilities.description": "Gains +1 for every card played on a lava tile.",
+      "suggested_use": {
+        "when_to_play": "A synergy card for the 'Wild Shift' ability or other Lava creators. The AI should play this early to mid-game if it plans to create multiple Lava tiles, making this card a late-game powerhouse. It's a slow-burn strategy card.",
+        "best_grid_placement": "A **safe, defensive spot (e.g., A1, D4)**. Since its power comes from a global effect, placement should prioritize survival to allow the card to accumulate power from subsequent Lava card plays."
+      }
+    },
+    {
+      "special_abilities.name": "Sun Trick",
+      "special_abilities.description": "Gain +1 every round in your hand, resets after combat",
+      "suggested_use": {
+        "when_to_play": "A highly flexible card. The AI should keep this in hand for several rounds to let its power build up, and then deploy it as an unstoppable force when needed for a single, high-value flip. It's a temporary finisher.",
+        "best_grid_placement": "A tile adjacent to the **strongest enemy card** that the AI wants to flip. The high, temporary power should be used to achieve a single, critical flip that the opponent cannot easily reverse."
+      }
+    },
+    {
+      "special_abilities.name": "War Stance",
+      "special_abilities.description": "Gain +1 whenever an ally is defeated up to 5. At max, attack adjacent enemies again.",
+      "suggested_use": {
+        "when_to_play": "A late-game comeback/finisher. The AI should play this after several allies have been defeated, or use it with disposable cards to quickly trigger the max power and the second attack. The double attack on adjacent enemies is a massive swing.",
+        "best_grid_placement": "A **central position (B2, C3)** adjacent to 2-3 enemy cards. The second attack is a game-ending ability, so it should be placed to maximize the number of flips on the final turn."
+      }
+    },
+    {
+      "special_abilities.name": "Pure Waters",
+      "special_abilities.description": "While in hand, gain +1 up to 5 whenever a tile is blessed",
+      "suggested_use": {
+        "when_to_play": "A setup/finisher combo card. The AI should keep this in hand while playing cards that create 'Blessed' tiles, allowing the card to reach +5 to all stats. It should then be played as a highly boosted anchor card.",
+        "best_grid_placement": "A **key central position (B2, C3)** to lock down the board. When fully powered, its stats are immense, making it a permanent defensive threat."
+      }
+    },
+    {
+      "special_abilities.name": "Slipstream",
+      "special_abilities.description": "Each round steals a blessing from a random enemy",
+      "suggested_use": {
+        "when_to_play": "A control/disruption card. The AI should play this when the opponent is using a strategy based on 'Blessings' (e.g., 'Radiant Blessing,' 'Rain's Blessing'). It slowly undermines the opponent's strategy over multiple turns.",
+        "best_grid_placement": "A **safe corner or edge** where the card is likely to survive for multiple turns. The ability is global, so placement should prioritize survivability."
+      }
+    },
+    {
+      "special_abilities.name": "Fertile Ground",
+      "special_abilities.description": "Each round grant +1 to allies with any blessings. Does not stack.",
+      "suggested_use": {
+        "when_to_play": "A sustained synergy engine. The AI should play this when it has multiple allies that have (or are about to receive) a 'Blessing' token. It provides continuous, passive power to a strategic friendly area.",
+        "best_grid_placement": "A **central position (B2, C3)** to maximize its reach. The card should be placed where it can affect the most allies, ensuring it survives to grant the recurring bonus."
+      }
+    },
+    {
+      "special_abilities.name": "Tide Ward",
+      "special_abilities.description": "While in hand, grant +1 to each card you play. When played, steal his blessings back.",
+      "suggested_use": {
+        "when_to_play": "A powerful tempo/combo card. The AI should keep this in hand to boost all other cards it plays. When the AI is ready for a major, decisive turn, it should play this card last to secure a successful flip and steal the cumulative blessings back for itself, turning it into a high-stat anchor.",
+        "best_grid_placement": "A position adjacent to the **highest-threat enemy card** that the newly buffed 'Tide Ward' can now defeat, turning the card into a final, powerful threat."
+      }
+    },
+    {
+      "special_abilities.name": "Binding Justice",
+      "special_abilities.description": "Equalize strongest power of all enemies and allies on the board",
+      "suggested_use": {
+        "when_to_play": "A global board-state equalizer. The AI should play this when the opponent has one or two immensely high-stat cards and the AI has many low-stat cards. It effectively sets a high floor for all friendly cards and reduces the power of the opponent's strongest cards, leading to a massive swing in board control.",
+        "best_grid_placement": "A **safe corner or edge** where the card is unlikely to be challenged. The effect is global and depends on the board state, not adjacency, so survivability is the goal."
+      }
+    },
+    {
+      "special_abilities.name": "Beast Friend",
+      "special_abilities.description": "Each round, gain +1 for each adjacent enemy stronger than himself",
+      "suggested_use": {
+        "when_to_play": "A defensive counter-scaling card. The AI should play this when it is forced to be adjacent to one or more powerful enemy cards. It automatically becomes stronger than its adjacent high-power rivals over time, allowing it to eventually flip them.",
+        "best_grid_placement": "A position adjacent to the **strongest enemy cards** on the board. A central position (B2) is ideal, where it can be adjacent to up to four enemy threats and rapidly scale its power."
+      }
+    },
+    {
+      "special_abilities.name": "Wild Shift",
+      "special_abilities.description": "Create lava in a random tile at the start of every round",
+      "suggested_use": {
+        "when_to_play": "A passive disruption/synergy card. The AI should play this early to mid-game to disrupt the opponent's strategy with random Lava tiles, or to set up its own 'Lava Field' synergy cards. It forces the opponent to deal with changing board terrain.",
+        "best_grid_placement": "A **safe corner or edge** (A1, D4) where the card is protected. The effect is recurring and global, so the placement should prioritize the card's survival over a single-turn flip."
+      }
+    },
+    {
+      "special_abilities.name": "Harbor Guardian",
+      "special_abilities.description": "Sacrifices 3 power to protect an ally from defeat",
+      "suggested_use": {
+        "when_to_play": "A high-cost, high-value defensive save. The AI should use this when a **critical, high-value ally** (e.g., 'Titan Shell' or a major combo card) is about to be defeated. The AI trades a power-cost on this card for keeping the key anchor on the board.",
+        "best_grid_placement": "A **defensive central position (B2, C3)** where it can easily watch over and protect multiple key allies. Its primary purpose is utility, not flipping, so survivability near allies is key."
+      }
+    },
+    {
+      "special_abilities.name": "Dual Aspect",
+      "special_abilities.description": "Grant -1 on one side of a random enemy for each water tile on the board",
+      "suggested_use": {
+        "when_to_play": "A scaling debuff. The AI should play this when 2 or more 'Water' tiles are on the board, significantly weakening a random enemy. This is best used to set up a chain of flips after the debuff is applied.",
+        "best_grid_placement": "A **central offensive position (C3)**. The card is best used to create a favorable attack position, leveraging the total number of Water tiles to debuff a high-power enemy."
+      }
+    },
+    {
+      "special_abilities.name": "Sacred Spring",
+      "special_abilities.description": "If in water, bless a random ally and cleanse adjacent allies of 1 curse at the start of each round",
+      "suggested_use": {
+        "when_to_play": "A continuous blessing/cleansing engine. **Must be played on a 'Water' tile.** The AI should use this to constantly boost its allied cards and protect its formation from debuffs. It is a long-term strategic support card.",
+        "best_grid_placement": "On a friendly **'Water' tile** (created by 'Rain's Blessing' or similar) that is adjacent to multiple other allies. A central Water tile is ideal for maximum effect."
+      }
+    },
+    {
+      "special_abilities.name": "Feast or Famine",
+      "special_abilities.description": "When an ally is defeated, fill their tile with water.",
+      "suggested_use": {
+        "when_to_play": "A mitigating effect that sets up synergies. The AI should play this when it anticipates losing one or more cards, turning the loss into an advantage by creating 'Water' tiles for cards like 'Sacred Spring' or 'Sea's Protection'.",
+        "best_grid_placement": "A **safe corner or edge** (A1, D4) where the card can survive. The ability is passive and global, so its own survivability and utility setup are paramount."
+      }
+    },
+    {
+      "special_abilities.name": "Demon Bane",
+      "special_abilities.description": "Gains +1 power when any demon is defeated",
+      "suggested_use": {
+        "when_to_play": "A counter-tribal card against a 'Demon' deck. The AI should play this when 1 or more enemy 'Demon' cards are on the board, or in anticipation of the opponent playing them. It becomes a major threat after a single Demon is defeated.",
+        "best_grid_placement": "A **central position (B2, C3)** to maximize the offensive/defensive reach of the high-power stats once a Demon has been defeated."
+      }
+    },
+    {
+      "special_abilities.name": "Cleansing Hula",
+      "special_abilities.description": "At the start of each round, cleanse a random ally of all curses",
+      "suggested_use": {
+        "when_to_play": "A sustained defensive utility card. The AI should play this when the opponent is using a curse-based strategy (e.g., 'Web Curse', 'Hex Field'). It acts as a passive defense against long-term debuffs.",
+        "best_grid_placement": "A **safe corner or edge** where the card is protected. The ability is recurring and random/global, so the card's survival is the most important factor."
+      }
+    }
+  ]
