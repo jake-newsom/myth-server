@@ -13,6 +13,7 @@
     "migrate": "node-pg-migrate -m ./migrations",
     "migrate:create": "node-pg-migrate -m ./migrations create",
     "migrate:up": "node-pg-migrate -m ./migrations up",
+    "migrate:up:force": "node-pg-migrate -m ./migrations up --check-order=false",
     "migrate:down": "node-pg-migrate -m ./migrations down",
     "migrate:reset": "node-pg-migrate -m ./migrations reset",
     "seed": "node scripts/seedInitialData.js",

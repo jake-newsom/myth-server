@@ -119,10 +119,11 @@ export interface StoryModeWithProgress extends StoryModeWithRewards {
   user_progress?: UserStoryProgress;
   is_unlocked: boolean;
   can_play: boolean; // Considers unlock requirements and active status
+  preview_cards?: string[]; // Array of top 3 strongest card_ids from AI deck
 }
 
 export interface StoryModeListResponse {
-  story_modes: StoryModeWithProgress[];
+  stories: StoryModeWithProgress[];
   total_count: number;
 }
 

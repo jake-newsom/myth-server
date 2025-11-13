@@ -22,6 +22,10 @@ import {
 } from "../types/story-mode.types";
 import UserModel from "../models/user.model";
 import GameRewardsService from "./gameRewards.service";
+import DeckService from "./deck.service";
+import { GameLogic } from "../game-engine/game.logic";
+import GameService from "./game.service";
+import { AI_PLAYER_ID } from "../api/controllers/game.controller";
 
 export class StoryModeService {
   
@@ -293,6 +297,55 @@ export class StoryModeService {
     }
   }
 
+  // Helper method to get the 3 strongest cards from a deck
+  private static async getTopCardsFromDeck(
+    client: PoolClient,
+    deckId: string,
+    limit: number = 3
+  ): Promise<string[]> {
+    // Get unique cards from deck, join with card data to get rarity and power
+    // Sort by rarity priority (legendary > epic > rare > uncommon > common), then by total power
+    const cardsResult = await client.query(`
+      SELECT 
+        c.card_id,
+        c.rarity,
+        COALESCE((c.power->>'top')::integer, 0) +
+        COALESCE((c.power->>'right')::integer, 0) +
+        COALESCE((c.power->>'bottom')::integer, 0) +
+        COALESCE((c.power->>'left')::integer, 0) as total_power
+      FROM deck_cards dc
+      JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
+      JOIN cards c ON uoc.card_id = c.card_id
+      WHERE dc.deck_id = $1
+      GROUP BY c.card_id, c.rarity, c.power
+    `, [deckId]);
+
+    // Sort by rarity priority, then by total power
+    const rarityPriority: Record<string, number> = {
+      'legendary': 4,
+      'epic': 3,
+      'rare': 2,
+      'uncommon': 1,
+      'common': 0
+    };
+
+    const sortedCards = cardsResult.rows.sort((a, b) => {
+      const aRarity = rarityPriority[a.rarity] || 0;
+      const bRarity = rarityPriority[b.rarity] || 0;
+      
+      if (aRarity !== bRarity) {
+        return bRarity - aRarity; // Higher rarity first
+      }
+      
+      return b.total_power - a.total_power; // Higher power first
+    });
+
+    // Get unique card_ids (in case same card appears multiple times) and return top N
+    const uniqueCardIds = Array.from(new Set(sortedCards.map(c => c.card_id)));
+    
+    return uniqueCardIds.slice(0, limit);
+  }
+
   // Get available story modes for a user (with progress and unlock status)
   static async getAvailableStoryModes(userId: string): Promise<StoryModeListResponse> {
     const client = await db.getClient();
@@ -327,17 +380,21 @@ export class StoryModeService {
         const isUnlocked = await this.checkUnlockRequirements(userId, storyConfig.story_id, client);
         const canPlay = isUnlocked && storyConfig.is_active;
 
+        // Get top 3 strongest cards from AI deck
+        const topCards = await this.getTopCardsFromDeck(client, storyConfig.ai_deck_id, 3);
+
         storyModes.push({
           ...storyConfig,
           rewards,
           user_progress: userProgress,
           is_unlocked: isUnlocked,
-          can_play: canPlay
+          can_play: canPlay,
+          preview_cards: topCards
         });
       }
 
       return {
-        story_modes: storyModes,
+        stories: storyModes,
         total_count: storyModes.length
       };
 
@@ -478,12 +535,53 @@ export class StoryModeService {
         card_count: 20 // Assuming standard deck size
       } : undefined;
 
-      // Create the game (this would integrate with your existing game creation logic)
-      // For now, we'll return a mock game_id - you'll need to integrate with GameService
-      const gameId = 'story-game-' + Date.now(); // Replace with actual game creation
+      // Validate and get card instances for player deck
+      await DeckService.validateUserDeck(request.player_deck_id, userId);
+      const playerCardInstanceIds = await DeckService.getDeckCardInstances(
+        request.player_deck_id
+      );
+
+      if (playerCardInstanceIds.length === 0) {
+        throw new Error('Player deck is empty');
+      }
+
+      // Validate and get card instances for AI deck
+      await DeckService.validateAIDeck(storyConfig.ai_deck_id);
+      let aiCardInstanceIds = await DeckService.getDeckCardInstances(
+        storyConfig.ai_deck_id
+      );
+
+      if (aiCardInstanceIds.length === 0) {
+        // Fallback to creating AI card copies
+        aiCardInstanceIds = await DeckService.createAICardCopies(
+          playerCardInstanceIds
+        );
+      }
+
+      // Initialize game state
+      const initialGameState = await GameLogic.initializeGame(
+        playerCardInstanceIds,
+        aiCardInstanceIds,
+        userId,
+        AI_PLAYER_ID
+      );
+
+      // Randomly choose starting player
+      const startingPlayerId = Math.random() < 0.5 ? userId : AI_PLAYER_ID;
+      initialGameState.current_player_id = startingPlayerId;
+
+      // Create game record in database
+      const createdGameResponse = await GameService.createGameRecord(
+        userId,
+        AI_PLAYER_ID,
+        request.player_deck_id,
+        storyConfig.ai_deck_id,
+        "solo", // Story mode uses solo game mode
+        initialGameState
+      );
 
       return {
-        game_id: gameId,
+        game_id: createdGameResponse.game_id,
         story_config: storyConfig,
         ai_deck_preview: aiDeckPreview
       };

@@ -199,9 +199,9 @@ export class StoryModeController {
       // In a real implementation, you might want a separate admin method
       const dummyUserId = "00000000-0000-0000-0000-000000000000";
       const storyModes = await StoryModeService.getAvailableStoryModes(dummyUserId);
-
+      
       res.status(200).json({
-        story_modes: storyModes.story_modes.map(sm => ({
+        stories: storyModes.stories.map(sm => ({
           story_id: sm.story_id,
           name: sm.name,
           description: sm.description,
