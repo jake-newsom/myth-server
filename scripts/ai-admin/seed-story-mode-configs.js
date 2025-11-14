@@ -71,14 +71,17 @@ async function createStoryModeConfig(client, config) {
   const name = `${chapterInfo.name} - Level ${level}`;
   const description = `${chapterInfo.description} (Difficulty ${level}/5)`;
   
-  // Check if already exists
+  // Check if already exists by order_index (since there's a unique constraint on it)
   const existing = await client.query(
-    `SELECT story_id FROM story_mode_config WHERE story_id = $1`,
-    [storyId]
+    `SELECT story_id FROM story_mode_config WHERE order_index = $1 AND is_active = true`,
+    [orderIndex]
   );
   
+  let finalStoryId = storyId;
+  
   if (existing.rows.length > 0) {
-    // Update existing
+    // Update existing record (keep the existing story_id)
+    finalStoryId = existing.rows[0].story_id;
     await client.query(`
       UPDATE story_mode_config
       SET 
@@ -86,15 +89,14 @@ async function createStoryModeConfig(client, config) {
         description = $2,
         difficulty = $3,
         ai_deck_id = $4,
-        order_index = $5,
-        unlock_requirements = $6,
+        unlock_requirements = $5,
         is_active = true,
         updated_at = NOW()
-      WHERE story_id = $7
-    `, [name, description, level, deckId, orderIndex, JSON.stringify(unlockRequirements), storyId]);
+      WHERE story_id = $6
+    `, [name, description, level, deckId, JSON.stringify(unlockRequirements), finalStoryId]);
     
     // Delete existing rewards
-    await client.query(`DELETE FROM story_mode_rewards WHERE story_id = $1`, [storyId]);
+    await client.query(`DELETE FROM story_mode_rewards WHERE story_id = $1`, [finalStoryId]);
   } else {
     // Create new
     await client.query(`
@@ -111,10 +113,10 @@ async function createStoryModeConfig(client, config) {
     await client.query(`
       INSERT INTO story_mode_rewards (story_id, reward_type, reward_data, is_active, created_at)
       VALUES ($1, $2, $3, true, NOW())
-    `, [storyId, rewardType, JSON.stringify(rewardData)]);
+    `, [finalStoryId, rewardType, JSON.stringify(rewardData)]);
   }
   
-  return storyId;
+  return finalStoryId;
 }
 
 /**
@@ -150,12 +152,25 @@ async function seedStoryModeConfigs() {
     
     await client.query('BEGIN');
     
-    // Generate all story IDs upfront for unlock chain building
+    // Fetch existing story IDs by order_index, or generate new ones
     const storyIds = {};
     for (let chapter = 1; chapter <= 10; chapter++) {
       storyIds[chapter] = {};
       for (let level = 1; level <= 5; level++) {
-        storyIds[chapter][level] = generateUUID();
+        const orderIndex = (chapter - 1) * 5 + (level - 1);
+        // Check if story mode already exists for this order_index
+        const existing = await client.query(
+          `SELECT story_id FROM story_mode_config WHERE order_index = $1 AND is_active = true`,
+          [orderIndex]
+        );
+        
+        if (existing.rows.length > 0) {
+          // Use existing story_id
+          storyIds[chapter][level] = existing.rows[0].story_id;
+        } else {
+          // Generate new story_id
+          storyIds[chapter][level] = generateUUID();
+        }
       }
     }
     
@@ -170,29 +185,22 @@ async function seedStoryModeConfigs() {
         const deckId = await findDeck(client, chapter, level);
         const storyId = storyIds[chapter][level];
         
-        // Build unlock requirements
+        // Build unlock requirements using the correct story_ids
         let unlockRequirements = {};
         
-        if (chapter === 1 && level === 1) {
-          // First entry - no requirements
+        if (chapter === 1) {
+          // All difficulties of Chapter 1 are unlocked from the start
           unlockRequirements = {};
-        } else if (level === 1) {
-          // First difficulty of a new chapter - require previous chapter's last difficulty
-          const previousChapter = chapter - 1;
-          const previousStoryId = storyIds[previousChapter][5];
-          unlockRequirements = {
-            prerequisite_stories: [previousStoryId]
-          };
         } else {
-          // Higher difficulty - require previous difficulty in same chapter
-          const previousLevel = level - 1;
-          const previousStoryId = storyIds[chapter][previousLevel];
+          // For Chapter 2+, unlock by beating the previous chapter at the same difficulty
+          const previousChapter = chapter - 1;
+          const previousStoryId = storyIds[previousChapter][level];
           unlockRequirements = {
             prerequisite_stories: [previousStoryId]
           };
         }
         
-        await createStoryModeConfig(client, {
+        const finalStoryId = await createStoryModeConfig(client, {
           chapter,
           level,
           deckId,
@@ -204,11 +212,11 @@ async function seedStoryModeConfigs() {
         createdConfigs.push({
           chapter,
           level,
-          storyId,
+          storyId: finalStoryId,
           name: `${CHAPTERS[chapter - 1].name} - Level ${level}`
         });
         
-        console.log(`  ✅ Level ${level}: ${storyId.substring(0, 8)}...`);
+        console.log(`  ✅ Level ${level}: ${finalStoryId.substring(0, 8)}...`);
       }
     }
     
@@ -222,13 +230,14 @@ async function seedStoryModeConfigs() {
     console.log(`   Total Entries: ${createdConfigs.length}`);
     
     console.log("\n🔗 Unlock Chain Structure:");
-    console.log("   Chapter 1, Level 1: Starter (no requirements)");
-    for (let chapter = 1; chapter <= 10; chapter++) {
-      if (chapter === 1) {
-        console.log(`   Chapter ${chapter}: Level 1 → Level 2 → Level 3 → Level 4 → Level 5`);
-      } else {
-        console.log(`   Chapter ${chapter}: Level 1 (requires Ch${chapter - 1} L5) → Level 2 → Level 3 → Level 4 → Level 5`);
-      }
+    console.log("   Chapter 1: All difficulties (1-5) unlocked from start");
+    for (let chapter = 2; chapter <= 10; chapter++) {
+      console.log(`   Chapter ${chapter}: Each difficulty requires beating Chapter ${chapter - 1} at the same difficulty`);
+      console.log(`     - Level 1: Requires Chapter ${chapter - 1}, Level 1`);
+      console.log(`     - Level 2: Requires Chapter ${chapter - 1}, Level 2`);
+      console.log(`     - Level 3: Requires Chapter ${chapter - 1}, Level 3`);
+      console.log(`     - Level 4: Requires Chapter ${chapter - 1}, Level 4`);
+      console.log(`     - Level 5: Requires Chapter ${chapter - 1}, Level 5`);
     }
     
     console.log("\n✅ Story mode config seeding completed successfully!");

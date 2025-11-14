@@ -591,6 +591,37 @@ export class StoryModeService {
     }
   }
 
+  // Find story_id from AI deck_id
+  static async findStoryIdByDeckId(aiDeckId: string): Promise<string | null> {
+    try {
+      const result = await db.query(
+        'SELECT story_id FROM story_mode_config WHERE ai_deck_id = $1 AND is_active = true LIMIT 1',
+        [aiDeckId]
+      );
+      
+      if (result.rows.length > 0) {
+        console.log(`[Story Mode] Found story_id ${result.rows[0].story_id} for deck_id ${aiDeckId}`);
+        return result.rows[0].story_id;
+      } else {
+        console.log(`[Story Mode] No story mode found for deck_id ${aiDeckId}`);
+        // Debug: Check if deck exists at all (even if inactive)
+        const debugResult = await db.query(
+          'SELECT story_id, is_active FROM story_mode_config WHERE ai_deck_id = $1 LIMIT 1',
+          [aiDeckId]
+        );
+        if (debugResult.rows.length > 0) {
+          console.log(`[Story Mode] Deck found but inactive: story_id=${debugResult.rows[0].story_id}, is_active=${debugResult.rows[0].is_active}`);
+        } else {
+          console.log(`[Story Mode] No story mode config exists for deck_id ${aiDeckId}`);
+        }
+        return null;
+      }
+    } catch (error) {
+      console.error(`[Story Mode] Error finding story_id for deck_id ${aiDeckId}:`, error);
+      return null;
+    }
+  }
+
   // Process story mode completion and award rewards
   static async processStoryCompletion(
     userId: string,
