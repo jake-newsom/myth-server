@@ -26,12 +26,14 @@ export const getUserAchievements = async (
     const category = req.query.category as string;
     const completedOnly = req.query.completed === "true";
     const unclaimedOnly = req.query.unclaimed === "true";
+    const includeLocked = req.query.include_locked === "true";
 
     const result = await AchievementService.getUserAchievements(
       userId,
       category,
       completedOnly,
-      unclaimedOnly
+      unclaimedOnly,
+      includeLocked
     );
 
     const { success, ...flattenedResult } = result;

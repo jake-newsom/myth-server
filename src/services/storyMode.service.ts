@@ -21,6 +21,8 @@ import {
   RewardType
 } from "../types/story-mode.types";
 import UserModel from "../models/user.model";
+import AchievementModel from "../models/achievement.model";
+import AchievementService from "./achievement.service";
 import GameRewardsService from "./gameRewards.service";
 import DeckService from "./deck.service";
 import { GameLogic } from "../game-engine/game.logic";
@@ -383,13 +385,20 @@ export class StoryModeService {
         // Get top 3 strongest cards from AI deck
         const topCards = await this.getTopCardsFromDeck(client, storyConfig.ai_deck_id, 3);
 
+        // Get achievements for this story mode
+        const storyAchievements = await AchievementModel.getStoryModeAchievements(
+          userId,
+          storyConfig.story_id
+        );
+
         storyModes.push({
           ...storyConfig,
           rewards,
           user_progress: userProgress,
           is_unlocked: isUnlocked,
           can_play: canPlay,
-          preview_cards: topCards
+          preview_cards: topCards,
+          achievements: storyAchievements
         });
       }
 
@@ -695,6 +704,32 @@ export class StoryModeService {
 
       // Check for newly unlocked story modes
       const unlockedStories = await this.checkForNewlyUnlockedStories(userId, client);
+
+      // Trigger achievement events for story mode completion
+      if (won) {
+        try {
+          // Calculate victory margin (cards remaining difference)
+          // gameResult should have final_scores or we can calculate from game state
+          const victoryMargin = gameResult.victoryMargin || 
+            (gameResult.final_scores ? 
+              Math.abs((gameResult.final_scores.player1 || 0) - (gameResult.final_scores.player2 || 0)) : 
+              0);
+
+          await AchievementService.triggerAchievementEvent({
+            userId,
+            eventType: "story_mode_completion",
+            eventData: {
+              storyId,
+              isWin: true,
+              victoryMargin,
+              winCount: updatedProgress.times_completed
+            }
+          });
+        } catch (error) {
+          console.error("Error triggering story mode achievement events:", error);
+          // Don't fail the entire process if achievement events fail
+        }
+      }
 
       await client.query('COMMIT');
 

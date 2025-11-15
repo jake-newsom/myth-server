@@ -120,6 +120,7 @@ export interface StoryModeWithProgress extends StoryModeWithRewards {
   is_unlocked: boolean;
   can_play: boolean; // Considers unlock requirements and active status
   preview_cards?: string[]; // Array of top 3 strongest card_ids from AI deck
+  achievements?: import("./database.types").UserAchievementWithDetails[]; // Achievements linked to this story
 }
 
 export interface StoryModeListResponse {

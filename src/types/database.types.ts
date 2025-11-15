@@ -209,7 +209,7 @@ export interface Achievement {
   achievement_key: string;
   title: string;
   description: string;
-  category: "gameplay" | "collection" | "social" | "progression" | "special";
+  category: "gameplay" | "collection" | "social" | "progression" | "special" | "story_mode";
   type: "single" | "progress" | "milestone";
   target_value: number;
   rarity: Rarity;
@@ -219,6 +219,9 @@ export interface Achievement {
   icon_url?: string;
   is_active: boolean;
   sort_order: number;
+  base_achievement_key?: string;
+  tier_level?: number;
+  story_id?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -240,6 +243,7 @@ export interface UserAchievementWithDetails extends UserAchievement {
   achievement: Achievement;
   progress_percentage: number;
   can_claim: boolean;
+  is_unlocked?: boolean;
 }
 
 export interface Mail {

@@ -99,7 +99,19 @@ const AchievementModel = {
           THEN ROUND((ua.current_progress::DECIMAL / a.target_value * 100), 2)
           ELSE 0 
         END as progress_percentage,
-        (ua.is_completed = true AND ua.is_claimed = false) as can_claim
+        (ua.is_completed = true AND ua.is_claimed = false) as can_claim,
+        CASE 
+          WHEN a.tier_level IS NULL THEN true
+          WHEN a.tier_level = 1 THEN true
+          ELSE EXISTS (
+            SELECT 1 FROM user_achievements ua_prev
+            JOIN achievements prev ON prev.base_achievement_key = a.base_achievement_key 
+              AND prev.tier_level = a.tier_level - 1
+            WHERE ua_prev.user_id = $1 
+              AND ua_prev.achievement_id = prev.id 
+              AND ua_prev.is_completed = true
+          )
+        END as is_unlocked
       FROM user_achievements ua
       JOIN achievements a ON ua.achievement_id = a.id
       WHERE ua.user_id = $1 AND a.achievement_key = $2;
@@ -136,11 +148,15 @@ const AchievementModel = {
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
+        base_achievement_key: row.base_achievement_key,
+        tier_level: row.tier_level,
+        story_id: row.story_id,
         created_at: row.created_at,
         updated_at: row.updated_at,
       },
       progress_percentage: parseFloat(row.progress_percentage),
       can_claim: row.can_claim,
+      is_unlocked: row.is_unlocked,
     };
   },
 
@@ -174,6 +190,7 @@ const AchievementModel = {
     const query = `
       SELECT 
         ua.*,
+        a.id as achievement_db_id,
         a.achievement_key,
         a.title,
         a.description,
@@ -187,16 +204,33 @@ const AchievementModel = {
         a.icon_url,
         a.is_active,
         a.sort_order,
+        a.base_achievement_key,
+        a.tier_level,
+        a.story_id,
+        a.created_at as achievement_created_at,
+        a.updated_at as achievement_updated_at,
         CASE 
           WHEN a.target_value > 0 
           THEN ROUND((ua.current_progress::DECIMAL / a.target_value * 100), 2)
           ELSE 0 
         END as progress_percentage,
-        (ua.is_completed = true AND ua.is_claimed = false) as can_claim
+        (ua.is_completed = true AND ua.is_claimed = false) as can_claim,
+        CASE 
+          WHEN a.tier_level IS NULL THEN true
+          WHEN a.tier_level = 1 THEN true
+          ELSE EXISTS (
+            SELECT 1 FROM user_achievements ua_prev
+            JOIN achievements prev ON prev.base_achievement_key = a.base_achievement_key 
+              AND prev.tier_level = a.tier_level - 1
+            WHERE ua_prev.user_id = $1 
+              AND ua_prev.achievement_id = prev.id 
+              AND ua_prev.is_completed = true
+          )
+        END as is_unlocked
       FROM user_achievements ua
       JOIN achievements a ON ua.achievement_id = a.id
       WHERE ${whereConditions.join(" AND ")}
-      ORDER BY a.sort_order ASC, a.created_at ASC;
+      ORDER BY a.sort_order ASC, a.tier_level ASC, a.created_at ASC;
     `;
 
     const { rows } = await db.query(query, params);
@@ -213,7 +247,7 @@ const AchievementModel = {
       created_at: row.created_at,
       updated_at: row.updated_at,
       achievement: {
-        id: row.achievement_id,
+        id: row.achievement_db_id,
         achievement_key: row.achievement_key,
         title: row.title,
         description: row.description,
@@ -227,20 +261,26 @@ const AchievementModel = {
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
+        base_achievement_key: row.base_achievement_key,
+        tier_level: row.tier_level,
+        story_id: row.story_id,
+        created_at: row.achievement_created_at,
+        updated_at: row.achievement_updated_at,
       },
       progress_percentage: parseFloat(row.progress_percentage),
       can_claim: row.can_claim,
+      is_unlocked: row.is_unlocked,
     }));
   },
 
   /**
    * Get all achievements for a user (including not started ones)
+   * Filters out locked tiers by default
    */
   async getAllUserAchievements(
     userId: string,
-    category?: string
+    category?: string,
+    includeLocked: boolean = false
   ): Promise<UserAchievementWithDetails[]> {
     let whereConditions = ["a.is_active = true"];
     const params = [userId];
@@ -250,6 +290,20 @@ const AchievementModel = {
       whereConditions.push(`a.category = $${paramIndex}`);
       params.push(category);
       paramIndex++;
+    }
+
+    // Filter out locked tiers unless includeLocked is true
+    if (!includeLocked) {
+      whereConditions.push(`
+        (a.tier_level IS NULL OR a.tier_level = 1 OR EXISTS (
+          SELECT 1 FROM user_achievements ua_prev
+          JOIN achievements prev ON prev.base_achievement_key = a.base_achievement_key 
+            AND prev.tier_level = a.tier_level - 1
+          WHERE ua_prev.user_id = $1 
+            AND ua_prev.achievement_id = prev.id 
+            AND ua_prev.is_completed = true
+        ))
+      `);
     }
 
     const query = `
@@ -268,11 +322,23 @@ const AchievementModel = {
           THEN ROUND((COALESCE(ua.current_progress, 0)::DECIMAL / a.target_value * 100), 2)
           ELSE 0 
         END as progress_percentage,
-        (COALESCE(ua.is_completed, false) = true AND COALESCE(ua.is_claimed, false) = false) as can_claim
+        (COALESCE(ua.is_completed, false) = true AND COALESCE(ua.is_claimed, false) = false) as can_claim,
+        CASE 
+          WHEN a.tier_level IS NULL THEN true
+          WHEN a.tier_level = 1 THEN true
+          ELSE EXISTS (
+            SELECT 1 FROM user_achievements ua_prev
+            JOIN achievements prev ON prev.base_achievement_key = a.base_achievement_key 
+              AND prev.tier_level = a.tier_level - 1
+            WHERE ua_prev.user_id = $1 
+              AND ua_prev.achievement_id = prev.id 
+              AND ua_prev.is_completed = true
+          )
+        END as is_unlocked
       FROM achievements a
       LEFT JOIN user_achievements ua ON a.id = ua.achievement_id AND ua.user_id = $1
       WHERE ${whereConditions.join(" AND ")}
-      ORDER BY a.sort_order ASC, a.created_at ASC;
+      ORDER BY a.sort_order ASC, a.tier_level ASC, a.created_at ASC;
     `;
 
     const { rows } = await db.query(query, params);
@@ -303,11 +369,15 @@ const AchievementModel = {
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
+        base_achievement_key: row.base_achievement_key,
+        tier_level: row.tier_level,
+        story_id: row.story_id,
         created_at: row.created_at,
         updated_at: row.updated_at,
       },
       progress_percentage: parseFloat(row.progress_percentage),
       can_claim: row.can_claim,
+      is_unlocked: row.is_unlocked,
     }));
   },
 
@@ -555,6 +625,179 @@ const AchievementModel = {
   },
 
   /**
+   * Get all tiers for a base achievement key
+   */
+  async getTieredAchievementsByBaseKey(
+    baseKey: string
+  ): Promise<Achievement[]> {
+    const query = `
+      SELECT * FROM achievements
+      WHERE base_achievement_key = $1 AND is_active = true
+      ORDER BY tier_level ASC;
+    `;
+
+    const { rows } = await db.query(query, [baseKey]);
+    return rows;
+  },
+
+  /**
+   * Get highest unlocked tier level for a user and base key
+   */
+  async getUnlockedTierLevel(
+    userId: string,
+    baseKey: string
+  ): Promise<number> {
+    const query = `
+      SELECT COALESCE(MAX(a.tier_level), 0) as max_tier
+      FROM achievements a
+      LEFT JOIN user_achievements ua ON a.id = ua.achievement_id AND ua.user_id = $1
+      WHERE a.base_achievement_key = $2 
+        AND a.is_active = true
+        AND (a.tier_level IS NULL OR ua.is_completed = true);
+    `;
+
+    const { rows } = await db.query(query, [userId, baseKey]);
+    return rows.length > 0 ? parseInt(rows[0].max_tier) || 0 : 0;
+  },
+
+  /**
+   * Check if a specific tier achievement is unlocked for a user
+   */
+  async isTierUnlocked(
+    userId: string,
+    achievementId: string
+  ): Promise<boolean> {
+    const query = `
+      SELECT 
+        CASE 
+          WHEN a.tier_level IS NULL THEN true
+          WHEN a.tier_level = 1 THEN true
+          ELSE EXISTS (
+            SELECT 1 FROM user_achievements ua
+            JOIN achievements prev ON prev.base_achievement_key = a.base_achievement_key 
+              AND prev.tier_level = a.tier_level - 1
+            WHERE ua.user_id = $1 
+              AND ua.achievement_id = prev.id 
+              AND ua.is_completed = true
+          )
+        END as is_unlocked
+      FROM achievements a
+      WHERE a.id = $2;
+    `;
+
+    const { rows } = await db.query(query, [userId, achievementId]);
+    return rows.length > 0 ? rows[0].is_unlocked : false;
+  },
+
+  /**
+   * Get achievements linked to a specific story
+   */
+  async getAchievementsByStoryId(storyId: string): Promise<Achievement[]> {
+    const query = `
+      SELECT * FROM achievements
+      WHERE story_id = $1 AND is_active = true
+      ORDER BY sort_order ASC, tier_level ASC;
+    `;
+
+    const { rows } = await db.query(query, [storyId]);
+    return rows;
+  },
+
+  /**
+   * Get user's story mode achievements with progress
+   */
+  async getStoryModeAchievements(
+    userId: string,
+    storyId?: string
+  ): Promise<UserAchievementWithDetails[]> {
+    let whereConditions = ["a.is_active = true"];
+    const params = [userId];
+    let paramIndex = 2;
+
+    if (storyId) {
+      whereConditions.push(`a.story_id = $${paramIndex}`);
+      params.push(storyId);
+      paramIndex++;
+    } else {
+      whereConditions.push("a.story_id IS NOT NULL");
+    }
+
+    const query = `
+      SELECT 
+        a.*,
+        COALESCE(ua.id, null) as user_achievement_id,
+        COALESCE(ua.current_progress, 0) as current_progress,
+        COALESCE(ua.is_completed, false) as is_completed,
+        ua.completed_at,
+        ua.claimed_at,
+        COALESCE(ua.is_claimed, false) as is_claimed,
+        COALESCE(ua.created_at, null) as ua_created_at,
+        COALESCE(ua.updated_at, null) as ua_updated_at,
+        CASE 
+          WHEN a.target_value > 0 
+          THEN ROUND((COALESCE(ua.current_progress, 0)::DECIMAL / a.target_value * 100), 2)
+          ELSE 0 
+        END as progress_percentage,
+        (COALESCE(ua.is_completed, false) = true AND COALESCE(ua.is_claimed, false) = false) as can_claim,
+        CASE 
+          WHEN a.tier_level IS NULL THEN true
+          WHEN a.tier_level = 1 THEN true
+          ELSE EXISTS (
+            SELECT 1 FROM user_achievements ua_prev
+            JOIN achievements prev ON prev.base_achievement_key = a.base_achievement_key 
+              AND prev.tier_level = a.tier_level - 1
+            WHERE ua_prev.user_id = $1 
+              AND ua_prev.achievement_id = prev.id 
+              AND ua_prev.is_completed = true
+          )
+        END as is_unlocked
+      FROM achievements a
+      LEFT JOIN user_achievements ua ON a.id = ua.achievement_id AND ua.user_id = $1
+      WHERE ${whereConditions.join(" AND ")}
+      ORDER BY a.sort_order ASC, a.tier_level ASC, a.created_at ASC;
+    `;
+
+    const { rows } = await db.query(query, params);
+
+    return rows.map((row) => ({
+      id: row.user_achievement_id,
+      user_id: userId,
+      achievement_id: row.id,
+      current_progress: row.current_progress,
+      is_completed: row.is_completed,
+      completed_at: row.completed_at,
+      claimed_at: row.claimed_at,
+      is_claimed: row.is_claimed,
+      created_at: row.ua_created_at,
+      updated_at: row.ua_updated_at,
+      achievement: {
+        id: row.id,
+        achievement_key: row.achievement_key,
+        title: row.title,
+        description: row.description,
+        category: row.category,
+        type: row.type,
+        target_value: row.target_value,
+        rarity: row.rarity,
+        reward_gold: row.reward_gold,
+        reward_gems: row.reward_gems,
+        reward_packs: row.reward_packs,
+        icon_url: row.icon_url,
+        is_active: row.is_active,
+        sort_order: row.sort_order,
+        base_achievement_key: row.base_achievement_key,
+        tier_level: row.tier_level,
+        story_id: row.story_id,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      },
+      progress_percentage: parseFloat(row.progress_percentage),
+      can_claim: row.can_claim,
+      is_unlocked: row.is_unlocked,
+    }));
+  },
+
+  /**
    * Get recently completed achievements for a user
    */
   async getRecentlyCompletedAchievements(
@@ -564,6 +807,7 @@ const AchievementModel = {
     const query = `
       SELECT 
         ua.*,
+        a.id as achievement_db_id,
         a.achievement_key,
         a.title,
         a.description,
@@ -577,8 +821,14 @@ const AchievementModel = {
         a.icon_url,
         a.is_active,
         a.sort_order,
+        a.base_achievement_key,
+        a.tier_level,
+        a.story_id,
+        a.created_at as achievement_created_at,
+        a.updated_at as achievement_updated_at,
         100.0 as progress_percentage,
-        (ua.is_claimed = false) as can_claim
+        (ua.is_claimed = false) as can_claim,
+        true as is_unlocked
       FROM user_achievements ua
       JOIN achievements a ON ua.achievement_id = a.id
       WHERE ua.user_id = $1 AND ua.is_completed = true
@@ -600,7 +850,7 @@ const AchievementModel = {
       created_at: row.created_at,
       updated_at: row.updated_at,
       achievement: {
-        id: row.achievement_id,
+        id: row.achievement_db_id,
         achievement_key: row.achievement_key,
         title: row.title,
         description: row.description,
@@ -614,11 +864,15 @@ const AchievementModel = {
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
+        base_achievement_key: row.base_achievement_key,
+        tier_level: row.tier_level,
+        story_id: row.story_id,
+        created_at: row.achievement_created_at,
+        updated_at: row.achievement_updated_at,
       },
       progress_percentage: parseFloat(row.progress_percentage),
       can_claim: row.can_claim,
+      is_unlocked: row.is_unlocked,
     }));
   },
 };
