@@ -363,7 +363,7 @@ export const japaneseAbilities: AbilityMap = {
     return [];
   },
 
-  // Beast Friend: All ally BEAST cards gain +1 power.
+  // Beast Friend: Each round, gain +1 for each card stronger than himself.
   "Beast Friend": (context) => {
     const {
       triggerCard,
@@ -372,13 +372,9 @@ export const japaneseAbilities: AbilityMap = {
     } = context;
     const gameEvents: BaseGameEvent[] = [];
 
-    const adjacentEnemies = getEnemiesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner
-    );
+    const adjacentCards = getAdjacentCards(position, board);
 
-    const buffAmount = adjacentEnemies.filter(
+    const buffAmount = adjacentCards.filter(
       (enemy) => getCardTotalPower(enemy) > getCardTotalPower(triggerCard)
     ).length;
     gameEvents.push(

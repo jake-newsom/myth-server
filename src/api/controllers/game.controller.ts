@@ -308,6 +308,7 @@ class GameController {
       let winner_id_for_db: string | null = updatedGameState.winner || null;
       let new_game_status_for_db: GameStatus = updatedGameState.status;
       let gameCompletionResult: GameCompletionResult | null = null;
+      let storyModeCompletion: any = null;
 
       // Process comprehensive rewards if game is completed
       if (new_game_status_for_db === GameStatus.COMPLETED) {
@@ -322,6 +323,48 @@ class GameController {
             gameRecord.player1_deck_id,
             gameId // Pass gameId for leaderboard updates
           );
+
+          // Check if this is a story mode game and process story mode completion
+          if (gameRecord.game_mode === "solo" && gameRecord.player2_deck_id) {
+            try {
+              console.log(`[Story Mode] Checking for story mode game with AI deck_id: ${gameRecord.player2_deck_id}`);
+              const storyId = await StoryModeService.findStoryIdByDeckId(gameRecord.player2_deck_id);
+              console.log(`[Story Mode] Found story_id: ${storyId || 'null'}`);
+              
+              if (storyId && gameCompletionResult) {
+                // Calculate completion time
+                const gameStartTime = new Date(gameRecord.created_at);
+                const completionTimeSeconds = Math.floor((Date.now() - gameStartTime.getTime()) / 1000);
+
+                // Create game result object for story mode processing
+                // Note: processStoryCompletion only uses winner_id, but we include other fields for potential future use
+                const storyGameResult = {
+                  winner_id: winner_id_for_db,
+                  isWin: winner_id_for_db === userId,
+                  isDraw: updatedGameState.status === "completed" && !winner_id_for_db,
+                  playerScore: updatedGameState.player1.user_id === userId 
+                    ? updatedGameState.player1.score 
+                    : updatedGameState.player2.score,
+                  opponentScore: updatedGameState.player1.user_id === userId 
+                    ? updatedGameState.player2.score 
+                    : updatedGameState.player1.score,
+                  duration: completionTimeSeconds,
+                  cardsPlayed: 0 // Not tracked in GameResult, but included for compatibility
+                };
+
+                // Process story mode completion (this will award story mode rewards)
+                storyModeCompletion = await StoryModeService.processStoryCompletion(
+                  userId,
+                  storyId,
+                  storyGameResult,
+                  completionTimeSeconds
+                );
+              }
+            } catch (error) {
+              console.error("Error processing story mode completion:", error);
+              // Don't fail the entire response if story mode processing fails
+            }
+          }
         } catch (error) {
           console.error("Error processing game completion rewards:", error);
           // Fallback to legacy currency award for solo wins
@@ -360,6 +403,32 @@ class GameController {
         response.game_result = gameCompletionResult.game_result;
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
+
+        // Merge story mode rewards if this was a story mode game
+        if (storyModeCompletion) {
+          // Add story mode rewards to the existing rewards
+          if (storyModeCompletion.rewards_earned) {
+            // Merge currency rewards
+            if (storyModeCompletion.rewards_earned.gold) {
+              response.rewards.currency.gold = (response.rewards.currency.gold || 0) + storyModeCompletion.rewards_earned.gold;
+            }
+            if (storyModeCompletion.rewards_earned.gems) {
+              response.rewards.currency.gems = (response.rewards.currency.gems || 0) + storyModeCompletion.rewards_earned.gems;
+            }
+            if (storyModeCompletion.rewards_earned.fate_coins) {
+              response.rewards.currency.fate_coins = (response.rewards.currency.fate_coins || 0) + storyModeCompletion.rewards_earned.fate_coins;
+            }
+            // Note: card_xp_rewards are already handled by game completion, story mode doesn't add additional XP
+          }
+
+          // Add story mode completion info
+          response.story_mode_completion = {
+            is_first_win: storyModeCompletion.is_first_win,
+            new_progress: storyModeCompletion.new_progress,
+            unlocked_stories: storyModeCompletion.unlocked_stories || [],
+            campaign_updated: true // Flag to tell client to refresh campaign data
+          };
+        }
       }
 
       res.status(200).json(response);
