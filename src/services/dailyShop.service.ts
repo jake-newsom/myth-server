@@ -32,7 +32,6 @@ interface UserShopData {
   purchaseLimits: Record<ShopItemType, number>;
   resetCosts: Record<ShopItemType, number>;
   userCurrencies: {
-    gold: number;
     gems: number;
     card_fragments: number;
     fate_coins: number;
@@ -101,7 +100,6 @@ const DailyShopService = {
       purchaseLimits,
       resetCosts,
       userCurrencies: {
-        gold: user.gold,
         gems: user.gems,
         card_fragments: user.card_fragments,
         fate_coins: user.fate_coins,
@@ -449,8 +447,6 @@ const DailyShopService = {
    */
   getUserCurrencyAmount(user: any, currency: CurrencyType): number {
     switch (currency) {
-      case "gold":
-        return user.gold;
       case "gems":
         return user.gems;
       case "card_fragments":
@@ -471,9 +467,6 @@ const DailyShopService = {
     amount: number
   ): Promise<void> {
     switch (currency) {
-      case "gold":
-        await UserModel.spendGold(userId, amount);
-        break;
       case "gems":
         await UserModel.spendGems(userId, amount);
         break;
@@ -481,7 +474,6 @@ const DailyShopService = {
         await UserModel.spendCardFragments(userId, amount);
         break;
       case "fate_coins":
-        // Assuming we need to implement this method
         await UserModel.updateFateCoins(userId, -amount);
         break;
     }

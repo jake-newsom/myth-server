@@ -142,9 +142,10 @@ const AchievementModel = {
         type: row.type,
         target_value: row.target_value,
         rarity: row.rarity,
-        reward_gold: row.reward_gold,
         reward_gems: row.reward_gems,
+        reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
+        reward_card_fragments: row.reward_card_fragments || undefined,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
@@ -198,9 +199,10 @@ const AchievementModel = {
         a.type,
         a.target_value,
         a.rarity,
-        a.reward_gold,
         a.reward_gems,
+        a.reward_fate_coins,
         a.reward_packs,
+        a.reward_card_fragments,
         a.icon_url,
         a.is_active,
         a.sort_order,
@@ -255,9 +257,10 @@ const AchievementModel = {
         type: row.type,
         target_value: row.target_value,
         rarity: row.rarity,
-        reward_gold: row.reward_gold,
         reward_gems: row.reward_gems,
+        reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
+        reward_card_fragments: row.reward_card_fragments || undefined,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
@@ -363,9 +366,10 @@ const AchievementModel = {
         type: row.type,
         target_value: row.target_value,
         rarity: row.rarity,
-        reward_gold: row.reward_gold,
         reward_gems: row.reward_gems,
+        reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
+        reward_card_fragments: row.reward_card_fragments || undefined,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
@@ -455,9 +459,10 @@ const AchievementModel = {
     success: boolean;
     userAchievement?: UserAchievement;
     rewards?: {
-      gold: number;
       gems: number;
+      fate_coins: number;
       packs: number;
+      card_fragments: number;
     };
   }> {
     // Check if achievement can be claimed
@@ -498,9 +503,10 @@ const AchievementModel = {
       success: true,
       userAchievement: rows[0],
       rewards: {
-        gold: achievement.reward_gold,
         gems: achievement.reward_gems,
+        fate_coins: achievement.reward_fate_coins || 0,
         packs: achievement.reward_packs,
+        card_fragments: achievement.reward_card_fragments || 0,
       },
     };
   },
@@ -514,9 +520,10 @@ const AchievementModel = {
     claimed_achievements: number;
     completion_percentage: number;
     total_rewards_earned: {
-      gold: number;
       gems: number;
+      fate_coins: number;
       packs: number;
+      card_fragments: number;
     };
     achievements_by_category: Record<
       string,
@@ -543,9 +550,10 @@ const AchievementModel = {
           COUNT(ua.id) as user_count,
           SUM(CASE WHEN ua.is_completed = true THEN 1 ELSE 0 END) as completed_count,
           SUM(CASE WHEN ua.is_claimed = true THEN 1 ELSE 0 END) as claimed_count,
-          SUM(CASE WHEN ua.is_claimed = true THEN a.reward_gold ELSE 0 END) as total_gold,
           SUM(CASE WHEN ua.is_claimed = true THEN a.reward_gems ELSE 0 END) as total_gems,
-          SUM(CASE WHEN ua.is_claimed = true THEN a.reward_packs ELSE 0 END) as total_packs
+          SUM(CASE WHEN ua.is_claimed = true THEN COALESCE(a.reward_fate_coins, 0) ELSE 0 END) as total_fate_coins,
+          SUM(CASE WHEN ua.is_claimed = true THEN a.reward_packs ELSE 0 END) as total_packs,
+          SUM(CASE WHEN ua.is_claimed = true THEN COALESCE(a.reward_card_fragments, 0) ELSE 0 END) as total_card_fragments
         FROM achievements a
         LEFT JOIN user_achievements ua ON a.id = ua.achievement_id AND ua.user_id = $1
         WHERE a.is_active = true
@@ -556,9 +564,10 @@ const AchievementModel = {
           SUM(total_count) as total_achievements,
           SUM(completed_count) as completed_achievements,
           SUM(claimed_count) as claimed_achievements,
-          SUM(total_gold) as total_gold,
           SUM(total_gems) as total_gems,
-          SUM(total_packs) as total_packs
+          SUM(total_fate_coins) as total_fate_coins,
+          SUM(total_packs) as total_packs,
+          SUM(total_card_fragments) as total_card_fragments
         FROM achievement_stats
       )
       SELECT 
@@ -591,7 +600,7 @@ const AchievementModel = {
       FROM totals t
       CROSS JOIN achievement_stats s
       GROUP BY t.total_achievements, t.completed_achievements, t.claimed_achievements, 
-               t.total_gold, t.total_gems, t.total_packs, completion_percentage;
+               t.total_gems, t.total_fate_coins, t.total_packs, t.total_card_fragments, completion_percentage;
     `;
 
     const { rows } = await db.query(statsQuery, [userId]);
@@ -602,7 +611,7 @@ const AchievementModel = {
         completed_achievements: 0,
         claimed_achievements: 0,
         completion_percentage: 0,
-        total_rewards_earned: { gold: 0, gems: 0, packs: 0 },
+        total_rewards_earned: { gems: 0, fate_coins: 0, packs: 0, card_fragments: 0 },
         achievements_by_category: {},
         achievements_by_rarity: {},
       };
@@ -615,9 +624,10 @@ const AchievementModel = {
       claimed_achievements: parseInt(row.claimed_achievements) || 0,
       completion_percentage: parseFloat(row.completion_percentage) || 0,
       total_rewards_earned: {
-        gold: parseInt(row.total_gold) || 0,
         gems: parseInt(row.total_gems) || 0,
+        fate_coins: parseInt(row.total_fate_coins) || 0,
         packs: parseInt(row.total_packs) || 0,
+        card_fragments: parseInt(row.total_card_fragments) || 0,
       },
       achievements_by_category: row.category_stats || {},
       achievements_by_rarity: row.rarity_stats || {},
@@ -779,9 +789,10 @@ const AchievementModel = {
         type: row.type,
         target_value: row.target_value,
         rarity: row.rarity,
-        reward_gold: row.reward_gold,
         reward_gems: row.reward_gems,
+        reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
+        reward_card_fragments: row.reward_card_fragments || undefined,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
@@ -815,9 +826,10 @@ const AchievementModel = {
         a.type,
         a.target_value,
         a.rarity,
-        a.reward_gold,
         a.reward_gems,
+        a.reward_fate_coins,
         a.reward_packs,
+        a.reward_card_fragments,
         a.icon_url,
         a.is_active,
         a.sort_order,
@@ -858,9 +870,10 @@ const AchievementModel = {
         type: row.type,
         target_value: row.target_value,
         rarity: row.rarity,
-        reward_gold: row.reward_gold,
         reward_gems: row.reward_gems,
+        reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
+        reward_card_fragments: row.reward_card_fragments || undefined,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,

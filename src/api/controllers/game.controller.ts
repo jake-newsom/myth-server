@@ -408,16 +408,11 @@ class GameController {
         if (storyModeCompletion) {
           // Add story mode rewards to the existing rewards
           if (storyModeCompletion.rewards_earned) {
-            // Merge currency rewards
-            if (storyModeCompletion.rewards_earned.gold) {
-              response.rewards.currency.gold = (response.rewards.currency.gold || 0) + storyModeCompletion.rewards_earned.gold;
-            }
+            // Merge gems (story mode rewards include gems)
             if (storyModeCompletion.rewards_earned.gems) {
               response.rewards.currency.gems = (response.rewards.currency.gems || 0) + storyModeCompletion.rewards_earned.gems;
             }
-            if (storyModeCompletion.rewards_earned.fate_coins) {
-              response.rewards.currency.fate_coins = (response.rewards.currency.fate_coins || 0) + storyModeCompletion.rewards_earned.fate_coins;
-            }
+            // Note: story mode packs and card fragments are handled separately in story mode service
             // Note: card_xp_rewards are already handled by game completion, story mode doesn't add additional XP
           }
 
@@ -652,16 +647,11 @@ class GameController {
         if (storyModeCompletion) {
           // Add story mode rewards to the existing rewards
           if (storyModeCompletion.rewards_earned) {
-            // Merge currency rewards
-            if (storyModeCompletion.rewards_earned.gold) {
-              response.rewards.currency.gold = (response.rewards.currency.gold || 0) + storyModeCompletion.rewards_earned.gold;
-            }
+            // Merge gems (story mode rewards include gems)
             if (storyModeCompletion.rewards_earned.gems) {
               response.rewards.currency.gems = (response.rewards.currency.gems || 0) + storyModeCompletion.rewards_earned.gems;
             }
-            if (storyModeCompletion.rewards_earned.fate_coins) {
-              response.rewards.currency.fate_coins = (response.rewards.currency.fate_coins || 0) + storyModeCompletion.rewards_earned.fate_coins;
-            }
+            // Note: story mode packs and card fragments are handled separately in story mode service
             // Note: card_xp_rewards are already handled by game completion, story mode doesn't add additional XP
           }
 

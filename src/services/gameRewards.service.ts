@@ -13,9 +13,7 @@ export interface GameResult {
 }
 
 export interface CurrencyRewards {
-  gold: number;
   gems: number;
-  fate_coins: number;
 }
 
 export interface GameRewards {
@@ -27,9 +25,7 @@ export interface GameCompletionResult {
   game_result: GameResult;
   rewards: GameRewards;
   updated_currencies: {
-    gold: number;
     gems: number;
-    fate_coins: number;
     total_xp: number;
   };
 }
@@ -73,52 +69,42 @@ const GameRewardsService = {
   },
 
   // Calculate currency rewards based on game outcome
+  // Game rewards only include gems (no gold, no fate coins)
   calculateCurrencyRewards(
     userId: string,
     winnerId: string | null,
     gameMode: "solo" | "pvp",
     gameDurationSeconds: number
   ): CurrencyRewards {
-    let goldReward = 0;
     let gemsReward = 0;
-    let wonderCoinsReward = 0;
 
     if (winnerId === userId) {
-      // Victory rewards
+      // Victory rewards - gems only
       if (gameMode === "solo") {
-        goldReward = 50; // Base solo victory reward
-        wonderCoinsReward = 1; // 1 wonder coin for solo victory
+        // Base gem reward for solo victory
+        gemsReward = 5;
         // Bonus for quick victory (under 3 minutes)
         if (gameDurationSeconds < 180) {
-          goldReward += 10;
-          wonderCoinsReward += 1; // Extra wonder coin for quick victory
-        }
-        // 5% chance for gem reward on solo victory
-        if (Math.random() < 0.05) {
-          gemsReward = 1;
+          gemsReward += 2;
         }
       } else if (gameMode === "pvp") {
-        goldReward = 75; // Higher reward for PvP victory
-        wonderCoinsReward = 2; // 2 wonder coins for PvP victory
-        // 10% chance for gem reward on PvP victory
-        if (Math.random() < 0.1) {
-          gemsReward = 2;
+        // Higher gem reward for PvP victory
+        gemsReward = 10;
+        // Bonus for quick victory
+        if (gameDurationSeconds < 180) {
+          gemsReward += 3;
         }
       }
     } else if (winnerId === null) {
       // Tie/draw rewards (smaller participation reward)
-      goldReward = gameMode === "solo" ? 15 : 25;
-      wonderCoinsReward = 1; // 1 wonder coin for ties
+      gemsReward = gameMode === "solo" ? 2 : 3;
     } else {
       // Loss rewards (small participation reward)
-      goldReward = gameMode === "solo" ? 10 : 20;
-      // No wonder coins for losses (encourages winning)
+      gemsReward = gameMode === "solo" ? 1 : 2;
     }
 
     return {
-      gold: goldReward,
       gems: gemsReward,
-      fate_coins: wonderCoinsReward,
     };
   },
 
@@ -250,16 +236,9 @@ const GameRewardsService = {
         usedCards
       );
 
-      // Award currency
-      await UserModel.updateBothCurrencies(
-        userId,
-        currencyRewards.gold,
-        currencyRewards.gems
-      );
-
-      // Award wonder coins if any
-      if (currencyRewards.fate_coins > 0) {
-        await UserModel.updateFateCoins(userId, currencyRewards.fate_coins);
+      // Award gems only (game rewards don't include gold or fate coins)
+      if (currencyRewards.gems > 0) {
+        await UserModel.updateGems(userId, currencyRewards.gems);
       }
 
       // Award XP directly to individual cards
@@ -330,9 +309,7 @@ const GameRewardsService = {
           card_xp_rewards: xpResults,
         },
         updated_currencies: {
-          gold: updatedUser?.gold || 0,
           gems: updatedUser?.gems || 0,
-          fate_coins: updatedUser?.fate_coins || 0,
           total_xp: updatedUser?.total_xp || 0,
         },
       };
@@ -350,13 +327,11 @@ const GameRewardsService = {
       return {
         game_result: gameResult,
         rewards: {
-          currency: { gold: 0, gems: 0, fate_coins: 0 },
+          currency: { gems: 0 },
           card_xp_rewards: [],
         },
         updated_currencies: {
-          gold: 0,
           gems: 0,
-          fate_coins: 0,
           total_xp: 0,
         },
       };

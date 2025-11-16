@@ -24,10 +24,8 @@ export interface UnlockRequirements {
 }
 
 export interface RewardData {
-  // Currency rewards
-  gold?: number;
+  // Currency rewards (story mode: gems, packs, card fragments only)
   gems?: number;
-  fate_coins?: number;
   card_fragments?: number;
   
   // Card rewards

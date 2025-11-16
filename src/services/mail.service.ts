@@ -21,14 +21,12 @@ interface ClaimRewardsResult {
   success: boolean;
   mail?: Mail;
   rewards_claimed?: {
-    gold: number;
     gems: number;
     packs: number;
     fate_coins: number;
     card_ids: string[];
   };
   updated_currencies?: {
-    gold: number;
     gems: number;
     fate_coins: number;
     pack_count: number;
@@ -40,14 +38,12 @@ interface ClaimMultipleRewardsResult {
   success: boolean;
   claimed_mail: Mail[];
   total_rewards: {
-    gold: number;
     gems: number;
     packs: number;
     fate_coins: number;
     card_ids: string[];
   };
   updated_currencies?: {
-    gold: number;
     gems: number;
     fate_coins: number;
     pack_count: number;
@@ -306,7 +302,6 @@ const MailService = {
 
       // Apply rewards to user
       const rewardsToApply = {
-        gold: claimedMail.reward_gold,
         gems: claimedMail.reward_gems,
         packs: claimedMail.reward_packs,
         fate_coins: claimedMail.reward_fate_coins,
@@ -322,13 +317,9 @@ const MailService = {
         };
       }
 
-      // Apply gold and gems
-      if (rewardsToApply.gold > 0 || rewardsToApply.gems > 0) {
-        updatedUser = await UserModel.updateBothCurrencies(
-          userId,
-          rewardsToApply.gold,
-          rewardsToApply.gems
-        );
+      // Apply gems
+      if (rewardsToApply.gems > 0) {
+        updatedUser = await UserModel.updateGems(userId, rewardsToApply.gems);
       }
 
       // Apply fate coins
@@ -359,7 +350,6 @@ const MailService = {
         mail: claimedMail,
         rewards_claimed: rewardsToApply,
         updated_currencies: {
-          gold: updatedUser.gold,
           gems: updatedUser.gems,
           fate_coins: updatedUser.fate_coins,
           pack_count: updatedUser.pack_count,
@@ -386,7 +376,6 @@ const MailService = {
           success: true,
           claimed_mail: [],
           total_rewards: {
-            gold: 0,
             gems: 0,
             packs: 0,
             fate_coins: 0,
@@ -399,7 +388,6 @@ const MailService = {
       const claimedMail: Mail[] = [];
       const failedClaims: string[] = [];
       const totalRewards = {
-        gold: 0,
         gems: 0,
         packs: 0,
         fate_coins: 0,
@@ -412,7 +400,6 @@ const MailService = {
           const claimedSingle = await MailModel.claimRewards(mail.id, userId);
           if (claimedSingle) {
             claimedMail.push(claimedSingle);
-            totalRewards.gold += claimedSingle.reward_gold;
             totalRewards.gems += claimedSingle.reward_gems;
             totalRewards.packs += claimedSingle.reward_packs;
             totalRewards.fate_coins += claimedSingle.reward_fate_coins;
@@ -429,13 +416,9 @@ const MailService = {
       // Apply all rewards to user if any were claimed
       let updatedUser = await UserModel.findById(userId);
       if (claimedMail.length > 0 && updatedUser) {
-        // Apply gold and gems
-        if (totalRewards.gold > 0 || totalRewards.gems > 0) {
-          updatedUser = await UserModel.updateBothCurrencies(
-            userId,
-            totalRewards.gold,
-            totalRewards.gems
-          );
+        // Apply gems
+        if (totalRewards.gems > 0) {
+          updatedUser = await UserModel.updateGems(userId, totalRewards.gems);
         }
 
         // Apply fate coins
@@ -458,7 +441,6 @@ const MailService = {
         total_rewards: totalRewards,
         updated_currencies: updatedUser
           ? {
-              gold: updatedUser.gold,
               gems: updatedUser.gems,
               fate_coins: updatedUser.fate_coins,
               pack_count: updatedUser.pack_count,
@@ -472,7 +454,6 @@ const MailService = {
         success: false,
         claimed_mail: [],
         total_rewards: {
-          gold: 0,
           gems: 0,
           packs: 0,
           fate_coins: 0,

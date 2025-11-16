@@ -6,7 +6,7 @@ export type ShopItemType =
   | "enhanced_card"
   | "pack";
 
-export type CurrencyType = "gold" | "gems" | "card_fragments" | "fate_coins";
+export type CurrencyType = "gems" | "card_fragments" | "fate_coins";
 
 export interface ShopCard {
   card_id: string;

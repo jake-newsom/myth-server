@@ -21,13 +21,16 @@ interface ClaimRewardsResult {
   success: boolean;
   claimedAchievements: UserAchievementWithDetails[];
   totalRewards: {
-    gold: number;
     gems: number;
+    fate_coins: number;
     packs: number;
+    card_fragments: number;
   };
   updatedCurrencies?: {
-    gold: number;
     gems: number;
+    fate_coins: number;
+    pack_count: number;
+    card_fragments: number;
     total_xp: number;
   };
 }
@@ -81,7 +84,7 @@ const AchievementService = {
           completed_achievements: 0,
           claimed_achievements: 0,
           completion_percentage: 0,
-          total_rewards_earned: { gold: 0, gems: 0, packs: 0 },
+          total_rewards_earned: { gems: 0, fate_coins: 0, packs: 0, card_fragments: 0 },
           achievements_by_category: {},
           achievements_by_rarity: {},
         },
@@ -994,7 +997,7 @@ const AchievementService = {
   ): Promise<ClaimRewardsResult> {
     try {
       const claimedAchievements: UserAchievementWithDetails[] = [];
-      const totalRewards = { gold: 0, gems: 0, packs: 0 };
+      const totalRewards = { gems: 0, fate_coins: 0, packs: 0, card_fragments: 0 };
 
       // Process each achievement claim
       for (const achievementId of achievementIds) {
@@ -1004,9 +1007,10 @@ const AchievementService = {
         );
 
         if (claimResult.success && claimResult.rewards) {
-          totalRewards.gold += claimResult.rewards.gold;
           totalRewards.gems += claimResult.rewards.gems;
+          totalRewards.fate_coins += claimResult.rewards.fate_coins || 0;
           totalRewards.packs += claimResult.rewards.packs;
+          totalRewards.card_fragments += claimResult.rewards.card_fragments || 0;
 
           // Get full achievement details
           const achievementDetails =
@@ -1024,16 +1028,20 @@ const AchievementService = {
       }
 
       // Award the rewards to user
-      if (totalRewards.gold > 0 || totalRewards.gems > 0) {
-        await UserModel.updateBothCurrencies(
-          userId,
-          totalRewards.gold,
-          totalRewards.gems
-        );
+      if (totalRewards.gems > 0) {
+        await UserModel.updateGems(userId, totalRewards.gems);
+      }
+
+      if (totalRewards.fate_coins > 0) {
+        await UserModel.updateFateCoins(userId, totalRewards.fate_coins);
       }
 
       if (totalRewards.packs > 0) {
         await UserModel.addPacks(userId, totalRewards.packs);
+      }
+
+      if (totalRewards.card_fragments > 0) {
+        await UserModel.updateCardFragments(userId, totalRewards.card_fragments);
       }
 
       // Get updated user currencies
@@ -1054,8 +1062,10 @@ const AchievementService = {
         claimedAchievements,
         totalRewards,
         updatedCurrencies: {
-          gold: updatedUser?.gold || 0,
           gems: updatedUser?.gems || 0,
+          fate_coins: updatedUser?.fate_coins || 0,
+          pack_count: updatedUser?.pack_count || 0,
+          card_fragments: updatedUser?.card_fragments || 0,
           total_xp: updatedUser?.total_xp || 0,
         },
       };
@@ -1064,7 +1074,7 @@ const AchievementService = {
       return {
         success: false,
         claimedAchievements: [],
-        totalRewards: { gold: 0, gems: 0, packs: 0 },
+        totalRewards: { gems: 0, fate_coins: 0, packs: 0, card_fragments: 0 },
       };
     }
   },

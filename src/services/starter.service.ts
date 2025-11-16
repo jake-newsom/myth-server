@@ -7,16 +7,21 @@ const STARTER_BASE_CARD_NAMES_AND_QUANTITIES: {
   name: string;
   quantity: number;
 }[] = [
+  { name: "Oni", quantity: 2 },
+  { name: "Tengu", quantity: 2 },
   { name: "Shieldmaiden", quantity: 2 },
-  { name: "Drenger", quantity: 2 },
-  { name: "Bear Totem", quantity: 2 },
-  { name: "Torchbearer", quantity: 2 },
-  { name: "Raven Scout", quantity: 2 },
-  { name: "Ice Fisher", quantity: 2 },
   { name: "Peasant Archer", quantity: 2 },
-  { name: "Norse Fox", quantity: 2 },
-  { name: "Runestone Keeper", quantity: 2 },
-  { name: "Young Jarl", quantity: 2 },
+  { name: "Kappa", quantity: 2 },
+
+  { name: "Futakuchi-onna", quantity: 2 },
+  { name: "Noppera-bō", quantity: 2 },
+  { name: "Ushi-oni", quantity: 1 },
+  { name: "Yuki-onna", quantity: 1 },
+
+  { name: "Benkei", quantity: 1 },
+  { name: "Momotaro", quantity: 1 },
+  { name: "Bragi", quantity: 1 },
+  { name: "Frigg", quantity: 1 },
 ];
 
 const STARTER_DECK_CONFIG = {
@@ -38,7 +43,9 @@ const StarterService = {
       .join(",");
 
     const cardRes = await client.query(
-      `SELECT card_id, name, rarity FROM "cards" WHERE name IN (${cardNamePlaceholders});`,
+      `SELECT card_id, name, rarity FROM "cards" 
+       WHERE name IN (${cardNamePlaceholders}) 
+       AND rarity::text NOT LIKE '%+%';`,
       baseCardNames
     );
     const cardIdMap = new Map<string, { card_id: string; rarity: string }>(

@@ -94,9 +94,7 @@ export interface GameCompletionResult_Legacy {
 }
 
 export interface CurrencyRewards {
-  gold: number;
   gems: number;
-  fate_coins: number;
 }
 
 export interface GameRewards {
@@ -108,9 +106,7 @@ export interface GameCompletionResult {
   game_result: GameCompletionResult_Legacy;
   rewards: GameRewards;
   updated_currencies: {
-    gold: number;
     gems: number;
-    fate_coins: number;
     total_xp: number;
   };
 }

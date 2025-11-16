@@ -674,11 +674,17 @@ export class StoryModeService {
             ? JSON.parse(rawRewardData)
             : rawRewardData;
           
-          // Merge rewards
-          if (rewardData.gold) rewardsEarned.gold = (rewardsEarned.gold || 0) + rewardData.gold;
+          // Merge rewards (story mode: gems, packs, card fragments only)
           if (rewardData.gems) rewardsEarned.gems = (rewardsEarned.gems || 0) + rewardData.gems;
-          if (rewardData.fate_coins) rewardsEarned.fate_coins = (rewardsEarned.fate_coins || 0) + rewardData.fate_coins;
           if (rewardData.card_fragments) rewardsEarned.card_fragments = (rewardsEarned.card_fragments || 0) + rewardData.card_fragments;
+          
+          // Handle pack rewards
+          if (rewardData.packs) {
+            if (!rewardsEarned.packs) {
+              rewardsEarned.packs = [];
+            }
+            rewardsEarned.packs.push(...rewardData.packs);
+          }
           
           // Handle other reward types as needed
           if (rewardData.specific_cards) {
@@ -686,17 +692,22 @@ export class StoryModeService {
           }
         }
 
-        // Award currency rewards
-        if (rewardsEarned.gold || rewardsEarned.gems) {
-          await UserModel.updateBothCurrencies(
-            userId,
-            rewardsEarned.gold || 0,
-            rewardsEarned.gems || 0
-          );
+        // Award currency rewards (gems only for story mode)
+        if (rewardsEarned.gems) {
+          await UserModel.updateGems(userId, rewardsEarned.gems);
         }
 
-        if (rewardsEarned.fate_coins) {
-          await UserModel.updateFateCoins(userId, rewardsEarned.fate_coins);
+        // Award card fragments
+        if (rewardsEarned.card_fragments) {
+          await UserModel.updateCardFragments(userId, rewardsEarned.card_fragments);
+        }
+
+        // Award packs
+        if (rewardsEarned.packs && rewardsEarned.packs.length > 0) {
+          const totalPacks = rewardsEarned.packs.reduce((sum, pack) => sum + pack.count, 0);
+          if (totalPacks > 0) {
+            await UserModel.addPacks(userId, totalPacks);
+          }
         }
 
         // TODO: Handle other reward types (cards, packs, achievements, etc.)

@@ -1318,12 +1318,11 @@ const AdminController = {
         );
 
         // Reset user currencies to default values (same as new account)
-        // Default: gold=0, gems=0, fate_coins=2, card_fragments=0, total_xp=0, pack_count=0
+        // Default: gems=0, fate_coins=2, card_fragments=0, total_xp=0, pack_count=0
         // pack_count will be set to 10 by StarterService.grantStarterPacks
         await client.query(
           `UPDATE "users" 
-           SET gold = 0, 
-               gems = 0, 
+           SET gems = 0, 
                fate_coins = 2, 
                card_fragments = 0, 
                total_xp = 0, 
@@ -1348,7 +1347,6 @@ const AdminController = {
           user: {
             user_id: updatedUser?.user_id,
             username: updatedUser?.username,
-            gold: updatedUser?.gold,
             gems: updatedUser?.gems,
             fate_coins: updatedUser?.fate_coins,
             card_fragments: updatedUser?.card_fragments,

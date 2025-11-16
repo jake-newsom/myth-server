@@ -13,7 +13,6 @@ export interface User {
   facebook_id?: string;
   auth_provider: "local" | "facebook";
   in_game_currency: number; // Legacy field - will be phased out
-  gold: number;
   gems: number;
   fate_coins: number;
   card_fragments: number;
@@ -213,9 +212,10 @@ export interface Achievement {
   type: "single" | "progress" | "milestone";
   target_value: number;
   rarity: Rarity;
-  reward_gold: number;
   reward_gems: number;
+  reward_fate_coins?: number; // Optional until DB migration adds this column
   reward_packs: number;
+  reward_card_fragments?: number; // Optional until DB migration adds this column
   icon_url?: string;
   is_active: boolean;
   sort_order: number;
@@ -302,7 +302,7 @@ export type ShopItemType =
   | "epic_card"
   | "enhanced_card"
   | "pack";
-export type CurrencyType = "gold" | "gems" | "card_fragments" | "fate_coins";
+export type CurrencyType = "gems" | "card_fragments" | "fate_coins";
 
 export interface DailyShopConfig {
   config_id: string;

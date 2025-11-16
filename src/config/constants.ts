@@ -208,21 +208,13 @@ export const SOCKET_CONFIG = {
 
 // Currency Configuration
 export const CURRENCY_CONFIG = {
-  STARTING_GOLD: 1000,
   STARTING_GEMS: 50,
   STARTING_FATE_COINS: 5,
-  PACK_COST_GOLD: 100,
   PACK_COST_GEMS: 10,
 } as const;
 
 // Game Rewards Configuration
 export const GAME_REWARDS = {
-  SOLO_WIN_GOLD: 50,
-  SOLO_LOSS_GOLD: 25,
-  PVP_WIN_GOLD: 100,
-  PVP_LOSS_GOLD: 50,
-  BONUS_GOLD_PER_SECOND: 1,
-  MAX_BONUS_GOLD: 200,
   XP_PER_CARD_USED: 10,
   WIN_XP_MULTIPLIER: 1.5,
 } as const;
@@ -230,20 +222,21 @@ export const GAME_REWARDS = {
 // Story Mode Configuration
 export const STORY_MODE_CONFIG = {
   // Default reward values for story modes (by difficulty level 1-5)
+  // Story mode rewards: gems, packs, card fragments only
   DEFAULT_REWARDS: {
     FIRST_WIN: {
-      LEVEL_1: { gold: 100, gems: 5, card_xp: 50 },
-      LEVEL_2: { gold: 150, gems: 8, card_xp: 75 },
-      LEVEL_3: { gold: 200, gems: 12, card_xp: 100 },
-      LEVEL_4: { gold: 250, gems: 18, card_xp: 125 },
-      LEVEL_5: { gold: 300, gems: 25, card_xp: 150, fate_coins: 1 }
+      LEVEL_1: { gems: 5, packs: [{ set_id: "default", count: 1 }], card_fragments: 5 },
+      LEVEL_2: { gems: 8, packs: [{ set_id: "default", count: 1 }], card_fragments: 8 },
+      LEVEL_3: { gems: 12, packs: [{ set_id: "default", count: 1 }], card_fragments: 12 },
+      LEVEL_4: { gems: 18, packs: [{ set_id: "default", count: 2 }], card_fragments: 18 },
+      LEVEL_5: { gems: 25, packs: [{ set_id: "default", count: 2 }], card_fragments: 25 }
     },
     REPEAT_WIN: {
-      LEVEL_1: { gold: 25, card_xp: 15 },
-      LEVEL_2: { gold: 35, card_xp: 20 },
-      LEVEL_3: { gold: 50, card_xp: 30 },
-      LEVEL_4: { gold: 60, card_xp: 35 },
-      LEVEL_5: { gold: 75, card_xp: 40 }
+      LEVEL_1: { gems: 2, card_fragments: 2 },
+      LEVEL_2: { gems: 3, card_fragments: 3 },
+      LEVEL_3: { gems: 5, card_fragments: 5 },
+      LEVEL_4: { gems: 7, card_fragments: 7 },
+      LEVEL_5: { gems: 10, card_fragments: 10 }
     }
   },
   

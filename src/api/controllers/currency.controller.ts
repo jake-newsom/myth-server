@@ -3,8 +3,7 @@ import UserModel from "../../models/user.model";
 
 // Pack prices (can be configured)
 const PACK_PRICES = {
-  gold: 50, // 50 gold per pack
-  gems: 5, // 5 gems per pack (premium currency)
+  gems: 5, // 5 gems per pack
 };
 
 export const getCurrencies = async (req: Request, res: Response) => {
@@ -20,10 +19,10 @@ export const getCurrencies = async (req: Request, res: Response) => {
     }
 
     res.json({
-      gold: user.gold,
       gems: user.gems,
       fate_coins: user.fate_coins,
       card_fragments: user.card_fragments,
+      pack_count: user.pack_count,
       total_xp: user.total_xp,
       // Legacy field for backward compatibility
       in_game_currency: user.in_game_currency,
@@ -50,13 +49,13 @@ export const purchasePacks = async (req: Request, res: Response) => {
       });
     }
 
-    if (!currency_type || !["gold", "gems"].includes(currency_type)) {
+    if (!currency_type || currency_type !== "gems") {
       return res.status(400).json({
-        error: "Invalid currency_type - must be 'gold' or 'gems'",
+        error: "Invalid currency_type - must be 'gems'",
       });
     }
 
-    const pricePerPack = PACK_PRICES[currency_type as keyof typeof PACK_PRICES];
+    const pricePerPack = PACK_PRICES.gems;
     const totalCost = quantity * pricePerPack;
 
     // Get current user
@@ -65,21 +64,17 @@ export const purchasePacks = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Check if user has enough currency
-    const currentAmount = currency_type === "gold" ? user.gold : user.gems;
-    if (currentAmount < totalCost) {
+    // Check if user has enough gems
+    if (user.gems < totalCost) {
       return res.status(400).json({
-        error: `Insufficient ${currency_type}. You have ${currentAmount}, need ${totalCost}`,
+        error: `Insufficient gems. You have ${user.gems}, need ${totalCost}`,
         required: totalCost,
-        available: currentAmount,
+        available: user.gems,
       });
     }
 
     // Process purchase
-    const updatedUser =
-      currency_type === "gold"
-        ? await UserModel.spendGold(userId, totalCost)
-        : await UserModel.spendGems(userId, totalCost);
+    const updatedUser = await UserModel.spendGems(userId, totalCost);
 
     if (!updatedUser) {
       return res.status(500).json({ error: "Failed to deduct currency" });
@@ -99,7 +94,6 @@ export const purchasePacks = async (req: Request, res: Response) => {
         total_cost: totalCost,
       },
       updated_currencies: {
-        gold: finalUser.gold,
         gems: finalUser.gems,
         pack_count: finalUser.pack_count,
       },
@@ -113,7 +107,7 @@ export const purchasePacks = async (req: Request, res: Response) => {
 export const awardCurrency = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.user_id;
-    const { gold_amount, gems_amount, reason } = req.body;
+    const { gems_amount, reason } = req.body;
 
     if (!userId) {
       return res.status(401).json({ error: "User not authenticated" });
@@ -121,34 +115,16 @@ export const awardCurrency = async (req: Request, res: Response) => {
 
     // Validation
     if (
-      (!gold_amount && !gems_amount) ||
-      (gold_amount !== undefined &&
-        (gold_amount < 0 || !Number.isInteger(gold_amount))) ||
-      (gems_amount !== undefined &&
-        (gems_amount < 0 || !Number.isInteger(gems_amount)))
+      !gems_amount ||
+      gems_amount < 0 ||
+      !Number.isInteger(gems_amount)
     ) {
       return res.status(400).json({
-        error: "Invalid currency amounts - must be non-negative integers",
+        error: "Invalid gems amount - must be a non-negative integer",
       });
     }
 
-    const goldToAdd = gold_amount || 0;
-    const gemsToAdd = gems_amount || 0;
-
-    let updatedUser;
-    if (goldToAdd > 0 && gemsToAdd > 0) {
-      updatedUser = await UserModel.updateBothCurrencies(
-        userId,
-        goldToAdd,
-        gemsToAdd
-      );
-    } else if (goldToAdd > 0) {
-      updatedUser = await UserModel.updateGold(userId, goldToAdd);
-    } else if (gemsToAdd > 0) {
-      updatedUser = await UserModel.updateGems(userId, gemsToAdd);
-    } else {
-      return res.status(400).json({ error: "No currency amounts specified" });
-    }
+    const updatedUser = await UserModel.updateGems(userId, gems_amount);
 
     if (!updatedUser) {
       return res.status(500).json({ error: "Failed to award currency" });
@@ -157,7 +133,6 @@ export const awardCurrency = async (req: Request, res: Response) => {
     res.json({
       reason: reason || "Manual award",
       updated_currencies: {
-        gold: updatedUser.gold,
         gems: updatedUser.gems,
         total_xp: updatedUser.total_xp,
       },
