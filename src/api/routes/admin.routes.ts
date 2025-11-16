@@ -41,6 +41,8 @@ router.post("/fix-fate-picks-tables", AdminController.fixFatePicksTables);
 
 router.post("/trigger-daily-rewards", AdminController.triggerDailyRewards);
 
+router.post("/reset-account", authenticateJWT, AdminController.resetAccount);
+
 // Story Mode Admin Routes
 router.use("/story-modes", adminStoryModeRoutes);
 

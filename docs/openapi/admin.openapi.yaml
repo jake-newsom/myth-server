@@ -642,3 +642,107 @@ components:
                   timestamp:
                     type: string
                     format: date-time
+
+  /api/admin/reset-account:
+    post:
+      tags:
+        - Admin
+      summary: Reset user account
+      description: Resets a user's account by deleting all cards, decks, card XP, currencies, achievements, and other data, then grants them the same starter content as a new account (admin only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                  description: ID of the user account to reset
+              example:
+                userId: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        "200":
+          description: Account reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Account reset successfully"
+                  user:
+                    type: object
+                    properties:
+                      user_id:
+                        type: string
+                        format: uuid
+                      username:
+                        type: string
+                      gold:
+                        type: integer
+                        example: 0
+                      gems:
+                        type: integer
+                        example: 0
+                      fate_coins:
+                        type: integer
+                        example: 2
+                      card_fragments:
+                        type: integer
+                        example: 0
+                      total_xp:
+                        type: integer
+                        example: 0
+                      pack_count:
+                        type: integer
+                        example: 10
+                  timestamp:
+                    type: string
+                    format: date-time
+        "400":
+          description: Bad request - userId is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  message:
+                    type: string
+                    example: "Internal server error during account reset"
+                  error:
+                    type: string
+                    description: Error details
+                  timestamp:
+                    type: string
+                    format: date-time

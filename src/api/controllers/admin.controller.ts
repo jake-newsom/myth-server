@@ -10,6 +10,7 @@ import fs from "fs";
 import path from "path";
 import AIAutomationService from "../../services/aiAutomation.service";
 import DailyRewardsService from "../../services/dailyRewards.service";
+import StarterService from "../../services/starter.service";
 
 const execAsync = promisify(exec);
 
@@ -1205,6 +1206,168 @@ const AdminController = {
       return res.status(500).json({
         status: "error",
         message: "Internal server error during daily rewards distribution",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
+  async resetAccount(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({
+          status: "error",
+          message: "userId is required",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Verify user exists
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const client = await db.getClient();
+      await client.query("BEGIN");
+
+      try {
+        // Delete all user-related data
+        // Note: Many tables have CASCADE delete, but we'll explicitly delete for clarity
+
+        // Delete user achievements
+        await client.query(
+          `DELETE FROM "user_achievements" WHERE user_id = $1`,
+          [userId]
+        );
+
+        // Delete XP transfers
+        await client.query(`DELETE FROM "xp_transfers" WHERE user_id = $1`, [
+          userId,
+        ]);
+
+        // Delete XP pools
+        await client.query(
+          `DELETE FROM "user_card_xp_pools" WHERE user_id = $1`,
+          [userId]
+        );
+
+        // Delete pack opening history
+        await client.query(
+          `DELETE FROM "pack_opening_history" WHERE user_id = $1`,
+          [userId]
+        );
+
+        // Delete mail
+        await client.query(`DELETE FROM "mail" WHERE user_id = $1`, [userId]);
+
+        // Delete fate pick participations
+        await client.query(
+          `DELETE FROM "fate_pick_participations" WHERE participant_id = $1`,
+          [userId]
+        );
+
+        // Delete fate picks created by user
+        await client.query(
+          `DELETE FROM "fate_picks" WHERE original_owner_id = $1`,
+          [userId]
+        );
+
+        // Delete friendships (both as requester and addressee)
+        await client.query(
+          `DELETE FROM "friendships" WHERE requester_id = $1 OR addressee_id = $1`,
+          [userId]
+        );
+
+        // Delete user rankings
+        await client.query(`DELETE FROM "user_rankings" WHERE user_id = $1`, [
+          userId,
+        ]);
+
+        // Delete story mode progress
+        await client.query(
+          `DELETE FROM "user_story_progress" WHERE user_id = $1`,
+          [userId]
+        );
+
+        // Delete game results
+        await client.query(
+          `DELETE FROM "game_results" WHERE player1_id = $1 OR player2_id = $1`,
+          [userId]
+        );
+
+        // Delete games (decks will cascade)
+        await client.query(
+          `DELETE FROM "games" WHERE player1_id = $1 OR player2_id = $1`,
+          [userId]
+        );
+
+        // Delete decks (deck_cards will cascade, user_owned_cards deletion will cascade to user_card_power_ups)
+        await client.query(`DELETE FROM "decks" WHERE user_id = $1`, [userId]);
+
+        // Delete user owned cards (user_card_power_ups will cascade)
+        await client.query(
+          `DELETE FROM "user_owned_cards" WHERE user_id = $1`,
+          [userId]
+        );
+
+        // Reset user currencies to default values (same as new account)
+        // Default: gold=0, gems=0, fate_coins=2, card_fragments=0, total_xp=0, pack_count=0
+        // pack_count will be set to 10 by StarterService.grantStarterPacks
+        await client.query(
+          `UPDATE "users" 
+           SET gold = 0, 
+               gems = 0, 
+               fate_coins = 2, 
+               card_fragments = 0, 
+               total_xp = 0, 
+               pack_count = 0,
+               in_game_currency = 0
+           WHERE user_id = $1`,
+          [userId]
+        );
+
+        await client.query("COMMIT");
+
+        // Grant starter content (cards, deck, packs)
+        // This runs outside the transaction since StarterService handles its own transaction
+        await StarterService.grantStarterContent(userId);
+
+        // Fetch updated user to return
+        const updatedUser = await UserModel.findById(userId);
+
+        return res.status(200).json({
+          status: "success",
+          message: "Account reset successfully",
+          user: {
+            user_id: updatedUser?.user_id,
+            username: updatedUser?.username,
+            gold: updatedUser?.gold,
+            gems: updatedUser?.gems,
+            fate_coins: updatedUser?.fate_coins,
+            card_fragments: updatedUser?.card_fragments,
+            total_xp: updatedUser?.total_xp,
+            pack_count: updatedUser?.pack_count,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      console.error("Admin reset account endpoint error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during account reset",
         error: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString(),
       });
