@@ -418,7 +418,7 @@ export class GameLogic {
         timestamp: Date.now(),
         cardId: playedCardData.user_card_instance_id,
         originalOwner: playedCardData.owner,
-        delayAfterMs: 0,
+        delayAfterMs: 500,
         position,
       } as CardPlacedEvent);
 

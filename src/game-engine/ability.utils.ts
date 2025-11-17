@@ -988,6 +988,11 @@ export function pullCardsIn(
       y: position.y + direction.y,
     };
 
+    const intermediatePosition = {
+      x: position.x + direction.x / 2,
+      y: position.y + direction.y / 2,
+    };
+
     // Check if enemy position is valid
     if (!isValidPosition(enemyPosition, board.length)) {
       continue;
@@ -1000,12 +1005,6 @@ export function pullCardsIn(
     if (!enemyCard || enemyCard.owner === playerId) {
       continue; // No card or it's our own card
     }
-
-    // Calculate the intermediate position (1 space closer to target)
-    const intermediatePosition = {
-      x: position.x + direction.x / 2,
-      y: position.y + direction.y / 2,
-    };
 
     // Check if intermediate position is empty
     const intermediateTile = getTileAtPosition(intermediatePosition, board);
@@ -1036,6 +1035,46 @@ export function pullCardsIn(
       );
     }
   }
+
+  return gameEvents;
+}
+
+export function moveCardToPosition(
+  card: InGameCard,
+  toPosition: BoardPosition,
+  fromPosition: BoardPosition,
+  board: GameBoard,
+  animation?: string
+): BaseGameEvent[] {
+  if (toPosition.x === fromPosition.x && toPosition.y === fromPosition.y)
+    throw new Error("Cannot move to the same position");
+  if (
+    !isValidPosition(toPosition, board.length) ||
+    !isValidPosition(fromPosition, board.length)
+  )
+    throw new Error("Invalid positions");
+
+  const currentTile = getTileAtPosition(fromPosition, board);
+  const newTile = getTileAtPosition(toPosition, board);
+
+  if (!currentTile || !newTile) throw new Error("Invalid positions");
+
+  newTile.card = currentTile.card;
+  currentTile.card = null;
+
+  const gameEvents: BaseGameEvent[] = [
+    {
+      type: EVENT_TYPES.CARD_MOVED,
+      animation: animation || "pull",
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      cardId: card.user_card_instance_id,
+      fromPosition: fromPosition,
+      toPosition: toPosition,
+    } as CardEvent,
+  ];
+
+  gameEvents.push(...applyTileEffectsToMovedCard(card, toPosition, board));
 
   return gameEvents;
 }

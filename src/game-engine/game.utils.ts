@@ -461,9 +461,20 @@ export function triggerIndirectAbilities(
     TriggerMoment.OnTurnStart,
     TriggerMoment.OnTurnEnd,
   ];
-  for (const row of state.board) {
-    for (const cell of row) {
+  
+  // Collect all cards that need to be triggered BEFORE processing any of them.
+  // This prevents cards from being processed multiple times if they move during iteration.
+  const cardsToTrigger: Array<{ card: InGameCard; position: BoardPosition }> = [];
+  const processedCardIds = new Set<string>();
+  
+  for (let y = 0; y < state.board.length; y++) {
+    for (let x = 0; x < state.board[y].length; x++) {
+      const cell = state.board[y][x];
       if (cell.card && cell.card.base_card_data.special_ability) {
+        const cardId = cell.card.user_card_instance_id;
+        // Skip if we've already collected this card (prevents duplicates)
+        if (processedCardIds.has(cardId)) continue;
+        
         const ability = cell.card.base_card_data.special_ability;
 
         const hasAnyTrigger = hasTrigger(
@@ -474,22 +485,31 @@ export function triggerIndirectAbilities(
           lifecycleTriggers.includes(trigger) && hasTrigger(ability, trigger);
 
         if (hasAnyTrigger || hasLifecycleTrigger) {
-          const anyContext: TriggerContext = {
-            ...context,
-            triggerCard: cell.card,
-            triggerMoment: `Any${trigger}` as TriggerMoment,
-          };
-
-          if (triggerCard) {
-            anyContext.originalTriggerCard = triggerCard;
-          }
-
-          const abilityEvents = abilities[ability.name]?.(anyContext);
-          if (abilityEvents) {
-            events.push(...abilityEvents);
-          }
+          cardsToTrigger.push({ card: cell.card, position: { x, y } });
+          processedCardIds.add(cardId);
         }
       }
+    }
+  }
+  
+  // Now process all collected cards
+  for (const { card } of cardsToTrigger) {
+    const ability = card.base_card_data.special_ability;
+    if (!ability) continue; // Safety check (shouldn't happen, but TypeScript needs it)
+    
+    const anyContext: TriggerContext = {
+      ...context,
+      triggerCard: card,
+      triggerMoment: `Any${trigger}` as TriggerMoment,
+    };
+
+    if (triggerCard) {
+      anyContext.originalTriggerCard = triggerCard;
+    }
+
+    const abilityEvents = abilities[ability.name]?.(anyContext);
+    if (abilityEvents) {
+      events.push(...abilityEvents);
     }
   }
   return batchEvents(events, 100);

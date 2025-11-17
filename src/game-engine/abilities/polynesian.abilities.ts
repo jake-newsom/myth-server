@@ -43,6 +43,7 @@ import {
   createOrUpdateDebuff,
   getRandomSide,
   chooseRandomCard,
+  moveCardToPosition,
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { resolveCombat } from "../game.utils";
@@ -510,20 +511,44 @@ export const polynesianAbilities: AbilityMap = {
     return [];
   },
 
-  // Dread Aura: Enemy abilities are disabled next turn.
+  // Dread Aura: At the end of every round move to an adjacent empty tile and curse the previous tile.
   "Dread Aura": (context) => {
-    const {
-      triggerCard,
-      state: { board },
-    } = context;
+    const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
 
-    const allEnemies = getCardsByCondition(
-      board,
-      (card) => card.owner !== triggerCard.owner
+    const position = getPositionOfCardById(
+      triggerCard.user_card_instance_id,
+      state.board
     );
-    for (const enemy of allEnemies) {
-      gameEvents.push(disableAbilities(enemy, 1));
+    if (!position) return [];
+
+    const adjacentEmptyTiles = getEmptyAdjacentTiles(position, state.board);
+    if (adjacentEmptyTiles.length > 0) {
+      //pick random adjacent empty tile
+      const randomAdjacentEmptyTile =
+        adjacentEmptyTiles[
+          Math.floor(Math.random() * adjacentEmptyTiles.length)
+        ];
+      //move to random adjacent empty tile
+      gameEvents.push(
+        ...moveCardToPosition(
+          triggerCard,
+          randomAdjacentEmptyTile.position,
+          position,
+          state.board
+        )
+      );
+      //curse previous tile
+      gameEvents.push(
+        setTileStatus(getTileAtPosition(position, state.board)!, position, {
+          status: TileStatus.Cursed,
+          turns_left: 1000,
+          animation_label: "cursed",
+          power: { top: -1, bottom: -1, left: -1, right: -1 },
+          effect_duration: 1000,
+          applies_to_user: getOpponentId(triggerCard.owner, state),
+        })
+      );
     }
 
     return gameEvents;
