@@ -187,11 +187,10 @@ export const japaneseAbilities: AbilityMap = {
 
   // Hunter's Mark: When an ally is defeted, grant -1 to the attacker
   "Hunter's Mark": (context) => {
-    simulationContext.debugLog("Hunter's Mark: ", context);
-    const { flippedBy } = context;
+    const { flippedCard, triggerCard } = context;
 
-    if (flippedBy) {
-      return [debuff(flippedBy, -1, "Hunter's Mark")];
+    if (flippedCard && flippedCard.owner !== triggerCard.owner) {
+      return [addTempDebuff(flippedCard, 1000, -1, { name: "Hunter's Mark" })];
     }
 
     return [];
@@ -367,13 +366,8 @@ export const japaneseAbilities: AbilityMap = {
 
   // Demon Bane: Gains +1 power when any demon is defeated
   "Demon Bane": (context) => {
-    const {
-      triggerCard,
-      flippedCardId,
-      state: { hydrated_card_data_cache },
-    } = context;
+    const { triggerCard, flippedCard } = context;
 
-    const flippedCard = hydrated_card_data_cache?.[flippedCardId!];
     if (flippedCard?.base_card_data.tags?.includes("demon")) {
       return [createOrUpdateBuff(triggerCard, 1000, 1, "Demon Bane")];
     }

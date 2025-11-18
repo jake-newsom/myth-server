@@ -347,7 +347,7 @@ export function flipCard(
       state,
       triggerCard: source,
       triggerMoment: TriggerMoment.OnFlip,
-      flippedCardId: target.user_card_instance_id,
+      flippedCard: target,
       position,
     })
   );
@@ -364,15 +364,26 @@ export function flipCard(
   );
   if (!targetPosition) return events;
 
-  const cardFlippedEvent: CardEvent = {
-    type: EVENT_TYPES.CARD_FLIPPED,
-    eventId: "TODO",
-    timestamp: Date.now(),
-    sourcePlayerId: state.current_player_id,
-    cardId: target.user_card_instance_id,
-    position: targetPosition,
-  };
-  events.push(cardFlippedEvent);
+  const existingOnFlipEvent = events.find((event) => {
+    return (
+      event.type === EVENT_TYPES.CARD_FLIPPED &&
+      event.position &&
+      event.position.x === targetPosition.x &&
+      event.position.y === targetPosition.y
+    );
+  });
+
+  if (!existingOnFlipEvent) {
+    const cardFlippedEvent: CardEvent = {
+      type: EVENT_TYPES.CARD_FLIPPED,
+      eventId: "TODO",
+      timestamp: Date.now(),
+      sourcePlayerId: state.current_player_id,
+      cardId: target.user_card_instance_id,
+      position: targetPosition,
+    };
+    events.push(cardFlippedEvent);
+  }
 
   events.push(
     ...triggerAbilities(TriggerMoment.OnFlipped, {
@@ -461,12 +472,13 @@ export function triggerIndirectAbilities(
     TriggerMoment.OnTurnStart,
     TriggerMoment.OnTurnEnd,
   ];
-  
+
   // Collect all cards that need to be triggered BEFORE processing any of them.
   // This prevents cards from being processed multiple times if they move during iteration.
-  const cardsToTrigger: Array<{ card: InGameCard; position: BoardPosition }> = [];
+  const cardsToTrigger: Array<{ card: InGameCard; position: BoardPosition }> =
+    [];
   const processedCardIds = new Set<string>();
-  
+
   for (let y = 0; y < state.board.length; y++) {
     for (let x = 0; x < state.board[y].length; x++) {
       const cell = state.board[y][x];
@@ -474,7 +486,7 @@ export function triggerIndirectAbilities(
         const cardId = cell.card.user_card_instance_id;
         // Skip if we've already collected this card (prevents duplicates)
         if (processedCardIds.has(cardId)) continue;
-        
+
         const ability = cell.card.base_card_data.special_ability;
 
         const hasAnyTrigger = hasTrigger(
@@ -491,12 +503,12 @@ export function triggerIndirectAbilities(
       }
     }
   }
-  
+
   // Now process all collected cards
   for (const { card } of cardsToTrigger) {
     const ability = card.base_card_data.special_ability;
     if (!ability) continue; // Safety check (shouldn't happen, but TypeScript needs it)
-    
+
     const anyContext: TriggerContext = {
       ...context,
       triggerCard: card,

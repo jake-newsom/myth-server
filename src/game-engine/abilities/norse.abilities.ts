@@ -316,6 +316,10 @@ export const norseAbilities: AbilityMap = {
         addTempDebuff(enemy, 1000, -3, {
           name: "Winter's Grasp",
           animation: "winter-grasp",
+          position: getPositionOfCardById(
+            enemy.user_card_instance_id,
+            state.board
+          )!,
         })
       );
     }
@@ -367,21 +371,27 @@ export const norseAbilities: AbilityMap = {
   },
 
   "Soul Lock": (context) => {
-    const { triggerCard, flippedCard } = context;
+    const { flippedCard } = context;
 
     if (flippedCard) {
       flippedCard.lockedTurns = 1000;
 
-      return [
+      const gameEvents: BaseGameEvent[] = [
         {
           type: EVENT_TYPES.CARD_FLIPPED,
           eventId: uuidv4(),
           timestamp: Date.now(),
-          sourcePlayerId: triggerCard.owner,
-          cardId: flippedCard?.user_card_instance_id,
-          action: "soul-lock",
+          sourcePlayerId: flippedCard.owner,
+          cardId: flippedCard.user_card_instance_id,
+          position: getPositionOfCardById(
+            flippedCard.user_card_instance_id,
+            context.state.board
+          )!,
+          animation: "soul-lock",
         } as CardEvent,
       ];
+      console.log("gameEvents", gameEvents);
+      return gameEvents;
     }
     return [];
   },
