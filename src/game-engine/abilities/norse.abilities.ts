@@ -28,6 +28,7 @@ import {
   destroyCardAtPosition,
   getPositionOfCardById,
   createOrUpdateBuff,
+  getCardsInSameColumn,
 } from "../ability.utils";
 import { drawCardSync } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
@@ -298,31 +299,26 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Winter's Grasp: Freeze one adjacent tile for 1 turn.
+  // Winter's Grasp: Enemies in the same column lose 3 power through your next turn
   "Winter's Grasp": (context) => {
     const { position, state, triggerCard } = context;
     const gameEvents: BaseGameEvent[] = [];
     if (!position) return [];
 
-    const adjacentPositions = getAdjacentPositions(
+    const enemiesInColumn = getCardsInSameColumn(
       position,
-      state.board.length
-    ).filter((pos) => getTileAtPosition(pos, state.board)?.card === null);
-    simulationContext.debugLog("adjacentPositions", adjacentPositions);
+      state.board,
+      triggerCard.owner
+    );
 
-    if (adjacentPositions.length > 0) {
-      const randomIndex = Math.floor(Math.random() * adjacentPositions.length);
-      const event = blockTile(
-        adjacentPositions[randomIndex],
-        state.board,
-        2,
-        "frozen"
+    for (const enemy of enemiesInColumn) {
+      gameEvents.push(
+        addTempDebuff(enemy, 1000, 3, {
+          name: "Winter's Grasp",
+          animation: "winter-grasp",
+        })
       );
-      if (event) {
-        gameEvents.push(event);
-      }
     }
-
     return gameEvents;
   },
 

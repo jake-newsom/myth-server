@@ -24,6 +24,7 @@ import {
   destroyCardAtPosition,
   createOrUpdateBuff,
   removeBuffsByCondition,
+  createOrUpdateDebuff,
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { flipCard } from "../game.utils";
@@ -196,15 +197,26 @@ export const japaneseAbilities: AbilityMap = {
     return [];
   },
 
-  // Vengeful Bite: When defeated, the attacker loses 1 power permanently.
+  // Vengeful Bite: -1 to all adjacent enemies at the end of each round
   "Vengeful Bite": (context) => {
-    const { flippedBy } = context;
+    const {
+      position,
+      triggerCard,
+      state: { board },
+    } = context;
+    const gameEvents: BaseGameEvent[] = [];
 
-    if (flippedBy) {
-      return [debuff(flippedBy, -1)];
+    const adjacentEnemies = getEnemiesAdjacentTo(
+      position,
+      board,
+      triggerCard.owner
+    );
+
+    for (const enemy of adjacentEnemies) {
+      gameEvents.push(createOrUpdateDebuff(enemy, 1000, -1, "Vengeful Bite"));
     }
 
-    return [];
+    return gameEvents;
   },
 
   // Shore Fury: Gains +2 power if placed on an edge.
