@@ -200,11 +200,16 @@ export const japaneseAbilities: AbilityMap = {
   // Vengeful Bite: -1 to all adjacent enemies at the end of each round
   "Vengeful Bite": (context) => {
     const {
-      position,
       triggerCard,
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+
+    const position = getPositionOfCardById(
+      triggerCard.user_card_instance_id,
+      board
+    );
+    if (!position) return [];
 
     const adjacentEnemies = getEnemiesAdjacentTo(
       position,
@@ -213,7 +218,7 @@ export const japaneseAbilities: AbilityMap = {
     );
 
     for (const enemy of adjacentEnemies) {
-      gameEvents.push(createOrUpdateDebuff(enemy, 1000, -1, "Vengeful Bite"));
+      gameEvents.push(createOrUpdateDebuff(enemy, 1000, 1, "Vengeful Bite"));
     }
 
     return gameEvents;

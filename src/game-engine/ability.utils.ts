@@ -163,6 +163,14 @@ type EventOptions = {
   position?: BoardPosition;
 };
 
+/**
+ *
+ * @param card - The card to add the debuff to
+ * @param duration - The duration of the debuff
+ * @param power - The power of the debuff (send a negative integer)
+ * @param options - The options for the debuff
+ * @returns A game event
+ */
 export function addTempDebuff(
   card: InGameCard,
   duration: number,
@@ -242,6 +250,15 @@ export function createOrUpdateBuff(
   } as CardEvent;
 }
 
+/**
+ *
+ * @param card - The card to create or update the debuff for
+ * @param duration - The duration of the debuff
+ * @param power - The power of the debuff (send a positive integer)
+ * @param name - The name of the debuff
+ * @param data - The data of the debuff
+ * @returns A game event
+ */
 export function createOrUpdateDebuff(
   card: InGameCard,
   duration: number,

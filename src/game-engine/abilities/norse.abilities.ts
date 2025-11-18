@@ -313,7 +313,7 @@ export const norseAbilities: AbilityMap = {
 
     for (const enemy of enemiesInColumn) {
       gameEvents.push(
-        addTempDebuff(enemy, 1000, 3, {
+        addTempDebuff(enemy, 1000, -3, {
           name: "Winter's Grasp",
           animation: "winter-grasp",
         })
