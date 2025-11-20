@@ -375,23 +375,9 @@ export const norseAbilities: AbilityMap = {
 
     if (flippedCard) {
       flippedCard.lockedTurns = 1000;
-
-      const gameEvents: BaseGameEvent[] = [
-        {
-          type: EVENT_TYPES.CARD_FLIPPED,
-          eventId: uuidv4(),
-          timestamp: Date.now(),
-          sourcePlayerId: flippedCard.owner,
-          cardId: flippedCard.user_card_instance_id,
-          position: getPositionOfCardById(
-            flippedCard.user_card_instance_id,
-            context.state.board
-          )!,
-          animation: "soul-lock",
-        } as CardEvent,
-      ];
-      console.log("gameEvents", gameEvents);
-      return gameEvents;
+      // Don't create a CARD_FLIPPED event here - let flipCard handle it
+      // The attack animation will be set via ability parameters
+      return [];
     }
     return [];
   },
@@ -673,7 +659,7 @@ export const norseAbilities: AbilityMap = {
       const destroyEvent = destroyCardAtPosition(
         getPositionOfCardById(randomEnemy.user_card_instance_id, board)!,
         board,
-        "destroy"
+        "claw"
       );
       simulationContext.debugLog("destroyEvent", destroyEvent);
       if (destroyEvent) {

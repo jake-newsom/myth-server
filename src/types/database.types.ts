@@ -82,6 +82,7 @@ export interface Card {
   special_ability_id: string | null;
   set_id?: string | null;
   tags: string[];
+  attack_animation?: string; // Custom attack animation for card flips
 }
 
 export interface UserCardInstance {

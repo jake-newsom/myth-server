@@ -364,26 +364,18 @@ export function flipCard(
   );
   if (!targetPosition) return events;
 
-  const existingOnFlipEvent = events.find((event) => {
-    return (
-      event.type === EVENT_TYPES.CARD_FLIPPED &&
-      event.position &&
-      event.position.x === targetPosition.x &&
-      event.position.y === targetPosition.y
-    );
-  });
+  // Check if the source card has a custom attack animation
+  const attackAnimation = source.base_card_data.attack_animation;
 
-  if (!existingOnFlipEvent) {
-    const cardFlippedEvent: CardEvent = {
-      type: EVENT_TYPES.CARD_FLIPPED,
-      eventId: "TODO",
-      timestamp: Date.now(),
-      sourcePlayerId: state.current_player_id,
-      cardId: target.user_card_instance_id,
-      position: targetPosition,
-    };
-    events.push(cardFlippedEvent);
-  }
+  events.push({
+    type: EVENT_TYPES.CARD_FLIPPED,
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    sourcePlayerId: state.current_player_id,
+    cardId: target.user_card_instance_id,
+    position: targetPosition,
+    animation: attackAnimation || "attack",
+  } as CardEvent);
 
   events.push(
     ...triggerAbilities(TriggerMoment.OnFlipped, {

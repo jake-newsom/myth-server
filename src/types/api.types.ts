@@ -66,6 +66,7 @@ export interface CardResponse {
     parameters: Record<string, any>;
   } | null;
   power_enhancements?: PowerValues;
+  attackAnimation?: string; // Custom attack animation for card flips
 }
 
 export interface StaticCardCollectionResponse {

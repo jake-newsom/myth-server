@@ -35,6 +35,9 @@ function formatUserCardInstanceResponse(
           parameters: ability.parameters,
         }
       : null,
+    ...(baseCard.attack_animation && {
+      attack_animation: baseCard.attack_animation,
+    }),
   };
 }
 
@@ -53,7 +56,7 @@ function formatStaticCardResponse(
   CardResponse,
   "user_card_instance_id" | "level" | "xp" | "power_enhancements"
 > {
-  const { special_ability_id, card_id, ...rest } = baseCard;
+  const { special_ability_id, card_id, attack_animation, ...rest } = baseCard;
   return {
     ...rest,
     base_card_id: card_id,
@@ -65,6 +68,7 @@ function formatStaticCardResponse(
             .triggerMoments as TriggerMoment[],
         }
       : null,
+    ...(attack_animation && { attack_animation: attack_animation }),
   };
 }
 
@@ -78,7 +82,7 @@ const CardModel = {
         c.power->>'right' as base_power_right, 
         c.power->>'bottom' as base_power_bottom, 
         c.power->>'left' as base_power_left,
-        c.special_ability_id, c.set_id, c.tags,
+        c.special_ability_id, c.set_id, c.tags, c.attack_animation,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
@@ -112,6 +116,7 @@ const CardModel = {
         special_ability_id: row.special_ability_id,
         set_id: row.set_id,
         tags: row.tags,
+        ...(row.attack_animation && { attack_animation: row.attack_animation }),
       };
 
       // Get power up data for this instance
@@ -183,7 +188,7 @@ const CardModel = {
   },
 
   async findBaseCardById(cardId: string): Promise<BaseCard | null> {
-    const query = `SELECT card_id, name, rarity, image_url, power->>'top' as base_power_top, power->>'right' as base_power_right, power->>'bottom' as base_power_bottom, power->>'left' as base_power_left, special_ability_id, set_id, tags FROM "cards" WHERE card_id = $1;`;
+    const query = `SELECT card_id, name, rarity, image_url, power->>'top' as base_power_top, power->>'right' as base_power_right, power->>'bottom' as base_power_bottom, power->>'left' as base_power_left, special_ability_id, set_id, tags, attack_animation FROM "cards" WHERE card_id = $1;`;
     const { rows } = await db.query(query, [cardId]);
     if (rows.length === 0) return null;
     const row = rows[0];
@@ -201,6 +206,7 @@ const CardModel = {
       special_ability_id: row.special_ability_id,
       set_id: row.set_id,
       tags: row.tags,
+      ...(row.attack_animation && { attack_animation: row.attack_animation }),
     };
   },
 
@@ -216,7 +222,7 @@ const CardModel = {
         c.power->>'right' as base_power_right, 
         c.power->>'bottom' as base_power_bottom, 
         c.power->>'left' as base_power_left, 
-        c.special_ability_id, c.set_id, c.tags,
+        c.special_ability_id, c.set_id, c.tags, c.attack_animation,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
@@ -264,6 +270,7 @@ const CardModel = {
       special_ability_id: row.special_ability_id,
       set_id: row.set_id,
       tags: row.tags,
+      ...(row.attack_animation && { attack_animation: row.attack_animation }),
     };
 
     const ability: SpecialAbility | null = row.special_ability_id
@@ -364,7 +371,7 @@ const CardModel = {
               c.power->>'right' as base_power_right, 
               c.power->>'bottom' as base_power_bottom, 
               c.power->>'left' as base_power_left, 
-              c.special_ability_id, c.set_id, c.tags,
+              c.special_ability_id, c.set_id, c.tags, c.attack_animation,
               sa.ability_id as sa_ability_id, sa.name as sa_name, 
               sa.description as sa_description,
               sa.trigger_moments as sa_trigger_moments, 
@@ -401,7 +408,7 @@ const CardModel = {
                   c.power->>'right' as base_power_right, 
                   c.power->>'bottom' as base_power_bottom, 
                   c.power->>'left' as base_power_left, 
-                  c.special_ability_id, c.set_id, c.tags,
+                  c.special_ability_id, c.set_id, c.tags, c.attack_animation,
                   sa.ability_id as sa_ability_id, sa.name as sa_name, 
                   sa.description as sa_description,
                   sa.trigger_moments as sa_trigger_moments, 
@@ -443,6 +450,9 @@ const CardModel = {
                 special_ability_id: row.special_ability_id,
                 set_id: row.set_id,
                 tags: row.tags,
+                ...(row.attack_animation && {
+                  attack_animation: row.attack_animation,
+                }),
                 special_ability: row.sa_ability_id
                   ? {
                       ability_id: row.sa_ability_id,
@@ -478,6 +488,9 @@ const CardModel = {
           name: row.name,
           rarity: row.rarity,
           image_url: row.image_url,
+          ...(row.attack_animation && {
+            attack_animation: row.attack_animation,
+          }),
           base_power: {
             top: parseInt(row.base_power_top, 10),
             right: parseInt(row.base_power_right, 10),
@@ -525,7 +538,7 @@ const CardModel = {
         c.power->>'right' as base_power_right,
         c.power->>'bottom' as base_power_bottom, 
         c.power->>'left' as base_power_left,
-        c.special_ability_id, c.set_id, c.tags,
+        c.special_ability_id, c.set_id, c.tags, c.attack_animation,
         sa.ability_id as sa_ability_id, sa.name as sa_name, sa.description as sa_description,
         sa.trigger_moments as sa_trigger_moments, sa.parameters as sa_parameters
       FROM "cards" c
@@ -555,6 +568,7 @@ const CardModel = {
         bottom: parseInt(row.base_power_bottom, 10),
         left: parseInt(row.base_power_left, 10),
       },
+      ...(row.attack_animation && { attack_animation: row.attack_animation }),
       special_ability_id: row.special_ability_id,
       set_id: row.set_id,
       tags: row.tags,
@@ -616,6 +630,7 @@ const CardModel = {
         special_ability_id: row.special_ability_id,
         set_id: row.set_id,
         tags: row.tags,
+        ...(row.attack_animation && { attack_animation: row.attack_animation }),
       };
 
       // Get power up data for this instance
