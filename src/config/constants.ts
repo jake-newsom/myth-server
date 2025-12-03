@@ -68,24 +68,24 @@ export const AI_CONFIG = {
     DEFENSIVE_POSITION_BONUS: 20,
     OFFENSIVE_POSITION_BONUS: 35,
     SYNERGY_BONUS: 45,
-    
+
     // Ability category multipliers
     PERMANENT_BUFF_MULTIPLIER: 2.0, // Permanent buffs worth 2x temporary
     RECURRING_EFFECT_MULTIPLIER: 1.5, // Effects that trigger multiple times
     INVINCIBILITY_MULTIPLIER: 2.5, // Extreme defensive value
     COMEBACK_MULTIPLIER: 1.8, // When behind, comeback mechanics boosted
     SCALING_ABILITY_MULTIPLIER: 1.4, // Abilities that grow over time
-    
+
     // Game phase multipliers
     EARLY_GAME_DRAW_MULTIPLIER: 1.5, // Card draw more valuable early
     EARLY_GAME_TERRAIN_MULTIPLIER: 1.4, // Terrain setup valuable early
     LATE_GAME_FINISHER_MULTIPLIER: 1.4, // Finisher abilities late game
     LATE_GAME_DRAW_MULTIPLIER: 0.7, // Card draw less valuable late
-    
+
     // Hand-hold evaluation thresholds
     HAND_HOLD_HIGH_THRESHOLD: 100, // Skip playing if hold value above this
     HAND_HOLD_ADJUSTMENT_FACTOR: 0.5, // How much to adjust score by hold value
-    
+
     // Position requirement penalties/bonuses
     POSITION_REQUIREMENT_MET_BONUS: 200, // Large bonus when requirement met
     POSITION_REQUIREMENT_FAILED_PENALTY: 300, // Large penalty when failed
@@ -179,7 +179,7 @@ export const RATE_LIMIT_CONFIG = {
   },
   PACK_OPENING: {
     WINDOW_MS: 10 * 1000, // 10 seconds
-    MAX_REQUESTS: 3,
+    MAX_REQUESTS: 10,
   },
   GAME_ACTION: {
     WINDOW_MS: 10 * 1000, // 10 seconds
@@ -225,46 +225,66 @@ export const STORY_MODE_CONFIG = {
   // Story mode rewards: gems, packs, card fragments only
   DEFAULT_REWARDS: {
     FIRST_WIN: {
-      LEVEL_1: { gems: 5, packs: [{ set_id: "default", count: 1 }], card_fragments: 5 },
-      LEVEL_2: { gems: 8, packs: [{ set_id: "default", count: 1 }], card_fragments: 8 },
-      LEVEL_3: { gems: 12, packs: [{ set_id: "default", count: 1 }], card_fragments: 12 },
-      LEVEL_4: { gems: 18, packs: [{ set_id: "default", count: 2 }], card_fragments: 18 },
-      LEVEL_5: { gems: 25, packs: [{ set_id: "default", count: 2 }], card_fragments: 25 }
+      LEVEL_1: {
+        gems: 5,
+        packs: [{ set_id: "default", count: 1 }],
+        card_fragments: 5,
+      },
+      LEVEL_2: {
+        gems: 8,
+        packs: [{ set_id: "default", count: 1 }],
+        card_fragments: 8,
+      },
+      LEVEL_3: {
+        gems: 12,
+        packs: [{ set_id: "default", count: 1 }],
+        card_fragments: 12,
+      },
+      LEVEL_4: {
+        gems: 18,
+        packs: [{ set_id: "default", count: 2 }],
+        card_fragments: 18,
+      },
+      LEVEL_5: {
+        gems: 25,
+        packs: [{ set_id: "default", count: 2 }],
+        card_fragments: 25,
+      },
     },
     REPEAT_WIN: {
       LEVEL_1: { gems: 2, card_fragments: 2 },
       LEVEL_2: { gems: 3, card_fragments: 3 },
       LEVEL_3: { gems: 5, card_fragments: 5 },
       LEVEL_4: { gems: 7, card_fragments: 7 },
-      LEVEL_5: { gems: 10, card_fragments: 10 }
-    }
+      LEVEL_5: { gems: 10, card_fragments: 10 },
+    },
   },
-  
+
   // Unlock requirements templates
   UNLOCK_TEMPLATES: {
     // No requirements - available from start (first chapter, first difficulty)
     STARTER: {},
-    
+
     // Require completing previous difficulty in same chapter
     DIFFICULTY_PROGRESSION: (previousDifficultyId: string) => ({
-      prerequisite_stories: [previousDifficultyId]
+      prerequisite_stories: [previousDifficultyId],
     }),
-    
+
     // Require completing last difficulty of previous chapter
     CHAPTER_PROGRESSION: (previousChapterLastDifficultyId: string) => ({
-      prerequisite_stories: [previousChapterLastDifficultyId]
+      prerequisite_stories: [previousChapterLastDifficultyId],
     }),
-    
+
     // Require user level
     LEVEL_GATED: (minLevel: number) => ({
-      min_user_level: minLevel
+      min_user_level: minLevel,
     }),
-    
+
     // Require multiple story completions
     WIN_GATED: (minWins: number) => ({
-      min_total_story_wins: minWins
+      min_total_story_wins: minWins,
     }),
-    
+
     // Complex requirements
     ADVANCED: (requirements: {
       prerequisiteStories?: string[];
@@ -275,51 +295,51 @@ export const STORY_MODE_CONFIG = {
       prerequisite_stories: requirements.prerequisiteStories,
       min_user_level: requirements.minLevel,
       min_total_story_wins: requirements.minWins,
-      required_achievements: requirements.requiredAchievements
-    })
+      required_achievements: requirements.requiredAchievements,
+    }),
   },
-  
+
   // Story mode difficulty settings (by level 1-5)
   DIFFICULTY_SETTINGS: {
     LEVEL_1: {
       ai_card_level: 1,
-      description: 'Easy — AI uses base card stats',
-      recommended_level: 1
+      description: "Easy — AI uses base card stats",
+      recommended_level: 1,
     },
     LEVEL_2: {
       ai_card_level: 2,
-      description: 'Normal — +1 to one side per card',
-      recommended_level: 3
+      description: "Normal — +1 to one side per card",
+      recommended_level: 3,
     },
     LEVEL_3: {
       ai_card_level: 3,
-      description: 'Hard — +2 across two sides total',
-      recommended_level: 5
+      description: "Hard — +2 across two sides total",
+      recommended_level: 5,
     },
     LEVEL_4: {
       ai_card_level: 4,
-      description: 'Expert — +3 total (one per side up to level)',
-      recommended_level: 8
+      description: "Expert — +3 total (one per side up to level)",
+      recommended_level: 8,
     },
     LEVEL_5: {
       ai_card_level: 5,
-      description: 'Mythic — +4 total, optimized AI placement logic',
-      recommended_level: 12
-    }
+      description: "Mythic — +4 total, optimized AI placement logic",
+      recommended_level: 12,
+    },
   },
-  
+
   // Campaign structure
   CHAPTERS: 10,
   DIFFICULTIES_PER_CHAPTER: 5,
   TOTAL_ENTRIES: 50, // 10 chapters × 5 difficulties
-  
+
   // Validation limits
   LIMITS: {
     MAX_NAME_LENGTH: 100,
     MAX_DESCRIPTION_LENGTH: 500,
     MAX_ORDER_INDEX: 999,
-    MAX_REWARDS_PER_STORY: 10
-  }
+    MAX_REWARDS_PER_STORY: 10,
+  },
 } as const;
 
 // Error Codes

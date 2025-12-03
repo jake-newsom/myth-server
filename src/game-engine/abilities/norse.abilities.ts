@@ -53,17 +53,45 @@ export const norseCombatResolvers: CombatResolverMap = {
 
     return false;
   },
-
-  // Light Undimmed: Cannot be defeated by special abilities.
-  "Light Undimmed": (context) => {
-    const { combatType } = context;
-    if (combatType === COMBAT_TYPES.SPECIAL) return true;
-
-    return false;
-  },
 };
 
 export const norseAbilities: AbilityMap = {
+  // Returns to your hand when defeated
+  "Light Undimmed": (context) => {
+    const {
+      triggerCard,
+      state: { board, player1, player2 },
+    } = context;
+
+    const gameEvents: BaseGameEvent[] = [];
+
+    //remove card from the board
+    const position = getPositionOfCardById(
+      triggerCard.user_card_instance_id,
+      board
+    );
+    if (position) {
+      const removeEvent = destroyCardAtPosition(position, board);
+      if (removeEvent) {
+        gameEvents.push(removeEvent);
+      }
+    }
+
+    const player =
+      triggerCard.original_owner === player1.user_id ? player1 : player2;
+    player.hand.push(triggerCard.user_card_instance_id);
+
+    gameEvents.push({
+      type: EVENT_TYPES.CARD_DRAWN,
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      cardId: triggerCard.user_card_instance_id,
+      sourcePlayerId: triggerCard.original_owner,
+    } as CardEvent);
+
+    return gameEvents;
+  },
+
   // Foresight: Grant +1 to all allies on the board.
   Foresight: (context) => {
     const {
