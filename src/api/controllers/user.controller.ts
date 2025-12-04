@@ -3,6 +3,7 @@ import UserModel from "../../models/user.model";
 import CardModel from "../../models/card.model";
 import DeckModel from "../../models/deck.model";
 import GameService from "../../services/game.service";
+import MonthlyLoginRewardsService from "../../services/monthlyLoginRewards.service";
 import { Request, Response, NextFunction } from "express"; // Assuming Express types
 import {
   UserCard,
@@ -217,6 +218,68 @@ const UserController = {
           details: error instanceof Error ? error.message : "Unknown error",
         },
       });
+    }
+  },
+
+  /**
+   * Get monthly login status for current user
+   * @route GET /api/users/me/monthly-login/status
+   * @param {AuthenticatedRequest} req - Express request object with authenticated user
+   * @param {Response} res - Express response object
+   * @param {NextFunction} next - Express next middleware function
+   */
+  async getMonthlyLoginStatus(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "User not authenticated." } });
+        return;
+      }
+
+      const status = await MonthlyLoginRewardsService.getMonthlyLoginStatus(
+        req.user.user_id
+      );
+
+      res.status(200).json(status);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Claim the next available monthly login reward
+   * @route POST /api/users/me/monthly-login/claim
+   * @param {AuthenticatedRequest} req - Express request object with authenticated user
+   * @param {Response} res - Express response object
+   * @param {NextFunction} next - Express next middleware function
+   */
+  async claimMonthlyReward(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "User not authenticated." } });
+        return;
+      }
+
+      const result = await MonthlyLoginRewardsService.claimNextAvailableReward(
+        req.user.user_id
+      );
+
+      res.status(200).json(result);
+    } catch (error) {
+      if (error instanceof Error) {
+        res.status(400).json({
+          error: { message: error.message },
+        });
+        return;
+      }
+      next(error);
     }
   },
 };

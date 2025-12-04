@@ -28,6 +28,10 @@ export interface GameCompletionResult {
     gems: number;
     total_xp: number;
   };
+  win_streak_info?: {
+    multiplier_applied: number;
+    new_multiplier: number;
+  };
 }
 
 const GameRewardsService = {
@@ -74,7 +78,8 @@ const GameRewardsService = {
     userId: string,
     winnerId: string | null,
     gameMode: "solo" | "pvp",
-    gameDurationSeconds: number
+    gameDurationSeconds: number,
+    winStreakMultiplier: number = 1.0
   ): CurrencyRewards {
     let gemsReward = 0;
 
@@ -94,13 +99,20 @@ const GameRewardsService = {
         if (gameDurationSeconds < 180) {
           gemsReward += 3;
         }
+        // Apply win streak multiplier for PvP games only
+        gemsReward = Math.floor(gemsReward * winStreakMultiplier);
       }
     } else if (winnerId === null) {
       // Tie/draw rewards (smaller participation reward)
       gemsReward = gameMode === "solo" ? 2 : 3;
+      // Apply win streak multiplier for PvP draws as well
+      if (gameMode === "pvp") {
+        gemsReward = Math.floor(gemsReward * winStreakMultiplier);
+      }
     } else {
       // Loss rewards (small participation reward)
       gemsReward = gameMode === "solo" ? 1 : 2;
+      // No multiplier applied to losses
     }
 
     return {
@@ -217,13 +229,32 @@ const GameRewardsService = {
         player2Id
       );
 
-      // Calculate currency rewards
+      // Get current win streak multiplier for PvP games
+      let winStreakMultiplier = 1.0;
+      if (gameMode === "pvp") {
+        winStreakMultiplier = await UserModel.getWinStreakMultiplier(userId);
+      }
+
+      // Calculate currency rewards (with win streak multiplier for PvP)
       const currencyRewards = this.calculateCurrencyRewards(
         userId,
         gameResult.winner,
         gameMode,
-        gameResult.game_duration_seconds
+        gameResult.game_duration_seconds,
+        winStreakMultiplier
       );
+
+      // Update win streak multiplier for PvP games only
+      if (gameMode === "pvp" && player1Id !== player2Id) {
+        if (gameResult.winner === userId) {
+          // Player won - increment multiplier
+          await UserModel.incrementWinStreakMultiplier(userId);
+        } else if (gameResult.winner !== null && gameResult.winner !== userId) {
+          // Player lost - reset multiplier
+          await UserModel.resetWinStreakMultiplier(userId);
+        }
+        // For draws (winner === null), multiplier stays the same
+      }
 
       // Get cards that were actually used in the game
       const usedCards = this.getCardsUsedInGame(gameState, userId);
@@ -302,6 +333,15 @@ const GameRewardsService = {
       // Get updated user currencies
       const updatedUser = await UserModel.findById(userId);
 
+      // Prepare win streak info for PvP games
+      let winStreakInfo = undefined;
+      if (gameMode === "pvp") {
+        winStreakInfo = {
+          multiplier_applied: winStreakMultiplier,
+          new_multiplier: updatedUser?.win_streak_multiplier || 1.0,
+        };
+      }
+
       return {
         game_result: gameResult,
         rewards: {
@@ -312,6 +352,7 @@ const GameRewardsService = {
           gems: updatedUser?.gems || 0,
           total_xp: updatedUser?.total_xp || 0,
         },
+        win_streak_info: winStreakInfo,
       };
     } catch (error) {
       console.error("Error processing game completion rewards:", error);
@@ -334,6 +375,7 @@ const GameRewardsService = {
           gems: 0,
           total_xp: 0,
         },
+        win_streak_info: undefined,
       };
     }
   },

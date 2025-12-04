@@ -2,6 +2,7 @@ import db from "../config/db.config";
 import UserModel from "../models/user.model";
 import * as cron from "node-cron";
 import DailyShopService from "./dailyShop.service";
+import MonthlyLoginRewardsService from "./monthlyLoginRewards.service";
 
 interface DailyRewardResult {
   success: boolean;
@@ -248,6 +249,20 @@ const DailyRewardsService = {
         console.log("🌙 Running midnight UTC scheduled tasks...");
 
         try {
+          // Check if it's the 1st of the month and reset monthly login progress
+          const now = new Date();
+          const isFirstOfMonth = now.getUTCDate() === 1;
+          
+          if (isFirstOfMonth) {
+            console.log("📅 First of the month detected - resetting monthly login progress...");
+            try {
+              const resetCount = await MonthlyLoginRewardsService.resetMonthlyProgress();
+              console.log(`✅ Monthly login progress reset complete. ${resetCount} records deleted.`);
+            } catch (resetError) {
+              console.error("❌ Error resetting monthly login progress:", resetError);
+            }
+          }
+
           // Generate new daily shop offerings
           await DailyShopService.generateDailyOfferings();
           console.log("🏪 Daily shop offerings refreshed for new day");

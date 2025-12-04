@@ -25,4 +25,16 @@ router.get(
   UserController.getMyActiveGames
 );
 
+// Monthly login rewards routes
+router.get(
+  "/me/monthly-login/status",
+  authMiddleware.protect,
+  UserController.getMonthlyLoginStatus
+);
+router.post(
+  "/me/monthly-login/claim",
+  authMiddleware.protect,
+  UserController.claimMonthlyReward
+);
+
 export default router;

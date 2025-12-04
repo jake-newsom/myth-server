@@ -143,6 +143,73 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/users/me/monthly-login/status:
+    get:
+      summary: Get monthly login status
+      description: Retrieve the current user's monthly login reward progress and available rewards
+      tags:
+        - Users
+        - Rewards
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Successfully retrieved monthly login status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthlyLoginStatusResponse"
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/users/me/monthly-login/claim:
+    post:
+      summary: Claim monthly login reward
+      description: Claim the next available daily reward. Automatically detects which day the user is eligible to claim based on their progress and the current server date.
+      tags:
+        - Users
+        - Rewards
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        description: No request body needed - endpoint automatically claims next available day
+      responses:
+        "200":
+          description: Successfully claimed reward
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimMonthlyRewardResponse"
+        "400":
+          description: Bad request - invalid day or reward already claimed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -183,6 +250,12 @@ components:
         pack_count:
           type: integer
           description: Number of packs the user currently has
+        win_streak_multiplier:
+          type: number
+          format: float
+          minimum: 1.0
+          maximum: 5.0
+          description: Win streak multiplier for online games (1.0 - 5.0)
         created_at:
           type: string
           format: date-time
@@ -201,6 +274,7 @@ components:
         - fate_coins
         - total_xp
         - pack_count
+        - win_streak_multiplier
         - created_at
         - last_login_at
 
@@ -250,3 +324,128 @@ components:
             - message
       required:
         - error
+
+    MonthlyLoginStatusResponse:
+      type: object
+      properties:
+        month_year:
+          type: string
+          pattern: '^\d{4}-\d{2}$'
+          description: Current month in YYYY-MM format
+          example: "2024-01"
+        current_day:
+          type: integer
+          minimum: 0
+          maximum: 24
+          description: Current highest day reached (0-24)
+        claimed_days:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 24
+          description: Array of day numbers that have been claimed
+        available_days:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 24
+          description: Array of days that can be claimed (up to current day)
+        rewards:
+          type: array
+          items:
+            $ref: "#/components/schemas/MonthlyRewardInfo"
+          description: Array of all 24 daily rewards with claim status
+      required:
+        - month_year
+        - current_day
+        - claimed_days
+        - available_days
+        - rewards
+
+    MonthlyRewardInfo:
+      type: object
+      properties:
+        day:
+          type: integer
+          minimum: 1
+          maximum: 24
+          description: Day number (1-24)
+        reward_type:
+          type: string
+          enum:
+            - gems
+            - fate_coins
+            - card_fragments
+            - card_pack
+            - enhanced_card
+          description: Type of reward for this day
+        amount:
+          type: integer
+          description: Amount of reward (for gems, fragments, coins, packs)
+        is_claimed:
+          type: boolean
+          description: Whether this day's reward has been claimed
+        can_claim:
+          type: boolean
+          description: Whether this day's reward can be claimed now
+      required:
+        - day
+        - reward_type
+        - amount
+        - is_claimed
+        - can_claim
+
+    ClaimMonthlyRewardResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Whether the claim was successful
+        message:
+          type: string
+          description: Success message
+        reward:
+          type: object
+          properties:
+            day:
+              type: integer
+              minimum: 1
+              maximum: 24
+            reward_type:
+              type: string
+              enum:
+                - gems
+                - fate_coins
+                - card_fragments
+                - card_pack
+                - enhanced_card
+            amount:
+              type: integer
+            card_id:
+              type: string
+              description: Card ID for enhanced_card rewards (optional)
+          required:
+            - day
+            - reward_type
+            - amount
+        updated_progress:
+          type: object
+          properties:
+            current_day:
+              type: integer
+              minimum: 0
+              maximum: 24
+            claimed_days:
+              type: array
+              items:
+                type: integer
+          required:
+            - current_day
+            - claimed_days
+      required:
+        - success
+        - message
+        - reward
+        - updated_progress

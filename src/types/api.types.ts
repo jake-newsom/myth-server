@@ -104,4 +104,36 @@ export interface UpdateDeckRequest {
   user_card_instance_ids?: string[]; // Array of UserCardInstance IDs
 }
 
+// Monthly Login Rewards API Types
+export interface MonthlyLoginStatusResponse {
+  month_year: string; // Format: YYYY-MM
+  current_day: number; // Current highest day reached (0-24)
+  claimed_days: number[]; // Array of claimed day numbers
+  available_days: number[]; // Array of days that can be claimed (up to current_day)
+  rewards: Array<{
+    day: number;
+    reward_type: "gems" | "fate_coins" | "card_fragments" | "card_pack" | "enhanced_card";
+    amount: number;
+    is_claimed: boolean;
+    can_claim: boolean;
+  }>;
+}
+
+// No request body needed - endpoint automatically claims next available day
+
+export interface ClaimMonthlyRewardResponse {
+  success: boolean;
+  message: string;
+  reward: {
+    day: number;
+    reward_type: "gems" | "fate_coins" | "card_fragments" | "card_pack" | "enhanced_card";
+    amount: number;
+    card_id?: string; // user_card_instance_id for enhanced_card rewards
+  };
+  updated_progress: {
+    current_day: number;
+    claimed_days: number[];
+  };
+}
+
 // AuthenticatedRequest moved to middleware.types.ts

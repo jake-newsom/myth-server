@@ -18,6 +18,7 @@ export interface User {
   card_fragments: number;
   total_xp: number;
   pack_count: number;
+  win_streak_multiplier: number; // Win streak multiplier for online games (1.0 - 5.0)
   created_at: Date;
   last_login: Date;
 }
@@ -373,4 +374,33 @@ export interface DailyShopRotation {
   item_type: ShopItemType;
   current_card_index: number;
   last_updated: Date;
+}
+
+// Monthly Login Rewards System Types
+export type MonthlyRewardType =
+  | "gems"
+  | "fate_coins"
+  | "card_fragments"
+  | "card_pack"
+  | "enhanced_card";
+
+export interface MonthlyLoginConfig {
+  config_id: string;
+  day: number; // 1-24
+  reward_type: MonthlyRewardType;
+  amount: number; // Amount for gems, fragments, coins, packs. Ignored for enhanced_card.
+  card_id?: string | null; // Specific card_id for enhanced_card rewards (null for random)
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface UserMonthlyLoginProgress {
+  progress_id: string;
+  user_id: string;
+  month_year: string; // Format: YYYY-MM (e.g., "2024-01")
+  current_day: number; // Current highest day reached (0-24)
+  claimed_days: number[]; // Array of day numbers that have been claimed
+  created_at: Date;
+  updated_at: Date;
 }

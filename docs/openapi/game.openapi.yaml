@@ -271,7 +271,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Game"
+                oneOf:
+                  - $ref: "#/components/schemas/Game"
+                  - $ref: "#/components/schemas/GameCompletionResponse"
         "400":
           description: Invalid action
           content:
@@ -622,8 +624,90 @@ components:
           $ref: "#/components/schemas/BoardPosition"
           description: Required for placeCard action - the position on the board to place the card
 
-    ErrorResponse:# Defined locally or referenced from a common file
-      # ... (ErrorResponse definition)
+    GameCompletionResponse:
+      type: object
+      properties:
+        game:
+          $ref: "#/components/schemas/Game"
+        game_result:
+          type: object
+          properties:
+            winner:
+              type: string
+              nullable: true
+              description: ID of the winning player, or null for a draw
+            final_scores:
+              type: object
+              properties:
+                player1:
+                  type: integer
+                player2:
+                  type: integer
+            game_duration_seconds:
+              type: integer
+        rewards:
+          type: object
+          properties:
+            currency:
+              type: object
+              properties:
+                gems:
+                  type: integer
+            card_xp_rewards:
+              type: array
+              items:
+                type: object
+                properties:
+                  card_id:
+                    type: string
+                  card_name:
+                    type: string
+                  xp_gained:
+                    type: integer
+                  new_xp:
+                    type: integer
+                  new_level:
+                    type: integer
+        updated_currencies:
+          type: object
+          properties:
+            gems:
+              type: integer
+            total_xp:
+              type: integer
+        win_streak_info:
+          type: object
+          nullable: true
+          description: Win streak information for PvP games only
+          properties:
+            multiplier_applied:
+              type: number
+              format: float
+              description: The multiplier that was applied to rewards
+            new_multiplier:
+              type: number
+              format: float
+              description: The new multiplier value after this game
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              description: Error message
+            statusCode:
+              type: integer
+              description: HTTP status code
+            code:
+              type: string
+              description: Error code for client-side handling
+          required:
+            - message
+      required:
+        - error
 
   securitySchemes:
     bearerAuth:
