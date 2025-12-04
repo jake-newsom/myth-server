@@ -30,7 +30,7 @@ import {
   createOrUpdateBuff,
   getCardsInSameColumn,
 } from "../ability.utils";
-import { drawCardSync } from "../game.utils";
+import { drawCardSync, flipCard } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
 import { v4 as uuidv4 } from "uuid";
 import { TileStatus } from "../../types/game.types";
@@ -355,44 +355,38 @@ export const norseAbilities: AbilityMap = {
   },
 
   "Trickster's Gambit": (context) => {
-    const {
-      triggerCard,
-      state: { board, player1, player2 },
-    } = context;
+    const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
 
     const allBoardCards = getCardsByCondition(
-      board,
+      state.board,
       (card) => card.user_card_instance_id !== triggerCard.user_card_instance_id
     );
-    const cardsToSelectCount = Math.min(4, allBoardCards.length);
 
     const selectedCards: InGameCard[] = [];
     const availableCards = [...allBoardCards];
 
-    for (let i = 0; i < cardsToSelectCount; i++) {
+    for (let i = 0; i < 4; i++) {
       if (availableCards.length === 0) break;
       const randomIndex = Math.floor(Math.random() * availableCards.length);
       selectedCards.push(availableCards.splice(randomIndex, 1)[0]);
     }
 
     for (const selectedCard of selectedCards) {
-      let newOwnerId;
-      if (selectedCard.owner === player1.user_id) {
-        newOwnerId = player2.user_id;
-      } else {
-        newOwnerId = player1.user_id;
+      const tryToFlip = Math.floor(Math.random() * 100) < 50;
+      if (tryToFlip) {
+        gameEvents.push(
+          ...flipCard(
+            state,
+            getPositionOfCardById(
+              selectedCard.user_card_instance_id,
+              state.board
+            )!,
+            selectedCard,
+            triggerCard
+          )
+        );
       }
-
-      selectedCard.owner = newOwnerId;
-
-      gameEvents.push({
-        type: EVENT_TYPES.CARD_FLIPPED,
-        eventId: uuidv4(),
-        timestamp: Date.now(),
-        sourcePlayerId: triggerCard.owner,
-        cardId: selectedCard.user_card_instance_id,
-      } as CardEvent);
     }
 
     return gameEvents;
@@ -643,7 +637,21 @@ export const norseAbilities: AbilityMap = {
     for (const card of allCards) {
       const highestPower = getCardHighestPower(card).value;
       const diff = meanHighestPower - highestPower;
-      gameEvents.push(addTempBuff(card, 1000, diff));
+      if (diff > 0) {
+        gameEvents.push(
+          addTempBuff(card, 1000, diff, "Binding Justice", {
+            animation: "binding-justice",
+            position: getPositionOfCardById(card.user_card_instance_id, board)!,
+          })
+        );
+      } else {
+        gameEvents.push(
+          addTempDebuff(card, 1000, -diff, {
+            animation: "binding-justice",
+            position: getPositionOfCardById(card.user_card_instance_id, board)!,
+          })
+        );
+      }
     }
     return gameEvents;
   },
