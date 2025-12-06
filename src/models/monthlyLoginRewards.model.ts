@@ -96,7 +96,7 @@ const MonthlyLoginRewardsModel = {
     monthYear: string
   ): Promise<UserMonthlyLoginProgress | null> {
     const query = `
-      SELECT progress_id, user_id, month_year, current_day, claimed_days, created_at, updated_at
+      SELECT progress_id, user_id, month_year, current_day, claimed_days, last_claim_date, created_at, updated_at
       FROM user_monthly_login_progress
       WHERE user_id = $1 AND month_year = $2;
     `;
@@ -109,9 +109,9 @@ const MonthlyLoginRewardsModel = {
     monthYear: string
   ): Promise<UserMonthlyLoginProgress> {
     const query = `
-      INSERT INTO user_monthly_login_progress (user_id, month_year, current_day, claimed_days)
-      VALUES ($1, $2, 0, '{}')
-      RETURNING progress_id, user_id, month_year, current_day, claimed_days, created_at, updated_at;
+      INSERT INTO user_monthly_login_progress (user_id, month_year, current_day, claimed_days, last_claim_date)
+      VALUES ($1, $2, 0, '{}', NULL)
+      RETURNING progress_id, user_id, month_year, current_day, claimed_days, last_claim_date, created_at, updated_at;
     `;
     const { rows } = await db.query(query, [userId, monthYear]);
     return rows[0];
@@ -121,19 +121,21 @@ const MonthlyLoginRewardsModel = {
     userId: string,
     monthYear: string,
     currentDay: number,
-    claimedDays: number[]
+    claimedDays: number[],
+    lastClaimDate?: Date | string | null
   ): Promise<UserMonthlyLoginProgress | null> {
     const query = `
       UPDATE user_monthly_login_progress
-      SET current_day = $3, claimed_days = $4, updated_at = current_timestamp
+      SET current_day = $3, claimed_days = $4, last_claim_date = COALESCE($5, last_claim_date), updated_at = current_timestamp
       WHERE user_id = $1 AND month_year = $2
-      RETURNING progress_id, user_id, month_year, current_day, claimed_days, created_at, updated_at;
+      RETURNING progress_id, user_id, month_year, current_day, claimed_days, last_claim_date, created_at, updated_at;
     `;
     const { rows } = await db.query(query, [
       userId,
       monthYear,
       currentDay,
       claimedDays,
+      lastClaimDate || null,
     ]);
     return rows[0] || null;
   },
@@ -141,7 +143,8 @@ const MonthlyLoginRewardsModel = {
   async addClaimedDay(
     userId: string,
     monthYear: string,
-    day: number
+    day: number,
+    claimDate?: Date | string
   ): Promise<UserMonthlyLoginProgress | null> {
     // Get current progress
     const progress = await this.getUserProgress(userId, monthYear);
@@ -157,11 +160,15 @@ const MonthlyLoginRewardsModel = {
     // Update current_day if this day is higher
     const currentDay = Math.max(progress.current_day, day);
 
+    // Use provided claimDate or current UTC date
+    const lastClaimDate = claimDate || new Date().toISOString().split('T')[0];
+
     return await this.updateUserProgress(
       userId,
       monthYear,
       currentDay,
-      claimedDays
+      claimedDays,
+      lastClaimDate
     );
   },
 

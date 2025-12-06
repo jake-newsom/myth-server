@@ -401,6 +401,7 @@ export interface UserMonthlyLoginProgress {
   month_year: string; // Format: YYYY-MM (e.g., "2024-01")
   current_day: number; // Current highest day reached (0-24)
   claimed_days: number[]; // Array of day numbers that have been claimed
+  last_claim_date?: Date | string | null; // Date (UTC) of the last reward claim
   created_at: Date;
   updated_at: Date;
 }

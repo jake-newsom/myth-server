@@ -33,6 +33,17 @@ const MonthlyLoginRewardsService = {
   },
 
   /**
+   * Get current date string in YYYY-MM-DD format (UTC)
+   */
+  getCurrentDateString(): string {
+    const now = new Date();
+    const utcYear = now.getUTCFullYear();
+    const utcMonth = String(now.getUTCMonth() + 1).padStart(2, "0");
+    const utcDay = String(now.getUTCDate()).padStart(2, "0");
+    return `${utcYear}-${utcMonth}-${utcDay}`;
+  },
+
+  /**
    * Get reward configuration for all 24 days
    */
   async getMonthlyRewardConfig(): Promise<MonthlyLoginConfig[]> {
@@ -143,6 +154,20 @@ const MonthlyLoginRewardsService = {
       );
     }
 
+    // Check if user has already claimed today
+    const today = this.getCurrentDateString();
+    if (progress.last_claim_date) {
+      const lastClaimDateStr = typeof progress.last_claim_date === 'string' 
+        ? progress.last_claim_date.split('T')[0]
+        : progress.last_claim_date.toISOString().split('T')[0];
+      
+      if (lastClaimDateStr === today) {
+        throw new Error(
+          "You have already claimed your daily reward today. Please come back tomorrow."
+        );
+      }
+    }
+
     // Find the next available day (current_day + 1, but not exceeding maxDay)
     const nextDay = progress.current_day + 1;
 
@@ -216,11 +241,13 @@ const MonthlyLoginRewardsService = {
     // Distribute the reward and get the user_card_instance_id if it's an enhanced_card
     const distributedCardInstanceId = await this.distributeReward(userId, config);
 
-    // Update user progress
+    // Update user progress with today's date
+    const today = this.getCurrentDateString();
     const updatedProgress = await MonthlyLoginRewardsModel.addClaimedDay(
       userId,
       monthYear,
-      day
+      day,
+      today
     );
 
     if (!updatedProgress) {

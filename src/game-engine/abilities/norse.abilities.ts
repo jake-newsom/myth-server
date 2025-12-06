@@ -583,7 +583,6 @@ export const norseAbilities: AbilityMap = {
   "Dragon Slayer": (context) => {
     const {
       triggerCard,
-
       state: { board },
     } = context;
 
@@ -592,7 +591,16 @@ export const norseAbilities: AbilityMap = {
     );
 
     if (dragonsOnBoard.length > 0) {
-      return [buff(triggerCard, dragonsOnBoard.length)];
+      const currentBuff = triggerCard.temporary_effects.find(
+        (effect) => effect.name === "Dragon Slayer"
+      );
+      const diff = dragonsOnBoard.length * 2 - (currentBuff?.power.top ?? 0);
+
+      return [
+        createOrUpdateBuff(triggerCard, 1000, diff, "Dragon Slayer", {
+          animation: "dragon-slayer",
+        }),
+      ];
     }
     return [];
   },
@@ -635,21 +643,39 @@ export const norseAbilities: AbilityMap = {
     );
 
     for (const card of allCards) {
-      const highestPower = getCardHighestPower(card).value;
-      const diff = meanHighestPower - highestPower;
+      const highestPower = getCardHighestPower(card);
+      const diff = meanHighestPower - highestPower.value;
+
       if (diff > 0) {
         gameEvents.push(
-          addTempBuff(card, 1000, diff, "Binding Justice", {
-            animation: "binding-justice",
-            position: getPositionOfCardById(card.user_card_instance_id, board)!,
-          })
+          addTempBuff(
+            card,
+            1000,
+            { [highestPower.key]: diff },
+            "Binding Justice",
+            {
+              animation: "binding-justice",
+              position: getPositionOfCardById(
+                card.user_card_instance_id,
+                board
+              )!,
+            }
+          )
         );
       } else {
         gameEvents.push(
-          addTempDebuff(card, 1000, -diff, {
-            animation: "binding-justice",
-            position: getPositionOfCardById(card.user_card_instance_id, board)!,
-          })
+          addTempDebuff(
+            card,
+            1000,
+            { [highestPower.key]: -diff },
+            {
+              animation: "binding-justice",
+              position: getPositionOfCardById(
+                card.user_card_instance_id,
+                board
+              )!,
+            }
+          )
         );
       }
     }

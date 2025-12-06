@@ -135,3 +135,5 @@ function demoWinStreakBonus() {
 
 // Run the demo
 demoWinStreakBonus();
+
+

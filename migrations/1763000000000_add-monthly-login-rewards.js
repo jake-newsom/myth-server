@@ -114,6 +114,10 @@ exports.up = (pgm) => {
       default: '{}',
       comment: 'Array of day numbers that have been claimed',
     },
+    last_claim_date: {
+      type: 'date',
+      comment: 'Date (UTC) of the last reward claim - used to enforce one claim per calendar day',
+    },
     created_at: {
       type: 'timestamp',
       notNull: true,
