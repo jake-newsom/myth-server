@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import http from "http";
 import dotenv from "dotenv";
+import * as cron from "node-cron";
 
 // Load environment variables
 dotenv.config();
@@ -17,6 +18,7 @@ import errorHandler from "./api/middlewares/errorHandler.middleware";
 import AIAutomationService from "./services/aiAutomation.service";
 import SessionCleanupService from "./services/sessionCleanup.service";
 import DailyRewardsService from "./services/dailyRewards.service";
+import DailyTaskService from "./services/dailyTask.service";
 import StartupService from "./services/startup.service";
 
 // Setup Swagger
@@ -46,6 +48,7 @@ const app = express();
 // Store the automation scheduler tasks globally
 let automationSchedulerTask: any = null;
 let dailyRewardsSchedulerTasks: any[] = [];
+let dailyTaskScheduler: any = null;
 
 // Middleware
 app.use(compression()); // Enable gzip compression for all responses
@@ -144,6 +147,23 @@ if (require.main === module) {
         error
       );
     }
+
+    // Start the daily task scheduler (runs at 12am UTC to select tomorrow's tasks)
+    try {
+      // Ensure today's selection exists on startup
+      await DailyTaskService.ensureTodaySelection();
+      
+      // Schedule daily task selection at 12am UTC
+      dailyTaskScheduler = cron.schedule("0 0 * * *", async () => {
+        console.log("🎯 Running daily task selection scheduler...");
+        await DailyTaskService.generateTomorrowSelection();
+      }, {
+        timezone: "UTC"
+      });
+      console.log("🎯 Daily Task Scheduler started successfully");
+    } catch (error) {
+      console.error("❌ Failed to start Daily Task Scheduler:", error);
+    }
   });
 }
 
@@ -156,6 +176,10 @@ process.on("SIGTERM", () => {
   if (dailyRewardsSchedulerTasks.length > 0) {
     DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerTasks);
   }
+  if (dailyTaskScheduler) {
+    dailyTaskScheduler.stop();
+    console.log("🎯 Daily Task Scheduler stopped");
+  }
   SessionCleanupService.stop();
   process.exit(0);
 });
@@ -167,6 +191,10 @@ process.on("SIGINT", () => {
   }
   if (dailyRewardsSchedulerTasks.length > 0) {
     DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerTasks);
+  }
+  if (dailyTaskScheduler) {
+    dailyTaskScheduler.stop();
+    console.log("🎯 Daily Task Scheduler stopped");
   }
   SessionCleanupService.stop();
   process.exit(0);

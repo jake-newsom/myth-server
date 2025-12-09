@@ -21,6 +21,7 @@ import {
 } from "./game-events";
 
 import { v4 as uuidv4 } from "uuid";
+import DailyTaskService from "../services/dailyTask.service";
 
 /**
  * Helper function to get the tile effect that should be applied to a card at a specific position
@@ -649,7 +650,8 @@ export const rerollHighestStat = (card: InGameCard): void => {
 export const destroyCardAtPosition = (
   position: BoardPosition,
   board: GameBoard,
-  animation?: string
+  animation?: string,
+  actingPlayerId?: string
 ): BaseGameEvent | null => {
   const tile = getTileAtPosition(position, board);
   if (!tile?.card) return null;
@@ -658,6 +660,15 @@ export const destroyCardAtPosition = (
   const owner = tile.card.owner;
 
   tile.card = null;
+
+  // Track daily task progress for card destruction (fire-and-forget)
+  if (actingPlayerId) {
+    try {
+      DailyTaskService.trackDestroy(actingPlayerId).catch(() => {});
+    } catch (error) {
+      // Silently ignore tracking errors during gameplay
+    }
+  }
 
   return {
     type: EVENT_TYPES.CARD_REMOVED_FROM_BOARD,
@@ -689,11 +700,30 @@ export const resetTile = (
 export const setTileStatus = (
   tile: BoardCell,
   position: BoardPosition,
-  effect: TileEffect
+  effect: TileEffect,
+  actingPlayerId?: string
 ): BaseGameEvent => {
   tile.tile_effect = effect;
 
   const { tile_effect } = tile;
+
+  // Track daily task progress for curses (fire-and-forget)
+  if (actingPlayerId && effect.status === TileStatus.Cursed) {
+    try {
+      DailyTaskService.trackCurse(actingPlayerId).catch(() => {});
+    } catch (error) {
+      // Silently ignore tracking errors during gameplay
+    }
+  }
+
+  // Track daily task progress for blessings (fire-and-forget)
+  if (actingPlayerId && effect.status === TileStatus.Boosted) {
+    try {
+      DailyTaskService.trackBless(actingPlayerId).catch(() => {});
+    } catch (error) {
+      // Silently ignore tracking errors during gameplay
+    }
+  }
 
   return {
     type: EVENT_TYPES.TILE_STATE_CHANGED,
@@ -1137,8 +1167,18 @@ export function disableAbilities(
 export function addTileBlessing(
   position: BoardPosition,
   bonus: number,
-  ownerId: string
+  ownerId: string,
+  actingPlayerId?: string
 ): BaseGameEvent {
+  // Track daily task progress for blessings (fire-and-forget)
+  if (actingPlayerId) {
+    try {
+      DailyTaskService.trackBless(actingPlayerId).catch(() => {});
+    } catch (error) {
+      // Silently ignore tracking errors during gameplay
+    }
+  }
+
   return {
     type: EVENT_TYPES.TILE_STATE_CHANGED,
     eventId: uuidv4(),

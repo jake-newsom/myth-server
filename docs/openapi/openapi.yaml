@@ -47,6 +47,8 @@ tags:
     description: Daily shop with rotating mythology cards
   - name: Daily Shop Admin
     description: Administrative functions for daily shop management
+  - name: Daily Tasks
+    description: Daily tasks with rotating objectives and rewards
 
 paths:
   # Authentication Endpoints
@@ -299,6 +301,13 @@ paths:
 
   /api/daily-shop/admin/reset-limits:
     $ref: "./dailyShop.openapi.yaml#/paths/~1api~1daily-shop~1admin~1reset-limits"
+
+  # Daily Tasks Endpoints
+  /api/daily-tasks:
+    $ref: "./dailyTask.openapi.yaml#/paths/~1api~1daily-tasks"
+
+  /api/daily-tasks/claim:
+    $ref: "./dailyTask.openapi.yaml#/paths/~1api~1daily-tasks~1claim"
 
   # Game Endpoints
   /api/games/solo:

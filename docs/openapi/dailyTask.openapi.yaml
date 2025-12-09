@@ -1,0 +1,210 @@
+paths:
+  /api/daily-tasks:
+    get:
+      tags:
+        - Daily Tasks
+      summary: Get current daily tasks
+      description: Returns the current day's selected daily tasks along with the user's progress and reward status.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daily tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyTaskStatusResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/daily-tasks/claim:
+    post:
+      tags:
+        - Daily Tasks
+      summary: Claim daily task reward
+      description: Claims the next available reward tier based on completed tasks. Rewards are cumulative.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Reward claimed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimRewardResponse"
+        "400":
+          description: No rewards available to claim
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    DailyTask:
+      type: object
+      properties:
+        task_key:
+          type: string
+          description: Unique identifier for the task
+          example: "defeat_20"
+        title:
+          type: string
+          description: Display title for the task
+          example: "Card Crusher"
+        description:
+          type: string
+          description: Description of what needs to be done
+          example: "Defeat 20 cards in matches"
+        target_value:
+          type: integer
+          description: Number required to complete the task
+          example: 20
+        tracking_type:
+          type: string
+          description: Internal tracking type
+          example: "defeat"
+        current_progress:
+          type: integer
+          description: User's current progress on this task
+          example: 15
+        completed:
+          type: boolean
+          description: Whether the task has been completed
+          example: false
+
+    RewardTier:
+      type: object
+      properties:
+        tier:
+          type: integer
+          description: Reward tier number (1-5)
+          example: 1
+        claimed:
+          type: boolean
+          description: Whether this tier has been claimed
+          example: true
+        eligible:
+          type: boolean
+          description: Whether the user is eligible to claim this tier
+          example: true
+        reward:
+          type: object
+          description: The reward for this tier
+          properties:
+            gems:
+              type: integer
+              description: Number of gems awarded
+              example: 25
+            cards:
+              type: integer
+              description: Number of cards awarded
+              example: 1
+            packs:
+              type: integer
+              description: Number of packs awarded
+              example: 1
+
+    DailyTaskStatusResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        date:
+          type: string
+          format: date
+          description: The date for these daily tasks (UTC)
+          example: "2025-12-09"
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyTask"
+        completed_count:
+          type: integer
+          description: Number of tasks completed
+          example: 2
+        rewards:
+          type: array
+          items:
+            $ref: "#/components/schemas/RewardTier"
+          description: Reward tiers with their status
+
+    ClaimRewardResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        tier:
+          type: integer
+          description: The tier that was claimed
+          example: 1
+        reward:
+          type: object
+          description: The rewards that were granted
+          properties:
+            gems:
+              type: integer
+              example: 25
+            cards:
+              type: integer
+              example: 1
+            card_details:
+              type: object
+              description: Details of the awarded card (if applicable)
+              properties:
+                card_id:
+                  type: string
+                name:
+                  type: string
+                rarity:
+                  type: string
+                image_url:
+                  type: string
+            packs:
+              type: integer
+              example: 1
+        new_balances:
+          type: object
+          description: Updated user balances after claiming
+          properties:
+            gems:
+              type: integer
+              example: 150
+            pack_count:
+              type: integer
+              example: 3
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "No rewards available to claim"
+

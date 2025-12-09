@@ -20,6 +20,7 @@ import {
   TriggerContext,
   COMBAT_TYPES,
 } from "../types/game-engine.types";
+import DailyTaskService from "../services/dailyTask.service";
 
 // Helper function to safely check if an ability has a specific trigger
 function hasTrigger(ability: any, trigger: TriggerMoment): boolean {
@@ -386,6 +387,31 @@ export function flipCard(
       position: targetPosition,
     })
   );
+
+  // Track daily task progress for card defeats (fire-and-forget)
+  try {
+    const defeatingPlayerId = state.current_player_id;
+    // Track generic defeat
+    DailyTaskService.trackDefeat(defeatingPlayerId).catch(() => {});
+
+    // Track mythology-specific defeats (check source card's tags for mythology)
+    const sourceTags = source.base_card_data?.tags || [];
+    const mythologies = ["norse", "japanese", "polynesian"];
+    for (const mythology of mythologies) {
+      if (
+        sourceTags.some((tag: string) => tag.toLowerCase().includes(mythology))
+      ) {
+        DailyTaskService.trackDefeatWithMythology(
+          defeatingPlayerId,
+          mythology
+        ).catch(() => {});
+        break; // Only track one mythology per defeat
+      }
+    }
+  } catch (error) {
+    // Silently ignore tracking errors during gameplay
+  }
+
   return events;
 }
 

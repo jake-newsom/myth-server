@@ -10,6 +10,7 @@ import {
   ApplyXpResult,
 } from "../types/service.types";
 import { XP_CONFIG, RARITY_MULTIPLIERS } from "../config/constants";
+import DailyTaskService from "./dailyTask.service";
 
 const XpService = {
   // Calculate level from XP using new bracket system
@@ -627,6 +628,7 @@ const XpService = {
         // Update card XP and level
         const newXp = card.xp + reward.xp_gained;
         const newLevel = this.calculateLevel(newXp);
+        const didLevelUp = newLevel > card.level;
 
         await client.query(
           `UPDATE "user_owned_cards" SET xp = $1, level = $2 WHERE user_card_instance_id = $3`,
@@ -642,6 +644,16 @@ const XpService = {
           xp_transferred: reward.xp_gained,
           efficiency_rate: 1.0,
         });
+
+        // Track daily task progress for level up
+        if (didLevelUp) {
+          try {
+            await DailyTaskService.trackLevelUp(userId);
+          } catch (error) {
+            console.warn("Error tracking level up for daily task:", error);
+            // Don't fail the XP award if tracking fails
+          }
+        }
 
         results.push({
           card_id: reward.card_id,

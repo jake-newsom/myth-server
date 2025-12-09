@@ -5,6 +5,7 @@ import { GameState } from "../types/game.types";
 import db from "../config/db.config";
 import LeaderboardService from "./leaderboard.service";
 import AchievementService from "./achievement.service";
+import DailyTaskService from "./dailyTask.service";
 
 export interface GameResult {
   winner: string | null;
@@ -328,6 +329,16 @@ const GameRewardsService = {
       } catch (error) {
         console.error("Error processing achievement events:", error);
         // Don't fail the entire reward process if achievement processing fails
+      }
+
+      // Track daily task progress for wins
+      if (gameResult.winner === userId) {
+        try {
+          await DailyTaskService.trackWin(userId);
+        } catch (error) {
+          console.error("Error tracking win for daily task:", error);
+          // Don't fail the reward process if tracking fails
+        }
       }
 
       // Get updated user currencies

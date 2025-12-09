@@ -20,6 +20,7 @@ import healthRoutes from "./health.routes";
 import powerUpRoutes from "./powerUp.routes";
 import dailyShopRoutes from "./dailyShop.routes";
 import storyModeRoutes from "./storyMode.routes";
+import dailyTaskRoutes from "./dailyTask.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -49,6 +50,7 @@ router.use("/health", healthRoutes);
 router.use("/power-ups", powerUpRoutes);
 router.use("/daily-shop", dailyShopRoutes);
 router.use("/story-modes", storyModeRoutes);
+router.use("/daily-tasks", dailyTaskRoutes);
 
 // Global error handler
 router.use(errorHandler);

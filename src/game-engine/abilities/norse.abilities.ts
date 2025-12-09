@@ -71,7 +71,12 @@ export const norseAbilities: AbilityMap = {
       board
     );
     if (position) {
-      const removeEvent = destroyCardAtPosition(position, board);
+      const removeEvent = destroyCardAtPosition(
+        position,
+        board,
+        undefined,
+        triggerCard.owner
+      );
       if (removeEvent) {
         gameEvents.push(removeEvent);
       }
@@ -721,7 +726,8 @@ export const norseAbilities: AbilityMap = {
       const destroyEvent = destroyCardAtPosition(
         getPositionOfCardById(randomEnemy.user_card_instance_id, board)!,
         board,
-        "claw"
+        "claw",
+        triggerCard.owner
       );
       simulationContext.debugLog("destroyEvent", destroyEvent);
       if (destroyEvent) {

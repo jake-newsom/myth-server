@@ -120,7 +120,7 @@ export const japaneseAbilities: AbilityMap = {
             power: { top: -1000, bottom: -1000, left: -1000, right: -1000 },
             effect_duration: 3,
             applies_to_user: getOpponentId(triggerCard.owner, state),
-          })
+          }, triggerCard.owner)
         );
       }
     }
@@ -504,7 +504,8 @@ export const japaneseAbilities: AbilityMap = {
           const destroyEvent = destroyCardAtPosition(
             enemyPosition,
             board,
-            "destroy"
+            "destroy",
+            triggerCard.owner
           );
           if (destroyEvent) {
             gameEvents.push(destroyEvent);

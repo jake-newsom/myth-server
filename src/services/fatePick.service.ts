@@ -4,6 +4,7 @@ import FatePickModel, {
 } from "../models/fatePick.model";
 import UserModel from "../models/user.model";
 import db from "../config/db.config";
+import DailyTaskService from "./dailyTask.service";
 
 const FatePickService = {
   /**
@@ -377,6 +378,14 @@ const FatePickService = {
       }
 
       await client.query("COMMIT");
+
+      // Track daily task progress for fate pick completion
+      try {
+        await DailyTaskService.trackFatePick(userId);
+      } catch (error) {
+        console.error("Error tracking fate pick for daily task:", error);
+        // Don't fail the operation if tracking fails
+      }
 
       return {
         success: true,

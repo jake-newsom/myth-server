@@ -359,7 +359,7 @@ export const polynesianAbilities: AbilityMap = {
           effect_duration: 1000,
           applies_to_user: getOpponentId(triggerCard.owner, state), // Only affect enemy cards
           power: { top: -1, bottom: -1, left: -1, right: -1 },
-        })
+        }, triggerCard.owner)
       );
     }
 
@@ -547,7 +547,7 @@ export const polynesianAbilities: AbilityMap = {
           power: { top: -1, bottom: -1, left: -1, right: -1 },
           effect_duration: 1000,
           applies_to_user: getOpponentId(triggerCard.owner, state),
-        })
+        }, triggerCard.owner)
       );
     }
 
@@ -571,7 +571,7 @@ export const polynesianAbilities: AbilityMap = {
           power: { top: -1, bottom: -1, left: -1, right: -1 },
           effect_duration: 1000,
           applies_to_user: getOpponentId(triggerCard.owner, state),
-        })
+        }, triggerCard.owner)
       );
     }
 

@@ -4,6 +4,7 @@ import UserModel from "../models/user.model";
 import { Card, SpecialAbility } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
 import logger from "../utils/logger";
+import DailyTaskService from "./dailyTask.service";
 
 const CARDS_PER_PACK = 5;
 const GOD_PACK_CHANCE = 1 / 2000; // 1 in 2000 chance
@@ -634,6 +635,18 @@ const PackService = {
 
         // Add this pack's cards to the result
         packs.push(selectedCards);
+      }
+
+      // Track daily task progress for pack openings
+      try {
+        await DailyTaskService.trackPackOpen(userId, count);
+      } catch (error) {
+        logger.error(
+          "Error tracking pack opening for daily task",
+          {},
+          error instanceof Error ? error : new Error(String(error))
+        );
+        // Don't fail the pack opening process if tracking fails
       }
 
       // Get updated user info
