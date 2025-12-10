@@ -76,24 +76,20 @@ const PackService = {
     // 8. Log the pack opening to history
     await this.logPackOpening(userId, setId, selectedCards);
 
-    // 9. Trigger achievement events for pack opening (temporarily disabled)
+    // 9. Trigger achievement events for pack opening
     try {
-      // TODO: Fix achievement database parameter type issue before re-enabling
-      logger.debug(
-        "Achievement processing temporarily disabled for pack opening"
-      );
-
-      // const AchievementService = await import("./achievement.service");
+      const AchievementService = await import("./achievement.service");
+      
       // Pack opened event
-      // await AchievementService.default.triggerAchievementEvent({
-      //   userId,
-      //   eventType: "pack_opened",
-      //   eventData: {
-      //     setId,
-      //     cardsReceived: selectedCards,
-      //     packsRemaining: updatedUser.pack_count,
-      //   },
-      // });
+      await AchievementService.default.triggerAchievementEvent({
+        userId,
+        eventType: "pack_opened",
+        eventData: {
+          setId,
+          cardsReceived: selectedCards,
+          packsRemaining: updatedUser.pack_count,
+        },
+      });
 
       // Card collection events for each unique card
       // for (const card of selectedCards) {
@@ -557,24 +553,20 @@ const PackService = {
         // Log the pack opening to history
         await this.logPackOpening(userId, setId, selectedCards);
 
-        // Trigger achievement events for pack opening (temporarily disabled)
+        // Trigger achievement events for pack opening
         try {
-          // TODO: Fix achievement database parameter type issue before re-enabling
-          logger.debug(
-            "Achievement processing temporarily disabled for multiple pack opening"
-          );
-
-          // const AchievementService = await import("./achievement.service");
+          const AchievementService = await import("./achievement.service");
+          
           // Pack opened event
-          // await AchievementService.default.triggerAchievementEvent({
-          //   userId,
-          //   eventType: "pack_opened",
-          //   eventData: {
-          //     setId,
-          //     cardsReceived: selectedCards,
-          //     packsRemaining: userPackCount - packsToUse + packsToBuy - (i + 1),
-          //   },
-          // });
+          await AchievementService.default.triggerAchievementEvent({
+            userId,
+            eventType: "pack_opened",
+            eventData: {
+              setId,
+              cardsReceived: selectedCards,
+              packsRemaining: userPackCount - packsToUse + packsToBuy - (i + 1),
+            },
+          });
 
           // Card collection events for each unique card
           // for (const card of selectedCards) {

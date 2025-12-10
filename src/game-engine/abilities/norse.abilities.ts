@@ -650,7 +650,6 @@ export const norseAbilities: AbilityMap = {
     for (const card of allCards) {
       const highestPower = getCardHighestPower(card);
       const diff = meanHighestPower - highestPower.value;
-
       if (diff > 0) {
         gameEvents.push(
           addTempBuff(
@@ -672,7 +671,7 @@ export const norseAbilities: AbilityMap = {
           addTempDebuff(
             card,
             1000,
-            { [highestPower.key]: diff * -1 },
+            { [highestPower.key]: diff },
             {
               animation: "binding-justice",
               position: getPositionOfCardById(

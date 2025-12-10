@@ -296,36 +296,36 @@ const GameRewardsService = {
         }
       }
 
-      // Trigger achievement events (temporarily disabled due to database type issue)
+      // Trigger achievement events
       try {
-        // TODO: Fix achievement database type issue before re-enabling
-        console.log("Achievement processing temporarily disabled");
+        const AchievementService = await import("./achievement.service");
+        
         // Game completion event (for all players)
-        // await AchievementService.triggerAchievementEvent({
-        //   userId,
-        //   eventType: "game_completion",
-        //   eventData: {
-        //     gameMode,
-        //     winnerId: gameResult.winner,
-        //     gameDurationSeconds: gameResult.game_duration_seconds,
-        //     cardsUsed: usedCards,
-        //   },
-        // });
+        await AchievementService.default.triggerAchievementEvent({
+          userId,
+          eventType: "game_completion",
+          eventData: {
+            gameMode,
+            winnerId: gameResult.winner,
+            gameDurationSeconds: gameResult.game_duration_seconds,
+            cardsUsed: usedCards,
+          },
+        });
 
         // Game victory event (only for winner)
-        // if (gameResult.winner === userId) {
-        //   await AchievementService.triggerAchievementEvent({
-        //     userId,
-        //     eventType: "game_victory",
-        //     eventData: {
-        //       gameMode,
-        //       isWinStreak: false, // TODO: Implement win streak tracking
-        //       winStreakCount: 0, // TODO: Implement win streak tracking
-        //       cardsLost: 0, // TODO: Calculate cards lost for perfect game achievement
-        //       gameDurationSeconds: gameResult.game_duration_seconds,
-        //     },
-        //   });
-        // }
+        if (gameResult.winner === userId) {
+          await AchievementService.default.triggerAchievementEvent({
+            userId,
+            eventType: "game_victory",
+            eventData: {
+              gameMode,
+              isWinStreak: false, // TODO: Implement win streak tracking
+              winStreakCount: 0, // TODO: Implement win streak tracking
+              cardsLost: 0, // TODO: Calculate cards lost for perfect game achievement
+              gameDurationSeconds: gameResult.game_duration_seconds,
+            },
+          });
+        }
       } catch (error) {
         console.error("Error processing achievement events:", error);
         // Don't fail the entire reward process if achievement processing fails
