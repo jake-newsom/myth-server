@@ -672,7 +672,7 @@ export const norseAbilities: AbilityMap = {
           addTempDebuff(
             card,
             1000,
-            { [highestPower.key]: -diff },
+            { [highestPower.key]: diff * -1 },
             {
               animation: "binding-justice",
               position: getPositionOfCardById(
