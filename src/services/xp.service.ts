@@ -109,11 +109,22 @@ const XpService = {
       // Update target card
       const newTargetXp = targetCard.xp + actualXpTransferred;
       const newTargetLevel = this.calculateLevel(newTargetXp);
+      const didLevelUp = newTargetLevel > targetCard.level;
 
       await client.query(
         `UPDATE "user_owned_cards" SET xp = $1, level = $2 WHERE user_card_instance_id = $3`,
         [newTargetXp, newTargetLevel, targetCardId]
       );
+
+      // Track daily task progress for level up
+      if (didLevelUp) {
+        try {
+          await DailyTaskService.trackLevelUp(userId);
+        } catch (error) {
+          console.warn("Error tracking level up for daily task:", error);
+          // Don't fail the XP transfer if tracking fails
+        }
+      }
 
       // Log the transfer
       await XpPoolModel.logXpTransfer({
@@ -485,11 +496,22 @@ const XpService = {
       // Update card
       const newCardXp = targetCard.xp + xpAmount;
       const newCardLevel = this.calculateLevel(newCardXp);
+      const didLevelUp = newCardLevel > targetCard.level;
 
       await client.query(
         `UPDATE "user_owned_cards" SET xp = $1, level = $2 WHERE user_card_instance_id = $3`,
         [newCardXp, newCardLevel, targetCardId]
       );
+
+      // Track daily task progress for level up
+      if (didLevelUp) {
+        try {
+          await DailyTaskService.trackLevelUp(userId);
+        } catch (error) {
+          console.warn("Error tracking level up for daily task:", error);
+          // Don't fail the XP application if tracking fails
+        }
+      }
 
       // Update pool
       const updatedPool = await XpPoolModel.spendXpFromPool(
