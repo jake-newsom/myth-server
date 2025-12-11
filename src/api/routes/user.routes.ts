@@ -8,6 +8,11 @@ const router = Router();
 
 // Protected user profile routes
 router.get("/me", authMiddleware.protect, UserController.getMyProfile);
+router.patch(
+  "/me",
+  authMiddleware.protect,
+  UserController.updateAccountDetails
+);
 router.get(
   "/me/cards",
   authMiddleware.protect,

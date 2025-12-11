@@ -305,6 +305,62 @@ const UserModel = {
     const { rows } = await db.query(query, [userId]);
     return rows[0] || null;
   },
+
+  // Account details methods
+  async findByIdWithPassword(userId: string): Promise<any | null> {
+    const query = `SELECT * FROM "users" WHERE user_id = $1;`;
+    const { rows } = await db.query(query, [userId]);
+    return rows[0] || null;
+  },
+
+  async updateAccountDetails(
+    userId: string,
+    updates: {
+      username?: string;
+      email?: string;
+      password?: string;
+    }
+  ): Promise<User | null> {
+    const setClauses: string[] = [];
+    const values: any[] = [userId];
+    let paramIndex = 2;
+
+    if (updates.username !== undefined) {
+      setClauses.push(`username = $${paramIndex}`);
+      values.push(updates.username);
+      paramIndex++;
+    }
+
+    if (updates.email !== undefined) {
+      setClauses.push(`email = $${paramIndex}`);
+      values.push(updates.email);
+      paramIndex++;
+    }
+
+    if (updates.password !== undefined) {
+      const hashedPassword = await bcrypt.hash(
+        updates.password,
+        config.bcryptSaltRounds
+      );
+      setClauses.push(`password_hash = $${paramIndex}`);
+      values.push(hashedPassword);
+      paramIndex++;
+    }
+
+    if (setClauses.length === 0) {
+      return null; // No updates provided
+    }
+
+    const query = `
+      UPDATE "users" 
+      SET ${setClauses.join(", ")}
+      WHERE user_id = $1
+      RETURNING user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login as last_login_at;
+    `;
+
+    const { rows } = await db.query(query, values);
+    return rows[0] || null;
+  },
 };
 
 export default UserModel;

@@ -1,13 +1,12 @@
-import CardModel from "../models/card.model";
 import SetModel from "../models/set.model";
 import UserModel from "../models/user.model";
-import { Card, SpecialAbility } from "../types/database.types";
+import { Card } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
 import logger from "../utils/logger";
 import DailyTaskService from "./dailyTask.service";
 
 const CARDS_PER_PACK = 5;
-const GOD_PACK_CHANCE = 1 / 2000; // 1 in 2000 chance
+const GOD_PACK_CHANCE = 1 / 1500; // 1 in 1500 chance
 
 interface CardWithAbility extends Card {
   special_ability: {
@@ -79,7 +78,7 @@ const PackService = {
     // 9. Trigger achievement events for pack opening
     try {
       const AchievementService = await import("./achievement.service");
-      
+
       // Pack opened event
       await AchievementService.default.triggerAchievementEvent({
         userId,
@@ -556,7 +555,7 @@ const PackService = {
         // Trigger achievement events for pack opening
         try {
           const AchievementService = await import("./achievement.service");
-          
+
           // Pack opened event
           await AchievementService.default.triggerAchievementEvent({
             userId,

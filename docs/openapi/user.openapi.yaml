@@ -39,6 +39,152 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+    patch:
+      summary: Update account details
+      description: Update the current user's username, email, and/or password
+      tags:
+        - Users
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: New username (optional)
+                  example: new_username
+                email:
+                  type: string
+                  format: email
+                  description: New email address (optional)
+                  example: newemail@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 6
+                  description: New password (optional, requires currentPassword)
+                  example: newpassword123
+                currentPassword:
+                  type: string
+                  format: password
+                  description: Current password (required when updating password)
+                  example: currentpassword123
+            examples:
+              updateUsername:
+                summary: Update username only
+                value:
+                  username: new_username
+              updateEmail:
+                summary: Update email only
+                value:
+                  email: newemail@example.com
+              updatePassword:
+                summary: Update password
+                value:
+                  password: newpassword123
+                  currentPassword: currentpassword123
+              updateAll:
+                summary: Update all fields
+                value:
+                  username: new_username
+                  email: newemail@example.com
+                  password: newpassword123
+                  currentPassword: currentpassword123
+      responses:
+        "200":
+          description: Account details updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Account details updated successfully.
+                  user:
+                    $ref: "#/components/schemas/UserProfile"
+        "400":
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                noFieldsProvided:
+                  summary: No fields provided
+                  value:
+                    error:
+                      message: At least one field (username, email, or password) must be provided for update.
+                passwordTooShort:
+                  summary: Password too short
+                  value:
+                    error:
+                      message: New password must be at least 6 characters long.
+                currentPasswordRequired:
+                  summary: Current password required
+                  value:
+                    error:
+                      message: Current password is required to update password.
+                invalidEmail:
+                  summary: Invalid email format
+                  value:
+                    error:
+                      message: Invalid email format.
+        "401":
+          description: Unauthorized - missing/invalid token or incorrect current password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                notAuthenticated:
+                  summary: Not authenticated
+                  value:
+                    error:
+                      message: User not authenticated.
+                incorrectPassword:
+                  summary: Incorrect current password
+                  value:
+                    error:
+                      message: Current password is incorrect.
+        "409":
+          description: Conflict - username or email already in use
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                      code:
+                        type: string
+              examples:
+                usernameExists:
+                  summary: Username already taken
+                  value:
+                    error:
+                      message: Username already taken.
+                      code: USERNAME_ALREADY_EXISTS
+                emailExists:
+                  summary: Email already in use
+                  value:
+                    error:
+                      message: Email already in use.
+                      code: EMAIL_ALREADY_EXISTS
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/users/me/cards:
     get:
       summary: Get user's card collection

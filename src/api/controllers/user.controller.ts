@@ -5,6 +5,7 @@ import DeckModel from "../../models/deck.model";
 import GameService from "../../services/game.service";
 import MonthlyLoginRewardsService from "../../services/monthlyLoginRewards.service";
 import { Request, Response, NextFunction } from "express"; // Assuming Express types
+import bcrypt from "bcrypt";
 import {
   UserCard,
   CardResponse,
@@ -279,6 +280,161 @@ const UserController = {
         });
         return;
       }
+      next(error);
+    }
+  },
+
+  /**
+   * Update user's account details (username, email, password)
+   * @route PATCH /api/users/me
+   * @param {AuthenticatedRequest} req - Express request object with authenticated user
+   * @param {Response} res - Express response object
+   * @param {NextFunction} next - Express next middleware function
+   */
+  async updateAccountDetails(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "User not authenticated." } });
+        return;
+      }
+
+      const { username, email, password, currentPassword } = req.body;
+
+      // At least one field must be provided for update
+      if (!username && !email && !password) {
+        res.status(400).json({
+          error: {
+            message:
+              "At least one field (username, email, or password) must be provided for update.",
+          },
+        });
+        return;
+      }
+
+      // If updating password, current password is required
+      if (password) {
+        if (!currentPassword) {
+          res.status(400).json({
+            error: {
+              message: "Current password is required to update password.",
+            },
+          });
+          return;
+        }
+
+        // Validate new password length
+        if (password.length < 6) {
+          res.status(400).json({
+            error: {
+              message: "New password must be at least 6 characters long.",
+            },
+          });
+          return;
+        }
+
+        // Verify current password
+        const userWithPassword = await UserModel.findByIdWithPassword(
+          req.user.user_id
+        );
+        if (!userWithPassword || !userWithPassword.password_hash) {
+          res.status(400).json({
+            error: {
+              message:
+                "Cannot update password for accounts without password authentication.",
+            },
+          });
+          return;
+        }
+
+        const isPasswordValid = await bcrypt.compare(
+          currentPassword,
+          userWithPassword.password_hash
+        );
+        if (!isPasswordValid) {
+          res.status(401).json({
+            error: {
+              message: "Current password is incorrect.",
+            },
+          });
+          return;
+        }
+      }
+
+      // Check if username is already taken by another user
+      if (username) {
+        const existingUserByUsername = await UserModel.findByUsername(username);
+        if (
+          existingUserByUsername &&
+          existingUserByUsername.user_id !== req.user.user_id
+        ) {
+          res.status(409).json({
+            error: {
+              message: "Username already taken.",
+              code: "USERNAME_ALREADY_EXISTS",
+            },
+          });
+          return;
+        }
+      }
+
+      // Check if email is already taken by another user
+      if (email) {
+        // Basic email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          res.status(400).json({
+            error: {
+              message: "Invalid email format.",
+            },
+          });
+          return;
+        }
+
+        const existingUserByEmail = await UserModel.findByEmail(email);
+        if (
+          existingUserByEmail &&
+          existingUserByEmail.user_id !== req.user.user_id
+        ) {
+          res.status(409).json({
+            error: {
+              message: "Email already in use.",
+              code: "EMAIL_ALREADY_EXISTS",
+            },
+          });
+          return;
+        }
+      }
+
+      // Update account details
+      const updates: { username?: string; email?: string; password?: string } =
+        {};
+      if (username) updates.username = username;
+      if (email) updates.email = email;
+      if (password) updates.password = password;
+
+      const updatedUser = await UserModel.updateAccountDetails(
+        req.user.user_id,
+        updates
+      );
+
+      if (!updatedUser) {
+        res.status(500).json({
+          error: {
+            message: "Failed to update account details.",
+          },
+        });
+        return;
+      }
+
+      res.status(200).json({
+        message: "Account details updated successfully.",
+        user: updatedUser,
+      });
+    } catch (error) {
       next(error);
     }
   },
