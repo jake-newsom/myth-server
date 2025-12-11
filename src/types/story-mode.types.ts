@@ -4,21 +4,25 @@
 // Level 1 = Easy, Level 2 = Normal, Level 3 = Hard, Level 4 = Expert, Level 5 = Mythic
 export type StoryDifficulty = 1 | 2 | 3 | 4 | 5;
 
-export type RewardType = 'first_win' | 'repeat_win' | 'achievement' | 'milestone';
+export type RewardType =
+  | "first_win"
+  | "repeat_win"
+  | "achievement"
+  | "milestone";
 
 export interface UnlockRequirements {
   // Require completing other story modes first
   prerequisite_stories?: string[]; // Array of story_ids
-  
+
   // Require minimum user level
   min_user_level?: number;
-  
+
   // Require specific achievements
   required_achievements?: string[]; // Array of achievement_ids
-  
+
   // Require minimum number of total story wins
   min_total_story_wins?: number;
-  
+
   // Custom unlock conditions (for future extensibility)
   custom_conditions?: Record<string, any>;
 }
@@ -27,7 +31,8 @@ export interface RewardData {
   // Currency rewards (story mode: gems, packs, card fragments only)
   gems?: number;
   card_fragments?: number;
-  
+  fragments?: number; // Legacy field name for card_fragments
+
   // Card rewards
   specific_cards?: string[]; // Array of card_ids
   random_cards?: {
@@ -35,19 +40,21 @@ export interface RewardData {
     rarity?: string; // Filter by rarity
     set_id?: string; // Filter by set
   };
-  
+
   // Pack rewards
-  packs?: {
-    set_id: string;
-    count: number;
-  }[];
-  
+  packs?:
+    | {
+        set_id: string;
+        count: number;
+      }[]
+    | number; // Can be array format or legacy number format
+
   // XP rewards
   card_xp?: number;
-  
+
   // Achievement unlocks
   achievements?: string[]; // Array of achievement_ids to unlock
-  
+
   // Custom rewards (for future extensibility)
   custom_rewards?: Record<string, any>;
 }
@@ -96,7 +103,7 @@ export interface CreateStoryModeRequest {
   ai_deck_id: string;
   order_index?: number;
   unlock_requirements?: UnlockRequirements;
-  rewards: Omit<StoryModeReward, 'reward_id' | 'story_id' | 'created_at'>[];
+  rewards: Omit<StoryModeReward, "reward_id" | "story_id" | "created_at">[];
 }
 
 export interface UpdateStoryModeRequest {
@@ -151,27 +158,43 @@ export interface StoryGameCompletionRewards {
 
 export interface StoryModeService {
   // Configuration management
-  createStoryMode(config: CreateStoryModeRequest): Promise<StoryModeWithRewards>;
-  updateStoryMode(storyId: string, updates: UpdateStoryModeRequest): Promise<StoryModeWithRewards>;
+  createStoryMode(
+    config: CreateStoryModeRequest
+  ): Promise<StoryModeWithRewards>;
+  updateStoryMode(
+    storyId: string,
+    updates: UpdateStoryModeRequest
+  ): Promise<StoryModeWithRewards>;
   deleteStoryMode(storyId: string): Promise<void>;
   getStoryMode(storyId: string): Promise<StoryModeWithRewards | null>;
-  
+
   // User-facing methods
   getAvailableStoryModes(userId: string): Promise<StoryModeListResponse>;
   checkUnlockRequirements(userId: string, storyId: string): Promise<boolean>;
-  
+
   // Game integration
-  startStoryGame(userId: string, request: StoryGameStartRequest): Promise<StoryGameStartResponse>;
+  startStoryGame(
+    userId: string,
+    request: StoryGameStartRequest
+  ): Promise<StoryGameStartResponse>;
   processStoryCompletion(
-    userId: string, 
-    storyId: string, 
-    gameResult: any, 
+    userId: string,
+    storyId: string,
+    gameResult: any,
     completionTimeSeconds: number
   ): Promise<StoryGameCompletionRewards>;
-  
+
   // Progress tracking
-  getUserProgress(userId: string, storyId?: string): Promise<UserStoryProgress[]>;
-  updateUserProgress(userId: string, storyId: string, won: boolean, completionTimeSeconds?: number): Promise<UserStoryProgress>;
+  getUserProgress(
+    userId: string,
+    storyId?: string
+  ): Promise<UserStoryProgress[]>;
+  updateUserProgress(
+    userId: string,
+    storyId: string,
+    won: boolean,
+    completionTimeSeconds?: number
+  ): Promise<UserStoryProgress>;
 }
 
 // Database Model Types (for internal use)

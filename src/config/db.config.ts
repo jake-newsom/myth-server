@@ -3,8 +3,9 @@ import config from "./index";
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
-  // SSL configuration for production (required for Render.com and other cloud providers)
+  // SSL configuration for cloud databases (required for Render.com and other cloud providers)
   ssl:
+    config.databaseUrl?.includes("render.com") ||
     process.env.NODE_ENV === "production"
       ? { rejectUnauthorized: false }
       : false,

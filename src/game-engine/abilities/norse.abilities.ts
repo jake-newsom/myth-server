@@ -449,14 +449,15 @@ export const norseAbilities: AbilityMap = {
     );
 
     if (strongestEnemy) {
-      gameEvents.push({
-        type: EVENT_TYPES.CARD_REMOVED_FROM_BOARD,
-        eventId: uuidv4(),
-        timestamp: Date.now(),
-        cardId: strongestEnemy.user_card_instance_id,
-        reason: "Flames of Muspelheim",
-        sourcePlayerId: triggerCard.owner,
-      } as CardEvent);
+      const destroyedEvent = destroyCardAtPosition(
+        getPositionOfCardById(strongestEnemy.user_card_instance_id, board)!,
+        board,
+        "flames-pillar",
+        triggerCard.owner
+      );
+      if (destroyedEvent) {
+        gameEvents.push(destroyedEvent);
+      }
     }
 
     for (const enemy of allAdjacentEnemies) {
@@ -658,7 +659,7 @@ export const norseAbilities: AbilityMap = {
             { [highestPower.key]: diff },
             "Binding Justice",
             {
-              animation: "binding-justice",
+              animation: "binding-justice-up",
               position: getPositionOfCardById(
                 card.user_card_instance_id,
                 board
@@ -673,7 +674,7 @@ export const norseAbilities: AbilityMap = {
             1000,
             { [highestPower.key]: diff },
             {
-              animation: "binding-justice",
+              animation: "binding-justice-down",
               position: getPositionOfCardById(
                 card.user_card_instance_id,
                 board

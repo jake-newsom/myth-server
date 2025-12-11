@@ -325,40 +325,58 @@ class GameController {
           );
 
           // Check if this is a story mode game and process story mode completion
+          console.log(
+            `[Story Mode DEBUG] Game mode: ${
+              gameRecord.game_mode
+            }, Player2 deck: ${
+              gameRecord.player2_deck_id
+            }, Game completion result: ${!!gameCompletionResult}`
+          );
           if (gameRecord.game_mode === "solo" && gameRecord.player2_deck_id) {
             try {
-              console.log(`[Story Mode] Checking for story mode game with AI deck_id: ${gameRecord.player2_deck_id}`);
-              const storyId = await StoryModeService.findStoryIdByDeckId(gameRecord.player2_deck_id);
-              console.log(`[Story Mode] Found story_id: ${storyId || 'null'}`);
-              
+              console.log(
+                `[Story Mode] Checking for story mode game with AI deck_id: ${gameRecord.player2_deck_id}`
+              );
+              const storyId = await StoryModeService.findStoryIdByDeckId(
+                gameRecord.player2_deck_id
+              );
+              console.log(`[Story Mode] Found story_id: ${storyId || "null"}`);
+
               if (storyId && gameCompletionResult) {
                 // Calculate completion time
                 const gameStartTime = new Date(gameRecord.created_at);
-                const completionTimeSeconds = Math.floor((Date.now() - gameStartTime.getTime()) / 1000);
+                const completionTimeSeconds = Math.floor(
+                  (Date.now() - gameStartTime.getTime()) / 1000
+                );
 
                 // Create game result object for story mode processing
                 // Note: processStoryCompletion only uses winner_id, but we include other fields for potential future use
                 const storyGameResult = {
                   winner_id: winner_id_for_db,
                   isWin: winner_id_for_db === userId,
-                  isDraw: updatedGameState.status === "completed" && !winner_id_for_db,
-                  playerScore: updatedGameState.player1.user_id === userId 
-                    ? updatedGameState.player1.score 
-                    : updatedGameState.player2.score,
-                  opponentScore: updatedGameState.player1.user_id === userId 
-                    ? updatedGameState.player2.score 
-                    : updatedGameState.player1.score,
+                  isDraw:
+                    updatedGameState.status === "completed" &&
+                    !winner_id_for_db,
+                  playerScore:
+                    updatedGameState.player1.user_id === userId
+                      ? updatedGameState.player1.score
+                      : updatedGameState.player2.score,
+                  opponentScore:
+                    updatedGameState.player1.user_id === userId
+                      ? updatedGameState.player2.score
+                      : updatedGameState.player1.score,
                   duration: completionTimeSeconds,
-                  cardsPlayed: 0 // Not tracked in GameResult, but included for compatibility
+                  cardsPlayed: 0, // Not tracked in GameResult, but included for compatibility
                 };
 
                 // Process story mode completion (this will award story mode rewards)
-                storyModeCompletion = await StoryModeService.processStoryCompletion(
-                  userId,
-                  storyId,
-                  storyGameResult,
-                  completionTimeSeconds
-                );
+                storyModeCompletion =
+                  await StoryModeService.processStoryCompletion(
+                    userId,
+                    storyId,
+                    storyGameResult,
+                    completionTimeSeconds
+                  );
               }
             } catch (error) {
               console.error("Error processing story mode completion:", error);
@@ -410,7 +428,9 @@ class GameController {
           if (storyModeCompletion.rewards_earned) {
             // Merge gems (story mode rewards include gems)
             if (storyModeCompletion.rewards_earned.gems) {
-              response.rewards.currency.gems = (response.rewards.currency.gems || 0) + storyModeCompletion.rewards_earned.gems;
+              response.rewards.currency.gems =
+                (response.rewards.currency.gems || 0) +
+                storyModeCompletion.rewards_earned.gems;
             }
             // Note: story mode packs and card fragments are handled separately in story mode service
             // Note: card_xp_rewards are already handled by game completion, story mode doesn't add additional XP
@@ -421,7 +441,7 @@ class GameController {
             is_first_win: storyModeCompletion.is_first_win,
             new_progress: storyModeCompletion.new_progress,
             unlocked_stories: storyModeCompletion.unlocked_stories || [],
-            campaign_updated: true // Flag to tell client to refresh campaign data
+            campaign_updated: true, // Flag to tell client to refresh campaign data
           };
         }
       }
@@ -564,40 +584,58 @@ class GameController {
           );
 
           // Check if this is a story mode game and process story mode completion
+          console.log(
+            `[Story Mode DEBUG] Game mode: ${
+              gameRecord.game_mode
+            }, Player2 deck: ${
+              gameRecord.player2_deck_id
+            }, Game completion result: ${!!gameCompletionResult}`
+          );
           if (gameRecord.game_mode === "solo" && gameRecord.player2_deck_id) {
             try {
-              console.log(`[Story Mode] Checking for story mode game with AI deck_id: ${gameRecord.player2_deck_id}`);
-              const storyId = await StoryModeService.findStoryIdByDeckId(gameRecord.player2_deck_id);
-              console.log(`[Story Mode] Found story_id: ${storyId || 'null'}`);
-              
+              console.log(
+                `[Story Mode] Checking for story mode game with AI deck_id: ${gameRecord.player2_deck_id}`
+              );
+              const storyId = await StoryModeService.findStoryIdByDeckId(
+                gameRecord.player2_deck_id
+              );
+              console.log(`[Story Mode] Found story_id: ${storyId || "null"}`);
+
               if (storyId && gameCompletionResult) {
                 // Calculate completion time
                 const gameStartTime = new Date(gameRecord.created_at);
-                const completionTimeSeconds = Math.floor((Date.now() - gameStartTime.getTime()) / 1000);
+                const completionTimeSeconds = Math.floor(
+                  (Date.now() - gameStartTime.getTime()) / 1000
+                );
 
                 // Create game result object for story mode processing
                 // Note: processStoryCompletion only uses winner_id, but we include other fields for potential future use
                 const storyGameResult = {
                   winner_id: winner_id_for_db,
                   isWin: winner_id_for_db === userId,
-                  isDraw: updatedGameState.status === "completed" && !winner_id_for_db,
-                  playerScore: updatedGameState.player1.user_id === userId 
-                    ? updatedGameState.player1.score 
-                    : updatedGameState.player2.score,
-                  opponentScore: updatedGameState.player1.user_id === userId 
-                    ? updatedGameState.player2.score 
-                    : updatedGameState.player1.score,
+                  isDraw:
+                    updatedGameState.status === "completed" &&
+                    !winner_id_for_db,
+                  playerScore:
+                    updatedGameState.player1.user_id === userId
+                      ? updatedGameState.player1.score
+                      : updatedGameState.player2.score,
+                  opponentScore:
+                    updatedGameState.player1.user_id === userId
+                      ? updatedGameState.player2.score
+                      : updatedGameState.player1.score,
                   duration: completionTimeSeconds,
-                  cardsPlayed: 0 // Not tracked in GameResult, but included for compatibility
+                  cardsPlayed: 0, // Not tracked in GameResult, but included for compatibility
                 };
 
                 // Process story mode completion (this will award story mode rewards)
-                storyModeCompletion = await StoryModeService.processStoryCompletion(
-                  userId,
-                  storyId,
-                  storyGameResult,
-                  completionTimeSeconds
-                );
+                storyModeCompletion =
+                  await StoryModeService.processStoryCompletion(
+                    userId,
+                    storyId,
+                    storyGameResult,
+                    completionTimeSeconds
+                  );
               }
             } catch (error) {
               console.error("Error processing story mode completion:", error);
@@ -649,7 +687,9 @@ class GameController {
           if (storyModeCompletion.rewards_earned) {
             // Merge gems (story mode rewards include gems)
             if (storyModeCompletion.rewards_earned.gems) {
-              response.rewards.currency.gems = (response.rewards.currency.gems || 0) + storyModeCompletion.rewards_earned.gems;
+              response.rewards.currency.gems =
+                (response.rewards.currency.gems || 0) +
+                storyModeCompletion.rewards_earned.gems;
             }
             // Note: story mode packs and card fragments are handled separately in story mode service
             // Note: card_xp_rewards are already handled by game completion, story mode doesn't add additional XP
@@ -660,7 +700,7 @@ class GameController {
             is_first_win: storyModeCompletion.is_first_win,
             new_progress: storyModeCompletion.new_progress,
             unlocked_stories: storyModeCompletion.unlocked_stories || [],
-            campaign_updated: true // Flag to tell client to refresh campaign data
+            campaign_updated: true, // Flag to tell client to refresh campaign data
           };
         }
       }

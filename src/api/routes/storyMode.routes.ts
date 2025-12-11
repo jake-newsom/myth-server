@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { StoryModeController } from "../controllers/storyMode.controller";
 import { authenticateJWT } from "../middlewares/auth.middleware";
 import { gameActionRateLimit } from "../middlewares/rateLimit.middleware";
@@ -57,7 +57,12 @@ router.get("/", authenticateJWT, StoryModeController.getAvailableStoryModes);
  *       500:
  *         description: Server error
  */
-router.post("/start", authenticateJWT, gameActionRateLimit, StoryModeController.startStoryGame);
+router.post(
+  "/start",
+  authenticateJWT,
+  gameActionRateLimit,
+  StoryModeController.startStoryGame
+);
 
 /**
  * @swagger
@@ -117,7 +122,11 @@ router.get("/progress", authenticateJWT, StoryModeController.getUserProgress);
  *       500:
  *         description: Server error
  */
-router.get("/progress/:storyId", authenticateJWT, StoryModeController.getUserProgress);
+router.get(
+  "/progress/:storyId",
+  authenticateJWT,
+  StoryModeController.getUserProgress
+);
 
 /**
  * @swagger
@@ -160,7 +169,12 @@ router.get("/progress/:storyId", authenticateJWT, StoryModeController.getUserPro
  *       500:
  *         description: Server error
  */
-router.post("/complete", authenticateJWT, gameActionRateLimit, StoryModeController.processStoryCompletion);
+router.post(
+  "/complete",
+  authenticateJWT,
+  gameActionRateLimit,
+  StoryModeController.processStoryCompletion
+);
 
 /**
  * @swagger
@@ -198,6 +212,10 @@ router.post("/complete", authenticateJWT, gameActionRateLimit, StoryModeControll
  *       500:
  *         description: Server error
  */
-router.get("/:storyId/unlock-status", authenticateJWT, StoryModeController.checkUnlockStatus);
+router.get(
+  "/:storyId/unlock-status",
+  authenticateJWT,
+  StoryModeController.checkUnlockStatus
+);
 
 export default router;
