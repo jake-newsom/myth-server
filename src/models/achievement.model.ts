@@ -395,15 +395,45 @@ const AchievementModel = {
   ): Promise<UserAchievement | null> {
     // First get the achievement
     const achievement = await this.getAchievementByKey(achievementKey);
-    if (!achievement) return null;
+    if (!achievement) {
+      console.warn(`Achievement not found: ${achievementKey}`);
+      return null;
+    }
+
+    // Validate parameters
+    if (!userId || typeof userId !== "string") {
+      console.error("Invalid userId:", userId);
+      return null;
+    }
+    if (typeof progressIncrement !== "number" || isNaN(progressIncrement)) {
+      console.error(
+        "Invalid progressIncrement:",
+        progressIncrement,
+        "for achievement:",
+        achievementKey
+      );
+      return null;
+    }
+    if (
+      typeof achievement.target_value !== "number" ||
+      isNaN(achievement.target_value)
+    ) {
+      console.error(
+        "Invalid target_value:",
+        achievement.target_value,
+        "for achievement:",
+        achievementKey
+      );
+      return null;
+    }
 
     const query = `
       INSERT INTO user_achievements (user_id, achievement_id, current_progress, is_completed)
-      VALUES ($1, $2, $3, $3 >= $4)
+      VALUES ($1::uuid, $2::uuid, $3::integer, ($3::integer) >= ($4::integer))
       ON CONFLICT (user_id, achievement_id)
       DO UPDATE SET
-        current_progress = LEAST(user_achievements.current_progress + $3, $4),
-        is_completed = (user_achievements.current_progress + $3) >= $4
+        current_progress = LEAST(user_achievements.current_progress + ($3::integer), ($4::integer)),
+        is_completed = (user_achievements.current_progress + ($3::integer)) >= ($4::integer)
       RETURNING *;
     `;
 
@@ -427,15 +457,45 @@ const AchievementModel = {
   ): Promise<UserAchievement | null> {
     // First get the achievement
     const achievement = await this.getAchievementByKey(achievementKey);
-    if (!achievement) return null;
+    if (!achievement) {
+      console.warn(`Achievement not found: ${achievementKey}`);
+      return null;
+    }
+
+    // Validate parameters
+    if (!userId || typeof userId !== "string") {
+      console.error("Invalid userId:", userId);
+      return null;
+    }
+    if (typeof progressValue !== "number" || isNaN(progressValue)) {
+      console.error(
+        "Invalid progressValue:",
+        progressValue,
+        "for achievement:",
+        achievementKey
+      );
+      return null;
+    }
+    if (
+      typeof achievement.target_value !== "number" ||
+      isNaN(achievement.target_value)
+    ) {
+      console.error(
+        "Invalid target_value:",
+        achievement.target_value,
+        "for achievement:",
+        achievementKey
+      );
+      return null;
+    }
 
     const query = `
       INSERT INTO user_achievements (user_id, achievement_id, current_progress, is_completed)
-      VALUES ($1, $2, $3, $3 >= $4)
+      VALUES ($1::uuid, $2::uuid, $3::integer, ($3::integer) >= ($4::integer))
       ON CONFLICT (user_id, achievement_id)
       DO UPDATE SET
-        current_progress = GREATEST(user_achievements.current_progress, $3),
-        is_completed = GREATEST(user_achievements.current_progress, $3) >= $4
+        current_progress = GREATEST(user_achievements.current_progress, ($3::integer)),
+        is_completed = GREATEST(user_achievements.current_progress, ($3::integer)) >= ($4::integer)
       RETURNING *;
     `;
 
@@ -471,19 +531,52 @@ const AchievementModel = {
       achievementId
     );
 
+    console.log(
+      `[CLAIM DEBUG] Achievement ${achievementId} for user ${userId}:`,
+      {
+        exists: !!userAchievement,
+        isCompleted: userAchievement?.is_completed,
+        isClaimed: userAchievement?.is_claimed,
+        currentProgress: userAchievement?.current_progress,
+      }
+    );
+
     if (
       !userAchievement ||
       !userAchievement.is_completed ||
       userAchievement.is_claimed
     ) {
+      console.log(`[CLAIM DEBUG] Cannot claim achievement ${achievementId}:`, {
+        reason: !userAchievement
+          ? "not_found"
+          : !userAchievement.is_completed
+          ? "not_completed"
+          : userAchievement.is_claimed
+          ? "already_claimed"
+          : "unknown",
+      });
       return { success: false };
     }
 
     // Get achievement details for rewards
     const achievement = await this.getAchievementById(achievementId);
     if (!achievement) {
+      console.log(
+        `[CLAIM DEBUG] Achievement ${achievementId} not found in achievements table`
+      );
       return { success: false };
     }
+
+    console.log(`[CLAIM DEBUG] Found achievement:`, {
+      key: achievement.achievement_key,
+      title: achievement.title,
+      rewards: {
+        gems: achievement.reward_gems,
+        fate_coins: achievement.reward_fate_coins,
+        packs: achievement.reward_packs,
+        card_fragments: achievement.reward_card_fragments,
+      },
+    });
 
     // Mark as claimed
     const updateQuery = `
@@ -611,7 +704,12 @@ const AchievementModel = {
         completed_achievements: 0,
         claimed_achievements: 0,
         completion_percentage: 0,
-        total_rewards_earned: { gems: 0, fate_coins: 0, packs: 0, card_fragments: 0 },
+        total_rewards_earned: {
+          gems: 0,
+          fate_coins: 0,
+          packs: 0,
+          card_fragments: 0,
+        },
         achievements_by_category: {},
         achievements_by_rarity: {},
       };
@@ -653,10 +751,7 @@ const AchievementModel = {
   /**
    * Get highest unlocked tier level for a user and base key
    */
-  async getUnlockedTierLevel(
-    userId: string,
-    baseKey: string
-  ): Promise<number> {
+  async getUnlockedTierLevel(userId: string, baseKey: string): Promise<number> {
     const query = `
       SELECT COALESCE(MAX(a.tier_level), 0) as max_tier
       FROM achievements a
