@@ -299,7 +299,7 @@ const GameRewardsService = {
       // Trigger achievement events
       try {
         const AchievementService = await import("./achievement.service");
-        
+
         // Game completion event (for all players)
         await AchievementService.default.triggerAchievementEvent({
           userId,
@@ -314,6 +314,16 @@ const GameRewardsService = {
 
         // Game victory event (only for winner)
         if (gameResult.winner === userId) {
+          // Determine which player won to get their score
+          const winnerScore =
+            gameResult.winner === player1Id
+              ? gameResult.final_scores.player1
+              : gameResult.final_scores.player2;
+          const loserScore =
+            gameResult.winner === player1Id
+              ? gameResult.final_scores.player2
+              : gameResult.final_scores.player1;
+
           await AchievementService.default.triggerAchievementEvent({
             userId,
             eventType: "game_victory",
@@ -321,7 +331,8 @@ const GameRewardsService = {
               gameMode,
               isWinStreak: false, // TODO: Implement win streak tracking
               winStreakCount: 0, // TODO: Implement win streak tracking
-              cardsLost: 0, // TODO: Calculate cards lost for perfect game achievement
+              winnerScore,
+              loserScore,
               gameDurationSeconds: gameResult.game_duration_seconds,
             },
           });

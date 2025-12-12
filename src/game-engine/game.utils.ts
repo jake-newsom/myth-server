@@ -329,7 +329,6 @@ export function flipCard(
   target: InGameCard,
   source: InGameCard
 ): BaseGameEvent[] {
-  simulationContext.debugLog(`function flipCard`);
   /**
    * Check various ways a card could be protected from defeat.
    */

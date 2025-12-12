@@ -243,22 +243,18 @@ const AchievementService = {
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
-    const { gameMode, isWinStreak, winStreakCount } = eventData;
+    console.log("handleGameVictory", eventData);
+    const { gameMode, isWinStreak, winStreakCount, winnerScore, loserScore } =
+      eventData;
+
+    const keysToFetch: string[] = [];
+    const updatePromises: Promise<any>[] = [];
 
     // First Victory
-    const firstVictory = await AchievementModel.updateUserAchievementProgress(
-      userId,
-      "first_victory",
-      1
+    updatePromises.push(
+      AchievementModel.updateUserAchievementProgress(userId, "first_victory", 1)
     );
-    if (firstVictory) {
-      const details = await AchievementModel.getUserAchievementByKey(
-        userId,
-        "first_victory"
-      );
-      if (details && details.is_completed) result.newlyCompleted.push(details);
-      else if (details) result.updatedProgress.push(details);
-    }
+    keysToFetch.push("first_victory");
 
     // Game mode specific victories - tiered achievements
     if (gameMode === "solo") {
@@ -266,56 +262,34 @@ const AchievementService = {
       const soloWinsTiers =
         await AchievementModel.getTieredAchievementsByBaseKey("solo_wins");
       for (const tier of soloWinsTiers) {
-        const updated = await AchievementModel.updateUserAchievementProgress(
-          userId,
-          tier.achievement_key,
-          1
-        );
-        if (updated) {
-          const details = await AchievementModel.getUserAchievementByKey(
+        updatePromises.push(
+          AchievementModel.updateUserAchievementProgress(
             userId,
-            tier.achievement_key
-          );
-          if (details && details.is_completed)
-            result.newlyCompleted.push(details);
-          else if (details) result.updatedProgress.push(details);
-        }
+            tier.achievement_key,
+            1
+          )
+        );
+        keysToFetch.push(tier.achievement_key);
       }
 
       // Keep legacy solo_master for backward compatibility
-      const soloMaster = await AchievementModel.updateUserAchievementProgress(
-        userId,
-        "solo_master",
-        1
+      updatePromises.push(
+        AchievementModel.updateUserAchievementProgress(userId, "solo_master", 1)
       );
-      if (soloMaster) {
-        const details = await AchievementModel.getUserAchievementByKey(
-          userId,
-          "solo_master"
-        );
-        if (details && details.is_completed)
-          result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+      keysToFetch.push("solo_master");
     } else if (gameMode === "pvp") {
       // Track pvp_wins tiered achievements
       const pvpWinsTiers =
         await AchievementModel.getTieredAchievementsByBaseKey("pvp_wins");
       for (const tier of pvpWinsTiers) {
-        const updated = await AchievementModel.updateUserAchievementProgress(
-          userId,
-          tier.achievement_key,
-          1
-        );
-        if (updated) {
-          const details = await AchievementModel.getUserAchievementByKey(
+        updatePromises.push(
+          AchievementModel.updateUserAchievementProgress(
             userId,
-            tier.achievement_key
-          );
-          if (details && details.is_completed)
-            result.newlyCompleted.push(details);
-          else if (details) result.updatedProgress.push(details);
-        }
+            tier.achievement_key,
+            1
+          )
+        );
+        keysToFetch.push(tier.achievement_key);
       }
 
       // Track pvp_win_streak tiered achievements
@@ -326,91 +300,95 @@ const AchievementService = {
           );
         for (const tier of streakTiers) {
           if (winStreakCount >= tier.target_value) {
-            const updated = await AchievementModel.setUserAchievementProgress(
-              userId,
-              tier.achievement_key,
-              1
-            );
-            if (updated) {
-              const details = await AchievementModel.getUserAchievementByKey(
+            updatePromises.push(
+              AchievementModel.setUserAchievementProgress(
                 userId,
-                tier.achievement_key
-              );
-              if (details && details.is_completed)
-                result.newlyCompleted.push(details);
-              else if (details) result.updatedProgress.push(details);
-            }
+                tier.achievement_key,
+                1
+              )
+            );
+            keysToFetch.push(tier.achievement_key);
           }
         }
       }
 
       // Keep legacy pvp_warrior for backward compatibility
-      const pvpWarrior = await AchievementModel.updateUserAchievementProgress(
-        userId,
-        "pvp_warrior",
-        1
+      updatePromises.push(
+        AchievementModel.updateUserAchievementProgress(userId, "pvp_warrior", 1)
       );
-      if (pvpWarrior) {
-        const details = await AchievementModel.getUserAchievementByKey(
-          userId,
-          "pvp_warrior"
-        );
-        if (details && details.is_completed)
-          result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+      keysToFetch.push("pvp_warrior");
 
       // Keep legacy win_streak_5 for backward compatibility
       if (isWinStreak && winStreakCount >= 5) {
-        const winStreak = await AchievementModel.setUserAchievementProgress(
-          userId,
-          "win_streak_5",
-          1
+        updatePromises.push(
+          AchievementModel.setUserAchievementProgress(userId, "win_streak_5", 1)
         );
-        if (winStreak) {
-          const details = await AchievementModel.getUserAchievementByKey(
-            userId,
-            "win_streak_5"
-          );
-          if (details && details.is_completed)
-            result.newlyCompleted.push(details);
-          else if (details) result.updatedProgress.push(details);
-        }
+        keysToFetch.push("win_streak_5");
       }
     }
 
-    // Perfect game (no cards lost)
-    if (eventData.cardsLost === 0) {
-      const perfectGame = await AchievementModel.updateUserAchievementProgress(
-        userId,
-        "perfect_game",
-        1
-      );
-      if (perfectGame) {
-        const details = await AchievementModel.getUserAchievementByKey(
+    // Perfect game (won 16-0, meaning opponent has no cards on the board)
+    if (winnerScore === 16 && loserScore === 0) {
+      updatePromises.push(
+        AchievementModel.updateUserAchievementProgress(
           userId,
-          "perfect_game"
+          "perfect_game",
+          1
+        )
+      );
+      keysToFetch.push("perfect_game");
+    }
+
+    // Score-based achievements (win by margin)
+    if (winnerScore !== undefined && loserScore !== undefined) {
+      const scoreMargin = winnerScore - loserScore;
+
+      // Dominant victory (win by 10+ points)
+      if (scoreMargin >= 10) {
+        updatePromises.push(
+          AchievementModel.updateUserAchievementProgress(
+            userId,
+            "dominant_victory",
+            1
+          )
         );
-        if (details && details.is_completed)
-          result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
+        keysToFetch.push("dominant_victory");
+      }
+
+      // Close victory (win by 1-2 points)
+      if (scoreMargin >= 1 && scoreMargin <= 2) {
+        updatePromises.push(
+          AchievementModel.updateUserAchievementProgress(
+            userId,
+            "close_victory",
+            1
+          )
+        );
+        keysToFetch.push("close_victory");
       }
     }
 
     // Beta tester (play games during beta)
-    const betaTester = await AchievementModel.updateUserAchievementProgress(
-      userId,
-      "beta_tester",
-      1
+    updatePromises.push(
+      AchievementModel.updateUserAchievementProgress(userId, "beta_tester", 1)
     );
-    if (betaTester) {
-      const details = await AchievementModel.getUserAchievementByKey(
-        userId,
-        "beta_tester"
-      );
-      if (details && details.is_completed) result.newlyCompleted.push(details);
-      else if (details) result.updatedProgress.push(details);
-    }
+    keysToFetch.push("beta_tester");
+
+    // Execute all updates in parallel
+    await Promise.all(updatePromises);
+
+    // Batch fetch all achievement details in a single query
+    const achievementDetailsMap =
+      await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
+
+    // Process results
+    achievementDetailsMap.forEach((details) => {
+      if (details.is_completed) {
+        result.newlyCompleted.push(details);
+      } else {
+        result.updatedProgress.push(details);
+      }
+    });
   },
 
   /**
@@ -421,40 +399,44 @@ const AchievementService = {
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
+    const keysToFetch: string[] = [];
+    const updatePromises: Promise<any>[] = [];
+
     // Track total_matches tiered achievements (solo + multiplayer combined)
     const totalMatchesTiers =
       await AchievementModel.getTieredAchievementsByBaseKey("total_matches");
     for (const tier of totalMatchesTiers) {
-      const updated = await AchievementModel.updateUserAchievementProgress(
-        userId,
-        tier.achievement_key,
-        1
-      );
-      if (updated) {
-        const details = await AchievementModel.getUserAchievementByKey(
+      updatePromises.push(
+        AchievementModel.updateUserAchievementProgress(
           userId,
-          tier.achievement_key
-        );
-        if (details && details.is_completed)
-          result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+          tier.achievement_key,
+          1
+        )
+      );
+      keysToFetch.push(tier.achievement_key);
     }
 
     // Beta tester achievement for any game completion
-    const betaTester = await AchievementModel.updateUserAchievementProgress(
-      userId,
-      "beta_tester",
-      1
+    updatePromises.push(
+      AchievementModel.updateUserAchievementProgress(userId, "beta_tester", 1)
     );
-    if (betaTester) {
-      const details = await AchievementModel.getUserAchievementByKey(
-        userId,
-        "beta_tester"
-      );
-      if (details && details.is_completed) result.newlyCompleted.push(details);
-      else if (details) result.updatedProgress.push(details);
-    }
+    keysToFetch.push("beta_tester");
+
+    // Execute all updates in parallel
+    await Promise.all(updatePromises);
+
+    // Batch fetch all achievement details in a single query
+    const achievementDetailsMap =
+      await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
+
+    // Process results
+    achievementDetailsMap.forEach((details) => {
+      if (details.is_completed) {
+        result.newlyCompleted.push(details);
+      } else {
+        result.updatedProgress.push(details);
+      }
+    });
   },
 
   /**
@@ -465,55 +447,50 @@ const AchievementService = {
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
+    const keysToFetch: string[] = [];
+    const updatePromises: Promise<any>[] = [];
+
     // Track pack_opening tiered achievements
     const packOpeningTiers =
       await AchievementModel.getTieredAchievementsByBaseKey("pack_opening");
     for (const tier of packOpeningTiers) {
-      const updated = await AchievementModel.updateUserAchievementProgress(
-        userId,
-        tier.achievement_key,
-        1
-      );
-      if (updated) {
-        const details = await AchievementModel.getUserAchievementByKey(
+      updatePromises.push(
+        AchievementModel.updateUserAchievementProgress(
           userId,
-          tier.achievement_key
-        );
-        if (details && details.is_completed)
-          result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+          tier.achievement_key,
+          1
+        )
+      );
+      keysToFetch.push(tier.achievement_key);
     }
 
     // First pack (legacy)
-    const firstPack = await AchievementModel.updateUserAchievementProgress(
-      userId,
-      "first_pack",
-      1
+    updatePromises.push(
+      AchievementModel.updateUserAchievementProgress(userId, "first_pack", 1)
     );
-    if (firstPack) {
-      const details = await AchievementModel.getUserAchievementByKey(
-        userId,
-        "first_pack"
-      );
-      if (details && details.is_completed) result.newlyCompleted.push(details);
-      else if (details) result.updatedProgress.push(details);
-    }
+    keysToFetch.push("first_pack");
 
     // Pack addict (legacy)
-    const packAddict = await AchievementModel.updateUserAchievementProgress(
-      userId,
-      "pack_addict",
-      1
+    updatePromises.push(
+      AchievementModel.updateUserAchievementProgress(userId, "pack_addict", 1)
     );
-    if (packAddict) {
-      const details = await AchievementModel.getUserAchievementByKey(
-        userId,
-        "pack_addict"
-      );
-      if (details && details.is_completed) result.newlyCompleted.push(details);
-      else if (details) result.updatedProgress.push(details);
-    }
+    keysToFetch.push("pack_addict");
+
+    // Execute all updates in parallel
+    await Promise.all(updatePromises);
+
+    // Batch fetch all achievement details in a single query
+    const achievementDetailsMap =
+      await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
+
+    // Process results
+    achievementDetailsMap.forEach((details) => {
+      if (details.is_completed) {
+        result.newlyCompleted.push(details);
+      } else {
+        result.updatedProgress.push(details);
+      }
+    });
   },
 
   /**
@@ -525,6 +502,8 @@ const AchievementService = {
     result: AchievementCompletionResult
   ): Promise<void> {
     const { rarity, totalUniqueCards, totalMythicCards } = eventData;
+    const keysToFetch: string[] = [];
+    const updatePromises: Promise<any>[] = [];
 
     // Track card_collection tiered achievements
     if (totalUniqueCards !== undefined) {
@@ -533,20 +512,14 @@ const AchievementService = {
           "card_collection"
         );
       for (const tier of cardCollectionTiers) {
-        const updated = await AchievementModel.setUserAchievementProgress(
-          userId,
-          tier.achievement_key,
-          totalUniqueCards
-        );
-        if (updated) {
-          const details = await AchievementModel.getUserAchievementByKey(
+        updatePromises.push(
+          AchievementModel.setUserAchievementProgress(
             userId,
-            tier.achievement_key
-          );
-          if (details && details.is_completed)
-            result.newlyCompleted.push(details);
-          else if (details) result.updatedProgress.push(details);
-        }
+            tier.achievement_key,
+            totalUniqueCards
+          )
+        );
+        keysToFetch.push(tier.achievement_key);
       }
     }
 
@@ -557,78 +530,68 @@ const AchievementService = {
           "mythic_collection"
         );
       for (const tier of mythicCollectionTiers) {
-        const updated = await AchievementModel.setUserAchievementProgress(
-          userId,
-          tier.achievement_key,
-          totalMythicCards
-        );
-        if (updated) {
-          const details = await AchievementModel.getUserAchievementByKey(
+        updatePromises.push(
+          AchievementModel.setUserAchievementProgress(
             userId,
-            tier.achievement_key
-          );
-          if (details && details.is_completed)
-            result.newlyCompleted.push(details);
-          else if (details) result.updatedProgress.push(details);
-        }
+            tier.achievement_key,
+            totalMythicCards
+          )
+        );
+        keysToFetch.push(tier.achievement_key);
       }
     }
 
     // Rare collector (legacy)
     if (RarityUtils.isRare(rarity)) {
-      const rareCollector =
-        await AchievementModel.updateUserAchievementProgress(
+      updatePromises.push(
+        AchievementModel.updateUserAchievementProgress(
           userId,
           "rare_collector",
           1
-        );
-      if (rareCollector) {
-        const details = await AchievementModel.getUserAchievementByKey(
-          userId,
-          "rare_collector"
-        );
-        if (details && details.is_completed)
-          result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+        )
+      );
+      keysToFetch.push("rare_collector");
     }
 
     // Legendary hunter (legacy)
     if (RarityUtils.isLegendary(rarity)) {
-      const legendaryHunter =
-        await AchievementModel.updateUserAchievementProgress(
+      updatePromises.push(
+        AchievementModel.updateUserAchievementProgress(
           userId,
           "legendary_hunter",
           1
-        );
-      if (legendaryHunter) {
-        const details = await AchievementModel.getUserAchievementByKey(
-          userId,
-          "legendary_hunter"
-        );
-        if (details && details.is_completed)
-          result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+        )
+      );
+      keysToFetch.push("legendary_hunter");
     }
 
     // Card master (legacy)
     if (totalUniqueCards) {
-      const cardMaster = await AchievementModel.setUserAchievementProgress(
-        userId,
-        "card_master",
-        totalUniqueCards
-      );
-      if (cardMaster) {
-        const details = await AchievementModel.getUserAchievementByKey(
+      updatePromises.push(
+        AchievementModel.setUserAchievementProgress(
           userId,
-          "card_master"
-        );
-        if (details && details.is_completed)
-          result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+          "card_master",
+          totalUniqueCards
+        )
+      );
+      keysToFetch.push("card_master");
     }
+
+    // Execute all updates in parallel
+    await Promise.all(updatePromises);
+
+    // Batch fetch all achievement details in a single query
+    const achievementDetailsMap =
+      await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
+
+    // Process results
+    achievementDetailsMap.forEach((details) => {
+      if (details.is_completed) {
+        result.newlyCompleted.push(details);
+      } else {
+        result.updatedProgress.push(details);
+      }
+    });
   },
 
   /**
@@ -640,6 +603,8 @@ const AchievementService = {
     result: AchievementCompletionResult
   ): Promise<void> {
     const { newLevel, isFirstLevelUp, cardsAtLevelByRarity } = eventData;
+    const keysToFetch: string[] = [];
+    const updatePromises: Promise<any>[] = [];
 
     // Track card leveling by rarity achievements
     if (cardsAtLevelByRarity) {
@@ -660,20 +625,14 @@ const AchievementService = {
             (levels as Record<number, number>)[targetLevel] || 0;
 
           if (countAtLevel >= 20) {
-            const updated = await AchievementModel.setUserAchievementProgress(
-              userId,
-              tier.achievement_key,
-              1 // This is already a number literal
-            );
-            if (updated) {
-              const details = await AchievementModel.getUserAchievementByKey(
+            updatePromises.push(
+              AchievementModel.setUserAchievementProgress(
                 userId,
-                tier.achievement_key
-              );
-              if (details && details.is_completed)
-                result.newlyCompleted.push(details);
-              else if (details) result.updatedProgress.push(details);
-            }
+                tier.achievement_key,
+                1
+              )
+            );
+            keysToFetch.push(tier.achievement_key);
           }
         }
       }
@@ -681,38 +640,36 @@ const AchievementService = {
 
     // Level up (first time leveling any card) - legacy
     if (isFirstLevelUp) {
-      const levelUp = await AchievementModel.updateUserAchievementProgress(
-        userId,
-        "level_up",
-        1
+      updatePromises.push(
+        AchievementModel.updateUserAchievementProgress(userId, "level_up", 1)
       );
-      if (levelUp) {
-        const details = await AchievementModel.getUserAchievementByKey(
-          userId,
-          "level_up"
-        );
-        if (details && details.is_completed)
-          result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+      keysToFetch.push("level_up");
     }
 
     // Max level (level 10) - legacy
     if (newLevel >= 10) {
-      const maxLevel = await AchievementModel.updateUserAchievementProgress(
-        userId,
-        "max_level",
-        1
+      updatePromises.push(
+        AchievementModel.updateUserAchievementProgress(userId, "max_level", 1)
       );
-      if (maxLevel) {
-        const details = await AchievementModel.getUserAchievementByKey(
-          userId,
-          "max_level"
-        );
-        if (details && details.is_completed)
+      keysToFetch.push("max_level");
+    }
+
+    // Execute all updates in parallel
+    await Promise.all(updatePromises);
+
+    // Batch fetch all achievement details in a single query
+    if (keysToFetch.length > 0) {
+      const achievementDetailsMap =
+        await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
+
+      // Process results
+      achievementDetailsMap.forEach((details) => {
+        if (details.is_completed) {
           result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+        } else {
+          result.updatedProgress.push(details);
+        }
+      });
     }
   },
 
@@ -725,19 +682,24 @@ const AchievementService = {
     result: AchievementCompletionResult
   ): Promise<void> {
     // XP Master
-    const xpMaster = await AchievementModel.updateUserAchievementProgress(
+    await AchievementModel.updateUserAchievementProgress(
       userId,
       "xp_master",
       1
     );
-    if (xpMaster) {
-      const details = await AchievementModel.getUserAchievementByKey(
-        userId,
-        "xp_master"
-      );
-      if (details && details.is_completed) result.newlyCompleted.push(details);
-      else if (details) result.updatedProgress.push(details);
-    }
+
+    // Batch fetch achievement details
+    const achievementDetailsMap =
+      await AchievementModel.getUserAchievementsByKeys(userId, ["xp_master"]);
+
+    // Process results
+    achievementDetailsMap.forEach((details) => {
+      if (details.is_completed) {
+        result.newlyCompleted.push(details);
+      } else {
+        result.updatedProgress.push(details);
+      }
+    });
   },
 
   /**
@@ -749,64 +711,63 @@ const AchievementService = {
     result: AchievementCompletionResult
   ): Promise<void> {
     const { cardCount, totalSacrificed } = eventData;
+    const keysToFetch: string[] = [];
+    const updatePromises: Promise<any>[] = [];
 
     // Track card_sacrifice tiered achievements
+    const sacrificeTiers =
+      await AchievementModel.getTieredAchievementsByBaseKey("card_sacrifice");
+
     if (totalSacrificed !== undefined) {
-      const sacrificeTiers =
-        await AchievementModel.getTieredAchievementsByBaseKey("card_sacrifice");
       for (const tier of sacrificeTiers) {
-        const updated = await AchievementModel.setUserAchievementProgress(
-          userId,
-          tier.achievement_key,
-          totalSacrificed
-        );
-        if (updated) {
-          const details = await AchievementModel.getUserAchievementByKey(
+        updatePromises.push(
+          AchievementModel.setUserAchievementProgress(
             userId,
-            tier.achievement_key
-          );
-          if (details && details.is_completed)
-            result.newlyCompleted.push(details);
-          else if (details) result.updatedProgress.push(details);
-        }
+            tier.achievement_key,
+            totalSacrificed
+          )
+        );
+        keysToFetch.push(tier.achievement_key);
       }
     } else {
       // Fallback to increment if totalSacrificed not provided
-      const sacrificeTiers =
-        await AchievementModel.getTieredAchievementsByBaseKey("card_sacrifice");
       for (const tier of sacrificeTiers) {
-        const updated = await AchievementModel.updateUserAchievementProgress(
-          userId,
-          tier.achievement_key,
-          cardCount || 1
-        );
-        if (updated) {
-          const details = await AchievementModel.getUserAchievementByKey(
+        updatePromises.push(
+          AchievementModel.updateUserAchievementProgress(
             userId,
-            tier.achievement_key
-          );
-          if (details && details.is_completed)
-            result.newlyCompleted.push(details);
-          else if (details) result.updatedProgress.push(details);
-        }
+            tier.achievement_key,
+            cardCount || 1
+          )
+        );
+        keysToFetch.push(tier.achievement_key);
       }
     }
 
     // Sacrifice Master (legacy)
-    const sacrificeMaster =
-      await AchievementModel.updateUserAchievementProgress(
+    updatePromises.push(
+      AchievementModel.updateUserAchievementProgress(
         userId,
         "sacrifice_master",
         cardCount || 1
-      );
-    if (sacrificeMaster) {
-      const details = await AchievementModel.getUserAchievementByKey(
-        userId,
-        "sacrifice_master"
-      );
-      if (details && details.is_completed) result.newlyCompleted.push(details);
-      else if (details) result.updatedProgress.push(details);
-    }
+      )
+    );
+    keysToFetch.push("sacrifice_master");
+
+    // Execute all updates in parallel
+    await Promise.all(updatePromises);
+
+    // Batch fetch all achievement details in a single query
+    const achievementDetailsMap =
+      await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
+
+    // Process results
+    achievementDetailsMap.forEach((details) => {
+      if (details.is_completed) {
+        result.newlyCompleted.push(details);
+      } else {
+        result.updatedProgress.push(details);
+      }
+    });
   },
 
   /**
@@ -818,42 +779,49 @@ const AchievementService = {
     result: AchievementCompletionResult
   ): Promise<void> {
     const { totalFriends, isFirstFriend } = eventData;
+    const keysToFetch: string[] = [];
+    const updatePromises: Promise<any>[] = [];
 
     // Social butterfly (first friend)
     if (isFirstFriend) {
-      const socialButterfly =
-        await AchievementModel.updateUserAchievementProgress(
+      updatePromises.push(
+        AchievementModel.updateUserAchievementProgress(
           userId,
           "social_butterfly",
           1
-        );
-      if (socialButterfly) {
-        const details = await AchievementModel.getUserAchievementByKey(
-          userId,
-          "social_butterfly"
-        );
-        if (details && details.is_completed)
-          result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+        )
+      );
+      keysToFetch.push("social_butterfly");
     }
 
     // Friend collector (total friends)
     if (totalFriends) {
-      const friendCollector = await AchievementModel.setUserAchievementProgress(
-        userId,
-        "friend_collector",
-        totalFriends
-      );
-      if (friendCollector) {
-        const details = await AchievementModel.getUserAchievementByKey(
+      updatePromises.push(
+        AchievementModel.setUserAchievementProgress(
           userId,
-          "friend_collector"
-        );
-        if (details && details.is_completed)
+          "friend_collector",
+          totalFriends
+        )
+      );
+      keysToFetch.push("friend_collector");
+    }
+
+    // Execute all updates in parallel
+    await Promise.all(updatePromises);
+
+    // Batch fetch all achievement details in a single query
+    if (keysToFetch.length > 0) {
+      const achievementDetailsMap =
+        await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
+
+      // Process results
+      achievementDetailsMap.forEach((details) => {
+        if (details.is_completed) {
           result.newlyCompleted.push(details);
-        else if (details) result.updatedProgress.push(details);
-      }
+        } else {
+          result.updatedProgress.push(details);
+        }
+      });
     }
   },
 
@@ -866,19 +834,24 @@ const AchievementService = {
     result: AchievementCompletionResult
   ): Promise<void> {
     // Challenger
-    const challenger = await AchievementModel.updateUserAchievementProgress(
+    await AchievementModel.updateUserAchievementProgress(
       userId,
       "challenger",
       1
     );
-    if (challenger) {
-      const details = await AchievementModel.getUserAchievementByKey(
-        userId,
-        "challenger"
-      );
-      if (details && details.is_completed) result.newlyCompleted.push(details);
-      else if (details) result.updatedProgress.push(details);
-    }
+
+    // Batch fetch achievement details
+    const achievementDetailsMap =
+      await AchievementModel.getUserAchievementsByKeys(userId, ["challenger"]);
+
+    // Process results
+    achievementDetailsMap.forEach((details) => {
+      if (details.is_completed) {
+        result.newlyCompleted.push(details);
+      } else {
+        result.updatedProgress.push(details);
+      }
+    });
   },
 
   /**
@@ -890,19 +863,26 @@ const AchievementService = {
     result: AchievementCompletionResult
   ): Promise<void> {
     // Early adopter (beta period registration)
-    const earlyAdopter = await AchievementModel.updateUserAchievementProgress(
+    await AchievementModel.updateUserAchievementProgress(
       userId,
       "early_adopter",
       1
     );
-    if (earlyAdopter) {
-      const details = await AchievementModel.getUserAchievementByKey(
-        userId,
-        "early_adopter"
-      );
-      if (details && details.is_completed) result.newlyCompleted.push(details);
-      else if (details) result.updatedProgress.push(details);
-    }
+
+    // Batch fetch achievement details
+    const achievementDetailsMap =
+      await AchievementModel.getUserAchievementsByKeys(userId, [
+        "early_adopter",
+      ]);
+
+    // Process results
+    achievementDetailsMap.forEach((details) => {
+      if (details.is_completed) {
+        result.newlyCompleted.push(details);
+      } else {
+        result.updatedProgress.push(details);
+      }
+    });
   },
 
   /**
@@ -917,6 +897,9 @@ const AchievementService = {
 
     if (!storyId) return;
 
+    const keysToFetch: string[] = [];
+    const updatePromises: Promise<any>[] = [];
+
     // Track story win count achievements (story_{storyId}_wins)
     if (isWin && winCount !== undefined) {
       const winsBaseKey = `story_${storyId}_wins`;
@@ -925,20 +908,14 @@ const AchievementService = {
       );
 
       for (const tier of winsTiers) {
-        const updated = await AchievementModel.setUserAchievementProgress(
-          userId,
-          tier.achievement_key,
-          winCount
-        );
-        if (updated) {
-          const details = await AchievementModel.getUserAchievementByKey(
+        updatePromises.push(
+          AchievementModel.setUserAchievementProgress(
             userId,
-            tier.achievement_key
-          );
-          if (details && details.is_completed)
-            result.newlyCompleted.push(details);
-          else if (details) result.updatedProgress.push(details);
-        }
+            tier.achievement_key,
+            winCount
+          )
+        );
+        keysToFetch.push(tier.achievement_key);
       }
     }
 
@@ -952,22 +929,34 @@ const AchievementService = {
       for (const tier of marginTiers) {
         // Check if victory margin meets the tier requirement (4, 6, or 8)
         if (victoryMargin >= tier.target_value) {
-          const updated = await AchievementModel.setUserAchievementProgress(
-            userId,
-            tier.achievement_key,
-            1
-          );
-          if (updated) {
-            const details = await AchievementModel.getUserAchievementByKey(
+          updatePromises.push(
+            AchievementModel.setUserAchievementProgress(
               userId,
-              tier.achievement_key
-            );
-            if (details && details.is_completed)
-              result.newlyCompleted.push(details);
-            else if (details) result.updatedProgress.push(details);
-          }
+              tier.achievement_key,
+              1
+            )
+          );
+          keysToFetch.push(tier.achievement_key);
         }
       }
+    }
+
+    // Execute all updates in parallel
+    await Promise.all(updatePromises);
+
+    // Batch fetch all achievement details in a single query
+    if (keysToFetch.length > 0) {
+      const achievementDetailsMap =
+        await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
+
+      // Process results
+      achievementDetailsMap.forEach((details) => {
+        if (details.is_completed) {
+          result.newlyCompleted.push(details);
+        } else {
+          result.updatedProgress.push(details);
+        }
+      });
     }
   },
 
