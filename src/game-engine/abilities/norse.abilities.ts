@@ -29,6 +29,7 @@ import {
   getPositionOfCardById,
   createOrUpdateBuff,
   getCardsInSameColumn,
+  getSurroundingTiles,
 } from "../ability.utils";
 import { drawCardSync, flipCard } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
@@ -111,7 +112,7 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Thunderous Push: Strike all enemies with lightning granting -1 on a random side
+  // Thunderous Push: Strike all enemies with lightning granting -2 to their top power
   "Thunderous Push": (context) => {
     const {
       triggerCard,
@@ -128,13 +129,11 @@ export const norseAbilities: AbilityMap = {
 
     //OWEN
     for (const enemy of enemyCards) {
-      const sides = ["top", "bottom", "left", "right"] as const;
-      const randomSide = sides[Math.floor(Math.random() * sides.length)];
       gameEvents.push(
         addTempDebuff(
           enemy,
           1000,
-          { [randomSide]: -1 },
+          { top: -2 },
           {
             animation: "lightning",
             ...(getPositionOfCardById(enemy.user_card_instance_id, board) && {
@@ -186,7 +185,9 @@ export const norseAbilities: AbilityMap = {
       if (existingBuff.data?.rounds === 3) {
         const allCards = getCardsByCondition(board, (card) => true);
         for (const card of allCards) {
-          gameEvents.push(debuff(card, -1));
+          gameEvents.push(
+            debuff(card, -1, "Watchman's Gate", { animation: "watchman-gate" })
+          );
         }
         const player =
           player1.user_id === triggerCard.owner ? player1 : player2;
@@ -202,13 +203,13 @@ export const norseAbilities: AbilityMap = {
         });
       }
     } else {
-      createOrUpdateBuff(triggerCard, 3, 0, "Watchman's Gate", { rounds: 0 });
+      createOrUpdateBuff(triggerCard, 3, 0, "Watchman's Gate", { rounds: 1 });
     }
 
     return gameEvents;
   },
 
-  // Poet's Rhythm: Adjacent allies gain +1 for a turn.
+  // When played, bless all surrounding tiles with +1 through your next turn.
   "Poet's Rhythm": (context) => {
     const {
       triggerCard,
@@ -216,14 +217,27 @@ export const norseAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
-    const adjacentAllies = getAlliesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner
-    );
-    for (const ally of adjacentAllies) {
-      gameEvents.push(addTempBuff(ally, 3, 1));
+
+    const surroundingTiles = getSurroundingTiles(position, board);
+
+    for (const tile of surroundingTiles) {
+      gameEvents.push(
+        setTileStatus(
+          tile.tile,
+          tile.position,
+          {
+            status: TileStatus.Boosted,
+            turns_left: 3,
+            animation_label: "poets-rhythm",
+            effect_duration: 1000,
+            power: { top: 1, bottom: 1, left: 1, right: 1 },
+            applies_to_user: triggerCard.owner,
+          },
+          triggerCard.owner
+        )
+      );
     }
+
     return gameEvents;
   },
 
@@ -308,7 +322,11 @@ export const norseAbilities: AbilityMap = {
       triggerCard.owner
     );
     for (const ally of adjacentAllies) {
-      gameEvents.push(addTempBuff(ally, 2, 1));
+      gameEvents.push(
+        addTempBuff(ally, 2, 2, "Warrior's Blessing", {
+          animation: "warrior-blessing",
+        })
+      );
     }
     return gameEvents;
   },

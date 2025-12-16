@@ -20,6 +20,7 @@ import {
   StoryDifficulty,
   RewardType,
 } from "../types/story-mode.types";
+import { UserAchievementWithDetails } from "../types/database.types";
 import UserModel from "../models/user.model";
 import AchievementModel from "../models/achievement.model";
 import AchievementService from "./achievement.service";
@@ -396,49 +397,112 @@ export class StoryModeService {
         ORDER BY order_index ASC
       `);
 
+      if (storyResult.rows.length === 0) {
+        return { stories: [], total_count: 0 };
+      }
+
+      const storyIds = storyResult.rows.map((row) => row.story_id);
+      const aiDeckIds = storyResult.rows.map((row) => row.ai_deck_id);
+
+      // OPTIMIZATION: Batch fetch all rewards for all story modes in one query
+      const allRewardsResult = await client.query(
+        `SELECT * FROM story_mode_rewards 
+         WHERE story_id = ANY($1) AND is_active = true 
+         ORDER BY story_id, reward_type`,
+        [storyIds]
+      );
+
+      // Group rewards by story_id
+      const rewardsByStoryId = new Map<string, any[]>();
+      for (const rewardRow of allRewardsResult.rows) {
+        const storyId = rewardRow.story_id;
+        if (!rewardsByStoryId.has(storyId)) {
+          rewardsByStoryId.set(storyId, []);
+        }
+        rewardsByStoryId
+          .get(storyId)!
+          .push(this.rowToStoryModeReward(rewardRow));
+      }
+
+      // OPTIMIZATION: Batch fetch all user progress in one query
+      const allProgressResult = await client.query(
+        "SELECT * FROM user_story_progress WHERE user_id = $1 AND story_id = ANY($2)",
+        [userId, storyIds]
+      );
+
+      const progressByStoryId = new Map<string, any>();
+      for (const progressRow of allProgressResult.rows) {
+        progressByStoryId.set(
+          progressRow.story_id,
+          this.rowToUserStoryProgress(progressRow)
+        );
+      }
+
+      // OPTIMIZATION: Batch fetch top cards for all AI decks
+      const topCardsByDeckId = await this.batchGetTopCardsFromDecks(
+        client,
+        aiDeckIds,
+        3
+      );
+
+      // OPTIMIZATION: Get user data once for unlock requirement checks
+      // Note: User level system not implemented yet, defaulting to 0
+      const userLevel = 0;
+
+      // OPTIMIZATION: Get all user story progress for prerequisite checks
+      const allUserProgressResult = await client.query(
+        "SELECT story_id FROM user_story_progress WHERE user_id = $1 AND times_completed > 0",
+        [userId]
+      );
+      const completedStoryIds = new Set(
+        allUserProgressResult.rows.map((r: any) => r.story_id)
+      );
+
+      // OPTIMIZATION: Get all user achievements
+      const userAchievementsResult = await client.query(
+        "SELECT achievement_id FROM user_achievements WHERE user_id = $1 AND completed_at IS NOT NULL",
+        [userId]
+      );
+      const completedAchievementIds = new Set(
+        userAchievementsResult.rows.map((r: any) => r.achievement_id)
+      );
+
+      // OPTIMIZATION: Get total story wins
+      const totalWinsResult = await client.query(
+        "SELECT COALESCE(SUM(times_completed), 0) as total_wins FROM user_story_progress WHERE user_id = $1",
+        [userId]
+      );
+      const totalStoryWins = parseInt(
+        totalWinsResult.rows[0]?.total_wins || "0"
+      );
+
+      // OPTIMIZATION: Batch fetch achievements for all story modes
+      const allAchievementsMap = await this.batchGetStoryModeAchievements(
+        userId,
+        storyIds
+      );
+
       const storyModes: StoryModeWithProgress[] = [];
 
       for (const storyRow of storyResult.rows) {
         const storyConfig = this.rowToStoryModeConfig(storyRow);
 
-        // Get rewards for this story mode
-        const rewards = await this.getStoryModeRewards(
-          client,
-          storyConfig.story_id
-        );
+        // Get cached/batched data
+        const rewards = rewardsByStoryId.get(storyConfig.story_id) || [];
+        const userProgress = progressByStoryId.get(storyConfig.story_id);
+        const topCards = topCardsByDeckId.get(storyConfig.ai_deck_id) || [];
+        const storyAchievements =
+          allAchievementsMap.get(storyConfig.story_id) || [];
 
-        // Get user progress for this story mode
-        const progressResult = await client.query(
-          "SELECT * FROM user_story_progress WHERE user_id = $1 AND story_id = $2",
-          [userId, storyConfig.story_id]
-        );
-
-        const userProgress =
-          progressResult.rows.length > 0
-            ? this.rowToUserStoryProgress(progressResult.rows[0])
-            : undefined;
-
-        // Check if user can unlock/play this story mode
-        const isUnlocked = await this.checkUnlockRequirements(
-          userId,
-          storyConfig.story_id,
-          client
+        // Check unlock requirements using batched data
+        const isUnlocked = this.checkUnlockRequirementsCached(
+          storyConfig,
+          userLevel,
+          completedStoryIds,
+          completedAchievementIds,
+          totalStoryWins
         );
         const canPlay = isUnlocked && storyConfig.is_active;
-
-        // Get top 3 strongest cards from AI deck
-        const topCards = await this.getTopCardsFromDeck(
-          client,
-          storyConfig.ai_deck_id,
-          3
-        );
-
-        // Get achievements for this story mode
-        const storyAchievements =
-          await AchievementModel.getStoryModeAchievements(
-            userId,
-            storyConfig.story_id
-          );
 
         storyModes.push({
           ...storyConfig,
@@ -458,6 +522,183 @@ export class StoryModeService {
     } finally {
       client.release();
     }
+  }
+
+  // OPTIMIZATION: New helper method to check unlock requirements using cached data
+  private static checkUnlockRequirementsCached(
+    storyConfig: StoryModeConfig,
+    userLevel: number,
+    completedStoryIds: Set<string>,
+    completedAchievementIds: Set<string>,
+    totalStoryWins: number
+  ): boolean {
+    const requirements = storyConfig.unlock_requirements;
+
+    // If no requirements, it's unlocked
+    if (!requirements || Object.keys(requirements).length === 0) {
+      return true;
+    }
+
+    // Check prerequisite stories
+    if (
+      requirements.prerequisite_stories &&
+      requirements.prerequisite_stories.length > 0
+    ) {
+      const hasAllPrerequisites = requirements.prerequisite_stories.every(
+        (storyId) => completedStoryIds.has(storyId)
+      );
+      if (!hasAllPrerequisites) {
+        return false;
+      }
+    }
+
+    // Check minimum user level
+    if (
+      requirements.min_user_level &&
+      userLevel < requirements.min_user_level
+    ) {
+      return false;
+    }
+
+    // Check required achievements
+    if (
+      requirements.required_achievements &&
+      requirements.required_achievements.length > 0
+    ) {
+      const hasAllAchievements = requirements.required_achievements.every(
+        (achievementId) => completedAchievementIds.has(achievementId)
+      );
+      if (!hasAllAchievements) {
+        return false;
+      }
+    }
+
+    // Check minimum total story wins
+    if (
+      requirements.min_total_story_wins &&
+      totalStoryWins < requirements.min_total_story_wins
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  // OPTIMIZATION: Batch get top cards from multiple decks
+  private static async batchGetTopCardsFromDecks(
+    client: PoolClient,
+    deckIds: string[],
+    limit: number = 3
+  ): Promise<Map<string, string[]>> {
+    if (deckIds.length === 0) {
+      return new Map();
+    }
+
+    // Get cards from all decks in one query
+    const cardsResult = await client.query(
+      `
+      SELECT 
+        dc.deck_id,
+        c.card_id,
+        c.rarity,
+        COALESCE((c.power->>'top')::integer, 0) +
+        COALESCE((c.power->>'right')::integer, 0) +
+        COALESCE((c.power->>'bottom')::integer, 0) +
+        COALESCE((c.power->>'left')::integer, 0) as total_power
+      FROM deck_cards dc
+      JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
+      JOIN cards c ON uoc.card_id = c.card_id
+      WHERE dc.deck_id = ANY($1)
+      GROUP BY dc.deck_id, c.card_id, c.rarity, c.power
+    `,
+      [deckIds]
+    );
+
+    // Sort and group by deck_id
+    const rarityPriority: Record<string, number> = {
+      legendary: 4,
+      epic: 3,
+      rare: 2,
+      uncommon: 1,
+      common: 0,
+    };
+
+    const cardsByDeck = new Map<string, any[]>();
+    for (const row of cardsResult.rows) {
+      if (!cardsByDeck.has(row.deck_id)) {
+        cardsByDeck.set(row.deck_id, []);
+      }
+      cardsByDeck.get(row.deck_id)!.push(row);
+    }
+
+    // Sort and get top N for each deck
+    const result = new Map<string, string[]>();
+    for (const [deckId, cards] of cardsByDeck) {
+      const sortedCards = cards.sort((a, b) => {
+        const aRarity = rarityPriority[a.rarity] || 0;
+        const bRarity = rarityPriority[b.rarity] || 0;
+        if (aRarity !== bRarity) {
+          return bRarity - aRarity;
+        }
+        return b.total_power - a.total_power;
+      });
+
+      const uniqueCardIds = Array.from(
+        new Set(sortedCards.map((c) => c.card_id))
+      );
+      result.set(deckId, uniqueCardIds.slice(0, limit));
+    }
+
+    // Ensure all requested deck_ids have entries (even if empty)
+    for (const deckId of deckIds) {
+      if (!result.has(deckId)) {
+        result.set(deckId, []);
+      }
+    }
+
+    return result;
+  }
+
+  // OPTIMIZATION: Batch get achievements for multiple story modes
+  private static async batchGetStoryModeAchievements(
+    userId: string,
+    storyIds: string[]
+  ): Promise<Map<string, UserAchievementWithDetails[]>> {
+    if (storyIds.length === 0) {
+      return new Map();
+    }
+
+    // Get all story mode achievements at once (without filtering by specific storyId)
+    const achievements = await AchievementModel.getStoryModeAchievements(
+      userId
+    );
+
+    // Group achievements by story_id
+    const achievementsByStoryId = new Map<
+      string,
+      UserAchievementWithDetails[]
+    >();
+
+    // Initialize empty arrays for all story IDs
+    for (const storyId of storyIds) {
+      achievementsByStoryId.set(storyId, []);
+    }
+
+    // Group achievements by their story_id if available in the achievement metadata
+    if (Array.isArray(achievements)) {
+      for (const achievement of achievements) {
+        // Check if achievement has story_id in the achievement metadata
+        const achievementData = achievement.achievement as any;
+        if (achievementData?.story_id) {
+          const storyId = achievementData.story_id;
+          if (achievementsByStoryId.has(storyId)) {
+            achievementsByStoryId.get(storyId)!.push(achievement);
+          }
+        }
+      }
+    }
+
+    return achievementsByStoryId;
   }
 
   // Check if a user meets the unlock requirements for a story mode
@@ -515,15 +756,10 @@ export class StoryModeService {
 
       // Check minimum user level
       if (requirements.min_user_level) {
-        const userResult = await dbClient.query(
-          "SELECT level FROM users WHERE user_id = $1",
-          [userId]
-        );
+        // Note: User level system not implemented yet, defaulting to 0
+        const userLevel = 0;
 
-        if (
-          userResult.rows.length === 0 ||
-          userResult.rows[0].level < requirements.min_user_level
-        ) {
+        if (userLevel < requirements.min_user_level) {
           return false;
         }
       }
@@ -683,37 +919,39 @@ export class StoryModeService {
     }
   }
 
-  // Find story_id from AI deck_id
+  // Find story_id from AI deck_id (with caching)
   static async findStoryIdByDeckId(aiDeckId: string): Promise<string | null> {
+    // Import cache utilities
+    const { cache, CacheKeys } = require("../utils/cache.utils");
+    const cacheKey = CacheKeys.storyIdByDeckId(aiDeckId);
+
+    // Check cache first
+    const cached = cache.get(cacheKey) as string | null;
+    if (cached !== null) {
+      return cached;
+    }
+
     try {
       const result = await db.query(
         "SELECT story_id FROM story_mode_config WHERE ai_deck_id = $1 AND is_active = true LIMIT 1",
         [aiDeckId]
       );
 
+      let storyId: string | null = null;
+
       if (result.rows.length > 0) {
+        storyId = result.rows[0].story_id;
         console.log(
-          `[Story Mode] Found story_id ${result.rows[0].story_id} for deck_id ${aiDeckId}`
+          `[Story Mode] Found story_id ${storyId} for deck_id ${aiDeckId}`
         );
-        return result.rows[0].story_id;
       } else {
         console.log(`[Story Mode] No story mode found for deck_id ${aiDeckId}`);
-        // Debug: Check if deck exists at all (even if inactive)
-        const debugResult = await db.query(
-          "SELECT story_id, is_active FROM story_mode_config WHERE ai_deck_id = $1 LIMIT 1",
-          [aiDeckId]
-        );
-        if (debugResult.rows.length > 0) {
-          console.log(
-            `[Story Mode] Deck found but inactive: story_id=${debugResult.rows[0].story_id}, is_active=${debugResult.rows[0].is_active}`
-          );
-        } else {
-          console.log(
-            `[Story Mode] No story mode config exists for deck_id ${aiDeckId}`
-          );
-        }
-        return null;
       }
+
+      // Cache the result (even if null) to avoid repeated queries
+      cache.set(cacheKey, storyId, 300); // 5 minute TTL
+
+      return storyId;
     } catch (error) {
       console.error(
         `[Story Mode] Error finding story_id for deck_id ${aiDeckId}:`,
@@ -723,7 +961,7 @@ export class StoryModeService {
     }
   }
 
-  // Process story mode completion and award rewards
+  // Process story mode completion and award rewards (OPTIMIZED)
   static async processStoryCompletion(
     userId: string,
     storyId: string,
@@ -832,16 +1070,18 @@ export class StoryModeService {
           }
         }
 
+        // OPTIMIZATION: Batch all user updates in parallel
+        const updatePromises: Promise<any>[] = [];
+
         // Award currency rewards (gems only for story mode)
         if (rewardsEarned.gems) {
-          await UserModel.updateGems(userId, rewardsEarned.gems);
+          updatePromises.push(UserModel.updateGems(userId, rewardsEarned.gems));
         }
 
         // Award card fragments
         if (rewardsEarned.card_fragments) {
-          await UserModel.updateCardFragments(
-            userId,
-            rewardsEarned.card_fragments
+          updatePromises.push(
+            UserModel.updateCardFragments(userId, rewardsEarned.card_fragments)
           );
         }
 
@@ -853,34 +1093,35 @@ export class StoryModeService {
             0
           );
           if (totalPacks > 0) {
-            await UserModel.addPacks(userId, totalPacks);
+            updatePromises.push(UserModel.addPacks(userId, totalPacks));
           }
         }
 
-        // TODO: Handle other reward types (cards, packs, achievements, etc.)
+        // Wait for all user updates to complete in parallel
+        if (updatePromises.length > 0) {
+          await Promise.all(updatePromises);
+        }
       }
 
+      // OPTIMIZATION: Run unlock check and achievement trigger in parallel
+      const parallelOps: Promise<any>[] = [];
+
       // Check for newly unlocked story modes
-      const unlockedStories = await this.checkForNewlyUnlockedStories(
-        userId,
-        client
-      );
+      parallelOps.push(this.checkForNewlyUnlockedStories(userId, client));
 
       // Trigger achievement events for story mode completion
       if (won) {
-        try {
-          // Calculate victory margin (cards remaining difference)
-          // gameResult should have final_scores or we can calculate from game state
-          const victoryMargin =
-            gameResult.victoryMargin ||
-            (gameResult.final_scores
-              ? Math.abs(
-                  (gameResult.final_scores.player1 || 0) -
-                    (gameResult.final_scores.player2 || 0)
-                )
-              : 0);
+        const victoryMargin =
+          gameResult.victoryMargin ||
+          (gameResult.final_scores
+            ? Math.abs(
+                (gameResult.final_scores.player1 || 0) -
+                  (gameResult.final_scores.player2 || 0)
+              )
+            : 0);
 
-          await AchievementService.triggerAchievementEvent({
+        parallelOps.push(
+          AchievementService.triggerAchievementEvent({
             userId,
             eventType: "story_mode_completion",
             eventData: {
@@ -889,15 +1130,19 @@ export class StoryModeService {
               victoryMargin,
               winCount: updatedProgress.times_completed,
             },
-          });
-        } catch (error) {
-          console.error(
-            "Error triggering story mode achievement events:",
-            error
-          );
-          // Don't fail the entire process if achievement events fail
-        }
+          }).catch((error) => {
+            console.error(
+              "Error triggering story mode achievement events:",
+              error
+            );
+            // Return empty array on error so Promise.all doesn't fail
+            return null;
+          })
+        );
       }
+
+      const results = await Promise.all(parallelOps);
+      const unlockedStories = results[0] as string[];
 
       await client.query("COMMIT");
 
@@ -905,7 +1150,7 @@ export class StoryModeService {
         rewards_earned: rewardsEarned,
         is_first_win: isFirstWin,
         new_progress: updatedProgress,
-        unlocked_stories: unlockedStories,
+        unlocked_stories: unlockedStories || [],
       };
     } catch (error) {
       await client.query("ROLLBACK");
@@ -1047,39 +1292,62 @@ export class StoryModeService {
     return result.rows[0].next_index;
   }
 
-  // Helper method to check for newly unlocked story modes after completion
+  // Helper method to check for newly unlocked story modes after completion (OPTIMIZED)
   private static async checkForNewlyUnlockedStories(
     userId: string,
     client: PoolClient
   ): Promise<string[]> {
-    // Get all story modes that might be unlocked
-    const allStoriesResult = await client.query(
-      "SELECT story_id FROM story_mode_config WHERE is_active = true"
+    // OPTIMIZATION: Get all necessary data in one batch of queries
+    const [
+      allStoriesResult,
+      userDataResult,
+      completedStoriesResult,
+      userAchievementsResult,
+      totalWinsResult,
+    ] = await Promise.all([
+      client.query("SELECT * FROM story_mode_config WHERE is_active = true"),
+      // Note: User level system not implemented, returning default
+      Promise.resolve({ rows: [{ level: 0 }] }),
+      client.query(
+        "SELECT story_id FROM user_story_progress WHERE user_id = $1 AND times_completed > 0",
+        [userId]
+      ),
+      client.query(
+        "SELECT achievement_id FROM user_achievements WHERE user_id = $1 AND completed_at IS NOT NULL",
+        [userId]
+      ),
+      client.query(
+        "SELECT COALESCE(SUM(times_completed), 0) as total_wins FROM user_story_progress WHERE user_id = $1",
+        [userId]
+      ),
+    ]);
+
+    const userLevel = userDataResult.rows[0]?.level || 0;
+    const completedStoryIds = new Set(
+      completedStoriesResult.rows.map((r: any) => r.story_id)
     );
+    const completedAchievementIds = new Set(
+      userAchievementsResult.rows.map((r: any) => r.achievement_id)
+    );
+    const totalStoryWins = parseInt(totalWinsResult.rows[0]?.total_wins || "0");
 
     const unlockedStories: string[] = [];
 
     for (const storyRow of allStoriesResult.rows) {
-      const storyId = storyRow.story_id;
+      const storyConfig = this.rowToStoryModeConfig(storyRow);
 
-      // Check if this story is now unlocked
-      const isUnlocked = await this.checkUnlockRequirements(
-        userId,
-        storyId,
-        client
+      // Check if this story is now unlocked using cached data
+      const isUnlocked = this.checkUnlockRequirementsCached(
+        storyConfig,
+        userLevel,
+        completedStoryIds,
+        completedAchievementIds,
+        totalStoryWins
       );
 
-      if (isUnlocked) {
-        // Check if user has any progress (to see if it's newly unlocked)
-        const progressResult = await client.query(
-          "SELECT progress_id FROM user_story_progress WHERE user_id = $1 AND story_id = $2",
-          [userId, storyId]
-        );
-
-        // If no progress exists, it's newly unlocked
-        if (progressResult.rows.length === 0) {
-          unlockedStories.push(storyId);
-        }
+      // If unlocked and no progress exists, it's newly unlocked
+      if (isUnlocked && !completedStoryIds.has(storyConfig.story_id)) {
+        unlockedStories.push(storyConfig.story_id);
       }
     }
 

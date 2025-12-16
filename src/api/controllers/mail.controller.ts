@@ -539,6 +539,7 @@ export const getMailCounts = async (
 
 /**
  * Send system notification (admin only)
+ * SECURITY: This endpoint should only be accessible to admins
  */
 export const sendSystemNotification = async (
   req: AuthenticatedRequest,
@@ -557,9 +558,17 @@ export const sendSystemNotification = async (
       });
     }
 
-    // TODO: Add admin role check here
-    // For now, allowing any authenticated user to send system notifications
-    // In production, this should check for admin privileges
+    // Check if user has admin role
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: {
+          type: "AUTHORIZATION_ERROR",
+          message: "Admin access required",
+          suggestion: "Only admins can send system notifications",
+        },
+      });
+    }
 
     const { targetUserId, subject, content, rewards, expiresInDays } = req.body;
 

@@ -12,6 +12,7 @@ export interface User {
   password_hash?: string;
   facebook_id?: string;
   auth_provider: "local" | "facebook";
+  role?: "user" | "admin"; // User role for authorization
   in_game_currency: number; // Legacy field - will be phased out
   gems: number;
   fate_coins: number;
@@ -210,7 +211,13 @@ export interface Achievement {
   achievement_key: string;
   title: string;
   description: string;
-  category: "gameplay" | "collection" | "social" | "progression" | "special" | "story_mode";
+  category:
+    | "gameplay"
+    | "collection"
+    | "social"
+    | "progression"
+    | "special"
+    | "story_mode";
   type: "single" | "progress" | "milestone";
   target_value: number;
   rarity: Rarity;

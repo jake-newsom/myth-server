@@ -1,6 +1,4 @@
 import {
-  BoardCell,
-  BoardPosition,
   EVENT_TYPES,
   GameEventType,
   BaseGameEvent,

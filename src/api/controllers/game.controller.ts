@@ -236,38 +236,20 @@ class GameController {
 
       switch (action.action_type) {
         case "placeCard":
-          // Validate that it's the player's turn for placeCard action
-          if (currentGameState.current_player_id !== userId) {
-            res.status(400).json({ error: "Not your turn" });
-            return;
-          }
-
           if (!action.user_card_instance_id || !action.position) {
             res.status(400).json({
-              error: "Card ID and position are required for placeCard action",
+              error: "card id and position are required for placeCard action",
             });
             return;
           }
 
-          const placeResult = validators.canPlaceOnTile(
-            currentGameState,
-            action.position
-          );
-          if (!placeResult.canPlace) {
-            res.status(400).json({
-              error:
-                placeResult.errorMessage || "Cannot place card on this tile",
-            });
-            return;
-          }
-
-          // GameLogic methods should ideally return a new state object rather than mutating
           const placeCardResult = await GameLogic.placeCard(
-            currentGameState, // Pass original for validation within GameLogic
+            currentGameState,
             userId,
             action.user_card_instance_id,
             action.position
           );
+
           updatedGameState = placeCardResult.state;
           events.push(...placeCardResult.events);
           break;
@@ -325,22 +307,12 @@ class GameController {
           );
 
           // Check if this is a story mode game and process story mode completion
-          console.log(
-            `[Story Mode DEBUG] Game mode: ${
-              gameRecord.game_mode
-            }, Player2 deck: ${
-              gameRecord.player2_deck_id
-            }, Game completion result: ${!!gameCompletionResult}`
-          );
+          // OPTIMIZATION: Only check for story mode if game_mode is solo
           if (gameRecord.game_mode === "solo" && gameRecord.player2_deck_id) {
             try {
-              console.log(
-                `[Story Mode] Checking for story mode game with AI deck_id: ${gameRecord.player2_deck_id}`
-              );
               const storyId = await StoryModeService.findStoryIdByDeckId(
                 gameRecord.player2_deck_id
               );
-              console.log(`[Story Mode] Found story_id: ${storyId || "null"}`);
 
               if (storyId && gameCompletionResult) {
                 // Calculate completion time
@@ -350,7 +322,6 @@ class GameController {
                 );
 
                 // Create game result object for story mode processing
-                // Note: processStoryCompletion only uses winner_id, but we include other fields for potential future use
                 const storyGameResult = {
                   winner_id: winner_id_for_db,
                   isWin: winner_id_for_db === userId,
@@ -366,7 +337,7 @@ class GameController {
                       ? updatedGameState.player2.score
                       : updatedGameState.player1.score,
                   duration: completionTimeSeconds,
-                  cardsPlayed: 0, // Not tracked in GameResult, but included for compatibility
+                  cardsPlayed: 0,
                 };
 
                 // Process story mode completion (this will award story mode rewards)
@@ -584,22 +555,12 @@ class GameController {
           );
 
           // Check if this is a story mode game and process story mode completion
-          console.log(
-            `[Story Mode DEBUG] Game mode: ${
-              gameRecord.game_mode
-            }, Player2 deck: ${
-              gameRecord.player2_deck_id
-            }, Game completion result: ${!!gameCompletionResult}`
-          );
+          // OPTIMIZATION: Only check for story mode if game_mode is solo
           if (gameRecord.game_mode === "solo" && gameRecord.player2_deck_id) {
             try {
-              console.log(
-                `[Story Mode] Checking for story mode game with AI deck_id: ${gameRecord.player2_deck_id}`
-              );
               const storyId = await StoryModeService.findStoryIdByDeckId(
                 gameRecord.player2_deck_id
               );
-              console.log(`[Story Mode] Found story_id: ${storyId || "null"}`);
 
               if (storyId && gameCompletionResult) {
                 // Calculate completion time
@@ -609,7 +570,6 @@ class GameController {
                 );
 
                 // Create game result object for story mode processing
-                // Note: processStoryCompletion only uses winner_id, but we include other fields for potential future use
                 const storyGameResult = {
                   winner_id: winner_id_for_db,
                   isWin: winner_id_for_db === userId,
@@ -625,7 +585,7 @@ class GameController {
                       ? updatedGameState.player2.score
                       : updatedGameState.player1.score,
                   duration: completionTimeSeconds,
-                  cardsPlayed: 0, // Not tracked in GameResult, but included for compatibility
+                  cardsPlayed: 0,
                 };
 
                 // Process story mode completion (this will award story mode rewards)

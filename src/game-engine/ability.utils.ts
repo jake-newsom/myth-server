@@ -855,6 +855,36 @@ export function getEmptyAdjacentTiles(
   return emptyTiles;
 }
 
+/**
+ * Returns all tiles surrounding the given position (diagonal as well as adjacent)
+ * @param position
+ * @param board
+ */
+export function getSurroundingTiles(
+  position: BoardPosition,
+  board: GameBoard
+): Array<{ position: BoardPosition; tile: BoardCell }> {
+  const diagonallyAdjacentPositions = getDiagonallyAdjacentPositions(
+    position,
+    board.length
+  );
+  const adjacentPositions = getAdjacentPositions(position, board.length);
+
+  const surroundingPositions = [
+    ...diagonallyAdjacentPositions,
+    ...adjacentPositions,
+  ];
+  const surroundingTiles = surroundingPositions.map((pos) => ({
+    position: pos,
+    tile: getTileAtPosition(pos, board),
+  }));
+
+  return surroundingTiles.filter((tile) => tile.tile) as Array<{
+    position: BoardPosition;
+    tile: BoardCell;
+  }>;
+}
+
 export function cleanseDebuffs(card: InGameCard, count: number): BaseGameEvent {
   // Remove negative temporary effects (debuffs) up to the specified count
   if (card.temporary_effects) {

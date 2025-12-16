@@ -113,14 +113,19 @@ export const japaneseAbilities: AbilityMap = {
       const tile = getTileAtPosition(pos, state.board);
       if (tile) {
         gameEvents.push(
-          setTileStatus(tile, pos, {
-            status: TileStatus.Cursed,
-            turns_left: 3,
-            animation_label: "web-curse",
-            power: { top: -1000, bottom: -1000, left: -1000, right: -1000 },
-            effect_duration: 3,
-            applies_to_user: getOpponentId(triggerCard.owner, state),
-          }, triggerCard.owner)
+          setTileStatus(
+            tile,
+            pos,
+            {
+              status: TileStatus.Cursed,
+              turns_left: 5,
+              animation_label: "web-curse",
+              power: { top: -2, bottom: -2, left: -2, right: -2 },
+              effect_duration: 3,
+              applies_to_user: getOpponentId(triggerCard.owner, state),
+            },
+            triggerCard.owner
+          )
         );
       }
     }
@@ -374,7 +379,7 @@ export const japaneseAbilities: AbilityMap = {
     return [];
   },
 
-  // Beast Friend: Each round, gain +1 for each card stronger than himself.
+  // When played, gain +1 for each adjacent card stronger than himself
   "Beast Friend": (context) => {
     const {
       triggerCard,
@@ -622,7 +627,12 @@ export const japaneseAbilities: AbilityMap = {
     );
 
     for (const enemy of adjacentEnemies) {
-      gameEvents.push(debuff(enemy, -1));
+      gameEvents.push(
+        debuff(enemy, -2, "Bone Chill", {
+          animation: "bone-chill",
+          position: getPositionOfCardById(enemy.user_card_instance_id, board)!,
+        })
+      );
     }
 
     return gameEvents;

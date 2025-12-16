@@ -281,7 +281,7 @@ export const polynesianAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Fertile Ground: Each round grant +1 to allies with blessings.
+  // Fertile Ground: Each round grant +1 for one turn to allies with existing blessings
   "Fertile Ground": (context) => {
     const {
       triggerCard,
@@ -299,13 +299,12 @@ export const polynesianAbilities: AbilityMap = {
         return totalPowerChange > 0;
       });
 
-      if (
-        hasBlessing &&
-        !ally.temporary_effects.some(
-          (effect) => effect.name === "Fertile Ground"
-        )
-      ) {
-        gameEvents.push(createOrUpdateBuff(ally, 1000, 1, "Fertile Ground"));
+      if (hasBlessing) {
+        gameEvents.push(
+          addTempBuff(ally, 3, 1, "Fertile Ground", {
+            animation: "fertile-ground",
+          })
+        );
       }
     }
 
@@ -316,8 +315,6 @@ export const polynesianAbilities: AbilityMap = {
   "Sun Trick": (context) => {
     const { triggerCard } = context;
     const label = "Sun Trick";
-
-    console.log("Sun Trick", context.triggerMoment);
 
     const gameEvents: BaseGameEvent[] = [];
 
@@ -351,15 +348,20 @@ export const polynesianAbilities: AbilityMap = {
     const randomTile = getRandomEmptyTile(state.board);
     if (randomTile) {
       gameEvents.push(
-        setTileStatus(randomTile.tile, randomTile.position, {
-          status: TileStatus.Cursed,
-          turns_left: 1000,
-          terrain: TileTerrain.Lava,
-          animation_label: "lava",
-          effect_duration: 1000,
-          applies_to_user: getOpponentId(triggerCard.owner, state), // Only affect enemy cards
-          power: { top: -1, bottom: -1, left: -1, right: -1 },
-        }, triggerCard.owner)
+        setTileStatus(
+          randomTile.tile,
+          randomTile.position,
+          {
+            status: TileStatus.Cursed,
+            turns_left: 1000,
+            terrain: TileTerrain.Lava,
+            animation_label: "lava",
+            effect_duration: 1000,
+            applies_to_user: getOpponentId(triggerCard.owner, state), // Only affect enemy cards
+            power: { top: -1, bottom: -1, left: -1, right: -1 },
+          },
+          triggerCard.owner
+        )
       );
     }
 
@@ -396,12 +398,12 @@ export const polynesianAbilities: AbilityMap = {
     return [];
   },
 
-  // Sacred Spring: If in water, bless a random ally and cleanse adjacent allies of 1 curse at the start of each round
+  // Sacred Spring: If in water, grant +1 to a random card in your hand at the end of each round
   "Sacred Spring": (context) => {
     const {
       triggerCard,
       position,
-      state: { board },
+      state: { board, player1, player2, hydrated_card_data_cache },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
 
@@ -414,17 +416,20 @@ export const polynesianAbilities: AbilityMap = {
       return [];
     }
 
-    // Cleanse adjacent allies (this should trigger each turn)
-    getAlliesAdjacentTo(position, board, triggerCard.owner).map((ally) =>
-      gameEvents.push(cleanseDebuffs(ally, 1))
-    );
+    //get player's hand
+    const player = triggerCard.owner === player1.user_id ? player1 : player2;
 
-    // Bless a random ally
-    const randomAlly = chooseRandomCard(
-      getAllAlliesOnBoard(board, triggerCard.owner)
-    );
-    gameEvents.push(createOrUpdateBuff(randomAlly, 1000, 1, "Sacred Spring"));
-
+    if (player.hand.length > 0) {
+      const randomIndex = Math.floor(Math.random() * player.hand.length);
+      const randomCard = hydrated_card_data_cache?.[player.hand[randomIndex]];
+      if (randomCard) {
+        gameEvents.push(
+          addTempBuff(randomCard, 1000, 1, "Sacred Spring", {
+            animation: "sacred-spring",
+          })
+        );
+      }
+    }
     return gameEvents;
   },
 
@@ -481,31 +486,53 @@ export const polynesianAbilities: AbilityMap = {
       triggerCard,
       position,
       state: { board },
+      triggerMoment,
     } = context;
     const gameEvents: BaseGameEvent[] = [];
 
-    if (!position) return [];
+    if (triggerMoment === TriggerMoment.OnPlace) {
+      if (!position) return [];
 
-    // Fill one empty adjacent tile with water
-    const waterTileEvent = fillRandomEmptyTileWithWater(
-      position,
-      board,
-      triggerCard.owner
-    );
-    if (waterTileEvent) gameEvents.push(waterTileEvent);
-
-    // TODO: Need to implement "placed after" tracking system
-    // This requires tracking card placement order and applying effects to future placements
+      // Fill one empty adjacent tile with water
+      const waterTileEvent = fillRandomEmptyTileWithWater(
+        position,
+        board,
+        triggerCard.owner
+      );
+      if (waterTileEvent) gameEvents.push(waterTileEvent);
+    } else if (triggerMoment === TriggerMoment.AnyOnPlace) {
+      const { originalTriggerCard } = context;
+      if (originalTriggerCard?.owner === triggerCard.owner) {
+        const randomSide = getRandomSide();
+        gameEvents.push(
+          addTempBuff(
+            originalTriggerCard,
+            1000,
+            { [randomSide]: 1 },
+            "Rain's Blessing",
+            {
+              animation: "rain-blessing",
+              position: getPositionOfCardById(
+                originalTriggerCard.user_card_instance_id,
+                board
+              )!,
+            }
+          )
+        );
+      }
+    }
 
     return gameEvents;
   },
 
-  // Spirit Bind: Any card that flips Milu loses 1 power permanently.
+  // Spirit Bind: Any card that flips Milu loses 2 power permanently.
   "Spirit Bind": (context) => {
     const { flippedBy } = context;
 
     if (flippedBy) {
-      return [debuff(flippedBy, -1)];
+      return [
+        debuff(flippedBy, -2, "Spirit Bind", { animation: "spirit-bind" }),
+      ];
     }
 
     return [];
@@ -540,14 +567,19 @@ export const polynesianAbilities: AbilityMap = {
       );
       //curse previous tile
       gameEvents.push(
-        setTileStatus(getTileAtPosition(position, state.board)!, position, {
-          status: TileStatus.Cursed,
-          turns_left: 1000,
-          animation_label: "cursed",
-          power: { top: -1, bottom: -1, left: -1, right: -1 },
-          effect_duration: 1000,
-          applies_to_user: getOpponentId(triggerCard.owner, state),
-        }, triggerCard.owner)
+        setTileStatus(
+          getTileAtPosition(position, state.board)!,
+          position,
+          {
+            status: TileStatus.Cursed,
+            turns_left: 1000,
+            animation_label: "cursed",
+            power: { top: -1, bottom: -1, left: -1, right: -1 },
+            effect_duration: 1000,
+            applies_to_user: getOpponentId(triggerCard.owner, state),
+          },
+          triggerCard.owner
+        )
       );
     }
 
@@ -564,14 +596,19 @@ export const polynesianAbilities: AbilityMap = {
     const emptyAdjacentTiles = getEmptyAdjacentTiles(position, state.board);
     for (const { position: tilePos, tile } of emptyAdjacentTiles) {
       gameEvents.push(
-        setTileStatus(tile, tilePos, {
-          status: TileStatus.Cursed,
-          turns_left: 3,
-          animation_label: "cursed",
-          power: { top: -1, bottom: -1, left: -1, right: -1 },
-          effect_duration: 1000,
-          applies_to_user: getOpponentId(triggerCard.owner, state),
-        }, triggerCard.owner)
+        setTileStatus(
+          tile,
+          tilePos,
+          {
+            status: TileStatus.Cursed,
+            turns_left: 3,
+            animation_label: "cursed",
+            power: { top: -3, bottom: -3, left: -3, right: -3 },
+            effect_duration: 1000,
+            applies_to_user: getOpponentId(triggerCard.owner, state),
+          },
+          triggerCard.owner
+        )
       );
     }
 
@@ -606,7 +643,7 @@ export const polynesianAbilities: AbilityMap = {
     const event = addTempDebuff(
       randomEnemy,
       1000,
-      { [randomSide]: -1 },
+      { [randomSide]: -2 },
       {
         animation: "lightning",
         ...(enemyPosition && { position: enemyPosition }),
@@ -616,7 +653,7 @@ export const polynesianAbilities: AbilityMap = {
     return [event];
   },
 
-  // Dual Aspect: Grant -1 on one side of a random enemy for each water tile on the board
+  // Dual Aspect: Grant -1 to a random enemy for each water tile on the board
   "Dual Aspect": (context) => {
     const {
       triggerCard,
@@ -637,8 +674,9 @@ export const polynesianAbilities: AbilityMap = {
 
     for (let i = 0; i < waterTiles.length; i++) {
       const randomEnemy = chooseRandomCard(enemies);
-      const randomSide = getRandomSide();
-      gameEvents.push(addTempDebuff(randomEnemy, 1000, { [randomSide]: -1 }));
+      gameEvents.push(
+        addTempDebuff(randomEnemy, 1000, -1, { animation: "dual-aspect" })
+      );
     }
     return gameEvents;
   },

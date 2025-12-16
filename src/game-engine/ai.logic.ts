@@ -230,9 +230,9 @@ export class AILogic {
         currentGameState.hydrated_card_data_cache?.[instanceIdInHand];
 
       if (!cardData) {
-        const fetchedCard = await GameLogic.hydrateCardInstance(
-          instanceIdInHand
-        );
+        const fetchedCard = (
+          await GameLogic.hydrateCardInstances([instanceIdInHand])
+        ).get(instanceIdInHand);
         if (!fetchedCard) continue;
         cardData = fetchedCard;
       }
@@ -269,7 +269,7 @@ export class AILogic {
             // Adjust score based on hold value
             // Negative hold value means "play it now" and boosts the score
             // Positive hold value means "consider holding" and reduces the score
-            const adjustedScore = baseScore - (holdValue * 0.5);
+            const adjustedScore = baseScore - holdValue * 0.5;
 
             possibleMoves.push({
               user_card_instance_id: instanceIdInHand,

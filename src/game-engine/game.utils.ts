@@ -720,7 +720,9 @@ export async function hydrateGameStateCards(
   // Hydrate all missing cards
   const hydrationPromises = Array.from(missingCardIds).map(async (cardId) => {
     try {
-      const cardData = await GameLogic.hydrateCardInstance(cardId);
+      const cardData = (await GameLogic.hydrateCardInstances([cardId])).get(
+        cardId
+      );
       if (cardData) {
         gameState.hydrated_card_data_cache![cardId] = cardData;
       }

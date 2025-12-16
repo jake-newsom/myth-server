@@ -14,6 +14,7 @@ export interface AuthenticatedRequest extends Request {
     facebook_id?: string;
     auth_provider: "local" | "facebook";
     password_hash?: string;
+    role?: "user" | "admin";
   };
   sessionId?: string;
 }

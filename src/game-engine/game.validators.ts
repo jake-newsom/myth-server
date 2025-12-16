@@ -74,19 +74,6 @@ export function getExistingCardAtPosition(
   return cell;
 }
 
-export function isCardInPlayerHand(
-  gameState: GameState,
-  playerId: string,
-  userCardInstanceId: string
-): boolean {
-  const player =
-    gameState.player1.user_id === playerId
-      ? gameState.player1
-      : gameState.player2;
-
-  return player.hand.indexOf(userCardInstanceId) !== -1;
-}
-
 export function getCardIndexInHand(
   gameState: GameState,
   playerId: string,
@@ -110,44 +97,6 @@ export function getOpponent(gameState: GameState, playerId: string) {
   return gameState.player1.user_id === playerId
     ? gameState.player2
     : gameState.player1;
-}
-
-export function checkAdjacentCells(
-  board: (BoardCell | null)[][],
-  position: BoardPosition,
-  playerId: string
-): { x: number; y: number; direction: { from: string; to: string } }[] {
-  const directions = [
-    { dx: 0, dy: -1, from: "bottom", to: "top" }, // Card above
-    { dx: 1, dy: 0, from: "left", to: "right" }, // Card to the right
-    { dx: 0, dy: 1, from: "top", to: "bottom" }, // Card below
-    { dx: -1, dy: 0, from: "right", to: "left" }, // Card to the left
-  ];
-
-  const adjacentOpponentCells = [];
-
-  for (const dir of directions) {
-    const nx = position.x + dir.dx;
-    const ny = position.y + dir.dy;
-
-    if (
-      nx >= 0 &&
-      nx < BOARD_SIZE &&
-      ny >= 0 &&
-      ny < BOARD_SIZE &&
-      board[ny][nx] &&
-      board[ny][nx]!.card &&
-      board[ny][nx]!.card!.owner !== playerId
-    ) {
-      adjacentOpponentCells.push({
-        x: nx,
-        y: ny,
-        direction: { from: dir.from, to: dir.to },
-      });
-    }
-  }
-
-  return adjacentOpponentCells;
 }
 
 export function isBoardFull(board: (BoardCell | null)[][]): boolean {
