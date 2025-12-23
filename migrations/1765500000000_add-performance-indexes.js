@@ -261,3 +261,4 @@ exports.down = (pgm) => {
 
   console.log('✓ All performance indexes removed');
 };
+

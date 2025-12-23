@@ -3,6 +3,7 @@ import CardModel from "../../models/card.model";
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { RarityUtils } from "../../types/card.types";
+import { redisCache } from "../../services/redis.cache.service";
 
 const CardController = {
   /**
@@ -93,7 +94,44 @@ const CardController = {
       }
 
       const filters = { rarity, name, tag, ids: processedIds };
+      
+      // Generate cache key based on query parameters
+      // Only cache when no filters are applied and limit=0 (fetch all cards)
+      const shouldCache = limitNum === 0 && !rarity && !name && !tag && !ids;
+      const cacheKey = "cards:all";
+      
+      // Try to get from cache first if caching is applicable
+      if (shouldCache) {
+        const cachedResult = await redisCache.get(cacheKey);
+        if (cachedResult) {
+          // Generate ETag for cached data
+          const dataHash = crypto
+            .createHash("md5")
+            .update(JSON.stringify(cachedResult))
+            .digest("hex")
+            .substring(0, 8);
+
+          res.set({
+            "Cache-Control": "public, max-age=3600, s-maxage=3600",
+            ETag: `"cards-all-${dataHash}"`,
+            "Last-Modified": new Date().toUTCString(),
+            Vary: "Accept-Encoding",
+            "X-Cache": "HIT", // Indicate cache hit
+          });
+
+          res.status(200).json(cachedResult);
+          return;
+        }
+      }
+
+      // Fetch from database
       const result = await CardModel.findAllStatic(filters, pageNum, limitNum);
+
+      // Cache the result if applicable
+      if (shouldCache) {
+        // Cache for 1 hour (3600 seconds)
+        await redisCache.set(cacheKey, result, 3600);
+      }
 
       // Add caching headers when returning all cards (limit=0)
       if (limitNum === 0) {
@@ -110,6 +148,7 @@ const CardController = {
           ETag: `"cards-all-${dataHash}"`, // ETag based on actual data content
           "Last-Modified": new Date().toUTCString(),
           Vary: "Accept-Encoding", // Important for compressed responses
+          "X-Cache": "MISS", // Indicate cache miss
         });
       }
 

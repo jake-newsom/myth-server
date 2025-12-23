@@ -66,7 +66,7 @@ export interface CardResponse {
     parameters: Record<string, any>;
   } | null;
   power_enhancements?: PowerValues;
-  attackAnimation?: string; // Custom attack animation for card flips
+  attack_animation?: string; // Custom attack animation for card flips
 }
 
 export interface StaticCardCollectionResponse {
@@ -112,7 +112,12 @@ export interface MonthlyLoginStatusResponse {
   available_days: number[]; // Array of days that can be claimed (up to current_day)
   rewards: Array<{
     day: number;
-    reward_type: "gems" | "fate_coins" | "card_fragments" | "card_pack" | "enhanced_card";
+    reward_type:
+      | "gems"
+      | "fate_coins"
+      | "card_fragments"
+      | "card_pack"
+      | "enhanced_card";
     amount: number;
     is_claimed: boolean;
     can_claim: boolean;
@@ -126,7 +131,12 @@ export interface ClaimMonthlyRewardResponse {
   message: string;
   reward: {
     day: number;
-    reward_type: "gems" | "fate_coins" | "card_fragments" | "card_pack" | "enhanced_card";
+    reward_type:
+      | "gems"
+      | "fate_coins"
+      | "card_fragments"
+      | "card_pack"
+      | "enhanced_card";
     amount: number;
     card_id?: string; // user_card_instance_id for enhanced_card rewards
   };

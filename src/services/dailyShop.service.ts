@@ -9,6 +9,7 @@ import {
   CurrencyType,
 } from "../types/database.types";
 import { logger } from "../utils/logger";
+import { cacheInvalidation } from "./cache.invalidation.service";
 
 interface ShopPurchaseRequest {
   offeringId: string;
@@ -242,6 +243,9 @@ const DailyShopService = {
         ? this.getUserCurrencyAmount(updatedUser, offering.currency)
         : 0;
 
+      // Invalidate user's card cache if a card was purchased
+      await cacheInvalidation.invalidateAfterShopPurchase(userId, offering.item_type);
+
       logger.info(`Daily shop purchase completed`, {
         userId,
         itemType: offering.item_type,
@@ -283,31 +287,54 @@ const DailyShopService = {
       const configs = await DailyShopModel.getShopConfig();
 
       let slotNumber = 1;
+      let offeringsCreated = 0;
 
       for (const config of configs) {
-        if (!config.is_active) continue;
+        if (!config.is_active) {
+          logger.warn(
+            `Skipping ${config.item_type} - configuration is inactive`
+          );
+          continue;
+        }
 
         if (
           config.item_type === "legendary_card" ||
           config.item_type === "epic_card"
         ) {
           // Generate mythology-based cards
-          await this.generateMythologyCards(targetDate, config, slotNumber);
+          const created = await this.generateMythologyCards(
+            targetDate,
+            config,
+            slotNumber
+          );
+          offeringsCreated += created;
           slotNumber += 3; // 3 mythologies
         } else if (config.item_type === "enhanced_card") {
           // Generate random enhanced cards
-          await this.generateEnhancedCards(targetDate, config, slotNumber);
+          const created = await this.generateEnhancedCards(
+            targetDate,
+            config,
+            slotNumber
+          );
+          offeringsCreated += created;
           slotNumber += config.daily_availability;
         } else if (config.item_type === "pack") {
           // Generate pack offering
           await this.generatePackOffering(targetDate, config, slotNumber);
+          offeringsCreated += 1;
           slotNumber += 1;
         }
       }
 
-      logger.info(
-        `Successfully generated daily shop offerings for ${targetDate}`
-      );
+      if (offeringsCreated === 0) {
+        logger.error(
+          `WARNING: No shop offerings were created for ${targetDate}! Check configurations and card availability.`
+        );
+      } else {
+        logger.info(
+          `Successfully generated ${offeringsCreated} daily shop offerings for ${targetDate}`
+        );
+      }
     } catch (error) {
       logger.error(
         `Error generating daily shop offerings for ${targetDate}:`,
@@ -319,15 +346,17 @@ const DailyShopService = {
 
   /**
    * Generate mythology-based card offerings (legendary/epic)
+   * @returns Number of offerings created
    */
   async generateMythologyCards(
     shopDate: string,
     config: DailyShopConfig,
     startingSlot: number
-  ): Promise<void> {
+  ): Promise<number> {
     const mythologies = ["norse", "japanese", "polynesian"];
     const baseRarity =
       config.item_type === "legendary_card" ? "legendary" : "epic";
+    let offeringsCreated = 0;
 
     for (let i = 0; i < mythologies.length; i++) {
       const mythology = mythologies[i];
@@ -345,7 +374,9 @@ const DailyShopService = {
       );
 
       if (availableCards.length === 0) {
-        logger.warn(`No ${baseRarity} cards found for ${mythology} mythology`);
+        logger.error(
+          `CRITICAL: No ${baseRarity} cards found for ${mythology} mythology - cannot create shop offering!`
+        );
         continue;
       }
 
@@ -382,23 +413,34 @@ const DailyShopService = {
         slot_number: startingSlot + i,
       });
 
+      offeringsCreated++;
       logger.info(
         `Added ${mythology} ${baseRarity} card: ${selectedCard.name} to daily shop`
       );
     }
+
+    return offeringsCreated;
   },
 
   /**
    * Generate random enhanced card offerings
+   * @returns Number of offerings created
    */
   async generateEnhancedCards(
     shopDate: string,
     config: DailyShopConfig,
     startingSlot: number
-  ): Promise<void> {
+  ): Promise<number> {
     const enhancedCards = await DailyShopModel.getEnhancedCards(
       config.daily_availability
     );
+
+    if (enhancedCards.length === 0) {
+      logger.warn(
+        `No enhanced cards found in database - cannot create enhanced card offerings`
+      );
+      return 0;
+    }
 
     for (let i = 0; i < enhancedCards.length; i++) {
       const card = enhancedCards[i];
@@ -417,6 +459,8 @@ const DailyShopService = {
         `Added enhanced card: ${card.name} (${card.rarity}) to daily shop`
       );
     }
+
+    return enhancedCards.length;
   },
 
   /**

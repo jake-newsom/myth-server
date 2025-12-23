@@ -7,6 +7,7 @@ import {
   PowerUpValidationResult,
 } from "../types";
 import logger from "../utils/logger";
+import { cacheInvalidation } from "./cache.invalidation.service";
 
 class PowerUpService {
   /**
@@ -183,6 +184,9 @@ class PowerUpService {
           JSON.stringify(newPowerUpData),
         ]);
       }
+
+      // Invalidate user's card cache since power enhancements changed
+      await cacheInvalidation.invalidateAfterPowerEnhancement(userId);
 
       return {
         success: true,

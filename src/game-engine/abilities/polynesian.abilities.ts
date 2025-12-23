@@ -511,7 +511,7 @@ export const polynesianAbilities: AbilityMap = {
             { [randomSide]: 1 },
             "Rain's Blessing",
             {
-              animation: "rain-blessing",
+              animation: "bubbles-centered",
               position: getPositionOfCardById(
                 originalTriggerCard.user_card_instance_id,
                 board
@@ -531,7 +531,7 @@ export const polynesianAbilities: AbilityMap = {
 
     if (flippedBy) {
       return [
-        debuff(flippedBy, -2, "Spirit Bind", { animation: "spirit-bind" }),
+        debuff(flippedBy, -2, "Spirit Bind", { animation: "smoke-shrink" }),
       ];
     }
 

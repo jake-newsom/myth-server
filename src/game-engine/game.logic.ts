@@ -115,7 +115,7 @@ export class GameLogic {
                 }
               : null,
             ...(row.attack_animation && {
-              attackAnimation: row.attack_animation,
+              attack_animation: row.attack_animation,
             }),
           },
           level: row.level,

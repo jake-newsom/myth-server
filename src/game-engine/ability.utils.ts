@@ -798,7 +798,10 @@ export function getCardsInSameColumn(
   return cards;
 }
 
-export function removeTemporaryBuffs(card: InGameCard): BaseGameEvent {
+export function removeTemporaryBuffs(
+  card: InGameCard,
+  animation?: string
+): BaseGameEvent {
   // Remove positive temporary effects only, keeping debuffs
   if (card.temporary_effects) {
     card.temporary_effects = card.temporary_effects.filter((effect) => {
@@ -812,7 +815,7 @@ export function removeTemporaryBuffs(card: InGameCard): BaseGameEvent {
 
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
-    animation: "buff-removed",
+    animation: animation || "buff-removed",
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
@@ -821,7 +824,8 @@ export function removeTemporaryBuffs(card: InGameCard): BaseGameEvent {
 
 export function removeBuffsByCondition(
   card: InGameCard,
-  condition: (effect: TemporaryEffect) => boolean
+  condition: (effect: TemporaryEffect) => boolean,
+  animation?: string
 ): BaseGameEvent {
   if (card.temporary_effects) {
     card.temporary_effects = card.temporary_effects.filter(
@@ -830,7 +834,7 @@ export function removeBuffsByCondition(
   }
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
-    animation: "buff-removed",
+    animation: animation || "buff-removed",
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,

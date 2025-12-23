@@ -8,7 +8,10 @@ paths:
   /api/cards:
     get:
       summary: Get all static cards
-      description: Retrieve a list of static card data with optional filtering. Card items will not include user-specific fields like user_card_instance_id, level, xp, or power_enhancements. When limit=0, responses include caching headers for optimal performance.
+      description: |
+        Retrieve a list of static card data with optional filtering. Card items will not include user-specific fields like user_card_instance_id, level, xp, or power_enhancements.
+        
+        **Caching:** When fetching all cards (limit=0) without filters, responses are cached in Redis for 1 hour. The response includes an `X-Cache` header indicating whether the data was served from cache (HIT) or database (MISS). HTTP caching headers (ETag, Cache-Control) are also included for optimal client-side caching.
       tags:
         - Cards
       parameters:
@@ -73,6 +76,22 @@ paths:
       responses:
         "200":
           description: Successfully retrieved cards
+          headers:
+            X-Cache:
+              description: Indicates whether the response was served from cache (HIT) or database (MISS)
+              schema:
+                type: string
+                enum: [HIT, MISS]
+            Cache-Control:
+              description: HTTP caching directives (present when limit=0)
+              schema:
+                type: string
+                example: "public, max-age=3600, s-maxage=3600"
+            ETag:
+              description: Entity tag for cache validation (present when limit=0)
+              schema:
+                type: string
+                example: '"cards-all-a1b2c3d4"'
           content:
             application/json:
               schema:

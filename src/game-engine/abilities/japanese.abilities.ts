@@ -92,7 +92,7 @@ export const japaneseAbilities: AbilityMap = {
     const enemiesInRow = getCardsInSameRow(position, board, triggerCard.owner);
 
     for (const enemy of enemiesInRow) {
-      gameEvents.push(addTempDebuff(enemy, 3, -1));
+      gameEvents.push(addTempDebuff(enemy, 3, -1, { animation: "snow-swirl" }));
     }
 
     return gameEvents;
@@ -172,7 +172,8 @@ export const japaneseAbilities: AbilityMap = {
       gameEvents.push(
         removeBuffsByCondition(
           randomEnemy,
-          (effect) => effect.name === randomBuff.name
+          (effect) => effect.name === randomBuff.name,
+          "smoke-shrink"
         )
       );
       // add the buff to trigger card
@@ -279,7 +280,11 @@ export const japaneseAbilities: AbilityMap = {
     }
 
     if (Object.values(buffs).some((value) => value > 0)) {
-      return [addTempBuff(triggerCard, 3, buffs)];
+      return [
+        addTempBuff(triggerCard, 3, buffs, "echo-power", {
+          animation: "light-cross-spin",
+        }),
+      ];
     }
 
     return [];
@@ -303,7 +308,7 @@ export const japaneseAbilities: AbilityMap = {
     );
 
     for (const enemy of adjacentEnemies) {
-      gameEvents.push(removeTemporaryBuffs(enemy));
+      gameEvents.push(removeTemporaryBuffs(enemy, "smoke-swirl"));
     }
 
     return gameEvents;
@@ -509,7 +514,7 @@ export const japaneseAbilities: AbilityMap = {
           const destroyEvent = destroyCardAtPosition(
             enemyPosition,
             board,
-            "destroy",
+            "blast-up",
             triggerCard.owner
           );
           if (destroyEvent) {

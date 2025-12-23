@@ -327,7 +327,8 @@ export function flipCard(
   state: GameState,
   position: BoardPosition,
   target: InGameCard,
-  source: InGameCard
+  source: InGameCard,
+  customAttackAnimation?: string
 ): BaseGameEvent[] {
   /**
    * Check various ways a card could be protected from defeat.
@@ -365,7 +366,8 @@ export function flipCard(
   if (!targetPosition) return events;
 
   // Check if the source card has a custom attack animation
-  const attackAnimation = source.base_card_data.attack_animation;
+  const attackAnimation =
+    customAttackAnimation || source.base_card_data.attack_animation;
 
   events.push({
     type: EVENT_TYPES.CARD_FLIPPED,

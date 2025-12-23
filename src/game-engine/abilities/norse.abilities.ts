@@ -324,7 +324,7 @@ export const norseAbilities: AbilityMap = {
     for (const ally of adjacentAllies) {
       gameEvents.push(
         addTempBuff(ally, 2, 2, "Warrior's Blessing", {
-          animation: "warrior-blessing",
+          animation: "light-cross-spin",
         })
       );
     }
@@ -406,7 +406,8 @@ export const norseAbilities: AbilityMap = {
               state.board
             )!,
             selectedCard,
-            triggerCard
+            triggerCard,
+            "trickster-gambit"
           )
         );
       }
@@ -486,7 +487,9 @@ export const norseAbilities: AbilityMap = {
         // This enemy is already being removed, don't also debuff it.
         continue;
       }
-      gameEvents.push(debuff(enemy, -1));
+      gameEvents.push(
+        debuff(enemy, -1, "Flames of Muspelheim", { animation: "flames" })
+      );
     }
 
     return gameEvents;

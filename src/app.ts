@@ -20,6 +20,7 @@ import SessionCleanupService from "./services/sessionCleanup.service";
 import DailyRewardsService from "./services/dailyRewards.service";
 import DailyTaskService from "./services/dailyTask.service";
 import StartupService from "./services/startup.service";
+import { redisCache } from "./services/redis.cache.service";
 
 // Setup Swagger
 const swaggerOptions = {
@@ -112,6 +113,14 @@ if (require.main === module) {
     console.log(`Server is running on port ${PORT}`);
     console.log(`Access at http://localhost:${PORT}`);
 
+    // Initialize Redis cache
+    try {
+      await redisCache.connect();
+      console.log("✅ Redis cache connected successfully");
+    } catch (error) {
+      console.error("⚠️  Redis cache connection failed (continuing without cache):", error);
+    }
+
     // Run startup initialization
     try {
       await StartupService.initialize();
@@ -168,7 +177,7 @@ if (require.main === module) {
 }
 
 // Graceful shutdown handler
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   console.log("🛑 SIGTERM received, shutting down gracefully");
   if (automationSchedulerTask) {
     AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerTask);
@@ -181,10 +190,11 @@ process.on("SIGTERM", () => {
     console.log("🎯 Daily Task Scheduler stopped");
   }
   SessionCleanupService.stop();
+  await redisCache.disconnect();
   process.exit(0);
 });
 
-process.on("SIGINT", () => {
+process.on("SIGINT", async () => {
   console.log("🛑 SIGINT received, shutting down gracefully");
   if (automationSchedulerTask) {
     AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerTask);
@@ -197,6 +207,7 @@ process.on("SIGINT", () => {
     console.log("🎯 Daily Task Scheduler stopped");
   }
   SessionCleanupService.stop();
+  await redisCache.disconnect();
   process.exit(0);
 });
 

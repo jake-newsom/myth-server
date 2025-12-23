@@ -11,6 +11,7 @@ import {
 } from "../types/service.types";
 import { XP_CONFIG, RARITY_MULTIPLIERS } from "../config/constants";
 import DailyTaskService from "./dailyTask.service";
+import { cacheInvalidation } from "./cache.invalidation.service";
 
 const XpService = {
   // Calculate level from XP using new bracket system
@@ -245,6 +246,9 @@ const XpService = {
 
       await client.query("COMMIT");
 
+      // Invalidate user's card cache since cards were sacrificed
+      await cacheInvalidation.invalidateAfterSacrifice(userId);
+
       return {
         success: true,
         message: `Sacrificed ${cardIds.length} ${cardName}(s) for ${totalXpValue} XP and ${totalCardFragments} Card Fragments`,
@@ -431,6 +435,9 @@ const XpService = {
 
       await client.query("COMMIT");
 
+      // Invalidate user's card cache since cards were sacrificed
+      await cacheInvalidation.invalidateAfterSacrifice(userId);
+
       return {
         success: true,
         message: `Sacrificed ${
@@ -511,6 +518,9 @@ const XpService = {
           console.warn("Error tracking level up for daily task:", error);
           // Don't fail the XP application if tracking fails
         }
+
+        // Invalidate user's card cache since card leveled up
+        await cacheInvalidation.invalidateAfterLevelUp(userId);
       }
 
       // Update pool

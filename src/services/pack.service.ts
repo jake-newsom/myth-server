@@ -4,6 +4,7 @@ import { Card } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
 import logger from "../utils/logger";
 import DailyTaskService from "./dailyTask.service";
+import { cacheInvalidation } from "./cache.invalidation.service";
 
 const CARDS_PER_PACK = 5;
 const GOD_PACK_CHANCE = 1 / 1500; // 1 in 1500 chance
@@ -72,10 +73,13 @@ const PackService = {
     // 7. Add the selected cards to user's collection
     await this.addCardsToUserCollection(userId, selectedCards);
 
-    // 8. Log the pack opening to history
+    // 8. Invalidate user's card cache since collection changed
+    await cacheInvalidation.invalidateAfterPackOpen(userId);
+
+    // 9. Log the pack opening to history
     await this.logPackOpening(userId, setId, selectedCards);
 
-    // 9. Trigger achievement events for pack opening
+    // 10. Trigger achievement events for pack opening
     try {
       const AchievementService = await import("./achievement.service");
 
@@ -627,6 +631,9 @@ const PackService = {
         // Add this pack's cards to the result
         packs.push(selectedCards);
       }
+
+      // Invalidate user's card cache since collection changed
+      await cacheInvalidation.invalidateAfterPackOpen(userId);
 
       // Track daily task progress for pack openings
       try {

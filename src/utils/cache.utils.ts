@@ -124,3 +124,4 @@ export const CacheKeys = {
   userStoryProgress: (userId: string, storyId: string) =>
     `story:progress:${userId}:${storyId}`,
 };
+
