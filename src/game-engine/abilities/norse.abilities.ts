@@ -164,7 +164,9 @@ export const norseAbilities: AbilityMap = {
       triggerCard.owner
     );
     for (const ally of adjacentAllies) {
-      gameEvents.push(buff(ally, 1));
+      gameEvents.push(
+        buff(ally, 1, "Mother's Blessing", { animation: "light-cross-spin" })
+      );
     }
 
     return gameEvents;

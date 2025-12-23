@@ -150,7 +150,7 @@ export function addTempBuff(
 
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
-    animation: "buff",
+    animation: data?.animation || "buff",
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
