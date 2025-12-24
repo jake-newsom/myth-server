@@ -1,8 +1,4 @@
-import {
-  AbilityMap,
-  COMBAT_TYPES,
-  CombatResolverMap,
-} from "../../types/game-engine.types";
+import { AbilityMap, CombatResolverMap } from "../../types/game-engine.types";
 import { InGameCard } from "../../types/card.types";
 import { simulationContext } from "../simulation.context";
 import {
@@ -13,16 +9,12 @@ import {
   getStrongestAdjacentEnemy,
   getCardsByCondition,
   getEnemiesAdjacentTo,
-  getAdjacentPositions,
-  getTileAtPosition,
   setTileStatus,
   addTempDebuff,
   getAllAlliesOnBoard,
   addTempBuff,
   pullCardsIn,
-  pushCardAway,
   cleanseDebuffs,
-  blockTile,
   getCardHighestPower,
   getCardTotalPower,
   destroyCardAtPosition,
@@ -30,6 +22,7 @@ import {
   createOrUpdateBuff,
   getCardsInSameColumn,
   getSurroundingTiles,
+  getRandomSide,
 } from "../ability.utils";
 import { drawCardSync, flipCard } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
@@ -75,7 +68,7 @@ export const norseAbilities: AbilityMap = {
       const removeEvent = destroyCardAtPosition(
         position,
         board,
-        undefined,
+        "blast-up-2",
         triggerCard.owner
       );
       if (removeEvent) {
@@ -107,7 +100,9 @@ export const norseAbilities: AbilityMap = {
     const gameEvents: BaseGameEvent[] = [];
     const allAllies = getAllAlliesOnBoard(board, triggerCard.owner);
     for (const ally of allAllies) {
-      gameEvents.push(buff(ally, 1));
+      gameEvents.push(
+        buff(ally, 1, "Foresight", { animation: "red-lightning" })
+      );
     }
     return gameEvents;
   },
@@ -135,7 +130,7 @@ export const norseAbilities: AbilityMap = {
           1000,
           { top: -2 },
           {
-            animation: "lightning",
+            animation: "lightning-6",
             ...(getPositionOfCardById(enemy.user_card_instance_id, board) && {
               position: getPositionOfCardById(
                 enemy.user_card_instance_id,
@@ -188,7 +183,9 @@ export const norseAbilities: AbilityMap = {
         const allCards = getCardsByCondition(board, (card) => true);
         for (const card of allCards) {
           gameEvents.push(
-            debuff(card, -1, "Watchman's Gate", { animation: "watchman-gate" })
+            debuff(card, -1, "Watchman's Gate", {
+              animation: "lightning-circle",
+            })
           );
         }
         const player =
@@ -268,7 +265,9 @@ export const norseAbilities: AbilityMap = {
     }
     if (odinDefeated) {
       for (const ally of getAllAlliesOnBoard(board, triggerCard.owner)) {
-        gameEvents.push(buff(ally, 3));
+        gameEvents.push(
+          buff(ally, 3, "Silent Vengeance", { animation: "triangle-shield" })
+        );
       }
     }
     return gameEvents;
@@ -305,7 +304,11 @@ export const norseAbilities: AbilityMap = {
       tag: "Sea",
     });
     if (adjacentSeaCards.length > 0) {
-      gameEvents.push(buff(triggerCard, 3));
+      gameEvents.push(
+        buff(triggerCard, 3, "Sea's Protection", {
+          animation: "splash-up-down",
+        })
+      );
     }
     return gameEvents;
   },
@@ -539,10 +542,12 @@ export const norseAbilities: AbilityMap = {
       position,
       state: { board },
     } = context;
-    const gameEvents: BaseGameEvent[] = [];
-    return pullCardsIn(position, board, triggerCard.owner);
+    const events = pullCardsIn(position, board, triggerCard.owner);
 
-    return gameEvents;
+    return events.map((event) => {
+      event.animation = "pull"; //currently the same but we may change it later
+      return event;
+    });
   },
 
   // Valkyrie Sisterhood: Gain +2 if adjacent to another Valkyrie.
@@ -576,7 +581,7 @@ export const norseAbilities: AbilityMap = {
       triggerCard.owner
     );
     for (const ally of adjacentAllies) {
-      gameEvents.push(cleanseDebuffs(ally, 1000));
+      gameEvents.push(cleanseDebuffs(ally, 1000, "light-purple-swirls"));
     }
     return gameEvents;
   },
@@ -608,7 +613,7 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  //Gain +1 for each Dragon on the board
+  //Gain +2 for each Dragon on the board
   "Dragon Slayer": (context) => {
     const {
       triggerCard,
@@ -682,7 +687,7 @@ export const norseAbilities: AbilityMap = {
             { [highestPower.key]: diff },
             "Binding Justice",
             {
-              animation: "binding-justice-up",
+              animation: "triangle-shield",
               position: getPositionOfCardById(
                 card.user_card_instance_id,
                 board
@@ -697,7 +702,7 @@ export const norseAbilities: AbilityMap = {
             1000,
             { [highestPower.key]: diff },
             {
-              animation: "binding-justice-down",
+              animation: "triangle-shield-down",
               position: getPositionOfCardById(
                 card.user_card_instance_id,
                 board
@@ -716,7 +721,6 @@ export const norseAbilities: AbilityMap = {
       triggerCard,
       state: { board },
     } = context;
-    simulationContext.debugLog("Devourer's Surge!");
     const gameEvents: BaseGameEvent[] = [];
 
     const FenrirTotalPower = getCardTotalPower(triggerCard);
@@ -726,40 +730,32 @@ export const norseAbilities: AbilityMap = {
     );
     if (!position) return [];
 
-    simulationContext.debugLog("FenrirTotalPower", FenrirTotalPower);
-    simulationContext.debugLog("position", position);
-
-    simulationContext.debugLog("triggerCard.owner", triggerCard.owner);
     const adjacentEnemies = getEnemiesAdjacentTo(
       position,
       board,
       triggerCard.owner
     ).filter((enemy) => {
       const enemyTotalPower = getCardTotalPower(enemy);
-      simulationContext.debugLog("enemyTotalPower", enemyTotalPower);
       return enemyTotalPower < FenrirTotalPower;
     });
-    simulationContext.debugLog("adjacentEnemies", adjacentEnemies);
 
     if (adjacentEnemies.length > 0) {
-      simulationContext.debugLog("adjacentEnemies", adjacentEnemies);
       const randomEnemy =
         adjacentEnemies[Math.floor(Math.random() * adjacentEnemies.length)];
-      simulationContext.debugLog("randomEnemy", randomEnemy);
       const destroyEvent = destroyCardAtPosition(
         getPositionOfCardById(randomEnemy.user_card_instance_id, board)!,
         board,
         "claw",
         triggerCard.owner
       );
-      simulationContext.debugLog("destroyEvent", destroyEvent);
       if (destroyEvent) {
         gameEvents.push(destroyEvent);
-        //Gain +1 to a random side
-        const sides = ["top", "bottom", "left", "right"] as const;
-        const randomSide = sides[Math.floor(Math.random() * sides.length)];
-        gameEvents.push(addTempBuff(triggerCard, 1000, { [randomSide]: 1 }));
-        simulationContext.debugLog("addTempBuff", addTempBuff);
+        const side = getRandomSide();
+        gameEvents.push(
+          addTempBuff(triggerCard, 1000, { [side]: 1 }, "Devourer's Surge", {
+            animation: "magic-up",
+          })
+        );
       }
     }
     return gameEvents;

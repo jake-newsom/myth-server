@@ -1,8 +1,4 @@
-import {
-  EffectType,
-  TemporaryEffect,
-  TriggerMoment,
-} from "../../types/card.types";
+import { TemporaryEffect, TriggerMoment } from "../../types/card.types";
 import {
   AbilityMap,
   CardEvent,
@@ -19,22 +15,16 @@ import {
   addTempBuff,
   updateCurrentPower,
   debuff,
-  getAlliesAdjacentTo,
   getCardsByCondition,
   getEnemiesAdjacentTo,
   setTileStatus,
   addTempDebuff,
-  getCardsInSameRow,
   getEmptyAdjacentTiles,
   cleanseDebuffs,
   getAllAlliesOnBoard,
   pushCardAway,
-  disableAbilities,
-  addTileBlessing,
-  protectFromDefeat,
   getPositionOfCardById,
   getOpponentId,
-  cardAtPosition,
   getCardTotalPower,
   createOrUpdateBuff,
   removeBuffsByCondition,
@@ -167,7 +157,7 @@ export const polynesianAbilities: AbilityMap = {
     );
 
     if (randomAlly) {
-      return [cleanseDebuffs(randomAlly, 1000)];
+      return [cleanseDebuffs(randomAlly, 1000, "nature-swirl")];
     }
     return [];
   },
@@ -193,7 +183,7 @@ export const polynesianAbilities: AbilityMap = {
 
     const allAllies = getAllAlliesOnBoard(board, triggerCard.owner);
     for (const ally of allAllies) {
-      gameEvents.push(cleanseDebuffs(ally, 1000));
+      gameEvents.push(cleanseDebuffs(ally, 1000, "rain"));
     }
 
     return gameEvents;
@@ -235,7 +225,7 @@ export const polynesianAbilities: AbilityMap = {
       if (tideWardCards.length > 0) {
         gameEvents.push(
           addTempBuff(triggerCard, 1000, tideWardCards.length, "Tide Ward", {
-            animation: "tide-ward",
+            animation: "bubble-swirl",
           })
         );
       }
@@ -256,7 +246,7 @@ export const polynesianAbilities: AbilityMap = {
 
   // War Stance: Gain +1 whenever an ally is defeated up to 5. At max, attack adjacent enemies again.
   "War Stance": (context) => {
-    const { triggerCard, originalTriggerCard, position, state } = context;
+    const { triggerCard, originalTriggerCard, state } = context;
     const label = "War Stance";
     const gameEvents: BaseGameEvent[] = [];
 
@@ -302,7 +292,7 @@ export const polynesianAbilities: AbilityMap = {
       if (hasBlessing) {
         gameEvents.push(
           addTempBuff(ally, 3, 1, "Fertile Ground", {
-            animation: "fertile-ground",
+            animation: "nature-swirl",
           })
         );
       }
@@ -330,7 +320,7 @@ export const polynesianAbilities: AbilityMap = {
       triggerCard.current_power = updateCurrentPower(triggerCard);
       gameEvents.push({
         type: EVENT_TYPES.CARD_POWER_CHANGED,
-        animation: "buff-removed",
+        animation: "explode-swirl",
         eventId: uuidv4(),
         timestamp: Date.now(),
         cardId: triggerCard.user_card_instance_id,
@@ -425,7 +415,7 @@ export const polynesianAbilities: AbilityMap = {
       if (randomCard) {
         gameEvents.push(
           addTempBuff(randomCard, 1000, 1, "Sacred Spring", {
-            animation: "sacred-spring",
+            animation: "bubble-swirl-in",
           })
         );
       }
@@ -450,7 +440,9 @@ export const polynesianAbilities: AbilityMap = {
       triggerCard.owner
     );
     for (const enemy of adjacentEnemies) {
-      gameEvents.push(debuff(enemy, -1));
+      gameEvents.push(
+        debuff(enemy, -1, "Icy Presence", { animation: "icicle" })
+      );
     }
 
     return gameEvents;
@@ -637,8 +629,7 @@ export const polynesianAbilities: AbilityMap = {
       board
     );
 
-    const sides = ["top", "bottom", "left", "right"] as const;
-    const randomSide = sides[Math.floor(Math.random() * sides.length)];
+    const randomSide = getRandomSide();
 
     const event = addTempDebuff(
       randomEnemy,
@@ -675,7 +666,7 @@ export const polynesianAbilities: AbilityMap = {
     for (let i = 0; i < waterTiles.length; i++) {
       const randomEnemy = chooseRandomCard(enemies);
       gameEvents.push(
-        addTempDebuff(randomEnemy, 1000, -1, { animation: "dual-aspect" })
+        addTempDebuff(randomEnemy, 1000, -1, { animation: "water-circles-few" })
       );
     }
     return gameEvents;

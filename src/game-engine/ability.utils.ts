@@ -889,7 +889,11 @@ export function getSurroundingTiles(
   }>;
 }
 
-export function cleanseDebuffs(card: InGameCard, count: number): BaseGameEvent {
+export function cleanseDebuffs(
+  card: InGameCard,
+  count: number,
+  animation?: string
+): BaseGameEvent {
   // Remove negative temporary effects (debuffs) up to the specified count
   if (card.temporary_effects) {
     let removed = 0;
@@ -911,7 +915,7 @@ export function cleanseDebuffs(card: InGameCard, count: number): BaseGameEvent {
 
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
-    animation: "cleanse",
+    animation: animation || "cleanse",
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
