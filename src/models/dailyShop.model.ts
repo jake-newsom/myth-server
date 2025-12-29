@@ -293,22 +293,29 @@ const DailyShopModel = {
     mythology: string,
     rarity: string
   ): Promise<any[]> {
+    // Map mythology name to set name (capitalize first letter)
+    const setName = mythology.charAt(0).toUpperCase() + mythology.slice(1);
+    
     const query = `
-      SELECT card_id, name, rarity, image_url, tags
-      FROM cards
-      WHERE $1 = ANY(tags) AND rarity::text = $2
-      ORDER BY name;
+      SELECT c.card_id, c.name, c.rarity, c.image_url, c.tags
+      FROM cards c
+      INNER JOIN sets s ON c.set_id = s.set_id
+      WHERE s.name = $1 AND c.rarity::text = $2
+      ORDER BY c.name;
     `;
 
-    const { rows } = await db.query(query, [mythology, rarity]);
+    console.log(`[DEBUG] getCardsByMythologyAndRarity called with mythology="${mythology}", rarity="${rarity}", setName="${setName}"`);
+    const { rows } = await db.query(query, [setName, rarity]);
+    console.log(`[DEBUG] Query returned ${rows.length} cards`);
     return rows;
   },
 
   async getEnhancedCards(limit: number = 10): Promise<any[]> {
     const query = `
-      SELECT card_id, name, rarity, image_url, tags
-      FROM cards
-      WHERE rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
+      SELECT c.card_id, c.name, c.rarity, c.image_url, c.tags, s.name as set_name
+      FROM cards c
+      INNER JOIN sets s ON c.set_id = s.set_id
+      WHERE c.rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
       ORDER BY RANDOM()
       LIMIT $1;
     `;

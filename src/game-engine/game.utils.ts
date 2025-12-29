@@ -389,29 +389,19 @@ export function flipCard(
     })
   );
 
-  // Track daily task progress for card defeats (fire-and-forget)
+  // Track daily progress, fail silently
   try {
     const defeatingPlayerId = state.current_player_id;
-    // Track generic defeat
-    DailyTaskService.trackDefeat(defeatingPlayerId).catch(() => {});
+    const setId = source.base_card_data?.set_id;
 
-    // Track mythology-specific defeats (check source card's tags for mythology)
-    const sourceTags = source.base_card_data?.tags || [];
-    const mythologies = ["norse", "japanese", "polynesian"];
-    for (const mythology of mythologies) {
-      if (
-        sourceTags.some((tag: string) => tag.toLowerCase().includes(mythology))
-      ) {
-        DailyTaskService.trackDefeatWithMythology(
-          defeatingPlayerId,
-          mythology
-        ).catch(() => {});
-        break; // Only track one mythology per defeat
-      }
-    }
-  } catch (error) {
-    // Silently ignore tracking errors during gameplay
-  }
+    setImmediate(() => {
+      DailyTaskService.trackDefeat(defeatingPlayerId).catch(() => {});
+      DailyTaskService.trackDefeatWithMythology(
+        defeatingPlayerId,
+        setId!
+      ).catch(() => {});
+    });
+  } catch {}
 
   return events;
 }

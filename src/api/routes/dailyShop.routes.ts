@@ -1,6 +1,7 @@
 import { Router } from "express";
 import DailyShopController from "../controllers/dailyShop.controller";
 import { authenticateJWT } from "../middlewares/auth.middleware";
+import { requireAdmin } from "../middlewares/adminAuth.middleware";
 import { moderateRateLimit } from "../middlewares/rateLimit.middleware";
 
 const router = Router();
@@ -20,28 +21,46 @@ router.post(
   DailyShopController.purchaseItem
 );
 
-// Admin endpoints (require authentication - additional admin check should be added in production)
-router.get("/admin/config", authenticateJWT, DailyShopController.getShopConfig);
+// Admin endpoints (require authentication + admin role)
+router.get(
+  "/admin/config",
+  authenticateJWT,
+  requireAdmin,
+  DailyShopController.getShopConfig
+);
 
 router.put(
   "/admin/config",
   authenticateJWT,
+  requireAdmin,
   DailyShopController.updateShopConfig
 );
 
-router.post("/admin/refresh", authenticateJWT, DailyShopController.refreshShop);
+router.post(
+  "/admin/refresh",
+  authenticateJWT,
+  requireAdmin,
+  DailyShopController.refreshShop
+);
 
-router.get("/admin/stats", authenticateJWT, DailyShopController.getShopStats);
+router.get(
+  "/admin/stats",
+  authenticateJWT,
+  requireAdmin,
+  DailyShopController.getShopStats
+);
 
 router.get(
   "/admin/rotations",
   authenticateJWT,
+  requireAdmin,
   DailyShopController.getRotationStates
 );
 
 router.post(
   "/admin/reset-limits",
   authenticateJWT,
+  requireAdmin,
   DailyShopController.resetUserLimits
 );
 

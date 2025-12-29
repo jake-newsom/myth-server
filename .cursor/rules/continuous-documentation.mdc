@@ -1,6 +1,9 @@
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: true
 ---
+
 If you create, update, or delete routes, or make adjustments to the parameters or response structure of any endpoint, update the OpenAPI specs located in /docs/openapi/
+
+DO NOT create summary docs unless explicitly instructed to.

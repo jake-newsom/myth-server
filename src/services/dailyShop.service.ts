@@ -449,7 +449,7 @@ const DailyShopService = {
         shop_date: shopDate,
         item_type: config.item_type,
         card_id: card.card_id,
-        mythology: this.extractMythologyFromTags(card.tags),
+        mythology: this.extractMythologyFromSetName(card.set_name),
         price: config.price,
         currency: config.currency,
         slot_number: startingSlot + i,
@@ -524,7 +524,17 @@ const DailyShopService = {
   },
 
   /**
-   * Extract mythology from card tags
+   * Extract mythology from card set name
+   */
+  extractMythologyFromSetName(setName: string): string | undefined {
+    if (!setName) return undefined;
+    const lowerSetName = setName.toLowerCase();
+    const mythologies = ["norse", "japanese", "polynesian"];
+    return mythologies.find((m) => lowerSetName.includes(m));
+  },
+
+  /**
+   * Extract mythology from card tags (legacy - kept for backwards compatibility)
    */
   extractMythologyFromTags(tags: string[]): string | undefined {
     const mythologies = ["norse", "japanese", "polynesian"];

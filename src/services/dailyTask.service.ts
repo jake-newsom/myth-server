@@ -31,7 +31,12 @@ interface DailyTaskStatus {
 interface ClaimRewardResult {
   success: boolean;
   tier?: number;
-  reward?: { gems?: number; cards?: number; packs?: number; card_details?: any };
+  reward?: {
+    gems?: number;
+    cards?: number;
+    packs?: number;
+    card_details?: any;
+  };
   new_balances?: { gems: number; pack_count: number };
   error?: string;
 }
@@ -74,7 +79,11 @@ const DailyTaskService = {
         rewards,
       };
     } catch (error) {
-      logger.error("Error getting daily task status:", {}, error instanceof Error ? error : new Error(String(error)));
+      logger.error(
+        "Error getting daily task status:",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
       return null;
     }
   },
@@ -87,7 +96,10 @@ const DailyTaskService = {
       // Get current status
       const status = await this.getDailyTaskStatus(userId);
       if (!status) {
-        return { success: false, error: "Could not retrieve daily task status" };
+        return {
+          success: false,
+          error: "Could not retrieve daily task status",
+        };
       }
 
       // Find next claimable reward
@@ -126,7 +138,10 @@ const DailyTaskService = {
         tier,
         reward: {
           ...(rewardConfig.gems > 0 && { gems: rewardConfig.gems }),
-          ...(rewardConfig.cards > 0 && { cards: rewardConfig.cards, card_details: cardDetails }),
+          ...(rewardConfig.cards > 0 && {
+            cards: rewardConfig.cards,
+            card_details: cardDetails,
+          }),
           ...(rewardConfig.packs > 0 && { packs: rewardConfig.packs }),
         },
         new_balances: {
@@ -135,7 +150,11 @@ const DailyTaskService = {
         },
       };
     } catch (error) {
-      logger.error("Error claiming daily task reward:", {}, error instanceof Error ? error : new Error(String(error)));
+      logger.error(
+        "Error claiming daily task reward:",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
       return { success: false, error: "Failed to claim reward" };
     }
   },
@@ -166,7 +185,10 @@ const DailyTaskService = {
         VALUES ($1, $2, 1, 0)
         RETURNING user_card_instance_id;
       `;
-      const { rows: insertRows } = await db.query(insertQuery, [userId, card.card_id]);
+      const { rows: insertRows } = await db.query(insertQuery, [
+        userId,
+        card.card_id,
+      ]);
 
       return {
         card_id: card.card_id,
@@ -176,7 +198,11 @@ const DailyTaskService = {
         user_card_instance_id: insertRows[0]?.user_card_instance_id,
       };
     } catch (error) {
-      logger.error("Error awarding random card:", {}, error instanceof Error ? error : new Error(String(error)));
+      logger.error(
+        "Error awarding random card:",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
       return null;
     }
   },
@@ -192,7 +218,9 @@ const DailyTaskService = {
   ): Promise<void> {
     try {
       // Get active tasks for this tracking type
-      const activeTasks = await DailyTaskModel.getActiveTodayTasksByType(trackingType);
+      const activeTasks = await DailyTaskModel.getActiveTodayTasksByType(
+        trackingType
+      );
       if (activeTasks.length === 0) {
         return;
       }
@@ -208,11 +236,21 @@ const DailyTaskService = {
         }
 
         // Increment progress
-        await DailyTaskModel.incrementTaskProgress(userId, task.task_key, amount);
-        logger.debug(`Daily task progress: ${task.task_key} +${amount} for user ${userId}`);
+        await DailyTaskModel.incrementTaskProgress(
+          userId,
+          task.task_key,
+          amount
+        );
+        logger.debug(
+          `Daily task progress: ${task.task_key} +${amount} for user ${userId}`
+        );
       }
     } catch (error) {
-      logger.error("Error tracking daily task progress:", {}, error instanceof Error ? error : new Error(String(error)));
+      logger.error(
+        "Error tracking daily task progress:",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
     }
   },
 
@@ -240,8 +278,35 @@ const DailyTaskService = {
   /**
    * Track a card defeat with mythology
    */
-  async trackDefeatWithMythology(userId: string, mythology: string, count: number = 1): Promise<void> {
-    await this.trackProgress(userId, "defeat_mythology", { mythology }, count);
+  async trackDefeatWithMythology(
+    userId: string,
+    setId: string,
+    count: number = 1
+  ): Promise<void> {
+    try {
+      // Get mythology slug from set_id
+      const query = `SELECT name FROM sets WHERE set_id = $1`;
+      const { rows } = await db.query(query, [setId]);
+
+      if (rows.length === 0) {
+        logger.debug(`Set not found for set_id: ${setId}`);
+        return;
+      }
+
+      const mythology = rows[0].name.toLowerCase();
+      await this.trackProgress(
+        userId,
+        "defeat_mythology",
+        { mythology },
+        count
+      );
+    } catch (error) {
+      logger.error(
+        "Error tracking defeat with mythology:",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
+    }
   },
 
   /**
@@ -287,7 +352,11 @@ const DailyTaskService = {
       await DailyTaskModel.createDailySelection();
       logger.info("Daily task selection ensured for today");
     } catch (error) {
-      logger.error("Error ensuring daily task selection:", {}, error instanceof Error ? error : new Error(String(error)));
+      logger.error(
+        "Error ensuring daily task selection:",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
     }
   },
 
@@ -301,12 +370,18 @@ const DailyTaskService = {
       const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
       const selection = await DailyTaskModel.createDailySelection(tomorrowStr);
-      logger.info(`Daily task selection created for ${tomorrowStr}:`, selection.selected_task_keys);
+      logger.info(
+        `Daily task selection created for ${tomorrowStr}:`,
+        selection.selected_task_keys
+      );
     } catch (error) {
-      logger.error("Error generating tomorrow's daily task selection:", {}, error instanceof Error ? error : new Error(String(error)));
+      logger.error(
+        "Error generating tomorrow's daily task selection:",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
     }
   },
 };
 
 export default DailyTaskService;
-
