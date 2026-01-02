@@ -7,7 +7,7 @@ import DailyTaskService from "./dailyTask.service";
 import { cacheInvalidation } from "./cache.invalidation.service";
 
 const CARDS_PER_PACK = 5;
-const GOD_PACK_CHANCE = 1 / 1500; // 1 in 1500 chance
+const GOD_PACK_CHANCE = 1 / 1200; // 1 in 1500 chance
 
 interface CardWithAbility extends Card {
   special_ability: {
@@ -311,32 +311,22 @@ const PackService = {
 
     let variantCount = 0;
     for (let i = 0; i < count; i++) {
-      // Select a rarity based on weights (may include variants like "common+")
       const selectedRarity = this.selectWeightedRarity();
       const isVariantRarity = selectedRarity.includes("+");
-      logger.debug("Pack card selection", {
-        cardNumber: i + 1,
-        selectedRarity,
-        isVariant: isVariantRarity,
-      });
 
-      // Try to find cards of the exact variant rarity first
       let availableCards = cardsByRarity[selectedRarity];
       let actualRarity = selectedRarity;
 
-      // If no variant cards exist, fall back to base rarity cards
       if (!availableCards || availableCards.length === 0) {
         const baseRarity = RarityUtils.getBaseRarity(selectedRarity as any);
         availableCards = cardsByRarity[baseRarity];
-        // Only use variant rarity if we actually found variant cards
         actualRarity = baseRarity;
       }
 
       // Final fallback to any available cards
       if (!availableCards || availableCards.length === 0) {
         availableCards = cards;
-        // Use the card's actual rarity from database
-        actualRarity = selectedRarity; // This will be corrected below
+        actualRarity = selectedRarity;
       }
 
       if (availableCards.length > 0) {
@@ -352,21 +342,8 @@ const PackService = {
           selectedCard.rarity = selectedRarity as any;
           if (isVariantRarity) {
             variantCount++;
-            // console.log(
-            //   `  Selected VARIANT: ${selectedCard.name} (${selectedRarity})`
-            // );
-          } else {
-            // console.log(
-            //   `  Selected base: ${selectedCard.name} (${selectedRarity})`
-            // );
           }
-        } else {
-          // console.log(
-          //   `  Selected base (fallback): ${selectedCard.name} (${selectedCard.rarity})`
-          // );
         }
-        // Otherwise, keep the card's original rarity from database
-
         selectedCards.push(selectedCard);
       }
     }
@@ -415,11 +392,11 @@ const PackService = {
     return {
       common: 55,
       rare: 20,
-      epic: 16,
+      epic: 15,
       legendary: 6.5,
-      "+": 1.8,
-      "++": 0.5,
-      "+++": 0.2,
+      "+": 2.3,
+      "++": 0.8,
+      "+++": 0.4,
     };
   },
 
