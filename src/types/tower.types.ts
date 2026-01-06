@@ -119,7 +119,7 @@ export interface GeneratedFloorDeck {
  */
 export interface GeneratedDeckCard {
   card_name: string;
-  level: number; // 1-5
+  level: number; // No cap, scales infinitely
   power_ups?: {
     top?: number;
     right?: number;

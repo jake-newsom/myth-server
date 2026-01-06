@@ -27,6 +27,18 @@ const AI_MAX_SAME_NAME_CARDS = 4;
 const PLAYER_MAX_LEGENDARY_CARDS = 2;
 const PLAYER_MAX_SAME_NAME_CARDS = 2;
 
+// Powerup scaling rules
+const PLAYER_POWERUPS_PER_LEVEL = 1; // Players get 1 powerup point per level above 1
+const AI_POWERUPS_PER_LEVEL = 3; // AI gets 3 powerup points per level above 1
+
+/**
+ * Calculate maximum powerup points for a card based on level
+ */
+function calculateMaxPowerups(level: number, isAI: boolean = true): number {
+  const multiplier = isAI ? AI_POWERUPS_PER_LEVEL : PLAYER_POWERUPS_PER_LEVEL;
+  return Math.max(0, (level - 1) * multiplier);
+}
+
 class TowerGenerationService {
   /**
    * Trigger floor generation (called asynchronously from tower.service)
@@ -44,13 +56,16 @@ class TowerGenerationService {
     try {
       isGenerating = true;
       console.log(
-        `[TowerGen] Starting generation of floors ${startingFloor} to ${startingFloor + count - 1}`
+        `[TowerGen] Starting generation of floors ${startingFloor} to ${
+          startingFloor + count - 1
+        }`
       );
 
       // Get reference deck data
       const TowerService = require("./tower.service").default;
-      const referenceDeck =
-        await TowerService.getReferenceDeckData(referenceFloor);
+      const referenceDeck = await TowerService.getReferenceDeckData(
+        referenceFloor
+      );
 
       if (!referenceDeck) {
         console.error(
@@ -208,7 +223,11 @@ class TowerGenerationService {
       // Log the response received
       console.log("[TowerGen] ========================================");
       console.log("[TowerGen] Received response from Gemini API");
-      console.log("[TowerGen] Response length:", generatedText.length, "characters");
+      console.log(
+        "[TowerGen] Response length:",
+        generatedText.length,
+        "characters"
+      );
       console.log("[TowerGen] ========================================");
       console.log(generatedText);
       console.log("[TowerGen] ========================================");
@@ -266,25 +285,54 @@ class TowerGenerationService {
       )
       .join("\n");
 
-    return `You are a game designer for a card battle game. Generate ${count} AI opponent decks for tower floors ${startingFloor} to ${startingFloor + count - 1}.
+    return `You are a game designer for a card battle game. Generate ${count} AI opponent decks for tower floors ${startingFloor} to ${
+      startingFloor + count - 1
+    }.
 
 AVAILABLE CARDS:
 ${cardListText}
 
-REFERENCE DECK (Floor ${referenceDeck.floor_number}, Average Power: ${referenceDeck.average_power.toFixed(1)}):
+REFERENCE DECK (Floor ${
+      referenceDeck.floor_number
+    }, Average Power: ${referenceDeck.average_power.toFixed(1)}):
 ${referenceDeckText}
 
-CONSTRAINTS:
+DECK CONSTRAINTS:
 - Each deck must have exactly ${CARDS_PER_DECK} cards
-- Maximum ${AI_MAX_LEGENDARY_CARDS} legendary cards per deck (AI decks have more lenient rules)
-- Maximum ${AI_MAX_SAME_NAME_CARDS} copies of the same card name (AI decks can have more duplicates)
-- Card levels range from 1-5 (higher = stronger)
-- Each floor should be slightly harder than the previous
+- Maximum ${AI_MAX_LEGENDARY_CARDS} legendary cards per deck
+- Maximum ${AI_MAX_SAME_NAME_CARDS} copies of the same card name
+- Card levels can be any positive integer (no cap, scales infinitely)
 
-POWER SCALING:
-- For floors ${startingFloor}-${startingFloor + count - 1}, gradually increase average card levels
+POWERUP RULES (IMPORTANT):
+- AI cards get ${AI_POWERUPS_PER_LEVEL} powerup points per level above 1
+- Formula: max_powerups = (level - 1) × ${AI_POWERUPS_PER_LEVEL}
+- Examples:
+  * Level 1 card: 0 powerup points available
+  * Level 2 card: ${AI_POWERUPS_PER_LEVEL} powerup points available
+  * Level 5 card: ${(5 - 1) * AI_POWERUPS_PER_LEVEL} powerup points available
+  * Level 10 card: ${(10 - 1) * AI_POWERUPS_PER_LEVEL} powerup points available
+- Distribute these points across the 4 edges (top, right, bottom, left)
+- Total of all 4 edges must equal or be less than max_powerups
+- Use strategic distribution (e.g., focus on 2 strong edges, or balance all 4)
+
+DIFFICULTY SCALING STRATEGY:
+- Scale difficulty primarily through AVERAGE CARD LEVEL
+- For floors ${startingFloor}-${
+      startingFloor + count - 1
+    }, gradually increase average level
 - Every 10 floors, increase average level by ~0.5
-- At higher floors (50+), use more variant cards and higher levels
+- Vary individual card levels for interesting deck composition:
+  * Some cards at higher levels (powerhouses)
+  * Some cards at lower levels (support/filler)
+  * Higher rarity cards can be higher level
+- Powerups are automatically determined by level, so focus on level distribution
+
+DECK DESIGN TIPS:
+- Create synergistic decks with varied power levels
+- Use higher-level legendary/epic cards as anchors
+- Balance the deck with lower-level commons/uncommons
+- Consider card abilities when choosing levels
+- Make each floor feel unique and challenging
 
 OUTPUT FORMAT (JSON array):
 [
@@ -292,14 +340,22 @@ OUTPUT FORMAT (JSON array):
     "floor_number": ${startingFloor},
     "deck_name": "Floor ${startingFloor} Deck",
     "cards": [
-      {"card_name": "Card Name", "level": 2},
+      {
+        "card_name": "Card Name",
+        "level": 2,
+        "power_ups": {"top": 1, "right": 2, "bottom": 0, "left": 0}
+      },
       ...
     ]
   },
   ...
 ]
 
-IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from the available cards list.`;
+IMPORTANT: 
+- Output ONLY the JSON array, no other text
+- Use exact card names from the available cards list
+- Ensure powerup totals match the level formula: (level - 1) × ${AI_POWERUPS_PER_LEVEL}
+- Focus on creating interesting level distributions within each deck`;
   }
 
   /**
@@ -312,7 +368,7 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
   ): GeneratedFloorDeck[] {
     try {
       console.log("[TowerGen] Parsing Gemini response...");
-      
+
       // Extract JSON from response (might have markdown code blocks)
       let jsonText = responseText;
       const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -334,21 +390,62 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
         throw new Error("Response is not an array");
       }
 
-      console.log(`[TowerGen] Successfully parsed ${parsed.length} floors from response`);
+      console.log(
+        `[TowerGen] Successfully parsed ${parsed.length} floors from response`
+      );
 
       // Validate and normalize the response
       const normalized = parsed.map((floor: any, index: number) => ({
         floor_number: floor.floor_number || startingFloor + index,
         deck_name: floor.deck_name || `Floor ${startingFloor + index} Deck`,
-        cards: (floor.cards || []).map((card: any) => ({
-          card_name: card.card_name || card.name,
-          level: Math.min(5, Math.max(1, card.level || 1)),
-        })),
+        cards: (floor.cards || []).map((card: any) => {
+          const level = Math.max(1, card.level || 1);
+          const maxPowerups = calculateMaxPowerups(level, true);
+
+          // Get powerups from response or default to empty
+          let powerUps = card.power_ups || {
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+          };
+
+          // Validate and normalize powerups
+          const totalPowerups =
+            (powerUps.top || 0) +
+            (powerUps.right || 0) +
+            (powerUps.bottom || 0) +
+            (powerUps.left || 0);
+
+          // If total exceeds max, scale down proportionally
+          if (totalPowerups > maxPowerups) {
+            const scale = maxPowerups / totalPowerups;
+            powerUps = {
+              top: Math.floor((powerUps.top || 0) * scale),
+              right: Math.floor((powerUps.right || 0) * scale),
+              bottom: Math.floor((powerUps.bottom || 0) * scale),
+              left: Math.floor((powerUps.left || 0) * scale),
+            };
+            console.log(
+              `[TowerGen]   ⚠️  Card "${
+                card.card_name || card.name
+              }" level ${level} had ${totalPowerups} powerups (max: ${maxPowerups}), scaled down`
+            );
+          }
+
+          return {
+            card_name: card.card_name || card.name,
+            level,
+            power_ups: powerUps,
+          };
+        }),
       }));
 
       console.log("[TowerGen] Floor parsing summary:");
       normalized.forEach((floor) => {
-        console.log(`  - Floor ${floor.floor_number}: ${floor.cards.length} cards`);
+        console.log(
+          `  - Floor ${floor.floor_number}: ${floor.cards.length} cards`
+        );
       });
 
       return normalized;
@@ -396,12 +493,52 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
     for (let i = 0; i < count; i++) {
       const floorNumber = startingFloor + i;
 
-      // Calculate target level for this floor
-      const targetLevel = Math.min(5, avgLevel + (floorNumber - referenceDeck.floor_number) * 0.05);
-      const roundedLevel = Math.max(1, Math.min(5, Math.round(targetLevel)));
+      // Calculate target level for this floor (no cap)
+      const targetLevel =
+        avgLevel + (floorNumber - referenceDeck.floor_number) * 0.05;
+      const roundedLevel = Math.max(1, Math.round(targetLevel));
 
       const deckCards: GeneratedDeckCard[] = [];
       const usedNames: Map<string, number> = new Map();
+
+      // Helper function to distribute powerups for a given level
+      const distributePowerups = (level: number) => {
+        const maxPowerups = calculateMaxPowerups(level, true);
+        const powerUps = { top: 0, right: 0, bottom: 0, left: 0 };
+
+        if (maxPowerups === 0) return powerUps;
+
+        // Distribute powerups randomly but strategically
+        let remaining = maxPowerups;
+        const edges = ["top", "right", "bottom", "left"] as const;
+
+        // Randomly decide on a distribution strategy
+        const strategy = Math.random();
+
+        if (strategy < 0.3) {
+          // Focus on 2 edges (aggressive)
+          const edge1 = edges[Math.floor(Math.random() * 4)];
+          const edge2 = edges[Math.floor(Math.random() * 4)];
+          powerUps[edge1] = Math.floor(remaining * 0.6);
+          powerUps[edge2] = remaining - powerUps[edge1];
+        } else if (strategy < 0.6) {
+          // Balance across all 4 edges
+          const perEdge = Math.floor(remaining / 4);
+          powerUps.top = perEdge;
+          powerUps.right = perEdge;
+          powerUps.bottom = perEdge;
+          powerUps.left = remaining - perEdge * 3;
+        } else {
+          // Random distribution
+          while (remaining > 0) {
+            const edge = edges[Math.floor(Math.random() * 4)];
+            powerUps[edge]++;
+            remaining--;
+          }
+        }
+
+        return powerUps;
+      };
 
       // Select up to 4 legendary cards (AI decks have more lenient rules)
       const legendaryCards = this.shuffleArray([
@@ -410,7 +547,11 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
       for (const card of legendaryCards) {
         if (deckCards.length >= AI_MAX_LEGENDARY_CARDS) break;
         if ((usedNames.get(card.name) || 0) >= AI_MAX_SAME_NAME_CARDS) continue;
-        deckCards.push({ card_name: card.name, level: roundedLevel });
+        deckCards.push({
+          card_name: card.name,
+          level: roundedLevel,
+          power_ups: distributePowerups(roundedLevel),
+        });
         usedNames.set(card.name, (usedNames.get(card.name) || 0) + 1);
       }
 
@@ -419,7 +560,11 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
       for (const card of epicCards) {
         if (deckCards.length >= 10) break; // 4 legendary + 6 epic = 10
         if ((usedNames.get(card.name) || 0) >= AI_MAX_SAME_NAME_CARDS) continue;
-        deckCards.push({ card_name: card.name, level: roundedLevel });
+        deckCards.push({
+          card_name: card.name,
+          level: roundedLevel,
+          power_ups: distributePowerups(roundedLevel),
+        });
         usedNames.set(card.name, (usedNames.get(card.name) || 0) + 1);
       }
 
@@ -428,11 +573,15 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
       for (const card of rareCards) {
         if (deckCards.length >= 16) break; // 4 legendary + 6 epic + 6 rare = 16
         if ((usedNames.get(card.name) || 0) >= AI_MAX_SAME_NAME_CARDS) continue;
-        deckCards.push({ card_name: card.name, level: roundedLevel });
+        deckCards.push({
+          card_name: card.name,
+          level: roundedLevel,
+          power_ups: distributePowerups(roundedLevel),
+        });
         usedNames.set(card.name, (usedNames.get(card.name) || 0) + 1);
       }
 
-      // Fill remaining with common/uncommon
+      // Fill remaining with common/uncommon (slightly lower level)
       const commonCards = this.shuffleArray([
         ...(cardsByRarity["common"] || []),
         ...(cardsByRarity["uncommon"] || []),
@@ -440,9 +589,11 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
       for (const card of commonCards) {
         if (deckCards.length >= CARDS_PER_DECK) break;
         if ((usedNames.get(card.name) || 0) >= AI_MAX_SAME_NAME_CARDS) continue;
+        const lowerLevel = Math.max(1, roundedLevel - 1);
         deckCards.push({
           card_name: card.name,
-          level: Math.max(1, roundedLevel - 1),
+          level: lowerLevel,
+          power_ups: distributePowerups(lowerLevel),
         });
         usedNames.set(card.name, (usedNames.get(card.name) || 0) + 1);
       }
@@ -463,10 +614,12 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
   private async createFloorFromGenerated(
     floor: GeneratedFloorDeck
   ): Promise<void> {
-    console.log(`[TowerGen] Creating floor ${floor.floor_number} in database...`);
+    console.log(
+      `[TowerGen] Creating floor ${floor.floor_number} in database...`
+    );
     console.log(`[TowerGen]   Deck: ${floor.deck_name}`);
     console.log(`[TowerGen]   Cards: ${floor.cards.length}`);
-    
+
     const client = await db.getClient();
 
     try {
@@ -500,7 +653,7 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
       // Create card instances and add to deck
       let cardsAdded = 0;
       let cardsSkipped = 0;
-      
+
       for (const card of floor.cards) {
         // Find the card ID by name
         const cardResult = await client.query(
@@ -530,6 +683,30 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
         );
         const instanceId = instanceResult.rows[0].user_card_instance_id;
 
+        // Create powerup record if powerups exist
+        if (card.power_ups) {
+          const powerUpData = {
+            top: card.power_ups.top || 0,
+            right: card.power_ups.right || 0,
+            bottom: card.power_ups.bottom || 0,
+            left: card.power_ups.left || 0,
+          };
+
+          // Only create powerup record if at least one value is non-zero
+          const hasPowerUps = Object.values(powerUpData).some((val) => val > 0);
+          if (hasPowerUps) {
+            const powerUpCount = Object.values(powerUpData).reduce(
+              (sum, val) => sum + val,
+              0
+            );
+            await client.query(
+              `INSERT INTO user_card_power_ups (user_card_instance_id, power_up_count, power_up_data)
+               VALUES ($1, $2, $3)`,
+              [instanceId, powerUpCount, JSON.stringify(powerUpData)]
+            );
+          }
+        }
+
         // Add to deck
         await client.query(
           `INSERT INTO deck_cards (deck_id, user_card_instance_id)
@@ -539,7 +716,9 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
         cardsAdded++;
       }
 
-      console.log(`[TowerGen]   Cards added: ${cardsAdded}, skipped: ${cardsSkipped}`);
+      console.log(
+        `[TowerGen]   Cards added: ${cardsAdded}, skipped: ${cardsSkipped}`
+      );
 
       // Create tower floor entry
       await client.query(
@@ -549,7 +728,9 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
       );
 
       await client.query("COMMIT");
-      console.log(`[TowerGen] ✓ Successfully created floor ${floor.floor_number}`);
+      console.log(
+        `[TowerGen] ✓ Successfully created floor ${floor.floor_number}`
+      );
     } catch (error) {
       await client.query("ROLLBACK");
       console.error(
@@ -576,4 +757,3 @@ IMPORTANT: Output ONLY the JSON array, no other text. Use exact card names from 
 }
 
 export default new TowerGenerationService();
-

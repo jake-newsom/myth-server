@@ -683,10 +683,15 @@ class TowerService {
         c.power->>'top' as base_top,
         c.power->>'right' as base_right,
         c.power->>'bottom' as base_bottom,
-        c.power->>'left' as base_left
+        c.power->>'left' as base_left,
+        COALESCE(ucp.power_up_data->>'top', '0') as powerup_top,
+        COALESCE(ucp.power_up_data->>'right', '0') as powerup_right,
+        COALESCE(ucp.power_up_data->>'bottom', '0') as powerup_bottom,
+        COALESCE(ucp.power_up_data->>'left', '0') as powerup_left
       FROM deck_cards dc
       JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
       JOIN cards c ON uoc.card_id = c.card_id
+      LEFT JOIN user_card_power_ups ucp ON uoc.user_card_instance_id = ucp.user_card_instance_id
       WHERE dc.deck_id = $1
     `,
       [floor.ai_deck_id]
@@ -696,10 +701,10 @@ class TowerService {
       name: row.name,
       level: row.level,
       effective_power: {
-        top: parseInt(row.base_top || "0"),
-        right: parseInt(row.base_right || "0"),
-        bottom: parseInt(row.base_bottom || "0"),
-        left: parseInt(row.base_left || "0"),
+        top: parseInt(row.base_top || "0") + parseInt(row.powerup_top || "0"),
+        right: parseInt(row.base_right || "0") + parseInt(row.powerup_right || "0"),
+        bottom: parseInt(row.base_bottom || "0") + parseInt(row.powerup_bottom || "0"),
+        left: parseInt(row.base_left || "0") + parseInt(row.powerup_left || "0"),
       },
     }));
 
