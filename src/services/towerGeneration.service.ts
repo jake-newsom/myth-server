@@ -165,10 +165,10 @@ class TowerGenerationService {
     console.log("[TowerGen] ========================================");
 
     try {
-      // Call Gemini API using the 2.0 Flash Thinking model
+      // Call Gemini API using the 3.0 Pro Preview model
       console.log("[TowerGen] Calling Gemini API...");
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-thinking-exp:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: {
