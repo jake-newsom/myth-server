@@ -68,14 +68,14 @@ class TowerService {
       floor % 100 === 0
         ? "S"
         : floor % 50 === 0
-          ? "A"
-          : floor % 25 === 0
-            ? "B"
-            : floor % 10 === 0
-              ? "C"
-              : floor % 5 === 0
-                ? "D"
-                : "E";
+        ? "A"
+        : floor % 25 === 0
+        ? "B"
+        : floor % 10 === 0
+        ? "C"
+        : floor % 5 === 0
+        ? "D"
+        : "E";
 
     // Scaled gem value
     let gemValue = Math.round(BASE_GEM_VALUE_BY_TIER[tier] * m);
@@ -292,8 +292,9 @@ class TowerService {
 
       // Verify player deck exists and belongs to user
       await DeckService.validateUserDeck(playerDeckId, userId);
-      const playerCardInstanceIds =
-        await DeckService.getDeckCardInstances(playerDeckId);
+      const playerCardInstanceIds = await DeckService.getDeckCardInstances(
+        playerDeckId
+      );
 
       if (playerCardInstanceIds.length === 0) {
         throw new Error("Player deck is empty");
@@ -310,8 +311,9 @@ class TowerService {
 
       if (aiCardInstanceIds.length === 0) {
         // Fallback to creating AI card copies
-        aiCardInstanceIds =
-          await DeckService.createAICardCopies(playerCardInstanceIds);
+        aiCardInstanceIds = await DeckService.createAICardCopies(
+          playerCardInstanceIds
+        );
       }
 
       // Initialize game state
@@ -422,9 +424,7 @@ class TowerService {
 
       const currentFloor = progressResult.rows[0].tower_floor;
       if (currentFloor !== floorNumber) {
-        throw new Error(
-          `User is on floor ${currentFloor}, not ${floorNumber}`
-        );
+        throw new Error(`User is on floor ${currentFloor}, not ${floorNumber}`);
       }
 
       // Calculate rewards
@@ -519,8 +519,8 @@ class TowerService {
       minRarity === "legendary"
         ? ["legendary"]
         : minRarity === "epic"
-          ? ["epic", "legendary"]
-          : ["rare", "epic", "legendary"];
+        ? ["epic", "legendary"]
+        : ["rare", "epic", "legendary"];
 
     // Build rarity filter for variants
     const rarityConditions = validRarities
@@ -620,15 +620,14 @@ class TowerService {
     if (userNewFloor > maxFloor - 10) {
       // Import and call the generation service (async, don't wait)
       try {
-        const TowerGenerationService = require("./towerGeneration.service")
-          .default;
-        
+        const TowerGenerationService =
+          require("./towerGeneration.service").default;
+
         // Fire and forget - don't block the response
-        // Generate only 2 floors at a time for testing
         // Use maxFloor as reference (highest available) for better power scaling
         TowerGenerationService.triggerGeneration(
           maxFloor + 1,
-          2,
+          5,
           maxFloor
         ).catch((error: Error) => {
           console.error("[Tower] Floor generation failed:", error);
@@ -668,7 +667,12 @@ class TowerService {
     cards: {
       name: string;
       level: number;
-      effective_power: { top: number; right: number; bottom: number; left: number };
+      effective_power: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+      };
     }[];
     average_power: number;
   } | null> {
@@ -702,9 +706,13 @@ class TowerService {
       level: row.level,
       effective_power: {
         top: parseInt(row.base_top || "0") + parseInt(row.powerup_top || "0"),
-        right: parseInt(row.base_right || "0") + parseInt(row.powerup_right || "0"),
-        bottom: parseInt(row.base_bottom || "0") + parseInt(row.powerup_bottom || "0"),
-        left: parseInt(row.base_left || "0") + parseInt(row.powerup_left || "0"),
+        right:
+          parseInt(row.base_right || "0") + parseInt(row.powerup_right || "0"),
+        bottom:
+          parseInt(row.base_bottom || "0") +
+          parseInt(row.powerup_bottom || "0"),
+        left:
+          parseInt(row.base_left || "0") + parseInt(row.powerup_left || "0"),
       },
     }));
 
@@ -812,7 +820,9 @@ class TowerService {
 
       if (violations.length > 0) {
         throw new Error(
-          `Deck can have maximum 2 copies of any card. Violations: ${violations.join(", ")}`
+          `Deck can have maximum 2 copies of any card. Violations: ${violations.join(
+            ", "
+          )}`
         );
       }
 
@@ -824,4 +834,3 @@ class TowerService {
 }
 
 export default new TowerService();
-

@@ -157,12 +157,7 @@ class TowerGenerationService {
       console.warn(
         "[TowerGen] GEMINI_API_KEY not set, using fallback generation"
       );
-      return this.generateFallbackFloors(
-        allCards,
-        referenceDeck,
-        startingFloor,
-        count
-      );
+      return [];
     }
 
     const prompt = this.buildGeminiPrompt(
