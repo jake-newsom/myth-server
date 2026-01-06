@@ -117,6 +117,41 @@ const XpPoolModel = {
     const { rows } = await db.query(query, values);
     return rows;
   },
+
+  // Get total count of cards sacrificed by user
+  async getTotalSacrificeCount(userId: string): Promise<number> {
+    const query = `
+      SELECT COUNT(*) as count
+      FROM "xp_transfers"
+      WHERE user_id = $1 
+        AND transfer_type = 'sacrifice_to_pool'
+        AND source_card_ids IS NOT NULL;
+    `;
+    const { rows } = await db.query(query, [userId]);
+    
+    // Count the total number of card IDs in all source_card_ids arrays
+    const countQuery = `
+      SELECT COALESCE(SUM(array_length(source_card_ids, 1)), 0) as total_count
+      FROM "xp_transfers"
+      WHERE user_id = $1 
+        AND transfer_type = 'sacrifice_to_pool'
+        AND source_card_ids IS NOT NULL;
+    `;
+    const { rows: countRows } = await db.query(countQuery, [userId]);
+    return parseInt(countRows[0].total_count, 10);
+  },
+
+  // Get total count of XP transfers (pool_to_card) by user
+  async getTotalXpTransferCount(userId: string): Promise<number> {
+    const query = `
+      SELECT COUNT(*) as count
+      FROM "xp_transfers"
+      WHERE user_id = $1 
+        AND transfer_type = 'pool_to_card';
+    `;
+    const { rows } = await db.query(query, [userId]);
+    return parseInt(rows[0].count, 10);
+  },
 };
 
 export default XpPoolModel;

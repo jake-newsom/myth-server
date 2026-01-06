@@ -20,6 +20,7 @@ export interface User {
   total_xp: number;
   pack_count: number;
   win_streak_multiplier: number; // Win streak multiplier for online games (1.0 - 5.0)
+  tower_floor: number; // Current unbeaten tower floor for the user (default: 1)
   created_at: Date;
   last_login: Date;
 }

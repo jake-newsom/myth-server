@@ -205,13 +205,6 @@ const AchievementService = {
             result
           );
           break;
-        case "story_mode_completion":
-          await this.handleStoryModeCompletion(
-            event.userId,
-            event.eventData,
-            result
-          );
-          break;
         default:
           console.log(`Unknown achievement event type: ${event.eventType}`);
       }
@@ -883,81 +876,6 @@ const AchievementService = {
         result.updatedProgress.push(details);
       }
     });
-  },
-
-  /**
-   * Handle story mode completion events
-   */
-  async handleStoryModeCompletion(
-    userId: string,
-    eventData: any,
-    result: AchievementCompletionResult
-  ): Promise<void> {
-    const { storyId, isWin, victoryMargin, winCount } = eventData;
-
-    if (!storyId) return;
-
-    const keysToFetch: string[] = [];
-    const updatePromises: Promise<any>[] = [];
-
-    // Track story win count achievements (story_{storyId}_wins)
-    if (isWin && winCount !== undefined) {
-      const winsBaseKey = `story_${storyId}_wins`;
-      const winsTiers = await AchievementModel.getTieredAchievementsByBaseKey(
-        winsBaseKey
-      );
-
-      for (const tier of winsTiers) {
-        updatePromises.push(
-          AchievementModel.setUserAchievementProgress(
-            userId,
-            tier.achievement_key,
-            winCount
-          )
-        );
-        keysToFetch.push(tier.achievement_key);
-      }
-    }
-
-    // Track victory margin achievements (story_{storyId}_victory_margin)
-    if (isWin && victoryMargin !== undefined) {
-      const marginBaseKey = `story_${storyId}_victory_margin`;
-      const marginTiers = await AchievementModel.getTieredAchievementsByBaseKey(
-        marginBaseKey
-      );
-
-      for (const tier of marginTiers) {
-        // Check if victory margin meets the tier requirement (4, 6, or 8)
-        if (victoryMargin >= tier.target_value) {
-          updatePromises.push(
-            AchievementModel.setUserAchievementProgress(
-              userId,
-              tier.achievement_key,
-              1
-            )
-          );
-          keysToFetch.push(tier.achievement_key);
-        }
-      }
-    }
-
-    // Execute all updates in parallel
-    await Promise.all(updatePromises);
-
-    // Batch fetch all achievement details in a single query
-    if (keysToFetch.length > 0) {
-      const achievementDetailsMap =
-        await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
-
-      // Process results
-      achievementDetailsMap.forEach((details) => {
-        if (details.is_completed) {
-          result.newlyCompleted.push(details);
-        } else {
-          result.updatedProgress.push(details);
-        }
-      });
-    }
   },
 
   /**

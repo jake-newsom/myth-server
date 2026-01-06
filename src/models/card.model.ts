@@ -897,6 +897,74 @@ const CardModel = {
     const { rows } = await db.query(query, [userId, cardId]);
     return rows[0];
   },
+
+  /**
+   * Get count of unique cards owned by user (by card_id, not instances)
+   */
+  async getUserUniqueCardCount(userId: string): Promise<number> {
+    const query = `
+      SELECT COUNT(DISTINCT card_id) as count
+      FROM "user_owned_cards"
+      WHERE user_id = $1;
+    `;
+    const { rows } = await db.query(query, [userId]);
+    return parseInt(rows[0].count, 10);
+  },
+
+  /**
+   * Get count of unique mythic cards owned by user
+   * Mythic cards are those with +, ++, or +++ variants
+   */
+  async getUserMythicCardCount(userId: string): Promise<number> {
+    const query = `
+      SELECT COUNT(DISTINCT c.card_id) as count
+      FROM "user_owned_cards" uoc
+      JOIN "cards" c ON uoc.card_id = c.card_id
+      WHERE uoc.user_id = $1
+        AND (c.rarity LIKE '%+' OR c.rarity LIKE '%++' OR c.rarity LIKE '%+++');
+    `;
+    const { rows } = await db.query(query, [userId]);
+    return parseInt(rows[0].count, 10);
+  },
+
+  /**
+   * Get count of cards at specific level by rarity for a user
+   */
+  async getUserCardsAtLevelByRarity(
+    userId: string
+  ): Promise<Record<string, Record<number, number>>> {
+    const query = `
+      SELECT 
+        c.rarity,
+        uoc.level,
+        COUNT(*) as count
+      FROM "user_owned_cards" uoc
+      JOIN "cards" c ON uoc.card_id = c.card_id
+      WHERE uoc.user_id = $1
+        AND uoc.level >= 2
+        AND c.rarity IN ('rare', 'epic', 'legendary')
+      GROUP BY c.rarity, uoc.level;
+    `;
+    const { rows } = await db.query(query, [userId]);
+
+    const result: Record<string, Record<number, number>> = {
+      rare: {},
+      epic: {},
+      legendary: {},
+    };
+
+    for (const row of rows) {
+      const rarity = row.rarity.toLowerCase();
+      const level = parseInt(row.level, 10);
+      const count = parseInt(row.count, 10);
+      
+      if (result[rarity]) {
+        result[rarity][level] = count;
+      }
+    }
+
+    return result;
+  },
 };
 
 export default CardModel;

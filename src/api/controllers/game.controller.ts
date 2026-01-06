@@ -24,7 +24,7 @@ import UserService from "../../services/user.service";
 import GameRewardsService, {
   GameCompletionResult,
 } from "../../services/gameRewards.service";
-import { StoryModeService } from "../../services/storyMode.service";
+import TowerService from "../../services/tower.service";
 import { BaseGameEvent } from "../../game-engine/game-events";
 import { sanitizeGameStateForPlayer } from "../../utils/sanitize";
 
@@ -290,7 +290,7 @@ class GameController {
       let winner_id_for_db: string | null = updatedGameState.winner || null;
       let new_game_status_for_db: GameStatus = updatedGameState.status;
       let gameCompletionResult: GameCompletionResult | null = null;
-      let storyModeCompletion: any = null;
+      let towerCompletion: any = null;
 
       // Process comprehensive rewards if game is completed
       if (new_game_status_for_db === GameStatus.COMPLETED) {
@@ -306,52 +306,20 @@ class GameController {
             gameId // Pass gameId for leaderboard updates
           );
 
-          // Check if this is a story mode game and process story mode completion
-          // OPTIMIZATION: Only check for story mode if game_mode is solo
-          if (gameRecord.game_mode === "solo" && gameRecord.player2_deck_id) {
+          // Check if this is a tower game and process tower completion
+          const floorNumber = await GameService.getGameFloorNumber(gameId);
+          if (floorNumber !== null && gameCompletionResult) {
             try {
-              const storyId = await StoryModeService.findStoryIdByDeckId(
-                gameRecord.player2_deck_id
+              const won = winner_id_for_db === userId;
+              towerCompletion = await TowerService.processTowerCompletion(
+                userId,
+                floorNumber,
+                won,
+                gameId
               );
-
-              if (storyId && gameCompletionResult) {
-                // Calculate completion time
-                const gameStartTime = new Date(gameRecord.created_at);
-                const completionTimeSeconds = Math.floor(
-                  (Date.now() - gameStartTime.getTime()) / 1000
-                );
-
-                // Create game result object for story mode processing
-                const storyGameResult = {
-                  winner_id: winner_id_for_db,
-                  isWin: winner_id_for_db === userId,
-                  isDraw:
-                    updatedGameState.status === "completed" &&
-                    !winner_id_for_db,
-                  playerScore:
-                    updatedGameState.player1.user_id === userId
-                      ? updatedGameState.player1.score
-                      : updatedGameState.player2.score,
-                  opponentScore:
-                    updatedGameState.player1.user_id === userId
-                      ? updatedGameState.player2.score
-                      : updatedGameState.player1.score,
-                  duration: completionTimeSeconds,
-                  cardsPlayed: 0,
-                };
-
-                // Process story mode completion (this will award story mode rewards)
-                storyModeCompletion =
-                  await StoryModeService.processStoryCompletion(
-                    userId,
-                    storyId,
-                    storyGameResult,
-                    completionTimeSeconds
-                  );
-              }
             } catch (error) {
-              console.error("Error processing story mode completion:", error);
-              // Don't fail the entire response if story mode processing fails
+              console.error("Error processing tower completion:", error);
+              // Don't fail the entire response if tower processing fails
             }
           }
         } catch (error) {
@@ -393,26 +361,26 @@ class GameController {
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
 
-        // Merge story mode rewards if this was a story mode game
-        if (storyModeCompletion) {
-          // Add story mode rewards to the existing rewards
-          if (storyModeCompletion.rewards_earned) {
-            // Merge gems (story mode rewards include gems)
-            if (storyModeCompletion.rewards_earned.gems) {
+        // Merge tower rewards if this was a tower game
+        if (towerCompletion && towerCompletion.won) {
+          // Add tower rewards to the existing rewards
+          if (towerCompletion.rewards_earned) {
+            // Merge gems (tower rewards include gems)
+            if (towerCompletion.rewards_earned.reward_gems) {
               response.rewards.currency.gems =
                 (response.rewards.currency.gems || 0) +
-                storyModeCompletion.rewards_earned.gems;
+                towerCompletion.rewards_earned.reward_gems;
             }
-            // Note: story mode packs and card fragments are handled separately in story mode service
-            // Note: card_xp_rewards are already handled by game completion, story mode doesn't add additional XP
+            // Note: tower packs and card fragments are handled by tower service
           }
 
-          // Add story mode completion info
-          response.story_mode_completion = {
-            is_first_win: storyModeCompletion.is_first_win,
-            new_progress: storyModeCompletion.new_progress,
-            unlocked_stories: storyModeCompletion.unlocked_stories || [],
-            campaign_updated: true, // Flag to tell client to refresh campaign data
+          // Add tower completion info
+          response.tower_completion = {
+            floor_number: towerCompletion.floor_number,
+            new_floor: towerCompletion.new_floor,
+            rewards_earned: towerCompletion.rewards_earned,
+            cards_awarded: towerCompletion.cards_awarded,
+            generation_triggered: towerCompletion.generation_triggered,
           };
         }
       }
@@ -538,7 +506,7 @@ class GameController {
       let winner_id_for_db: string | null = updatedGameState.winner || null;
       let new_game_status_for_db: GameStatus = updatedGameState.status;
       let gameCompletionResult: GameCompletionResult | null = null;
-      let storyModeCompletion: any = null;
+      let towerCompletionAI: any = null;
 
       // Process comprehensive rewards if game is completed
       if (new_game_status_for_db === GameStatus.COMPLETED) {
@@ -554,52 +522,20 @@ class GameController {
             gameId // Pass gameId for leaderboard updates
           );
 
-          // Check if this is a story mode game and process story mode completion
-          // OPTIMIZATION: Only check for story mode if game_mode is solo
-          if (gameRecord.game_mode === "solo" && gameRecord.player2_deck_id) {
+          // Check if this is a tower game and process tower completion
+          const floorNumberAI = await GameService.getGameFloorNumber(gameId);
+          if (floorNumberAI !== null && gameCompletionResult) {
             try {
-              const storyId = await StoryModeService.findStoryIdByDeckId(
-                gameRecord.player2_deck_id
+              const wonAI = winner_id_for_db === userId;
+              towerCompletionAI = await TowerService.processTowerCompletion(
+                userId,
+                floorNumberAI,
+                wonAI,
+                gameId
               );
-
-              if (storyId && gameCompletionResult) {
-                // Calculate completion time
-                const gameStartTime = new Date(gameRecord.created_at);
-                const completionTimeSeconds = Math.floor(
-                  (Date.now() - gameStartTime.getTime()) / 1000
-                );
-
-                // Create game result object for story mode processing
-                const storyGameResult = {
-                  winner_id: winner_id_for_db,
-                  isWin: winner_id_for_db === userId,
-                  isDraw:
-                    updatedGameState.status === "completed" &&
-                    !winner_id_for_db,
-                  playerScore:
-                    updatedGameState.player1.user_id === userId
-                      ? updatedGameState.player1.score
-                      : updatedGameState.player2.score,
-                  opponentScore:
-                    updatedGameState.player1.user_id === userId
-                      ? updatedGameState.player2.score
-                      : updatedGameState.player1.score,
-                  duration: completionTimeSeconds,
-                  cardsPlayed: 0,
-                };
-
-                // Process story mode completion (this will award story mode rewards)
-                storyModeCompletion =
-                  await StoryModeService.processStoryCompletion(
-                    userId,
-                    storyId,
-                    storyGameResult,
-                    completionTimeSeconds
-                  );
-              }
             } catch (error) {
-              console.error("Error processing story mode completion:", error);
-              // Don't fail the entire response if story mode processing fails
+              console.error("Error processing tower completion:", error);
+              // Don't fail the entire response if tower processing fails
             }
           }
         } catch (error) {
@@ -641,26 +577,26 @@ class GameController {
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
 
-        // Merge story mode rewards if this was a story mode game
-        if (storyModeCompletion) {
-          // Add story mode rewards to the existing rewards
-          if (storyModeCompletion.rewards_earned) {
-            // Merge gems (story mode rewards include gems)
-            if (storyModeCompletion.rewards_earned.gems) {
+        // Merge tower rewards if this was a tower game
+        if (towerCompletionAI && towerCompletionAI.won) {
+          // Add tower rewards to the existing rewards
+          if (towerCompletionAI.rewards_earned) {
+            // Merge gems (tower rewards include gems)
+            if (towerCompletionAI.rewards_earned.reward_gems) {
               response.rewards.currency.gems =
                 (response.rewards.currency.gems || 0) +
-                storyModeCompletion.rewards_earned.gems;
+                towerCompletionAI.rewards_earned.reward_gems;
             }
-            // Note: story mode packs and card fragments are handled separately in story mode service
-            // Note: card_xp_rewards are already handled by game completion, story mode doesn't add additional XP
+            // Note: tower packs and card fragments are handled by tower service
           }
 
-          // Add story mode completion info
-          response.story_mode_completion = {
-            is_first_win: storyModeCompletion.is_first_win,
-            new_progress: storyModeCompletion.new_progress,
-            unlocked_stories: storyModeCompletion.unlocked_stories || [],
-            campaign_updated: true, // Flag to tell client to refresh campaign data
+          // Add tower completion info
+          response.tower_completion = {
+            floor_number: towerCompletionAI.floor_number,
+            new_floor: towerCompletionAI.new_floor,
+            rewards_earned: towerCompletionAI.rewards_earned,
+            cards_awarded: towerCompletionAI.cards_awarded,
+            generation_triggered: towerCompletionAI.generation_triggered,
           };
         }
       }

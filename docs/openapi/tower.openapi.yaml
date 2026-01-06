@@ -1,0 +1,382 @@
+openapi: 3.0.3
+info:
+  title: Myth Server - Tower API
+  description: Infinite Tower game mode endpoints
+  version: 1.0.0
+
+tags:
+  - name: Tower
+    description: Infinite Tower game mode endpoints
+
+paths:
+  /api/tower/progress:
+    get:
+      tags:
+        - Tower
+      summary: Get user's tower progress
+      description: Returns the user's current tower floor and highest completed floor
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User's tower progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/TowerProgress'
+        '401':
+          description: User not authenticated
+
+  /api/tower/floors:
+    get:
+      tags:
+        - Tower
+      summary: Get available floors near user's progress
+      description: Returns floors around the user's current floor for display
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: range
+          schema:
+            type: integer
+            default: 5
+          description: Number of floors before and after current floor to return
+      responses:
+        '200':
+          description: List of tower floors with preview data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/TowerListResponse'
+        '401':
+          description: User not authenticated
+
+  /api/tower/floor/{floorNumber}:
+    get:
+      tags:
+        - Tower
+      summary: Get details for a specific floor
+      description: Returns floor details including reward preview
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: floorNumber
+          required: true
+          schema:
+            type: integer
+          description: Floor number to get details for
+      responses:
+        '200':
+          description: Floor details with reward preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/TowerFloorWithReward'
+        '400':
+          description: Invalid floor number
+        '404':
+          description: Floor not found
+
+  /api/tower/rewards/{floor}:
+    get:
+      tags:
+        - Tower
+      summary: Preview rewards for a specific floor
+      description: Returns the calculated rewards for any floor number
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: floor
+          required: true
+          schema:
+            type: integer
+          description: Floor number to preview rewards for
+      responses:
+        '200':
+          description: Reward structure for the floor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/TowerReward'
+        '400':
+          description: Invalid floor number
+
+  /api/tower/start:
+    post:
+      tags:
+        - Tower
+      summary: Start a tower game
+      description: Starts a tower game for the user's current floor
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - player_deck_id
+              properties:
+                player_deck_id:
+                  type: string
+                  format: uuid
+                  description: ID of the player's deck to use
+      responses:
+        '200':
+          description: Tower game started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/TowerGameStartResponse'
+        '400':
+          description: Invalid request or floor not available
+        '401':
+          description: User not authenticated
+
+  /api/tower/complete:
+    post:
+      tags:
+        - Tower
+      summary: Process tower game completion
+      description: Internal endpoint called when a tower game completes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - floor_number
+                - won
+              properties:
+                floor_number:
+                  type: integer
+                  description: The floor number that was completed
+                won:
+                  type: boolean
+                  description: Whether the user won the game
+                game_id:
+                  type: string
+                  format: uuid
+                  description: Optional game ID for verification
+      responses:
+        '200':
+          description: Tower completion processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/TowerCompletionResult'
+        '400':
+          description: Invalid request
+        '401':
+          description: User not authenticated
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    TowerProgress:
+      type: object
+      properties:
+        current_floor:
+          type: integer
+          description: The floor user needs to beat next
+          example: 5
+        highest_completed:
+          type: integer
+          description: current_floor - 1
+          example: 4
+
+    TowerFloor:
+      type: object
+      properties:
+        floor_number:
+          type: integer
+          example: 5
+        name:
+          type: string
+          example: "Floor 5"
+        ai_deck_id:
+          type: string
+          format: uuid
+        is_active:
+          type: boolean
+          example: true
+
+    TowerFloorWithReward:
+      allOf:
+        - $ref: '#/components/schemas/TowerFloor'
+        - type: object
+          properties:
+            preview_cards:
+              type: array
+              items:
+                type: string
+              description: Top 3 card IDs from AI deck
+            reward_preview:
+              $ref: '#/components/schemas/TowerReward'
+
+    TowerReward:
+      type: object
+      properties:
+        floor:
+          type: integer
+          example: 5
+        band:
+          type: integer
+          description: "Band 0 = floors 1-10, band 1 = 11-20, etc."
+          example: 0
+        tier:
+          type: string
+          enum: [E, D, C, B, A, S]
+          description: Reward tier based on floor divisibility
+          example: D
+        reward_gems:
+          type: integer
+          example: 35
+        reward_packs:
+          type: integer
+          example: 0
+        reward_card_fragments:
+          type: integer
+          example: 3
+        reward_rare_art_card:
+          type: integer
+          description: "0 or 1 - awarded at floor % 1000"
+          example: 0
+        reward_legendary_card:
+          type: integer
+          description: "0 or 1 - awarded at floor % 500"
+          example: 0
+        reward_epic_card:
+          type: integer
+          description: "0 or 1 - awarded at floor % 250"
+          example: 0
+
+    TowerListResponse:
+      type: object
+      properties:
+        current_floor:
+          type: integer
+          example: 5
+        floors:
+          type: array
+          items:
+            $ref: '#/components/schemas/TowerFloorWithReward'
+        max_available_floor:
+          type: integer
+          example: 50
+
+    TowerGameStartResponse:
+      type: object
+      properties:
+        game_id:
+          type: string
+          format: uuid
+        floor_number:
+          type: integer
+          example: 5
+        floor_name:
+          type: string
+          example: "Floor 5"
+        ai_deck_preview:
+          type: object
+          properties:
+            name:
+              type: string
+              example: "Floor 5 Deck"
+            card_count:
+              type: integer
+              example: 20
+
+    AwardedCard:
+      type: object
+      properties:
+        user_card_instance_id:
+          type: string
+          format: uuid
+        card_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Thor"
+        rarity:
+          type: string
+          example: "legendary+"
+        image_url:
+          type: string
+
+    TowerCompletionResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        won:
+          type: boolean
+        floor_number:
+          type: integer
+        rewards_earned:
+          $ref: '#/components/schemas/TowerReward'
+        cards_awarded:
+          type: object
+          properties:
+            rare_art_card:
+              $ref: '#/components/schemas/AwardedCard'
+            legendary_card:
+              $ref: '#/components/schemas/AwardedCard'
+            epic_card:
+              $ref: '#/components/schemas/AwardedCard'
+        new_floor:
+          type: integer
+          description: New current floor after winning
+        generation_triggered:
+          type: boolean
+          description: Whether new floor generation was triggered
+

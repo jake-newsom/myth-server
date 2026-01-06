@@ -88,5 +88,5 @@ export type {
 // Export game engine types
 export * from "./game-engine.types";
 
-// Export story mode types
-export * from "./story-mode.types";
+// Export tower types
+export * from "./tower.types";

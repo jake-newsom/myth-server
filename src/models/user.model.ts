@@ -68,7 +68,7 @@ const UserModel = {
   },
 
   async findById(userId: string): Promise<User | null> {
-    const query = `SELECT user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
+    const query = `SELECT user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, tower_floor, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
     const { rows } = await db.query(query, [userId]);
     return rows[0] || null;
   },
@@ -359,6 +359,35 @@ const UserModel = {
     `;
 
     const { rows } = await db.query(query, values);
+    return rows[0] || null;
+  },
+
+  // Tower floor methods
+  async getTowerFloor(userId: string): Promise<number> {
+    const query = `SELECT tower_floor FROM "users" WHERE user_id = $1;`;
+    const { rows } = await db.query(query, [userId]);
+    return rows[0]?.tower_floor || 1;
+  },
+
+  async updateTowerFloor(userId: string, floor: number): Promise<User | null> {
+    const query = `
+      UPDATE "users" 
+      SET tower_floor = $2 
+      WHERE user_id = $1
+      RETURNING user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, tower_floor, created_at, last_login as last_login_at;
+    `;
+    const { rows } = await db.query(query, [userId, floor]);
+    return rows[0] || null;
+  },
+
+  async incrementTowerFloor(userId: string): Promise<User | null> {
+    const query = `
+      UPDATE "users" 
+      SET tower_floor = tower_floor + 1 
+      WHERE user_id = $1
+      RETURNING user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, tower_floor, created_at, last_login as last_login_at;
+    `;
+    const { rows } = await db.query(query, [userId]);
     return rows[0] || null;
   },
 };

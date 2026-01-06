@@ -168,28 +168,27 @@ export class GameLogic {
       );
     const hydrated_card_data_cache: Record<string, InGameCard> = {};
 
-    // Hydrate initial hands and cache them
+    // Hydrate initial hands in batch
     const p1HandInstanceIds = p1DeckShuffled.slice(0, initialHandSize);
-    for (const id of p1HandInstanceIds) {
-      if (!hydrated_card_data_cache[id]) {
-        const cardData = (
-          await this.hydrateCardInstances([id], player1UserId)
-        ).get(id);
-        if (cardData) hydrated_card_data_cache[id] = cardData;
-      }
-    }
     const p2HandInstanceIds = p2DeckShuffled.slice(0, initialHandSize);
-    for (const id of p2HandInstanceIds) {
-      if (!hydrated_card_data_cache[id]) {
-        // For AI, we don't verify ownership with userId, or AI has its own instances
-        const cardData = (
-          await this.hydrateCardInstances(
-            [id],
-            player2UserId.startsWith("AI_") ? undefined : player2UserId
-          )
-        ).get(id);
-        if (cardData) hydrated_card_data_cache[id] = cardData;
-      }
+
+    // Batch hydrate all initial hand cards at once for better performance
+    const allInitialCardIds = [...p1HandInstanceIds, ...p2HandInstanceIds];
+    const p1CardsMap = await this.hydrateCardInstances(
+      p1HandInstanceIds,
+      player1UserId
+    );
+    const p2CardsMap = await this.hydrateCardInstances(
+      p2HandInstanceIds,
+      player2UserId.startsWith("AI_") ? undefined : player2UserId
+    );
+
+    // Populate cache with hydrated cards
+    for (const [id, cardData] of p1CardsMap.entries()) {
+      hydrated_card_data_cache[id] = cardData;
+    }
+    for (const [id, cardData] of p2CardsMap.entries()) {
+      hydrated_card_data_cache[id] = cardData;
     }
 
     const player1: Player = {
@@ -304,17 +303,13 @@ export class GameLogic {
       );
 
       // Resolve combat with adjacent cards
-      try {
-        const combatResult = gameUtils.resolveCombat(
-          newState,
-          position,
-          playerId
-        );
-        newState = combatResult.state;
-        events.push(...combatResult.events);
-      } catch (err) {
-        throw err;
-      }
+      const combatResult = gameUtils.resolveCombat(
+        newState,
+        position,
+        playerId
+      );
+      newState = combatResult.state;
+      events.push(...combatResult.events);
 
       const scores = validators.calculateScores(
         newState.board,

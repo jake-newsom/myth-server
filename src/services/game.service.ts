@@ -13,6 +13,7 @@ export interface GameRecord {
   game_status: GameStatus; // Use enum instead of string
   board_layout: string;
   game_state: GameState; // Stored as JSONB, parsed to GameState object
+  floor_number?: number | null; // Tower floor number for tower games
   created_at: Date;
   completed_at?: Date | null;
   winner_id?: string | null;
@@ -60,23 +61,42 @@ class GameService {
     player1DeckId: string,
     player2DeckId: string,
     gameMode: "solo" | "pvp", // Or your specific game modes
-    initialGameState: GameState
+    initialGameState: GameState,
+    floorNumber?: number // Optional: tower floor number for tower games
   ): Promise<CreateGameResponse> {
-    const query = `
-      INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-      RETURNING game_id, game_state, game_status;
-    `;
-    const values = [
-      player1Id,
-      player2Id,
-      player1DeckId,
-      player2DeckId,
-      gameMode,
-      GameStatus.ACTIVE, // Initial status
-      "4x4", // Assuming '4x4' as default or pass as param if variable
-      JSON.stringify(initialGameState),
-    ];
+    const query = floorNumber !== undefined
+      ? `
+        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, floor_number, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        RETURNING game_id, game_state, game_status;
+      `
+      : `
+        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        RETURNING game_id, game_state, game_status;
+      `;
+    const values = floorNumber !== undefined
+      ? [
+          player1Id,
+          player2Id,
+          player1DeckId,
+          player2DeckId,
+          gameMode,
+          GameStatus.ACTIVE, // Initial status
+          "4x4", // Assuming '4x4' as default or pass as param if variable
+          JSON.stringify(initialGameState),
+          floorNumber,
+        ]
+      : [
+          player1Id,
+          player2Id,
+          player1DeckId,
+          player2DeckId,
+          gameMode,
+          GameStatus.ACTIVE, // Initial status
+          "4x4", // Assuming '4x4' as default or pass as param if variable
+          JSON.stringify(initialGameState),
+        ];
     const { rows } = await db.query(query, values);
     if (rows.length === 0) {
       throw new Error("Failed to create game record."); // Or a more specific error
@@ -299,6 +319,26 @@ class GameService {
         turn_number: gameState.turn_number || 1,
       };
     });
+  }
+
+  /**
+   * Get the floor number for a game (if it's a tower game)
+   */
+  async getGameFloorNumber(gameId: string): Promise<number | null> {
+    const query = `SELECT floor_number FROM "games" WHERE game_id = $1;`;
+    const { rows } = await db.query(query, [gameId]);
+    if (rows.length === 0) {
+      return null;
+    }
+    return rows[0].floor_number || null;
+  }
+
+  /**
+   * Check if a game is a tower game
+   */
+  async isTowerGame(gameId: string): Promise<boolean> {
+    const floorNumber = await this.getGameFloorNumber(gameId);
+    return floorNumber !== null;
   }
 }
 

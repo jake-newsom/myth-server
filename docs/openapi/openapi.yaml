@@ -49,6 +49,8 @@ tags:
     description: Administrative functions for daily shop management
   - name: Daily Tasks
     description: Daily tasks with rotating objectives and rewards
+  - name: Tower
+    description: Infinite Tower game mode with scaling difficulty and rewards
 
 paths:
   # Authentication Endpoints
@@ -308,6 +310,25 @@ paths:
 
   /api/daily-tasks/claim:
     $ref: "./dailyTask.openapi.yaml#/paths/~1api~1daily-tasks~1claim"
+
+  # Tower Endpoints
+  /api/tower/progress:
+    $ref: "./tower.openapi.yaml#/paths/~1api~1tower~1progress"
+
+  /api/tower/floors:
+    $ref: "./tower.openapi.yaml#/paths/~1api~1tower~1floors"
+
+  /api/tower/floor/{floorNumber}:
+    $ref: "./tower.openapi.yaml#/paths/~1api~1tower~1floor~1{floorNumber}"
+
+  /api/tower/rewards/{floor}:
+    $ref: "./tower.openapi.yaml#/paths/~1api~1tower~1rewards~1{floor}"
+
+  /api/tower/start:
+    $ref: "./tower.openapi.yaml#/paths/~1api~1tower~1start"
+
+  /api/tower/complete:
+    $ref: "./tower.openapi.yaml#/paths/~1api~1tower~1complete"
 
   # Game Endpoints
   /api/games/solo:

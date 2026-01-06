@@ -28,6 +28,8 @@
     "render:deploy": "npm run render:build",
     "db:run-queries": "node scripts/run-database-queries.js",
     "db:setup": "npm run migrate:up && npm run db:run-queries",
+    "reset-tower": "node scripts/reset-tower-to-2-floors.js",
+    "generate-tower": "node scripts/trigger-tower-generation.js",
     "verify:env": "node scripts/verify-env.js",
     "postinstall": "npm run build"
   },

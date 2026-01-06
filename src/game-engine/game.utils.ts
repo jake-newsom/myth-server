@@ -117,8 +117,7 @@ export function resolveCombat(
   const events: BaseGameEvent[] = [];
 
   try {
-    const newState = _.cloneDeep(gameState);
-
+    // No longer cloning - mutate the state passed in since placeCard already cloned it
     const directions: {
       dx: number;
       dy: number;
@@ -131,12 +130,12 @@ export function resolveCombat(
       { dx: -1, dy: 0, from: "left", to: "right" }, // Card to the left
     ];
 
-    const placedCell = newState.board[position.y][position.x];
+    const placedCell = gameState.board[position.y][position.x];
 
     if (placedCell.card)
       events.push(
         ...triggerAbilities(TriggerMoment.BeforeCombat, {
-          state: newState,
+          state: gameState,
           triggerCard: placedCell.card,
           triggerMoment: TriggerMoment.BeforeCombat,
           position,
@@ -144,7 +143,7 @@ export function resolveCombat(
       );
 
     if (!placedCell || !placedCell.card) {
-      return { state: newState, events };
+      return { state: gameState, events };
     }
 
     for (const dir of directions) {
@@ -153,14 +152,14 @@ export function resolveCombat(
 
       if (
         nx >= 0 &&
-        nx < newState.board.length && // Assuming BOARD_SIZE is 4
+        nx < gameState.board.length && // Assuming BOARD_SIZE is 4
         ny >= 0 &&
-        ny < newState.board.length &&
-        newState.board[ny][nx] &&
-        newState.board[ny][nx]?.card &&
-        newState.board[ny][nx]?.tile_enabled === true
+        ny < gameState.board.length &&
+        gameState.board[ny][nx] &&
+        gameState.board[ny][nx]?.card &&
+        gameState.board[ny][nx]?.tile_enabled === true
       ) {
-        const adjacentCell = newState.board[ny][nx]!;
+        const adjacentCell = gameState.board[ny][nx]!;
         if (!adjacentCell.card) continue;
 
         if (adjacentCell.card.owner !== playerId) {
@@ -180,7 +179,7 @@ export function resolveCombat(
               triggerCard: adjacentCell.card,
               triggerMoment: TriggerMoment.OnCombat,
               position: { x: nx, y: ny },
-              state: newState,
+              state: gameState,
               combatType: COMBAT_TYPES.STANDARD,
             };
 
@@ -212,7 +211,7 @@ export function resolveCombat(
           // Check if any ally has a protection ability (like Harbor Guardian)
           if (!abilityPreventedDefeat && placedCardPower > adjacentCardPower) {
             const allAllies = getAllAlliesOnBoard(
-              newState.board,
+              gameState.board,
               adjacentCell.card.owner
             );
             for (const ally of allAllies) {
@@ -230,7 +229,7 @@ export function resolveCombat(
                   triggerCard: ally,
                   triggerMoment: TriggerMoment.OnCombat,
                   position: { x: nx, y: ny },
-                  state: newState,
+                  state: gameState,
                   combatType: COMBAT_TYPES.STANDARD,
                   flippedCard: adjacentCell.card,
                   flippedBy: placedCell.card,
@@ -262,7 +261,7 @@ export function resolveCombat(
           if (!abilityPreventedDefeat && placedCardPower > adjacentCardPower) {
             events.push(
               ...flipCard(
-                newState,
+                gameState,
                 position,
                 adjacentCell.card,
                 placedCell.card
@@ -284,7 +283,7 @@ export function resolveCombat(
 
             events.push(
               ...triggerAbilities(TriggerMoment.OnDefend, {
-                state: newState,
+                state: gameState,
                 triggerCard: adjacentCell.card,
                 triggerMoment: TriggerMoment.OnDefend,
                 flippedCard: adjacentCell.card,
@@ -300,14 +299,14 @@ export function resolveCombat(
     if (placedCell.card)
       events.push(
         ...triggerAbilities(TriggerMoment.AfterCombat, {
-          state: newState,
+          state: gameState,
           triggerCard: placedCell.card,
           triggerMoment: TriggerMoment.AfterCombat,
           position,
         })
       );
 
-    return { state: newState, events };
+    return { state: gameState, events };
   } catch (error) {
     console.error(
       `[DEBUG] Error in resolveCombat: ${

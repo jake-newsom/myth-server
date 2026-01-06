@@ -2,7 +2,6 @@ import { Router } from "express";
 import AdminController from "../controllers/admin.controller";
 import { authenticateJWT } from "../middlewares/auth.middleware";
 import { requireAdmin } from "../middlewares/adminAuth.middleware";
-import adminStoryModeRoutes from "./admin.storyMode.routes";
 
 const router = Router();
 
@@ -63,15 +62,5 @@ router.post("/trigger-ai-fate-pick", AdminController.triggerAIFatePick);
  * POST /api/admin/trigger-daily-rewards
  */
 router.post("/trigger-daily-rewards", AdminController.triggerDailyRewards);
-
-// ============================================================================
-// STORY MODE ADMIN ROUTES
-// ============================================================================
-
-/**
- * Story mode management endpoints
- * /api/admin/story-modes/*
- */
-router.use("/story-modes", adminStoryModeRoutes);
 
 export default router;

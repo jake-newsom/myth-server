@@ -140,6 +140,49 @@ const XpService = {
 
       await client.query("COMMIT");
 
+      // Trigger achievement event for XP transfer (card-to-card)
+      try {
+        const AchievementService = await import("./achievement.service");
+
+        await AchievementService.default.triggerAchievementEvent({
+          userId,
+          eventType: "xp_transfer",
+          eventData: {
+            sourceCardId,
+            targetCardId,
+            xpTransferred: actualXpTransferred,
+          },
+        });
+      } catch (error) {
+        console.warn("Error tracking XP transfer achievement:", error);
+        // Don't fail the transfer if achievement tracking fails
+      }
+
+      // Trigger achievement event for card leveling if applicable
+      if (didLevelUp) {
+        try {
+          const AchievementService = await import("./achievement.service");
+          const CardModel = await import("../models/card.model");
+          
+          const cardsAtLevelByRarity = await CardModel.default.getUserCardsAtLevelByRarity(userId);
+          const isFirstLevelUp = targetCard.level === 1; // Was level 1, now leveled up
+
+          await AchievementService.default.triggerAchievementEvent({
+            userId,
+            eventType: "card_leveled",
+            eventData: {
+              cardId: targetCardId,
+              newLevel: newTargetLevel,
+              isFirstLevelUp,
+              cardsAtLevelByRarity,
+            },
+          });
+        } catch (error) {
+          console.warn("Error tracking card leveling achievement:", error);
+          // Don't fail the transfer if achievement tracking fails
+        }
+      }
+
       return {
         success: true,
         message: `Transferred ${actualXpTransferred} XP to ${cardName}`,
@@ -248,6 +291,24 @@ const XpService = {
 
       // Invalidate user's card cache since cards were sacrificed
       await cacheInvalidation.invalidateAfterSacrifice(userId);
+
+      // Trigger achievement event for card sacrifice
+      try {
+        const AchievementService = await import("./achievement.service");
+        const totalSacrificed = await XpPoolModel.getTotalSacrificeCount(userId);
+
+        await AchievementService.default.triggerAchievementEvent({
+          userId,
+          eventType: "card_sacrifice",
+          eventData: {
+            cardCount: cardIds.length,
+            totalSacrificed,
+          },
+        });
+      } catch (error) {
+        console.warn("Error tracking card sacrifice achievement:", error);
+        // Don't fail the sacrifice if achievement tracking fails
+      }
 
       return {
         success: true,
@@ -438,6 +499,24 @@ const XpService = {
       // Invalidate user's card cache since cards were sacrificed
       await cacheInvalidation.invalidateAfterSacrifice(userId);
 
+      // Trigger achievement event for card sacrifice
+      try {
+        const AchievementService = await import("./achievement.service");
+        const totalSacrificed = await XpPoolModel.getTotalSacrificeCount(userId);
+
+        await AchievementService.default.triggerAchievementEvent({
+          userId,
+          eventType: "card_sacrifice",
+          eventData: {
+            cardCount: cardsToSacrifice.length,
+            totalSacrificed,
+          },
+        });
+      } catch (error) {
+        console.warn("Error tracking card sacrifice achievement:", error);
+        // Don't fail the sacrifice if achievement tracking fails
+      }
+
       return {
         success: true,
         message: `Sacrificed ${
@@ -542,6 +621,49 @@ const XpService = {
 
       await client.query("COMMIT");
 
+      // Trigger achievement event for XP transfer (pool-to-card counts as XP transfer)
+      try {
+        const AchievementService = await import("./achievement.service");
+
+        await AchievementService.default.triggerAchievementEvent({
+          userId,
+          eventType: "xp_transfer",
+          eventData: {
+            targetCardId,
+            xpTransferred: xpAmount,
+            fromPool: true,
+          },
+        });
+      } catch (error) {
+        console.warn("Error tracking XP transfer achievement:", error);
+        // Don't fail the application if achievement tracking fails
+      }
+
+      // Trigger achievement event for card leveling if applicable
+      if (didLevelUp) {
+        try {
+          const AchievementService = await import("./achievement.service");
+          const CardModel = await import("../models/card.model");
+          
+          const cardsAtLevelByRarity = await CardModel.default.getUserCardsAtLevelByRarity(userId);
+          const isFirstLevelUp = targetCard.level === 1; // Was level 1, now leveled up
+
+          await AchievementService.default.triggerAchievementEvent({
+            userId,
+            eventType: "card_leveled",
+            eventData: {
+              cardId: targetCardId,
+              newLevel: newCardLevel,
+              isFirstLevelUp,
+              cardsAtLevelByRarity,
+            },
+          });
+        } catch (error) {
+          console.warn("Error tracking card leveling achievement:", error);
+          // Don't fail the application if achievement tracking fails
+        }
+      }
+
       return {
         success: true,
         message: `Applied ${xpAmount} XP to ${targetCard.name}`,
@@ -636,6 +758,8 @@ const XpService = {
   ): Promise<XpReward[]> {
     const client = await db.getClient();
     const results: XpReward[] = [];
+    let anyLevelUp = false;
+    let hasFirstLevelUp = false;
 
     try {
       await client.query("BEGIN");
@@ -661,6 +785,13 @@ const XpService = {
         const newXp = card.xp + reward.xp_gained;
         const newLevel = this.calculateLevel(newXp);
         const didLevelUp = newLevel > card.level;
+
+        if (didLevelUp) {
+          anyLevelUp = true;
+          if (card.level === 1) {
+            hasFirstLevelUp = true;
+          }
+        }
 
         await client.query(
           `UPDATE "user_owned_cards" SET xp = $1, level = $2 WHERE user_card_instance_id = $3`,
@@ -704,6 +835,33 @@ const XpService = {
       await UserModel.updateTotalXp(userId, totalXpGained);
 
       await client.query("COMMIT");
+
+      // Trigger achievement event for card leveling if any cards leveled up
+      if (anyLevelUp) {
+        try {
+          const AchievementService = await import("./achievement.service");
+          const CardModel = await import("../models/card.model");
+          
+          const cardsAtLevelByRarity = await CardModel.default.getUserCardsAtLevelByRarity(userId);
+          
+          // Find the highest level achieved in this batch
+          const maxLevel = Math.max(...results.map(r => r.new_level));
+
+          await AchievementService.default.triggerAchievementEvent({
+            userId,
+            eventType: "card_leveled",
+            eventData: {
+              newLevel: maxLevel,
+              isFirstLevelUp: hasFirstLevelUp,
+              cardsAtLevelByRarity,
+            },
+          });
+        } catch (error) {
+          console.warn("Error tracking card leveling achievement:", error);
+          // Don't fail the XP award if achievement tracking fails
+        }
+      }
+
       return results;
     } catch (error) {
       await client.query("ROLLBACK");

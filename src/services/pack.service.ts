@@ -82,6 +82,7 @@ const PackService = {
     // 10. Trigger achievement events for pack opening
     try {
       const AchievementService = await import("./achievement.service");
+      const CardModel = await import("../models/card.model");
 
       // Pack opened event
       await AchievementService.default.triggerAchievementEvent({
@@ -94,19 +95,21 @@ const PackService = {
         },
       });
 
-      // Card collection events for each unique card
-      // for (const card of selectedCards) {
-      //   await AchievementService.default.triggerAchievementEvent({
-      //     userId,
-      //     eventType: "card_collected",
-      //     eventData: {
-      //       cardId: card.card_id,
-      //       cardName: card.name,
-      //       rarity: card.rarity,
-      //       totalUniqueCards: 0,
-      //     },
-      //   });
-      // }
+      // Get updated card counts after adding cards to collection
+      const totalUniqueCards = await CardModel.default.getUserUniqueCardCount(userId);
+      const totalMythicCards = await CardModel.default.getUserMythicCardCount(userId);
+
+      // Card collection event for tracking total collection progress
+      // We trigger this once per pack with the current totals
+      await AchievementService.default.triggerAchievementEvent({
+        userId,
+        eventType: "card_collected",
+        eventData: {
+          rarity: selectedCards[0]?.rarity, // Use first card's rarity for legacy achievements
+          totalUniqueCards,
+          totalMythicCards,
+        },
+      });
     } catch (error) {
       logger.error(
         "Error processing pack opening achievement events",
