@@ -136,6 +136,7 @@ class TowerGenerationService {
     count: number
   ): Promise<GeneratedFloorDeck[]> {
     const apiKey = process.env.GEMINI_API_KEY;
+    const modelName = process.env.GEMINI_MODEL || "gemini-1.5-pro";
 
     if (!apiKey) {
       console.warn(
@@ -159,16 +160,17 @@ class TowerGenerationService {
     // Log the prompt being sent
     console.log("[TowerGen] ========================================");
     console.log("[TowerGen] Sending prompt to Gemini API");
+    console.log("[TowerGen] Model:", modelName);
     console.log("[TowerGen] Prompt length:", prompt.length, "characters");
     console.log("[TowerGen] ========================================");
     console.log(prompt);
     console.log("[TowerGen] ========================================");
 
     try {
-      // Call Gemini API using the 3.0 Pro Preview model
-      console.log("[TowerGen] Calling Gemini API...");
+      // Call Gemini API using the configured model
+      console.log(`[TowerGen] Calling Gemini API with model: ${modelName}...`);
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: {
