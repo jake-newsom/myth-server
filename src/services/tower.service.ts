@@ -627,7 +627,7 @@ class TowerService {
         // Use maxFloor as reference (highest available) for better power scaling
         TowerGenerationService.triggerGeneration(
           maxFloor + 1,
-          5,
+          3,
           maxFloor
         ).catch((error: Error) => {
           console.error("[Tower] Floor generation failed:", error);
