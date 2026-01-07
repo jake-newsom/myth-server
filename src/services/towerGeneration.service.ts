@@ -39,6 +39,38 @@ function calculateMaxPowerups(level: number, isAI: boolean = true): number {
   return Math.max(0, (level - 1) * multiplier);
 }
 
+/**
+ * Calculate target average card level for a given floor using gradual scaling
+ * This ensures sustainable long-term progression
+ */
+function calculateTargetAverageLevel(floorNumber: number): number {
+  // Base level is 1.0
+  let baseLevel = 1.0;
+
+  // Progressive scaling based on floor ranges
+  if (floorNumber <= 1) {
+    return 1.0;
+  } else if (floorNumber <= 50) {
+    // Floors 1-50: Very slow progression (1.0 -> 2.0)
+    // ~0.02 per floor
+    return baseLevel + (floorNumber - 1) * 0.02;
+  } else if (floorNumber <= 100) {
+    // Floors 51-100: Slightly faster (2.0 -> 3.5)
+    // ~0.03 per floor
+    const previousLevel = 2.0;
+    return previousLevel + (floorNumber - 50) * 0.03;
+  } else if (floorNumber <= 200) {
+    // Floors 101-200: Steady progression (3.5 -> 6.5)
+    // ~0.03 per floor
+    const previousLevel = 3.5;
+    return previousLevel + (floorNumber - 100) * 0.03;
+  } else {
+    // Floors 201+: Moderate scaling (~0.04 per floor)
+    const previousLevel = 6.5;
+    return previousLevel + (floorNumber - 200) * 0.04;
+  }
+}
+
 class TowerGenerationService {
   /**
    * Trigger floor generation (called asynchronously from tower.service)
@@ -280,6 +312,14 @@ class TowerGenerationService {
       )
       .join("\n");
 
+    // Calculate expected target levels for context
+    const targetLevels = [];
+    for (let i = 0; i < count; i++) {
+      const floorNum = startingFloor + i;
+      const target = calculateTargetAverageLevel(floorNum);
+      targetLevels.push(`Floor ${floorNum}: ~${target.toFixed(1)}`);
+    }
+
     return `You are a game designer for a card battle game. Generate ${count} AI opponent decks for tower floors ${startingFloor} to ${
       startingFloor + count - 1
     }.
@@ -287,10 +327,15 @@ class TowerGenerationService {
 AVAILABLE CARDS:
 ${cardListText}
 
-REFERENCE DECK (Floor ${
-      referenceDeck.floor_number
+REFERENCE DECK (Floor ${referenceDeck.floor_number}, Average Level: ${
+      referenceDeck.cards.reduce((sum, c) => sum + c.level, 0) /
+      referenceDeck.cards.length
     }, Average Power: ${referenceDeck.average_power.toFixed(1)}):
 ${referenceDeckText}
+
+TARGET AVERAGE LEVELS FOR THESE FLOORS:
+${targetLevels.join("\n")}
+(These are targets - you can vary by ±0.3, but try to stay close)
 
 DECK CONSTRAINTS:
 - Each deck must have exactly ${CARDS_PER_DECK} cards
@@ -312,10 +357,21 @@ POWERUP RULES (IMPORTANT):
 
 DIFFICULTY SCALING STRATEGY:
 - Scale difficulty primarily through AVERAGE CARD LEVEL
-- For floors ${startingFloor}-${
-      startingFloor + count - 1
-    }, gradually increase average level
-- Every 10 floors, increase average level by ~0.5
+- Use VERY GRADUAL scaling for long-term progression:
+  * Floors 1-50: Stay mostly at level 1-2 (increase ~0.02 per floor)
+  * Floors 51-100: Slowly reach level 3-4 (increase ~0.03 per floor)
+  * Floors 101-200: Progress to level 5-7 (increase ~0.03 per floor)
+  * After floor 200: Can scale slightly faster (increase ~0.04 per floor)
+- Target average levels as reference:
+  * Floor 1: avg 1.0
+  * Floor 10: avg 1.2
+  * Floor 25: avg 1.5
+  * Floor 50: avg 2.0
+  * Floor 100: avg 3.5
+  * Floor 200: avg 6.5
+- For the current floors (${startingFloor}-${startingFloor + count - 1}):
+  * Match or slightly exceed the reference deck's average level
+  * Keep progression gradual and sustainable
 - Vary individual card levels for interesting deck composition:
   * Some cards at higher levels (powerhouses)
   * Some cards at lower levels (support/filler)
@@ -510,9 +566,8 @@ IMPORTANT:
     for (let i = 0; i < count; i++) {
       const floorNumber = startingFloor + i;
 
-      // Calculate target level for this floor (no cap)
-      const targetLevel =
-        avgLevel + (floorNumber - referenceDeck.floor_number) * 0.05;
+      // Calculate target level for this floor using gradual scaling formula
+      const targetLevel = calculateTargetAverageLevel(floorNumber);
       const roundedLevel = Math.max(1, Math.round(targetLevel));
 
       const deckCards: GeneratedDeckCard[] = [];
