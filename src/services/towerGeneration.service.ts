@@ -333,7 +333,8 @@ OUTPUT FORMAT (JSON array):
 [
   {
     "floor_number": ${startingFloor},
-    "deck_name": "Floor ${startingFloor} Deck",
+    "floor_name": "The Frozen Wastes",
+    "deck_name": "Frost Giants Deck",
     "cards": [
       {
         "card_name": "Card Name",
@@ -350,7 +351,10 @@ IMPORTANT:
 - Output ONLY the JSON array, no other text
 - Use exact card names from the available cards list
 - Ensure powerup totals match the level formula: (level - 1) × ${AI_POWERUPS_PER_LEVEL}
-- Focus on creating interesting level distributions within each deck`;
+- Focus on creating interesting level distributions within each deck
+- Give each floor a creative, thematic name (floor_name) that hints at the challenge
+- Give each deck a thematic name (deck_name) that matches the floor theme
+- Make names evocative and exciting (e.g., "The Abyssal Depths", "Olympian Heights", "Realm of Shadows")`;
   }
 
   /**
@@ -390,56 +394,74 @@ IMPORTANT:
       );
 
       // Validate and normalize the response
-      const normalized = parsed.map((floor: any, index: number) => ({
-        floor_number: floor.floor_number || startingFloor + index,
-        deck_name: floor.deck_name || `Floor ${startingFloor + index} Deck`,
-        cards: (floor.cards || []).map((card: any) => {
-          const level = Math.max(1, card.level || 1);
-          const maxPowerups = calculateMaxPowerups(level, true);
+      const normalized: GeneratedFloorDeck[] = parsed.map(
+        (floor: any, index: number) => {
+          const cards = (floor.cards || []).map((card: any) => {
+            const level = Math.max(1, card.level || 1);
+            const maxPowerups = calculateMaxPowerups(level, true);
 
-          // Get powerups from response or default to empty
-          let powerUps = card.power_ups || {
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-          };
-
-          // Validate and normalize powerups
-          const totalPowerups =
-            (powerUps.top || 0) +
-            (powerUps.right || 0) +
-            (powerUps.bottom || 0) +
-            (powerUps.left || 0);
-
-          // If total exceeds max, scale down proportionally
-          if (totalPowerups > maxPowerups) {
-            const scale = maxPowerups / totalPowerups;
-            powerUps = {
-              top: Math.floor((powerUps.top || 0) * scale),
-              right: Math.floor((powerUps.right || 0) * scale),
-              bottom: Math.floor((powerUps.bottom || 0) * scale),
-              left: Math.floor((powerUps.left || 0) * scale),
+            // Get powerups from response or default to empty
+            let powerUps = card.power_ups || {
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
             };
-            console.log(
-              `[TowerGen]   ⚠️  Card "${
-                card.card_name || card.name
-              }" level ${level} had ${totalPowerups} powerups (max: ${maxPowerups}), scaled down`
-            );
-          }
+
+            // Validate and normalize powerups
+            const totalPowerups =
+              (powerUps.top || 0) +
+              (powerUps.right || 0) +
+              (powerUps.bottom || 0) +
+              (powerUps.left || 0);
+
+            // If total exceeds max, scale down proportionally
+            if (totalPowerups > maxPowerups) {
+              const scale = maxPowerups / totalPowerups;
+              powerUps = {
+                top: Math.floor((powerUps.top || 0) * scale),
+                right: Math.floor((powerUps.right || 0) * scale),
+                bottom: Math.floor((powerUps.bottom || 0) * scale),
+                left: Math.floor((powerUps.left || 0) * scale),
+              };
+              console.log(
+                `[TowerGen]   ⚠️  Card "${
+                  card.card_name || card.name
+                }" level ${level} had ${totalPowerups} powerups (max: ${maxPowerups}), scaled down`
+              );
+            }
+
+            return {
+              card_name: card.card_name || card.name,
+              level,
+              power_ups: powerUps,
+            };
+          });
+
+          // Calculate average card level
+          const totalLevel = cards.reduce(
+            (sum: number, card: GeneratedDeckCard) => sum + card.level,
+            0
+          );
+          const average_card_level =
+            cards.length > 0
+              ? Math.round((totalLevel / cards.length) * 10) / 10 // Round to 1 decimal
+              : 1;
 
           return {
-            card_name: card.card_name || card.name,
-            level,
-            power_ups: powerUps,
+            floor_number: floor.floor_number || startingFloor + index,
+            floor_name: floor.floor_name || `Floor ${startingFloor + index}`,
+            deck_name: floor.deck_name || `Floor ${startingFloor + index} Deck`,
+            cards,
+            average_card_level,
           };
-        }),
-      }));
+        }
+      );
 
       console.log("[TowerGen] Floor parsing summary:");
       normalized.forEach((floor) => {
         console.log(
-          `  - Floor ${floor.floor_number}: ${floor.cards.length} cards`
+          `  - Floor ${floor.floor_number}: ${floor.cards.length} cards, avg level: ${floor.average_card_level}`
         );
       });
 
@@ -593,10 +615,19 @@ IMPORTANT:
         usedNames.set(card.name, (usedNames.get(card.name) || 0) + 1);
       }
 
+      // Calculate average card level
+      const totalLevel = deckCards.reduce((sum, card) => sum + card.level, 0);
+      const deckAvgLevel =
+        deckCards.length > 0
+          ? Math.round((totalLevel / deckCards.length) * 10) / 10 // Round to 1 decimal
+          : 1;
+
       floors.push({
         floor_number: floorNumber,
+        floor_name: `Floor ${floorNumber}`,
         deck_name: `Floor ${floorNumber} Deck`,
         cards: deckCards,
+        average_card_level: deckAvgLevel,
       });
     }
 
@@ -612,8 +643,12 @@ IMPORTANT:
     console.log(
       `[TowerGen] Creating floor ${floor.floor_number} in database...`
     );
+    console.log(`[TowerGen]   Floor Name: ${floor.floor_name}`);
     console.log(`[TowerGen]   Deck: ${floor.deck_name}`);
     console.log(`[TowerGen]   Cards: ${floor.cards.length}`);
+    console.log(
+      `[TowerGen]   Average Card Level: ${floor.average_card_level || "N/A"}`
+    );
 
     const client = await db.getClient();
 
@@ -717,9 +752,14 @@ IMPORTANT:
 
       // Create tower floor entry
       await client.query(
-        `INSERT INTO tower_floors (floor_number, name, ai_deck_id, is_active, created_at)
-         VALUES ($1, $2, $3, true, NOW())`,
-        [floor.floor_number, `Floor ${floor.floor_number}`, deckId]
+        `INSERT INTO tower_floors (floor_number, name, ai_deck_id, average_card_level, is_active, created_at)
+         VALUES ($1, $2, $3, $4, true, NOW())`,
+        [
+          floor.floor_number,
+          floor.floor_name,
+          deckId,
+          floor.average_card_level || null,
+        ]
       );
 
       await client.query("COMMIT");

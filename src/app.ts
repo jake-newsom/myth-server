@@ -12,6 +12,12 @@ import * as cron from "node-cron";
 // Load environment variables
 dotenv.config();
 
+// Load version from package.json
+const packageJson = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "../package.json"), "utf8")
+);
+const SERVER_VERSION = packageJson.version;
+
 // Import the API routes
 import apiRoutes from "./api/routes";
 import errorHandler from "./api/middlewares/errorHandler.middleware";
@@ -53,9 +59,17 @@ let dailyTaskScheduler: any = null;
 
 // Middleware
 app.use(compression()); // Enable gzip compression for all responses
-app.use(cors()); // Configure specific origins in production
+app.use(cors({
+  exposedHeaders: ["X-Server-Version"] // Allow client to read custom headers
+})); // Configure specific origins in production
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
+
+// Add server version to all responses
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("X-Server-Version", SERVER_VERSION);
+  next();
+});
 
 // Swagger documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));

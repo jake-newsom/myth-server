@@ -29,6 +29,7 @@ export interface TowerFloor {
   name: string;
   ai_deck_id: string;
   is_active: boolean;
+  average_card_level?: number; // Average level of cards in the AI deck
   created_at?: Date;
 }
 
@@ -110,8 +111,10 @@ export interface TowerListResponse {
  */
 export interface GeneratedFloorDeck {
   floor_number: number;
-  deck_name: string;
+  floor_name: string; // Creative name for the floor (e.g., "The Frozen Wastes")
+  deck_name: string; // Name for the AI deck
   cards: GeneratedDeckCard[];
+  average_card_level?: number; // Calculated average level of cards in deck
 }
 
 /**
@@ -173,6 +176,7 @@ export interface TowerFloorRow {
   name: string;
   ai_deck_id: string;
   is_active: boolean;
+  average_card_level?: number;
   created_at: string;
 }
 
@@ -185,6 +189,7 @@ export function rowToTowerFloor(row: TowerFloorRow): TowerFloor {
     name: row.name,
     ai_deck_id: row.ai_deck_id,
     is_active: row.is_active,
+    average_card_level: row.average_card_level,
     created_at: row.created_at ? new Date(row.created_at) : undefined,
   };
 }

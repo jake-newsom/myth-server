@@ -241,13 +241,19 @@ components:
           example: 5
         name:
           type: string
-          example: "Floor 5"
+          description: Creative thematic name for the floor
+          example: "The Frozen Wastes"
         ai_deck_id:
           type: string
           format: uuid
         is_active:
           type: boolean
           example: true
+        average_card_level:
+          type: number
+          format: float
+          description: Average level of cards in the AI deck (for difficulty tracking)
+          example: 3.5
 
     TowerFloorWithReward:
       allOf:
@@ -324,13 +330,15 @@ components:
           example: 5
         floor_name:
           type: string
-          example: "Floor 5"
+          description: Creative thematic name for the floor
+          example: "The Frozen Wastes"
         ai_deck_preview:
           type: object
           properties:
             name:
               type: string
-              example: "Floor 5 Deck"
+              description: Thematic name for the AI deck
+              example: "Frost Giants Deck"
             card_count:
               type: integer
               example: 20
