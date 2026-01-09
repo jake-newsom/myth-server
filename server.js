@@ -9,12 +9,31 @@ const PORT = process.env.PORT || 3000;
 
 const httpServer = http.createServer(app);
 
+// CORS configuration supporting mobile apps (Capacitor/Cordova)
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  "http://localhost:8100", // Local dev
+  "https://localhost", // Capacitor Android
+  "capacitor://localhost", // Capacitor iOS
+  "ionic://localhost", // Ionic webview
+].filter(Boolean); // Remove undefined values
+
 // Initialize Socket.IO
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:8100", // Adjust for your client URL (Ionic default)
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true);
+      
+      // Check if origin is in allowed list
+      if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ["GET", "POST"],
-    // credentials: true // If you need to send cookies with socket requests (not typical for token auth)
+    credentials: true,
   },
 });
 

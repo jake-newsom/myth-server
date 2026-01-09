@@ -59,13 +59,35 @@ let dailyTaskScheduler: any = null;
 
 // Middleware
 app.use(compression()); // Enable gzip compression for all responses
-app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:8100",
-  credentials: true,
-  exposedHeaders: ["X-Server-Version"], // Allow client to read custom headers
-  allowedHeaders: ["Content-Type", "Authorization"],
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
-}));
+
+// CORS configuration supporting mobile apps (Capacitor/Cordova)
+const allowedOrigins: string[] = [
+  process.env.CLIENT_URL,
+  "http://localhost:8100", // Local dev
+  "https://localhost", // Capacitor Android
+  "capacitor://localhost", // Capacitor iOS
+  "ionic://localhost", // Ionic webview
+].filter((origin): origin is string => Boolean(origin)); // Remove undefined values
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true);
+
+      // Check if origin is in allowed list
+      if (allowedOrigins.some((allowed) => origin.startsWith(allowed))) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+    exposedHeaders: ["X-Server-Version"], // Allow client to read custom headers
+    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  })
+);
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
 
@@ -106,8 +128,19 @@ if (require.main === module) {
     const { Server } = require("socket.io");
     const io = new Server(httpServer, {
       cors: {
-        origin: process.env.CLIENT_URL || "http://localhost:8100",
+        origin: (origin: string, callback: any) => {
+          // Allow requests with no origin (mobile apps)
+          if (!origin) return callback(null, true);
+
+          // Check if origin is in allowed list
+          if (allowedOrigins.some((allowed) => origin.startsWith(allowed))) {
+            callback(null, true);
+          } else {
+            callback(new Error("Not allowed by CORS"));
+          }
+        },
         methods: ["GET", "POST"],
+        credentials: true,
       },
     });
 
@@ -136,7 +169,10 @@ if (require.main === module) {
       await redisCache.connect();
       console.log("✅ Redis cache connected successfully");
     } catch (error) {
-      console.error("⚠️  Redis cache connection failed (continuing without cache):", error);
+      console.error(
+        "⚠️  Redis cache connection failed (continuing without cache):",
+        error
+      );
     }
 
     // Run startup initialization
@@ -179,14 +215,18 @@ if (require.main === module) {
     try {
       // Ensure today's selection exists on startup
       await DailyTaskService.ensureTodaySelection();
-      
+
       // Schedule daily task selection at 12am UTC
-      dailyTaskScheduler = cron.schedule("0 0 * * *", async () => {
-        console.log("🎯 Running daily task selection scheduler...");
-        await DailyTaskService.generateTomorrowSelection();
-      }, {
-        timezone: "UTC"
-      });
+      dailyTaskScheduler = cron.schedule(
+        "0 0 * * *",
+        async () => {
+          console.log("🎯 Running daily task selection scheduler...");
+          await DailyTaskService.generateTomorrowSelection();
+        },
+        {
+          timezone: "UTC",
+        }
+      );
       console.log("🎯 Daily Task Scheduler started successfully");
     } catch (error) {
       console.error("❌ Failed to start Daily Task Scheduler:", error);
