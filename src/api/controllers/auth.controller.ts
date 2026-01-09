@@ -5,6 +5,8 @@ import UserModel from "../../models/user.model";
 import StarterService from "../../services/starter.service";
 import SessionService from "../../services/session.service";
 import FacebookService from "../../services/facebook.service";
+import AppleService from "../../services/apple.service";
+import GoogleService from "../../services/google.service";
 import db from "../../config/db.config";
 import { User } from "../../types/database.types";
 import { AuthenticatedRequest } from "../../types/middleware.types";
@@ -541,157 +543,6 @@ const AuthController = {
     }
   },
 
-  facebookCallback: async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { code, state, error, error_description } = req.query;
-
-      // Handle Facebook OAuth errors
-      if (error) {
-        const errorMsg = error_description || "Facebook authentication failed";
-        return res.redirect(
-          `${
-            process.env.CLIENT_URL || "http://localhost:3000"
-          }/auth/error?message=${encodeURIComponent(errorMsg as string)}`
-        );
-      }
-
-      if (!code) {
-        return res.redirect(
-          `${
-            process.env.CLIENT_URL || "http://localhost:3000"
-          }/auth/error?message=${encodeURIComponent(
-            "No authorization code received"
-          )}`
-        );
-      }
-
-      // Exchange code for access token
-      const tokenUrl = "https://graph.facebook.com/v18.0/oauth/access_token";
-      const params = new URLSearchParams({
-        client_id: process.env.FACEBOOK_APP_ID!,
-        client_secret: process.env.FACEBOOK_APP_SECRET!,
-        redirect_uri: `${
-          process.env.API_URL || "http://localhost:3000"
-        }/api/auth/facebook/callback`,
-        code: code as string,
-      });
-
-      const tokenResponse = await fetch(`${tokenUrl}?${params}`, {
-        method: "GET",
-      });
-
-      const tokenData = await tokenResponse.json();
-
-      if (tokenData.error) {
-        return res.redirect(
-          `${
-            process.env.CLIENT_URL || "http://localhost:3000"
-          }/auth/error?message=${encodeURIComponent(tokenData.error.message)}`
-        );
-      }
-
-      // Use the existing Facebook auth logic
-      const facebookProfile = await FacebookService.validateTokenAndGetProfile(
-        tokenData.access_token
-      );
-
-      if (!facebookProfile) {
-        return res.redirect(
-          `${
-            process.env.CLIENT_URL || "http://localhost:3000"
-          }/auth/error?message=${encodeURIComponent(
-            "Failed to get Facebook profile"
-          )}`
-        );
-      }
-
-      // Check if user exists
-      let user = await UserModel.findByFacebookId(facebookProfile.id);
-
-      if (!user) {
-        // Check for existing email (only if email provided)
-        if (facebookProfile.email) {
-          const existingUserByEmail = await UserModel.findByEmail(
-            facebookProfile.email
-          );
-          if (
-            existingUserByEmail &&
-            existingUserByEmail.auth_provider === "local"
-          ) {
-            return res.redirect(
-              `${
-                process.env.CLIENT_URL || "http://localhost:3000"
-              }/auth/error?message=${encodeURIComponent(
-                "Email already exists with local account"
-              )}`
-            );
-          }
-        }
-
-        // Create new user
-        const client = await db.getClient();
-        try {
-          await client.query("BEGIN");
-
-          const baseUsername = FacebookService.generateUsername(
-            facebookProfile.name,
-            facebookProfile.id
-          );
-          const uniqueUsername = await FacebookService.ensureUniqueUsername(
-            baseUsername,
-            async (username) => {
-              const existingUser = await UserModel.findByUsername(username);
-              return !!existingUser;
-            }
-          );
-
-          // Handle missing email from Facebook
-          const userEmail =
-            facebookProfile.email || `${facebookProfile.id}@facebook.local`;
-
-          user = await UserModel.create({
-            username: uniqueUsername,
-            email: userEmail,
-            facebook_id: facebookProfile.id,
-            auth_provider: "facebook",
-          });
-
-          await StarterService.grantStarterContent(user.user_id);
-          await client.query("COMMIT");
-        } catch (error) {
-          await client.query("ROLLBACK");
-          throw error;
-        } finally {
-          client.release();
-        }
-      }
-
-      // Update last login
-      await UserModel.updateLastLogin(user.user_id);
-
-      // Generate session and tokens
-      const sessionMetadata = SessionService.extractSessionMetadata(req);
-      const tokens = SessionService.generateTokenPair(user.user_id, "");
-      await SessionService.createSession(user.user_id, tokens, sessionMetadata);
-
-      // Redirect to client with tokens (you might want to use a more secure method)
-      const redirectUrl = new URL(
-        `${process.env.CLIENT_URL || "http://localhost:3000"}/auth/success`
-      );
-      redirectUrl.searchParams.set("accessToken", tokens.accessToken);
-      redirectUrl.searchParams.set("refreshToken", tokens.refreshToken);
-
-      res.redirect(redirectUrl.toString());
-    } catch (error) {
-      console.error("Facebook callback error:", error);
-      res.redirect(
-        `${
-          process.env.CLIENT_URL || "http://localhost:3000"
-        }/auth/error?message=${encodeURIComponent("Authentication failed")}`
-      );
-    }
-  },
-
   facebookLink: async (
     req: AuthenticatedRequest,
     res: Response,
@@ -745,20 +596,6 @@ const AuthController = {
           error: {
             message: "Your account already has a Facebook account linked.",
             code: "FACEBOOK_ALREADY_EXISTS",
-          },
-        });
-      }
-
-      // Optional: Check if Facebook email matches user email (only if Facebook provided email)
-      if (
-        facebookProfile.email &&
-        !req.user.email.endsWith("@facebook.local") &&
-        facebookProfile.email !== req.user.email
-      ) {
-        return res.status(409).json({
-          error: {
-            message: "Facebook email doesn't match your account email.",
-            code: "EMAIL_MISMATCH",
           },
         });
       }
@@ -865,6 +702,592 @@ const AuthController = {
             username: updatedUser.username,
             email: updatedUser.email,
             facebook_id: updatedUser.facebook_id,
+            auth_provider: updatedUser.auth_provider,
+            in_game_currency: updatedUser.in_game_currency,
+            gems: updatedUser.gems,
+            fate_coins: updatedUser.fate_coins,
+            total_xp: updatedUser.total_xp,
+          },
+        });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  appleAuth: async (req: Request, res: Response, next: NextFunction) => {
+        const client = await db.getClient();
+        try {
+      const { identityToken, user: appleUser } = req.body;
+
+      // Validate input
+      if (!identityToken) {
+        return res.status(400).json({
+          error: { message: "Apple identity token is required." },
+        });
+      }
+
+      // Validate Apple token and get user profile
+      const appleProfile = await AppleService.validateTokenAndGetProfile(
+        identityToken
+      );
+      if (!appleProfile) {
+        return res.status(401).json({
+          error: { message: "Invalid Apple identity token." },
+        });
+      }
+
+      // Check if user already exists with this Apple ID
+      let user = await UserModel.findByAppleId(appleProfile.sub);
+
+      if (user) {
+        // User exists, log them in
+        await UserModel.updateLastLogin(user.user_id);
+
+        // Generate session and tokens
+        const sessionMetadata = SessionService.extractSessionMetadata(req);
+        const tokens = SessionService.generateTokenPair(user.user_id, "");
+        const sessionId = await SessionService.createSession(
+          user.user_id,
+          tokens,
+          sessionMetadata
+        );
+
+        return res.status(200).json({
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          expiresAt: tokens.accessTokenExpiresAt,
+          user: {
+            user_id: user.user_id,
+            username: user.username,
+            email: user.email,
+            in_game_currency: user.in_game_currency,
+            gems: user.gems,
+            fate_coins: user.fate_coins,
+            total_xp: user.total_xp,
+          },
+        });
+      }
+
+          await client.query("BEGIN");
+
+      // Create new user with Apple authentication
+      // Apple may provide user info on first sign-in only
+      const userName = appleUser?.name
+        ? `${appleUser.name.firstName || ""} ${appleUser.name.lastName || ""}`.trim()
+        : undefined;
+
+      const baseUsername = AppleService.generateUsername(
+        appleProfile.sub,
+        appleProfile.email
+      );
+      const uniqueUsername = await AppleService.ensureUniqueUsername(
+            baseUsername,
+            async (username) => {
+              const existingUser = await UserModel.findByUsername(username);
+              return !!existingUser;
+            }
+          );
+
+      // Handle missing email from Apple
+          const userEmail =
+        appleProfile.email || `${appleProfile.sub}@appleid.local`;
+
+      const newUser = await UserModel.create({
+            username: uniqueUsername,
+            email: userEmail,
+        apple_id: appleProfile.sub,
+        auth_provider: "apple",
+          });
+
+      // Grant starter content (cards and deck)
+      await StarterService.grantStarterContent(newUser.user_id);
+
+          await client.query("COMMIT");
+
+      // Generate session and tokens
+      const sessionMetadata = SessionService.extractSessionMetadata(req);
+      const tokens = SessionService.generateTokenPair(newUser.user_id, "");
+      const sessionId = await SessionService.createSession(
+        newUser.user_id,
+        tokens,
+        sessionMetadata
+      );
+
+      res.status(201).json({
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresAt: tokens.accessTokenExpiresAt,
+        user: {
+          user_id: newUser.user_id,
+          username: newUser.username,
+          email: newUser.email,
+          in_game_currency: newUser.in_game_currency,
+          gems: newUser.gems,
+          fate_coins: newUser.fate_coins,
+          total_xp: newUser.total_xp,
+        },
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
+    }
+  },
+
+  appleLink: async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const { identityToken } = req.body;
+
+      if (!req.user) {
+        return res.status(401).json({
+          error: { message: "Not authenticated." },
+        });
+      }
+
+      // Validate input
+      if (!identityToken) {
+        return res.status(400).json({
+          error: { message: "Apple identity token is required." },
+        });
+      }
+
+      // Validate Apple token and get user profile
+      const appleProfile = await AppleService.validateTokenAndGetProfile(
+        identityToken
+      );
+      if (!appleProfile) {
+        return res.status(401).json({
+          error: { message: "Invalid Apple identity token." },
+        });
+      }
+
+      // Check if this Apple account is already linked to another user
+      const existingAppleUser = await UserModel.findByAppleId(appleProfile.sub);
+      if (existingAppleUser && existingAppleUser.user_id !== req.user.user_id) {
+        return res.status(409).json({
+          error: {
+            message: "This Apple account is already linked to another user.",
+            code: "APPLE_ALREADY_LINKED",
+          },
+        });
+      }
+
+      // Check if current user already has an Apple account linked
+      if (req.user.apple_id) {
+        return res.status(409).json({
+          error: {
+            message: "Your account already has an Apple account linked.",
+            code: "APPLE_ALREADY_EXISTS",
+          },
+        });
+      }
+
+      // Link Apple account to current user
+      const client = await db.getClient();
+      try {
+        await client.query("BEGIN");
+
+        const updateQuery = `
+          UPDATE "users" 
+          SET apple_id = $1
+          WHERE user_id = $2
+          RETURNING user_id, username, email, apple_id, auth_provider, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+        `;
+
+        const { rows } = await client.query(updateQuery, [
+          appleProfile.sub,
+          req.user.user_id,
+        ]);
+
+        await client.query("COMMIT");
+
+        const updatedUser = rows[0];
+
+        res.status(200).json({
+          message: "Apple account linked successfully",
+          user: {
+            user_id: updatedUser.user_id,
+            username: updatedUser.username,
+            email: updatedUser.email,
+            apple_id: updatedUser.apple_id,
+            auth_provider: updatedUser.auth_provider,
+            in_game_currency: updatedUser.in_game_currency,
+            gems: updatedUser.gems,
+            fate_coins: updatedUser.fate_coins,
+            total_xp: updatedUser.total_xp,
+          },
+        });
+        } catch (error) {
+          await client.query("ROLLBACK");
+          throw error;
+        } finally {
+          client.release();
+        }
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  appleUnlink: async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          error: { message: "Not authenticated." },
+        });
+      }
+
+      // Check if user has Apple account linked
+      if (!req.user.apple_id) {
+        return res.status(400).json({
+          error: { message: "No Apple account is currently linked." },
+        });
+      }
+
+      // Check if Apple is the primary authentication method
+      // If user has no password and Apple is their only auth method, don't allow unlinking
+      if (req.user.auth_provider === "apple" && !req.user.password_hash) {
+        return res.status(400).json({
+          error: {
+            message:
+              "Cannot unlink Apple account as it's your primary authentication method. Please set a password first.",
+            code: "PRIMARY_AUTH_METHOD",
+          },
+        });
+      }
+
+      // Unlink Apple account
+      const client = await db.getClient();
+      try {
+        await client.query("BEGIN");
+
+        const updateQuery = `
+          UPDATE "users" 
+          SET apple_id = NULL
+          WHERE user_id = $1
+          RETURNING user_id, username, email, apple_id, auth_provider, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+        `;
+
+        const { rows } = await client.query(updateQuery, [req.user.user_id]);
+
+        await client.query("COMMIT");
+
+        const updatedUser = rows[0];
+
+        res.status(200).json({
+          message: "Apple account unlinked successfully",
+          user: {
+            user_id: updatedUser.user_id,
+            username: updatedUser.username,
+            email: updatedUser.email,
+            apple_id: updatedUser.apple_id,
+            auth_provider: updatedUser.auth_provider,
+            in_game_currency: updatedUser.in_game_currency,
+            gems: updatedUser.gems,
+            fate_coins: updatedUser.fate_coins,
+            total_xp: updatedUser.total_xp,
+          },
+        });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  googleAuth: async (req: Request, res: Response, next: NextFunction) => {
+    const client = await db.getClient();
+    try {
+      const { idToken } = req.body;
+
+      // Validate input
+      if (!idToken) {
+        return res.status(400).json({
+          error: { message: "Google ID token is required." },
+        });
+      }
+
+      // Validate Google token and get user profile
+      const googleProfile = await GoogleService.validateTokenAndGetProfile(
+        idToken
+      );
+      if (!googleProfile) {
+        return res.status(401).json({
+          error: { message: "Invalid Google ID token." },
+        });
+      }
+
+      // Check if user already exists with this Google ID
+      let user = await UserModel.findByGoogleId(googleProfile.sub);
+
+      if (user) {
+        // User exists, log them in
+      await UserModel.updateLastLogin(user.user_id);
+
+      // Generate session and tokens
+      const sessionMetadata = SessionService.extractSessionMetadata(req);
+      const tokens = SessionService.generateTokenPair(user.user_id, "");
+        const sessionId = await SessionService.createSession(
+          user.user_id,
+          tokens,
+          sessionMetadata
+        );
+
+        return res.status(200).json({
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          expiresAt: tokens.accessTokenExpiresAt,
+          user: {
+            user_id: user.user_id,
+            username: user.username,
+            email: user.email,
+            in_game_currency: user.in_game_currency,
+            gems: user.gems,
+            fate_coins: user.fate_coins,
+            total_xp: user.total_xp,
+          },
+        });
+      }
+
+      await client.query("BEGIN");
+
+      // Create new user with Google authentication
+      const baseUsername = GoogleService.generateUsername(
+        googleProfile.name || googleProfile.email || "user",
+        googleProfile.sub
+      );
+      const uniqueUsername = await GoogleService.ensureUniqueUsername(
+        baseUsername,
+        async (username) => {
+          const existingUser = await UserModel.findByUsername(username);
+          return !!existingUser;
+        }
+      );
+
+      // Handle missing email from Google
+      const userEmail =
+        googleProfile.email || `${googleProfile.sub}@google.local`;
+
+      const newUser = await UserModel.create({
+        username: uniqueUsername,
+        email: userEmail,
+        google_id: googleProfile.sub,
+        auth_provider: "google",
+      });
+
+      // Grant starter content (cards and deck)
+      await StarterService.grantStarterContent(newUser.user_id);
+
+      await client.query("COMMIT");
+
+      // Generate session and tokens
+      const sessionMetadata = SessionService.extractSessionMetadata(req);
+      const tokens = SessionService.generateTokenPair(newUser.user_id, "");
+      const sessionId = await SessionService.createSession(
+        newUser.user_id,
+        tokens,
+        sessionMetadata
+      );
+
+      res.status(201).json({
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresAt: tokens.accessTokenExpiresAt,
+        user: {
+          user_id: newUser.user_id,
+          username: newUser.username,
+          email: newUser.email,
+          in_game_currency: newUser.in_game_currency,
+          gems: newUser.gems,
+          fate_coins: newUser.fate_coins,
+          total_xp: newUser.total_xp,
+        },
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      next(error);
+    } finally {
+      client.release();
+    }
+  },
+
+  googleLink: async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const { idToken } = req.body;
+
+      if (!req.user) {
+        return res.status(401).json({
+          error: { message: "Not authenticated." },
+        });
+      }
+
+      // Validate input
+      if (!idToken) {
+        return res.status(400).json({
+          error: { message: "Google ID token is required." },
+        });
+      }
+
+      // Validate Google token and get user profile
+      const googleProfile = await GoogleService.validateTokenAndGetProfile(
+        idToken
+      );
+      if (!googleProfile) {
+        return res.status(401).json({
+          error: { message: "Invalid Google ID token." },
+        });
+      }
+
+      // Check if this Google account is already linked to another user
+      const existingGoogleUser = await UserModel.findByGoogleId(
+        googleProfile.sub
+      );
+      if (
+        existingGoogleUser &&
+        existingGoogleUser.user_id !== req.user.user_id
+      ) {
+        return res.status(409).json({
+          error: {
+            message: "This Google account is already linked to another user.",
+            code: "GOOGLE_ALREADY_LINKED",
+          },
+        });
+      }
+
+      // Check if current user already has a Google account linked
+      if (req.user.google_id) {
+        return res.status(409).json({
+          error: {
+            message: "Your account already has a Google account linked.",
+            code: "GOOGLE_ALREADY_EXISTS",
+          },
+        });
+      }
+
+      // Link Google account to current user
+      const client = await db.getClient();
+      try {
+        await client.query("BEGIN");
+
+        const updateQuery = `
+          UPDATE "users" 
+          SET google_id = $1
+          WHERE user_id = $2
+          RETURNING user_id, username, email, google_id, auth_provider, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+        `;
+
+        const { rows } = await client.query(updateQuery, [
+          googleProfile.sub,
+          req.user.user_id,
+        ]);
+
+        await client.query("COMMIT");
+
+        const updatedUser = rows[0];
+
+        res.status(200).json({
+          message: "Google account linked successfully",
+          user: {
+            user_id: updatedUser.user_id,
+            username: updatedUser.username,
+            email: updatedUser.email,
+            google_id: updatedUser.google_id,
+            auth_provider: updatedUser.auth_provider,
+            in_game_currency: updatedUser.in_game_currency,
+            gems: updatedUser.gems,
+            fate_coins: updatedUser.fate_coins,
+            total_xp: updatedUser.total_xp,
+          },
+        });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  googleUnlink: async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          error: { message: "Not authenticated." },
+        });
+      }
+
+      // Check if user has Google account linked
+      if (!req.user.google_id) {
+        return res.status(400).json({
+          error: { message: "No Google account is currently linked." },
+        });
+      }
+
+      // Check if Google is the primary authentication method
+      // If user has no password and Google is their only auth method, don't allow unlinking
+      if (req.user.auth_provider === "google" && !req.user.password_hash) {
+        return res.status(400).json({
+          error: {
+            message:
+              "Cannot unlink Google account as it's your primary authentication method. Please set a password first.",
+            code: "PRIMARY_AUTH_METHOD",
+          },
+        });
+      }
+
+      // Unlink Google account
+      const client = await db.getClient();
+      try {
+        await client.query("BEGIN");
+
+        const updateQuery = `
+          UPDATE "users" 
+          SET google_id = NULL
+          WHERE user_id = $1
+          RETURNING user_id, username, email, google_id, auth_provider, in_game_currency, gold, gems, fate_coins, total_xp, pack_count, created_at, last_login as last_login_at;
+        `;
+
+        const { rows } = await client.query(updateQuery, [req.user.user_id]);
+
+        await client.query("COMMIT");
+
+        const updatedUser = rows[0];
+
+        res.status(200).json({
+          message: "Google account unlinked successfully",
+          user: {
+            user_id: updatedUser.user_id,
+            username: updatedUser.username,
+            email: updatedUser.email,
+            google_id: updatedUser.google_id,
             auth_provider: updatedUser.auth_provider,
             in_game_currency: updatedUser.in_game_currency,
             gems: updatedUser.gems,

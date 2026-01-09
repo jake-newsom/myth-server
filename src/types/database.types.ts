@@ -11,7 +11,9 @@ export interface User {
   email: string;
   password_hash?: string;
   facebook_id?: string;
-  auth_provider: "local" | "facebook";
+  apple_id?: string;
+  google_id?: string;
+  auth_provider: "local" | "facebook" | "apple" | "google";
   role?: "user" | "admin"; // User role for authorization
   in_game_currency: number; // Legacy field - will be phased out
   gems: number;

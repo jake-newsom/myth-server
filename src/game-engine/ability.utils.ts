@@ -1339,3 +1339,12 @@ export function getRandomSide(): "top" | "bottom" | "left" | "right" {
 export function chooseRandomCard(cards: InGameCard[]): InGameCard {
   return cards[Math.floor(Math.random() * cards.length)];
 }
+
+export function isSameCard(
+  triggerCard: InGameCard,
+  flippedCard: InGameCard
+): boolean {
+  return triggerCard.user_card_instance_id === flippedCard.user_card_instance_id
+    ? true
+    : false;
+}

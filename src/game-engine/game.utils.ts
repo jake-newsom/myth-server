@@ -51,12 +51,11 @@ function hasTrigger(ability: any, trigger: TriggerMoment): boolean {
   return triggerMoments.includes(trigger);
 }
 import { v4 as uuidv4 } from "uuid";
-import { simulationContext } from "./simulation.context";
 import {
   getPositionOfCardById,
   updateCurrentPower,
   transferTileEffectToCard,
-  getAllAlliesOnBoard,
+  getCardsByCondition,
 } from "./ability.utils";
 import { batchEvents } from "./game-events";
 
@@ -168,6 +167,14 @@ export function resolveCombat(
 
           let abilityPreventedDefeat = false;
 
+          const combatContext = {
+            triggerCard: adjacentCell.card,
+            triggerMoment: TriggerMoment.OnCombat,
+            position: { x: nx, y: ny },
+            state: gameState,
+            combatType: COMBAT_TYPES.STANDARD,
+          };
+
           // Check if the defending card has its own combat resolver
           if (
             hasTrigger(
@@ -175,85 +182,59 @@ export function resolveCombat(
               TriggerMoment.OnCombat
             )
           ) {
-            const combatContext = {
-              triggerCard: adjacentCell.card,
-              triggerMoment: TriggerMoment.OnCombat,
-              position: { x: nx, y: ny },
-              state: gameState,
-              combatType: COMBAT_TYPES.STANDARD,
-            };
-
             const abilityName =
               adjacentCell.card.base_card_data.special_ability?.name;
             const abilityFunction = abilityName
               ? combatResolvers[abilityName]
               : undefined;
             if (abilityFunction) {
-              const result = abilityFunction({
-                ...combatContext,
-                triggerCard: adjacentCell.card,
-                position: { x: nx, y: ny },
-                combatType: COMBAT_TYPES.STANDARD,
-              });
+              const result = abilityFunction(combatContext);
 
               // Handle both boolean and CombatResolverResult returns
-              if (typeof result === "boolean") {
-                abilityPreventedDefeat = result;
-              } else {
-                abilityPreventedDefeat = result.preventDefeat;
-                if (result.events) {
-                  events.push(...result.events);
-                }
+              abilityPreventedDefeat = result.preventDefeat;
+              if (result.events) {
+                events.push(...result.events);
               }
             }
           }
 
           // Check if any ally has a protection ability (like Harbor Guardian)
           if (!abilityPreventedDefeat && placedCardPower > adjacentCardPower) {
-            const allAllies = getAllAlliesOnBoard(
+            const allyCombatResolvers = getCardsByCondition(
               gameState.board,
-              adjacentCell.card.owner
+              (card: InGameCard) => {
+                if (
+                  card.user_card_instance_id ===
+                  adjacentCell?.card?.user_card_instance_id
+                )
+                  return false;
+                const sameOwner = card.owner === adjacentCell?.card?.owner;
+                const hasCombatResolver =
+                  card.base_card_data.special_ability &&
+                  combatResolvers[card.base_card_data.special_ability.name];
+                return sameOwner && hasCombatResolver ? true : false;
+              }
             );
-            for (const ally of allAllies) {
-              if (
-                ally.user_card_instance_id ===
-                adjacentCell.card.user_card_instance_id
-              )
-                continue;
 
-              if (
-                ally.base_card_data.special_ability &&
-                combatResolvers[ally.base_card_data.special_ability.name]
-              ) {
-                const protectionContext = {
-                  triggerCard: ally,
-                  triggerMoment: TriggerMoment.OnCombat,
-                  position: { x: nx, y: ny },
-                  state: gameState,
-                  combatType: COMBAT_TYPES.STANDARD,
-                  flippedCard: adjacentCell.card,
-                  flippedBy: placedCell.card,
-                };
+            for (const ally of allyCombatResolvers) {
+              const protectionContext = {
+                ...combatContext,
+                triggerCard: ally,
+                flippedCard: adjacentCell.card,
+                flippedBy: placedCell.card,
+              };
 
-                const protectionResult =
-                  combatResolvers[ally.base_card_data.special_ability.name](
-                    protectionContext
-                  );
+              const protectionResult =
+                combatResolvers[ally.base_card_data.special_ability!.name](
+                  protectionContext
+                );
 
-                if (typeof protectionResult === "boolean") {
-                  if (protectionResult) {
-                    abilityPreventedDefeat = true;
-                    break;
-                  }
-                } else {
-                  if (protectionResult.preventDefeat) {
-                    abilityPreventedDefeat = true;
-                    if (protectionResult.events) {
-                      events.push(...protectionResult.events);
-                    }
-                    break;
-                  }
+              if (protectionResult.preventDefeat) {
+                abilityPreventedDefeat = true;
+                if (protectionResult.events) {
+                  events.push(...protectionResult.events);
                 }
+                break;
               }
             }
           }

@@ -72,7 +72,7 @@ export type CombatResolverResult = {
 
 export type CombatResolverMethod = (
   context: CombatContext
-) => boolean | CombatResolverResult;
+) => CombatResolverResult;
 export type CombatResolverMap = Record<string, CombatResolverMethod>;
 
 export type AbilityMethod = (context: TriggerContext) => BaseGameEvent[];

@@ -223,45 +223,94 @@ paths:
         500:
           description: Server error
 
-  /api/auth/facebook/callback:
-    get:
-      summary: Facebook OAuth callback
-      description: Handles the OAuth callback from Facebook for web-based authentication flow
+  /api/auth/apple:
+    post:
+      summary: Authenticate with Apple
+      description: Login or register using Apple identity token
       tags:
         - Authentication
-      parameters:
-        - name: code
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Authorization code from Facebook
-        - name: state
-          in: query
-          required: false
-          schema:
-            type: string
-          description: State parameter for CSRF protection
-        - name: error
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Error code if authentication failed
-        - name: error_description
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Human-readable error description
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - identityToken
+              properties:
+                identityToken:
+                  type: string
+                  description: Apple identity token obtained from Apple Sign In
+                  example: "eyJraWQiOiJlWGF1bm1..."
+                user:
+                  type: object
+                  description: Optional user info provided by Apple on first sign-in
+                  properties:
+                    name:
+                      type: object
+                      properties:
+                        firstName:
+                          type: string
+                        lastName:
+                          type: string
       responses:
-        302:
-          description: Redirects to client application with authentication result
-          headers:
-            Location:
+        200:
+          description: Login successful (existing user)
+          content:
+            application/json:
               schema:
-                type: string
-                example: "https://yourapp.com/auth/success?accessToken=...&refreshToken=..."
+                $ref: "#/components/schemas/AuthResponse"
+        201:
+          description: Registration successful (new user)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        400:
+          description: Apple identity token is required
+        401:
+          description: Invalid Apple identity token
+        500:
+          description: Server error
+
+  /api/auth/google:
+    post:
+      summary: Authenticate with Google
+      description: Login or register using Google ID token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - idToken
+              properties:
+                idToken:
+                  type: string
+                  description: Google ID token obtained from Google Sign In
+                  example: "eyJhbGciOiJSUzI1NiIs..."
+      responses:
+        200:
+          description: Login successful (existing user)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        201:
+          description: Registration successful (new user)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        400:
+          description: Google ID token is required
+        401:
+          description: Invalid Google ID token
+        500:
+          description: Server error
 
   /api/auth/facebook/deauthorize:
     post:
@@ -382,7 +431,7 @@ paths:
         401:
           description: Unauthorized or invalid Facebook token
         409:
-          description: Conflict - Facebook account already linked or email mismatch
+          description: Conflict - Facebook account already linked
           content:
             application/json:
               schema:
@@ -396,12 +445,7 @@ paths:
                         example: "This Facebook account is already linked to another user."
                       code:
                         type: string
-                        enum:
-                          [
-                            "FACEBOOK_ALREADY_LINKED",
-                            "FACEBOOK_ALREADY_EXISTS",
-                            "EMAIL_MISMATCH",
-                          ]
+                        enum: ["FACEBOOK_ALREADY_LINKED", "FACEBOOK_ALREADY_EXISTS"]
         500:
           description: Server error
 
@@ -440,6 +484,230 @@ paths:
                       message:
                         type: string
                         example: "No Facebook account is currently linked."
+                      code:
+                        type: string
+                        enum: ["PRIMARY_AUTH_METHOD"]
+        401:
+          description: Not authenticated
+        500:
+          description: Server error
+
+  /api/auth/apple/link:
+    post:
+      summary: Link Apple account to existing user
+      description: Links an Apple account to the currently authenticated user
+      tags:
+        - Authentication
+        - Account Management
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - identityToken
+              properties:
+                identityToken:
+                  type: string
+                  description: Apple identity token obtained from Apple Sign In
+                  example: "eyJraWQiOiJlWGF1bm1..."
+      responses:
+        200:
+          description: Apple account linked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Apple account linked successfully"
+                  user:
+                    $ref: "#/components/schemas/User"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Apple identity token is required."
+        401:
+          description: Unauthorized or invalid Apple token
+        409:
+          description: Conflict - Apple account already linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "This Apple account is already linked to another user."
+                      code:
+                        type: string
+                        enum: ["APPLE_ALREADY_LINKED", "APPLE_ALREADY_EXISTS"]
+        500:
+          description: Server error
+
+  /api/auth/apple/unlink:
+    delete:
+      summary: Unlink Apple account from user
+      description: Removes the Apple account link from the currently authenticated user
+      tags:
+        - Authentication
+        - Account Management
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Apple account unlinked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Apple account unlinked successfully"
+                  user:
+                    $ref: "#/components/schemas/User"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "No Apple account is currently linked."
+                      code:
+                        type: string
+                        enum: ["PRIMARY_AUTH_METHOD"]
+        401:
+          description: Not authenticated
+        500:
+          description: Server error
+
+  /api/auth/google/link:
+    post:
+      summary: Link Google account to existing user
+      description: Links a Google account to the currently authenticated user
+      tags:
+        - Authentication
+        - Account Management
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - idToken
+              properties:
+                idToken:
+                  type: string
+                  description: Google ID token obtained from Google Sign In
+                  example: "eyJhbGciOiJSUzI1NiIs..."
+      responses:
+        200:
+          description: Google account linked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Google account linked successfully"
+                  user:
+                    $ref: "#/components/schemas/User"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Google ID token is required."
+        401:
+          description: Unauthorized or invalid Google token
+        409:
+          description: Conflict - Google account already linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "This Google account is already linked to another user."
+                      code:
+                        type: string
+                        enum: ["GOOGLE_ALREADY_LINKED", "GOOGLE_ALREADY_EXISTS"]
+        500:
+          description: Server error
+
+  /api/auth/google/unlink:
+    delete:
+      summary: Unlink Google account from user
+      description: Removes the Google account link from the currently authenticated user
+      tags:
+        - Authentication
+        - Account Management
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Google account unlinked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Google account unlinked successfully"
+                  user:
+                    $ref: "#/components/schemas/User"
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "No Google account is currently linked."
                       code:
                         type: string
                         enum: ["PRIMARY_AUTH_METHOD"]

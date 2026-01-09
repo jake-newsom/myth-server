@@ -23,6 +23,7 @@ import {
   getCardsInSameColumn,
   getSurroundingTiles,
   getRandomSide,
+  isSameCard,
 } from "../ability.utils";
 import { drawCardSync, flipCard } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
@@ -41,11 +42,18 @@ import { TileStatus } from "../../types/game.types";
 export const norseCombatResolvers: CombatResolverMap = {
   // Titan Shell: Can only be defeated by Thor.
   "Titan Shell": (context) => {
-    const { triggerCard } = context;
+    const { triggerCard, flippedCard } = context;
 
-    if (triggerCard.base_card_data.name !== "Thor") return true;
+    if (!flippedCard || !isSameCard(triggerCard, flippedCard)) {
+      return { preventDefeat: false };
+    }
 
-    return false;
+    if (triggerCard.base_card_data.name !== "Thor")
+      return { preventDefeat: true };
+
+    return {
+      preventDefeat: false,
+    };
   },
 };
 

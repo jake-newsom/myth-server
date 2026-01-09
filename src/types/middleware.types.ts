@@ -12,7 +12,9 @@ export interface AuthenticatedRequest extends Request {
     username: string;
     email: string;
     facebook_id?: string;
-    auth_provider: "local" | "facebook";
+    apple_id?: string;
+    google_id?: string;
+    auth_provider: "local" | "facebook" | "apple" | "google";
     password_hash?: string;
     role?: "user" | "admin";
   };

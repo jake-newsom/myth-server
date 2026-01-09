@@ -72,11 +72,9 @@ async function resetAndRegenerateTower() {
   console.log("\n=== Generating Initial Floors ===\n");
   
   try {
-    // Generate floors 1-5 using the new scaling
-    await TowerGenerationService.triggerGeneration(1, 5, 1);
-    
-    console.log("\n✓ Successfully generated floors 1-5 with new scaling");
-    console.log("\nRun 'node scripts/recalculate-tower-levels.js' to see the new curve\n");
+    // Use the bootstrap script to create floors 1-5 properly
+    const { execSync } = require('child_process');
+    execSync('node scripts/bootstrap-tower.js', { stdio: 'inherit' });
     
   } catch (error) {
     console.error("Error generating floors:", error);

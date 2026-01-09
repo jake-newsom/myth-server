@@ -74,7 +74,7 @@ async function showCurrentTower() {
 
     for (const row of result.rows) {
       const expected = calculateTargetAverageLevel(row.floor_number);
-      const actual = row.average_card_level || 0;
+      const actual = parseFloat(row.average_card_level) || 0;
       const diff = actual - expected;
       const diffStr = diff >= 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2);
       

@@ -60,8 +60,12 @@ let dailyTaskScheduler: any = null;
 // Middleware
 app.use(compression()); // Enable gzip compression for all responses
 app.use(cors({
-  exposedHeaders: ["X-Server-Version"] // Allow client to read custom headers
-})); // Configure specific origins in production
+  origin: process.env.CLIENT_URL || "http://localhost:8100",
+  credentials: true,
+  exposedHeaders: ["X-Server-Version"], // Allow client to read custom headers
+  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+}));
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
 

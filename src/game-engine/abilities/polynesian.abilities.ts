@@ -34,6 +34,7 @@ import {
   getRandomSide,
   chooseRandomCard,
   moveCardToPosition,
+  isSameCard,
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { resolveCombat } from "../game.utils";
@@ -65,14 +66,15 @@ export const polynesianCombatResolvers: CombatResolverMap = {
   "Ocean's Shield": (context) => {
     const { triggerCard, flippedCard } = context;
 
-    if (!flippedCard) return true;
+    if (!flippedCard || !isSameCard(triggerCard, flippedCard))
+      return { preventDefeat: false };
 
     const enemyTotalPower = getCardTotalPower(triggerCard);
     const myTotalPower = getCardTotalPower(flippedCard);
 
-    if (enemyTotalPower > myTotalPower) return true;
+    if (enemyTotalPower > myTotalPower) return { preventDefeat: false };
 
-    return false;
+    return { preventDefeat: true };
   },
 
   // Harbor Guardian: Sacrifices 3 power to protect allies from defeat
@@ -86,7 +88,7 @@ export const polynesianCombatResolvers: CombatResolverMap = {
       flippedCard.user_card_instance_id === triggerCard.user_card_instance_id ||
       flippedCard.owner !== triggerCard.owner
     ) {
-      return false;
+      return { preventDefeat: false };
     }
 
     // Check if Harbor Guardian has enough power to sacrifice (at least 3 power on all sides)
@@ -96,7 +98,7 @@ export const polynesianCombatResolvers: CombatResolverMap = {
       triggerCard.current_power.left < 3 ||
       triggerCard.current_power.right < 3
     ) {
-      return false;
+      return { preventDefeat: false };
     }
 
     // Calculate power needed to save the ally
@@ -114,7 +116,7 @@ export const polynesianCombatResolvers: CombatResolverMap = {
       };
     }
 
-    return false;
+    return { preventDefeat: false };
   },
 };
 

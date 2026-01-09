@@ -8,7 +8,9 @@ interface UserCreateInput {
   email: string;
   password?: string;
   facebook_id?: string;
-  auth_provider?: "local" | "facebook";
+  apple_id?: string;
+  google_id?: string;
+  auth_provider?: "local" | "facebook" | "apple" | "google";
 }
 
 const UserModel = {
@@ -17,6 +19,8 @@ const UserModel = {
     email,
     password,
     facebook_id,
+    apple_id,
+    google_id,
     auth_provider = "local",
   }: UserCreateInput): Promise<User> {
     let hashedPassword = null;
@@ -25,9 +29,9 @@ const UserModel = {
     }
 
     const query = `
-      INSERT INTO "users" (username, email, password_hash, facebook_id, auth_provider, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
-      RETURNING user_id, username, email, facebook_id, auth_provider, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login as last_login_at;
+      INSERT INTO "users" (username, email, password_hash, facebook_id, apple_id, google_id, auth_provider, in_game_currency, gold, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+      RETURNING user_id, username, email, facebook_id, apple_id, google_id, auth_provider, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login as last_login_at;
     `;
 
     const values = [
@@ -35,6 +39,8 @@ const UserModel = {
       email,
       hashedPassword,
       facebook_id,
+      apple_id,
+      google_id,
       auth_provider,
       0, // in_game_currency
       0, // gold (deprecated, kept for DB compatibility)
@@ -64,6 +70,18 @@ const UserModel = {
   async findByFacebookId(facebookId: string): Promise<User | null> {
     const query = `SELECT * FROM "users" WHERE facebook_id = $1;`;
     const { rows } = await db.query(query, [facebookId]);
+    return rows[0] || null;
+  },
+
+  async findByAppleId(appleId: string): Promise<User | null> {
+    const query = `SELECT * FROM "users" WHERE apple_id = $1;`;
+    const { rows } = await db.query(query, [appleId]);
+    return rows[0] || null;
+  },
+
+  async findByGoogleId(googleId: string): Promise<User | null> {
+    const query = `SELECT * FROM "users" WHERE google_id = $1;`;
+    const { rows } = await db.query(query, [googleId]);
     return rows[0] || null;
   },
 

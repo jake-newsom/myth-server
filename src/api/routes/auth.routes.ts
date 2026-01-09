@@ -13,10 +13,9 @@ const router = express.Router();
 router.post("/register", authRateLimit, AuthController.register);
 router.post("/login", authRateLimit, AuthController.login);
 router.post("/facebook", authRateLimit, AuthController.facebookAuth);
+router.post("/apple", authRateLimit, AuthController.appleAuth);
+router.post("/google", authRateLimit, AuthController.googleAuth);
 router.post("/refresh", authRateLimit, AuthController.refresh);
-
-// Facebook OAuth callback (for web-based OAuth flow)
-router.get("/facebook/callback", AuthController.facebookCallback);
 
 // Facebook compliance endpoints (no rate limiting as they're called by Facebook)
 router.post("/facebook/deauthorize", AuthController.facebookDeauthorize);
@@ -27,7 +26,7 @@ router.post("/logout", protect, AuthController.logout);
 router.post("/logout-all", protect, AuthController.logoutAll);
 router.get("/sessions", protect, moderateRateLimit, AuthController.getSessions);
 
-// Facebook account linking (protected routes)
+// Social account linking (protected routes)
 router.post(
   "/facebook/link",
   protect,
@@ -39,6 +38,32 @@ router.delete(
   protect,
   moderateRateLimit,
   AuthController.facebookUnlink
+);
+
+router.post(
+  "/apple/link",
+  protect,
+  moderateRateLimit,
+  AuthController.appleLink
+);
+router.delete(
+  "/apple/unlink",
+  protect,
+  moderateRateLimit,
+  AuthController.appleUnlink
+);
+
+router.post(
+  "/google/link",
+  protect,
+  moderateRateLimit,
+  AuthController.googleLink
+);
+router.delete(
+  "/google/unlink",
+  protect,
+  moderateRateLimit,
+  AuthController.googleUnlink
 );
 
 export default router;
