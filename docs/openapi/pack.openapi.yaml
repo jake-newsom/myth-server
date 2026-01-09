@@ -60,11 +60,28 @@ paths:
                     description: Array of pack indices (0-based) that were God Packs
                     example: [2, 7]
         "400":
-          description: Bad request - not enough resources, invalid set ID, or set not released
+          description: Bad request - not enough resources, invalid set ID, set not released, or card limit exceeded
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                insufficientResources:
+                  summary: Not enough packs or gems
+                  value:
+                    status: error
+                    message: Not enough resources to purchase packs
+                cardLimitExceeded:
+                  summary: Card limit exceeded
+                  value:
+                    status: error
+                    message: "Opening 10 pack(s) would exceed your card limit of 1000. You currently have 960 cards and would receive 50 more cards."
+                    code: MAX_CARDS_EXCEEDED
+                invalidSet:
+                  summary: Invalid or unreleased set
+                  value:
+                    status: error
+                    message: Set is not available for pack opening
         "401":
           description: Unauthorized - user not authenticated
           content:

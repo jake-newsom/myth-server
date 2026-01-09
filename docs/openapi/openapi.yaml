@@ -116,6 +116,9 @@ paths:
     $ref: "./userCard.openapi.yaml#/paths/~1api~1user-cards"
 
   # XP System Endpoints
+  /api/xp/level-config:
+    $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1level-config"
+
   /api/xp/pools:
     $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1pools"
 

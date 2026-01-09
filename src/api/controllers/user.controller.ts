@@ -12,6 +12,7 @@ import {
   AuthenticatedRequest,
   TriggerMoment,
 } from "../../types";
+import { USER_LIMITS } from "../../config/constants";
 
 // Helper function to transform CardResponse to UserCard
 const transformToUserCard = (card: CardResponse): UserCard => ({
@@ -366,6 +367,15 @@ const UserController = {
 
       // Check if username is already taken by another user
       if (username) {
+        if (username.length > USER_LIMITS.MAX_USERNAME_LENGTH) {
+          res.status(400).json({
+            error: {
+              message: `Username must be ${USER_LIMITS.MAX_USERNAME_LENGTH} characters or less.`,
+            },
+          });
+          return;
+        }
+
         const existingUserByUsername = await UserModel.findByUsername(username);
         if (
           existingUserByUsername &&

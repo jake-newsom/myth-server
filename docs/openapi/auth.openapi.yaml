@@ -108,6 +108,8 @@ paths:
               properties:
                 username:
                   type: string
+                  maxLength: 32
+                  description: Username (maximum 32 characters)
                   example: thor_hammer
                 email:
                   type: string
@@ -116,6 +118,8 @@ paths:
                 password:
                   type: string
                   format: password
+                  minLength: 6
+                  description: Password (minimum 6 characters)
                   example: mjolnir123
       responses:
         201:

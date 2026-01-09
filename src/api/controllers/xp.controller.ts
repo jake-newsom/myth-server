@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import XpPoolModel from "../../models/xpPool.model";
 import XpService from "../../services/xp.service";
+import { XP_CONFIG } from "../../config/constants";
 
 export const getXpPools = async (req: Request, res: Response) => {
   try {
@@ -200,5 +201,32 @@ export const getXpTransferHistory = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching XP transfer history:", error);
     res.status(500).json({ error: "Failed to fetch XP transfer history" });
+  }
+};
+
+/**
+ * Get XP level configuration
+ * Returns the formula parameters and sample level thresholds for client-side calculations
+ * Formula: xpRequired = base_xp * (level - 1)^exponent
+ */
+export const getLevelConfig = async (_req: Request, res: Response) => {
+  try {
+    // Generate sample thresholds for first 20 levels
+    const sampleThresholds: Record<number, number> = {};
+    for (let level = 1; level <= 20; level++) {
+      sampleThresholds[level] = XpService.getXpForLevel(level);
+    }
+
+    res.json({
+      formula: "base_xp * (level - 1)^exponent",
+      base_xp: XP_CONFIG.BASE_XP,
+      exponent: XP_CONFIG.EXPONENT,
+      description:
+        "Cards have no level cap. XP required scales polynomially with faster early progression.",
+      sample_thresholds: sampleThresholds,
+    });
+  } catch (error) {
+    console.error("Error fetching level config:", error);
+    res.status(500).json({ error: "Failed to fetch level configuration" });
   }
 };

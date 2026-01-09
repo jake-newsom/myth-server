@@ -10,6 +10,7 @@ import GoogleService from "../../services/google.service";
 import db from "../../config/db.config";
 import { User } from "../../types/database.types";
 import { AuthenticatedRequest } from "../../types/middleware.types";
+import { USER_LIMITS } from "../../config/constants";
 
 // Define a more specific User type that includes password_hash
 interface UserWithPassword extends User {
@@ -31,6 +32,14 @@ const AuthController = {
       if (!username || !email || !password) {
         return res.status(400).json({
           error: { message: "Username, email, and password are required." },
+        });
+      }
+
+      if (username.length > USER_LIMITS.MAX_USERNAME_LENGTH) {
+        return res.status(400).json({
+          error: {
+            message: `Username must be ${USER_LIMITS.MAX_USERNAME_LENGTH} characters or less.`,
+          },
         });
       }
 
@@ -721,8 +730,8 @@ const AuthController = {
   },
 
   appleAuth: async (req: Request, res: Response, next: NextFunction) => {
-        const client = await db.getClient();
-        try {
+    const client = await db.getClient();
+    try {
       const { identityToken, user: appleUser } = req.body;
 
       // Validate input
@@ -774,12 +783,14 @@ const AuthController = {
         });
       }
 
-          await client.query("BEGIN");
+      await client.query("BEGIN");
 
       // Create new user with Apple authentication
       // Apple may provide user info on first sign-in only
       const userName = appleUser?.name
-        ? `${appleUser.name.firstName || ""} ${appleUser.name.lastName || ""}`.trim()
+        ? `${appleUser.name.firstName || ""} ${
+            appleUser.name.lastName || ""
+          }`.trim()
         : undefined;
 
       const baseUsername = AppleService.generateUsername(
@@ -787,28 +798,28 @@ const AuthController = {
         appleProfile.email
       );
       const uniqueUsername = await AppleService.ensureUniqueUsername(
-            baseUsername,
-            async (username) => {
-              const existingUser = await UserModel.findByUsername(username);
-              return !!existingUser;
-            }
-          );
+        baseUsername,
+        async (username) => {
+          const existingUser = await UserModel.findByUsername(username);
+          return !!existingUser;
+        }
+      );
 
       // Handle missing email from Apple
-          const userEmail =
+      const userEmail =
         appleProfile.email || `${appleProfile.sub}@appleid.local`;
 
       const newUser = await UserModel.create({
-            username: uniqueUsername,
-            email: userEmail,
+        username: uniqueUsername,
+        email: userEmail,
         apple_id: appleProfile.sub,
         auth_provider: "apple",
-          });
+      });
 
       // Grant starter content (cards and deck)
       await StarterService.grantStarterContent(newUser.user_id);
 
-          await client.query("COMMIT");
+      await client.query("COMMIT");
 
       // Generate session and tokens
       const sessionMetadata = SessionService.extractSessionMetadata(req);
@@ -928,12 +939,12 @@ const AuthController = {
             total_xp: updatedUser.total_xp,
           },
         });
-        } catch (error) {
-          await client.query("ROLLBACK");
-          throw error;
-        } finally {
-          client.release();
-        }
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       next(error);
     }
@@ -1040,11 +1051,11 @@ const AuthController = {
 
       if (user) {
         // User exists, log them in
-      await UserModel.updateLastLogin(user.user_id);
+        await UserModel.updateLastLogin(user.user_id);
 
-      // Generate session and tokens
-      const sessionMetadata = SessionService.extractSessionMetadata(req);
-      const tokens = SessionService.generateTokenPair(user.user_id, "");
+        // Generate session and tokens
+        const sessionMetadata = SessionService.extractSessionMetadata(req);
+        const tokens = SessionService.generateTokenPair(user.user_id, "");
         const sessionId = await SessionService.createSession(
           user.user_id,
           tokens,

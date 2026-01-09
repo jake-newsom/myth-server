@@ -55,7 +55,8 @@ paths:
               properties:
                 username:
                   type: string
-                  description: New username (optional)
+                  maxLength: 32
+                  description: New username (optional, maximum 32 characters)
                   example: new_username
                 email:
                   type: string
@@ -134,6 +135,11 @@ paths:
                   value:
                     error:
                       message: Invalid email format.
+                usernameTooLong:
+                  summary: Username too long
+                  value:
+                    error:
+                      message: Username must be 32 characters or less.
         "401":
           description: Unauthorized - missing/invalid token or incorrect current password
           content:

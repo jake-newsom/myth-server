@@ -12,6 +12,7 @@ import {
   sacrificeExtraCards,
   applyXp,
   getXpTransferHistory,
+  getLevelConfig,
 } from "../controllers/xp.controller";
 
 const router = Router();
@@ -20,6 +21,7 @@ const router = Router();
 router.use(authMiddleware.protect);
 
 // Read-only endpoints (moderate rate limiting)
+router.get("/level-config", moderateRateLimit, getLevelConfig);
 router.get("/pools", moderateRateLimit, getXpPools);
 router.get("/pools/:cardName", moderateRateLimit, getXpPool);
 router.get("/history", moderateRateLimit, getXpTransferHistory);

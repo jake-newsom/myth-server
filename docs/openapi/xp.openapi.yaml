@@ -5,6 +5,56 @@ info:
   version: 1.0.0
 
 paths:
+  /api/xp/level-config:
+    get:
+      summary: Get XP level configuration
+      description: |
+        Returns the XP level formula parameters and sample thresholds.
+        Use this to calculate XP requirements client-side.
+        Formula: xpRequired = base_xp * (level - 1)^exponent
+        Cards have no level cap and scale infinitely.
+      tags:
+        - XP
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Level configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  formula:
+                    type: string
+                    example: "base_xp * (level - 1)^exponent"
+                  base_xp:
+                    type: integer
+                    example: 150
+                  exponent:
+                    type: integer
+                    example: 2
+                  description:
+                    type: string
+                    example: "Cards have no level cap. XP required scales polynomially with faster early progression."
+                  sample_thresholds:
+                    type: object
+                    description: Sample XP thresholds for levels 1-20
+                    additionalProperties:
+                      type: integer
+                    example:
+                      "1": 0
+                      "2": 150
+                      "3": 600
+                      "4": 1350
+                      "5": 2400
+                      "10": 12150
+                      "20": 54150
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /api/xp/pools:
     get:
       summary: Get all user XP pools

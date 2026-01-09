@@ -282,6 +282,19 @@ const DeckModel = {
       client.release();
     }
   },
+
+  /**
+   * Get count of decks owned by user
+   */
+  async getUserDeckCount(userId: string): Promise<number> {
+    const query = `
+      SELECT COUNT(*) as count
+      FROM "decks"
+      WHERE user_id = $1;
+    `;
+    const { rows } = await db.query(query, [userId]);
+    return parseInt(rows[0].count, 10);
+  },
 };
 
 export default DeckModel;

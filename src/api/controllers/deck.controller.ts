@@ -9,7 +9,7 @@ import {
   AuthenticatedRequest,
 } from "../../types";
 import { RarityUtils } from "../../types/card.types";
-import { DECK_CONFIG } from "../../config/constants";
+import { DECK_CONFIG, USER_LIMITS } from "../../config/constants";
 
 /**
  * Validates deck composition based on game rules:
@@ -126,6 +126,18 @@ const DeckController = {
         res.status(400).json({
           error: {
             message: "Deck name and user_card_instance_ids are required.",
+          },
+        });
+        return;
+      }
+
+      // Check if user has reached the deck limit
+      const currentDeckCount = await DeckModel.getUserDeckCount(userId);
+      if (currentDeckCount >= USER_LIMITS.MAX_DECKS) {
+        res.status(400).json({
+          error: {
+            message: `You have reached the maximum limit of ${USER_LIMITS.MAX_DECKS} decks.`,
+            code: "MAX_DECKS_REACHED",
           },
         });
         return;

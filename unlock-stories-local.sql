@@ -96,3 +96,4 @@ FROM user_story_progress usp
 JOIN story_mode_config smc ON usp.story_id = smc.story_id
 WHERE usp.user_id = 'YOUR_USER_ID'
 ORDER BY smc.order_index;
+

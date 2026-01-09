@@ -18,15 +18,13 @@ export const DECK_CONFIG = {
 } as const;
 
 // XP System Configuration
+// Uses formula: xpRequired = BASE_XP * (level - 1)^EXPONENT
+// This provides faster early progression with infinite scaling
+// Examples: L2=150, L3=600, L4=1350, L5=2400, L10=12150, L20=54150
 export const XP_CONFIG = {
-  LEVEL_THRESHOLDS: {
-    LEVEL_1: 0,
-    LEVEL_2: 300,
-    LEVEL_3: 1000, // 300 + 700
-    LEVEL_4: 2500, // 1000 + 1500
-    LEVEL_5: 6000, // 2500 + 3500
-  },
-  MAX_LEVEL: 5,
+  // Formula parameters for calculating XP required to reach a level
+  BASE_XP: 150, // Base XP multiplier
+  EXPONENT: 2, // Polynomial growth exponent
   SACRIFICE_MULTIPLIER: 0.5, // 50% of card's XP value
 } as const;
 
@@ -211,6 +209,13 @@ export const CURRENCY_CONFIG = {
   STARTING_GEMS: 50,
   STARTING_FATE_COINS: 5,
   PACK_COST_GEMS: 10,
+} as const;
+
+// User Limits Configuration
+export const USER_LIMITS = {
+  MAX_USERNAME_LENGTH: 32,
+  MAX_CARDS: 1000,
+  MAX_DECKS: 30,
 } as const;
 
 // Game Rewards Configuration

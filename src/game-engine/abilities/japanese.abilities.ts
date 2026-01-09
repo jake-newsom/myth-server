@@ -226,7 +226,7 @@ export const japaneseAbilities: AbilityMap = {
     for (const enemy of adjacentEnemies) {
       gameEvents.push(
         createOrUpdateDebuff(enemy, 1000, 1, "Vengeful Bite", {
-          animation: "blue-purplpe-spurt",
+          animation: "blue-purple-spurt",
         })
       );
     }

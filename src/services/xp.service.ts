@@ -14,13 +14,25 @@ import DailyTaskService from "./dailyTask.service";
 import { cacheInvalidation } from "./cache.invalidation.service";
 
 const XpService = {
-  // Calculate level from XP using new bracket system
+  // Calculate XP required to reach a specific level
+  // Formula: xpRequired = BASE_XP * (level - 1)^EXPONENT
+  // Level 1 = 0 XP, Level 2 = 150 XP, Level 3 = 600 XP, etc.
+  getXpForLevel(level: number): number {
+    if (level <= 1) return 0;
+    return Math.floor(
+      XP_CONFIG.BASE_XP * Math.pow(level - 1, XP_CONFIG.EXPONENT)
+    );
+  },
+
+  // Calculate level from XP using inverse of the formula
+  // Solves for level: xp = BASE_XP * (level - 1)^EXPONENT
+  // level = 1 + (xp / BASE_XP)^(1/EXPONENT)
   calculateLevel(xp: number): number {
-    if (xp < XP_CONFIG.LEVEL_THRESHOLDS.LEVEL_2) return 1;
-    if (xp < XP_CONFIG.LEVEL_THRESHOLDS.LEVEL_3) return 2;
-    if (xp < XP_CONFIG.LEVEL_THRESHOLDS.LEVEL_4) return 3;
-    if (xp < XP_CONFIG.LEVEL_THRESHOLDS.LEVEL_5) return 4;
-    return XP_CONFIG.MAX_LEVEL;
+    if (xp <= 0) return 1;
+    // Calculate the level using the inverse formula
+    const rawLevel = 1 + Math.pow(xp / XP_CONFIG.BASE_XP, 1 / XP_CONFIG.EXPONENT);
+    // Floor to get the current level (you need to fully reach the XP threshold)
+    return Math.floor(rawLevel);
   },
 
   // Calculate XP value of a card for sacrifice based on rarity

@@ -965,6 +965,19 @@ const CardModel = {
 
     return result;
   },
+
+  /**
+   * Get total count of all card instances owned by user (not unique cards)
+   */
+  async getUserTotalCardCount(userId: string): Promise<number> {
+    const query = `
+      SELECT COUNT(*) as count
+      FROM "user_owned_cards"
+      WHERE user_id = $1;
+    `;
+    const { rows } = await db.query(query, [userId]);
+    return parseInt(rows[0].count, 10);
+  },
 };
 
 export default CardModel;

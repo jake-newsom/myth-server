@@ -32,6 +32,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                deckRuleViolation:
+                  summary: Deck composition rule violation
+                  value:
+                    error:
+                      message: Deck must contain exactly 20 cards.
+                maxDecksReached:
+                  summary: Maximum decks limit reached
+                  value:
+                    error:
+                      message: You have reached the maximum limit of 30 decks.
+                      code: MAX_DECKS_REACHED
         "401":
           description: Unauthorized - missing or invalid token
           content:

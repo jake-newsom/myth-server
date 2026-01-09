@@ -1,10 +1,12 @@
 import SetModel from "../models/set.model";
 import UserModel from "../models/user.model";
+import CardModel from "../models/card.model";
 import { Card } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
 import logger from "../utils/logger";
 import DailyTaskService from "./dailyTask.service";
 import { cacheInvalidation } from "./cache.invalidation.service";
+import { USER_LIMITS } from "../config/constants";
 
 const CARDS_PER_PACK = 5;
 const GOD_PACK_CHANCE = 1 / 1200; // 1 in 1500 chance
@@ -482,6 +484,17 @@ const PackService = {
       return {
         success: false,
         message: "Not enough resources to purchase packs",
+      };
+    }
+
+    // 4. CRITICAL: Check if opening these packs would exceed card limit BEFORE consuming resources
+    const currentCardCount = await CardModel.getUserTotalCardCount(userId);
+    const cardsToReceive = count * CARDS_PER_PACK;
+    if (currentCardCount + cardsToReceive > USER_LIMITS.MAX_CARDS) {
+      return {
+        success: false,
+        message: `Opening ${count} pack(s) would exceed your card limit of ${USER_LIMITS.MAX_CARDS}. You currently have ${currentCardCount} cards and would receive ${cardsToReceive} more cards.`,
+        code: "MAX_CARDS_EXCEEDED",
       };
     }
 
