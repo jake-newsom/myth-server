@@ -30,7 +30,8 @@ const XpService = {
   calculateLevel(xp: number): number {
     if (xp <= 0) return 1;
     // Calculate the level using the inverse formula
-    const rawLevel = 1 + Math.pow(xp / XP_CONFIG.BASE_XP, 1 / XP_CONFIG.EXPONENT);
+    const rawLevel =
+      1 + Math.pow(xp / XP_CONFIG.BASE_XP, 1 / XP_CONFIG.EXPONENT);
     // Floor to get the current level (you need to fully reach the XP threshold)
     return Math.floor(rawLevel);
   },
@@ -175,8 +176,9 @@ const XpService = {
         try {
           const AchievementService = await import("./achievement.service");
           const CardModel = await import("../models/card.model");
-          
-          const cardsAtLevelByRarity = await CardModel.default.getUserCardsAtLevelByRarity(userId);
+
+          const cardsAtLevelByRarity =
+            await CardModel.default.getUserCardsAtLevelByRarity(userId);
           const isFirstLevelUp = targetCard.level === 1; // Was level 1, now leveled up
 
           await AchievementService.default.triggerAchievementEvent({
@@ -307,7 +309,9 @@ const XpService = {
       // Trigger achievement event for card sacrifice
       try {
         const AchievementService = await import("./achievement.service");
-        const totalSacrificed = await XpPoolModel.getTotalSacrificeCount(userId);
+        const totalSacrificed = await XpPoolModel.getTotalSacrificeCount(
+          userId
+        );
 
         await AchievementService.default.triggerAchievementEvent({
           userId,
@@ -514,7 +518,9 @@ const XpService = {
       // Trigger achievement event for card sacrifice
       try {
         const AchievementService = await import("./achievement.service");
-        const totalSacrificed = await XpPoolModel.getTotalSacrificeCount(userId);
+        const totalSacrificed = await XpPoolModel.getTotalSacrificeCount(
+          userId
+        );
 
         await AchievementService.default.triggerAchievementEvent({
           userId,
@@ -656,8 +662,9 @@ const XpService = {
         try {
           const AchievementService = await import("./achievement.service");
           const CardModel = await import("../models/card.model");
-          
-          const cardsAtLevelByRarity = await CardModel.default.getUserCardsAtLevelByRarity(userId);
+
+          const cardsAtLevelByRarity =
+            await CardModel.default.getUserCardsAtLevelByRarity(userId);
           const isFirstLevelUp = targetCard.level === 1; // Was level 1, now leveled up
 
           await AchievementService.default.triggerAchievementEvent({
@@ -853,11 +860,12 @@ const XpService = {
         try {
           const AchievementService = await import("./achievement.service");
           const CardModel = await import("../models/card.model");
-          
-          const cardsAtLevelByRarity = await CardModel.default.getUserCardsAtLevelByRarity(userId);
-          
+
+          const cardsAtLevelByRarity =
+            await CardModel.default.getUserCardsAtLevelByRarity(userId);
+
           // Find the highest level achieved in this batch
-          const maxLevel = Math.max(...results.map(r => r.new_level));
+          const maxLevel = Math.max(...results.map((r) => r.new_level));
 
           await AchievementService.default.triggerAchievementEvent({
             userId,

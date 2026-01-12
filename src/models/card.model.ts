@@ -978,6 +978,42 @@ const CardModel = {
     const { rows } = await db.query(query, [userId]);
     return parseInt(rows[0].count, 10);
   },
+
+  /**
+   * Get count of unique cards owned by user for each base rarity
+   * Returns counts for common, rare, epic, legendary (base rarities only)
+   */
+  async getUserUniqueCardCountByRarity(
+    userId: string
+  ): Promise<Record<string, number>> {
+    const query = `
+      SELECT 
+        REGEXP_REPLACE(c.rarity::text, '\\+.*$', '') as base_rarity,
+        COUNT(DISTINCT c.card_id) as count
+      FROM "user_owned_cards" uoc
+      JOIN "cards" c ON uoc.card_id = c.card_id
+      WHERE uoc.user_id = $1
+      GROUP BY base_rarity;
+    `;
+    const { rows } = await db.query(query, [userId]);
+
+    const result: Record<string, number> = {
+      common: 0,
+      rare: 0,
+      epic: 0,
+      legendary: 0,
+    };
+
+    for (const row of rows) {
+      const rarity = row.base_rarity.toLowerCase();
+      const count = parseInt(row.count, 10);
+      if (result[rarity] !== undefined) {
+        result[rarity] = count;
+      }
+    }
+
+    return result;
+  },
 };
 
 export default CardModel;

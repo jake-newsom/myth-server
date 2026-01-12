@@ -28,6 +28,142 @@ interface PackOpenResult {
 }
 
 const PackService = {
+  /**
+   * Core function to open a single pack - shared logic for openPack and openMultiplePacks
+   * Does NOT consume packs or gems - that should be done by the caller
+   * Returns the selected cards and whether it was a god pack
+   */
+  async _openSinglePackCore(
+    userId: string,
+    setId: string,
+    setCards: CardWithAbility[]
+  ): Promise<{
+    selectedCards: CardWithAbility[];
+    isGodPack: boolean;
+    packOpeningId: string;
+  }> {
+    // Check for God Pack and select cards accordingly
+    const isGodPack = this.isGodPack();
+    const selectedCards = isGodPack
+      ? this.selectGodPackCards(setCards, CARDS_PER_PACK)
+      : this.selectRandomCards(setCards, CARDS_PER_PACK);
+
+    if (isGodPack) {
+      logger.info("God Pack opened!", { userId, setId });
+    }
+
+    // Add the selected cards to user's collection
+    await this.addCardsToUserCollection(userId, selectedCards);
+
+    // Log the pack opening to history
+    await this.logPackOpening(userId, setId, selectedCards);
+
+    // Get the pack opening ID from the history
+    const packOpeningQuery = `
+      SELECT pack_opening_id FROM pack_opening_history 
+      WHERE user_id = $1 
+      ORDER BY opened_at DESC 
+      LIMIT 1;
+    `;
+    const db = require("../config/db.config").default;
+    const { rows: packRows } = await db.query(packOpeningQuery, [userId]);
+    const packOpeningId = packRows[0]?.pack_opening_id || "";
+
+    // Create fate pick opportunity from this pack opening
+    try {
+      const FatePickService = await import("./fatePick.service");
+
+      if (packOpeningId) {
+        // Create fate pick with 1 wonder coin cost
+        await FatePickService.default.createFatePickFromPackOpening(
+          packOpeningId,
+          userId,
+          selectedCards,
+          setId,
+          1 // Cost in wonder coins
+        );
+      }
+    } catch (error) {
+      logger.error(
+        "Error creating fate pick from pack opening",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
+      // Don't fail the pack opening process if fate pick creation fails
+    }
+
+    return { selectedCards, isGodPack, packOpeningId };
+  },
+
+  /**
+   * Count cards by base rarity from a list of cards
+   */
+  _countCardsByRarity(cards: CardWithAbility[]): Record<string, number> {
+    const rarityCounts: Record<string, number> = {
+      common: 0,
+      rare: 0,
+      epic: 0,
+      legendary: 0,
+    };
+
+    for (const card of cards) {
+      const baseRarity = RarityUtils.getBaseRarity(card.rarity as any);
+      if (rarityCounts[baseRarity] !== undefined) {
+        rarityCounts[baseRarity]++;
+      }
+    }
+
+    return rarityCounts;
+  },
+
+  /**
+   * Trigger achievement events for cards collected
+   */
+  async _triggerCardCollectionAchievements(
+    userId: string,
+    rarityCounts: Record<string, number>
+  ): Promise<void> {
+    try {
+      const AchievementService = await import("./achievement.service");
+      const CardModel = await import("../models/card.model");
+
+      // Get updated card counts after adding cards to collection
+      const totalUniqueCards = await CardModel.default.getUserUniqueCardCount(
+        userId
+      );
+      const totalMythicCards = await CardModel.default.getUserMythicCardCount(
+        userId
+      );
+      const uniqueCardsByRarity =
+        await CardModel.default.getUserUniqueCardCountByRarity(userId);
+
+      // Trigger card collection event once per rarity with the count
+      for (const [rarity, count] of Object.entries(rarityCounts)) {
+        if (count > 0) {
+          // Trigger ONCE per rarity with the count, not once per card
+          await AchievementService.default.triggerAchievementEvent({
+            userId,
+            eventType: "card_collected",
+            eventData: {
+              rarity,
+              count, // Pass the count so the handler can increment properly
+              totalUniqueCards,
+              totalMythicCards,
+              uniqueCardsByRarity,
+            },
+          });
+        }
+      }
+    } catch (error) {
+      logger.error(
+        "Error processing card collection achievement events",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
+      // Don't fail the pack opening process if achievement processing fails
+    }
+  },
+
   async openPack(
     userId: string,
     setId: string
@@ -56,35 +192,25 @@ const PackService = {
       throw new Error("No cards available in this set");
     }
 
-    // 5. Check for God Pack and select cards accordingly
-    const isGodPack = this.isGodPack();
-    const selectedCards = isGodPack
-      ? this.selectGodPackCards(setCards, CARDS_PER_PACK)
-      : this.selectRandomCards(setCards, CARDS_PER_PACK);
-
-    if (isGodPack) {
-      logger.info("God Pack opened!", { userId, setId });
-    }
-
-    // 6. Remove one pack from user's total pack count
+    // 5. Remove one pack from user's total pack count
     const updatedUser = await UserModel.removePacks(userId, 1);
     if (!updatedUser) {
       throw new Error("Failed to remove pack from user inventory");
     }
 
-    // 7. Add the selected cards to user's collection
-    await this.addCardsToUserCollection(userId, selectedCards);
+    // 6. Open the pack using core function
+    const { selectedCards, isGodPack } = await this._openSinglePackCore(
+      userId,
+      setId,
+      setCards
+    );
 
-    // 8. Invalidate user's card cache since collection changed
+    // 7. Invalidate user's card cache since collection changed
     await cacheInvalidation.invalidateAfterPackOpen(userId);
 
-    // 9. Log the pack opening to history
-    await this.logPackOpening(userId, setId, selectedCards);
-
-    // 10. Trigger achievement events for pack opening
+    // 8. Trigger achievement events for pack opening and card collection
     try {
       const AchievementService = await import("./achievement.service");
-      const CardModel = await import("../models/card.model");
 
       // Pack opened event
       await AchievementService.default.triggerAchievementEvent({
@@ -92,68 +218,21 @@ const PackService = {
         eventType: "pack_opened",
         eventData: {
           setId,
-          cardsReceived: selectedCards,
+          packsOpened: 1,
           packsRemaining: updatedUser.pack_count,
         },
       });
 
-      // Get updated card counts after adding cards to collection
-      const totalUniqueCards = await CardModel.default.getUserUniqueCardCount(userId);
-      const totalMythicCards = await CardModel.default.getUserMythicCardCount(userId);
-
-      // Card collection event for tracking total collection progress
-      // We trigger this once per pack with the current totals
-      await AchievementService.default.triggerAchievementEvent({
-        userId,
-        eventType: "card_collected",
-        eventData: {
-          rarity: selectedCards[0]?.rarity, // Use first card's rarity for legacy achievements
-          totalUniqueCards,
-          totalMythicCards,
-        },
-      });
+      // Count cards by rarity and trigger collection achievements
+      const rarityCounts = this._countCardsByRarity(selectedCards);
+      await this._triggerCardCollectionAchievements(userId, rarityCounts);
     } catch (error) {
       logger.error(
-        "Error processing pack opening achievement events",
+        "Error processing achievement events",
         {},
         error instanceof Error ? error : new Error(String(error))
       );
       // Don't fail the pack opening process if achievement processing fails
-    }
-
-    // 10. Create fate pick opportunity from this pack opening
-    try {
-      const FatePickService = await import("./fatePick.service");
-
-      // Get the pack opening ID from the history
-      const packOpeningQuery = `
-        SELECT pack_opening_id FROM pack_opening_history 
-        WHERE user_id = $1 
-        ORDER BY opened_at DESC 
-        LIMIT 1;
-      `;
-      const db = require("../config/db.config").default;
-      const { rows: packRows } = await db.query(packOpeningQuery, [userId]);
-
-      if (packRows.length > 0) {
-        const packOpeningId = packRows[0].pack_opening_id;
-
-        // Create fate pick with 1 wonder coin cost
-        await FatePickService.default.createFatePickFromPackOpening(
-          packOpeningId,
-          userId,
-          selectedCards,
-          setId,
-          1 // Cost in wonder coins
-        );
-      }
-    } catch (error) {
-      logger.error(
-        "Error creating fate pick from pack opening",
-        {},
-        error instanceof Error ? error : new Error(String(error))
-      );
-      // Don't fail the pack opening process if fate pick creation fails
     }
 
     return {
@@ -518,6 +597,12 @@ const PackService = {
     // Open the packs - but don't use openPack directly as it checks pack count each time
     const packs: any[] = [];
     const godPacks: number[] = []; // Track which pack numbers are God Packs
+    const totalRarityCounts: Record<string, number> = {
+      common: 0,
+      rare: 0,
+      epic: 0,
+      legendary: 0,
+    };
 
     try {
       // Get all cards from this set
@@ -528,11 +613,12 @@ const PackService = {
 
       // Process each pack
       for (let i = 0; i < count; i++) {
-        // Check for God Pack and select cards accordingly
-        const isGodPack = this.isGodPack();
-        const selectedCards = isGodPack
-          ? this.selectGodPackCards(setCards, CARDS_PER_PACK)
-          : this.selectRandomCards(setCards, CARDS_PER_PACK);
+        // Open pack using core function
+        const { selectedCards, isGodPack } = await this._openSinglePackCore(
+          userId,
+          setId,
+          setCards
+        );
 
         if (isGodPack) {
           logger.info("God Pack opened in multiple pack opening!", {
@@ -543,82 +629,10 @@ const PackService = {
           godPacks.push(i); // Track this pack as a God Pack (0-indexed)
         }
 
-        // Add the selected cards to user's collection
-        await this.addCardsToUserCollection(userId, selectedCards);
-
-        // Log the pack opening to history
-        await this.logPackOpening(userId, setId, selectedCards);
-
-        // Trigger achievement events for pack opening
-        try {
-          const AchievementService = await import("./achievement.service");
-
-          // Pack opened event
-          await AchievementService.default.triggerAchievementEvent({
-            userId,
-            eventType: "pack_opened",
-            eventData: {
-              setId,
-              cardsReceived: selectedCards,
-              packsRemaining: userPackCount - packsToUse + packsToBuy - (i + 1),
-            },
-          });
-
-          // Card collection events for each unique card
-          // for (const card of selectedCards) {
-          //   await AchievementService.default.triggerAchievementEvent({
-          //     userId,
-          //     eventType: "card_collected",
-          //     eventData: {
-          //       cardId: card.card_id,
-          //       cardName: card.name,
-          //       rarity: card.rarity,
-          //       totalUniqueCards: 0,
-          //     },
-          //   });
-          // }
-        } catch (error) {
-          logger.error(
-            "Error processing pack opening achievement events",
-            {},
-            error instanceof Error ? error : new Error(String(error))
-          );
-          // Don't fail the pack opening process if achievement processing fails
-        }
-
-        // Create fate pick opportunity from this pack opening
-        try {
-          const FatePickService = await import("./fatePick.service");
-
-          // Get the pack opening ID from the history
-          const packOpeningQuery = `
-            SELECT pack_opening_id FROM pack_opening_history 
-            WHERE user_id = $1 
-            ORDER BY opened_at DESC 
-            LIMIT 1;
-          `;
-          const db = require("../config/db.config").default;
-          const { rows: packRows } = await db.query(packOpeningQuery, [userId]);
-
-          if (packRows.length > 0) {
-            const packOpeningId = packRows[0].pack_opening_id;
-
-            // Create fate pick with 1 wonder coin cost
-            await FatePickService.default.createFatePickFromPackOpening(
-              packOpeningId,
-              userId,
-              selectedCards,
-              setId,
-              1 // Cost in wonder coins
-            );
-          }
-        } catch (error) {
-          logger.error(
-            "Error creating fate pick from pack opening",
-            {},
-            error instanceof Error ? error : new Error(String(error))
-          );
-          // Don't fail the pack opening process if fate pick creation fails
+        // Count cards by rarity for this pack
+        const packRarityCounts = this._countCardsByRarity(selectedCards);
+        for (const [rarity, count] of Object.entries(packRarityCounts)) {
+          totalRarityCounts[rarity] = (totalRarityCounts[rarity] || 0) + count;
         }
 
         // Add this pack's cards to the result
@@ -627,6 +641,35 @@ const PackService = {
 
       // Invalidate user's card cache since collection changed
       await cacheInvalidation.invalidateAfterPackOpen(userId);
+
+      // Trigger all achievements at once after opening all packs (batched)
+      try {
+        const AchievementService = await import("./achievement.service");
+
+        // Pack opened achievement - trigger once with total count
+        await AchievementService.default.triggerAchievementEvent({
+          userId,
+          eventType: "pack_opened",
+          eventData: {
+            setId,
+            packsOpened: count,
+            packsRemaining: userPackCount - packsToUse + packsToBuy - count,
+          },
+        });
+
+        // Card collection achievements - trigger once per rarity with accumulated counts
+        await this._triggerCardCollectionAchievements(
+          userId,
+          totalRarityCounts
+        );
+      } catch (error) {
+        logger.error(
+          "Error processing achievement events",
+          {},
+          error instanceof Error ? error : new Error(String(error))
+        );
+        // Don't fail the pack opening process if achievement processing fails
+      }
 
       // Track daily task progress for pack openings
       try {

@@ -440,10 +440,11 @@ const AchievementService = {
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
+    const { packsOpened = 1 } = eventData;
     const keysToFetch: string[] = [];
     const updatePromises: Promise<any>[] = [];
 
-    // Track pack_opening tiered achievements
+    // Track pack_opening tiered achievements - INCREMENT by number of packs opened
     const packOpeningTiers =
       await AchievementModel.getTieredAchievementsByBaseKey("pack_opening");
     for (const tier of packOpeningTiers) {
@@ -451,21 +452,21 @@ const AchievementService = {
         AchievementModel.updateUserAchievementProgress(
           userId,
           tier.achievement_key,
-          1
+          packsOpened
         )
       );
       keysToFetch.push(tier.achievement_key);
     }
 
-    // First pack (legacy)
+    // First pack (legacy) - INCREMENT by number of packs opened
     updatePromises.push(
-      AchievementModel.updateUserAchievementProgress(userId, "first_pack", 1)
+      AchievementModel.updateUserAchievementProgress(userId, "first_pack", packsOpened)
     );
     keysToFetch.push("first_pack");
 
-    // Pack addict (legacy)
+    // Pack addict (legacy) - INCREMENT by number of packs opened
     updatePromises.push(
-      AchievementModel.updateUserAchievementProgress(userId, "pack_addict", 1)
+      AchievementModel.updateUserAchievementProgress(userId, "pack_addict", packsOpened)
     );
     keysToFetch.push("pack_addict");
 
@@ -494,11 +495,11 @@ const AchievementService = {
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
-    const { rarity, totalUniqueCards, totalMythicCards } = eventData;
+    const { rarity, count = 1, totalUniqueCards, totalMythicCards } = eventData;
     const keysToFetch: string[] = [];
     const updatePromises: Promise<any>[] = [];
 
-    // Track card_collection tiered achievements
+    // Track card_collection tiered achievements (SET - only needs to be called once)
     if (totalUniqueCards !== undefined) {
       const cardCollectionTiers =
         await AchievementModel.getTieredAchievementsByBaseKey(
@@ -516,7 +517,7 @@ const AchievementService = {
       }
     }
 
-    // Track mythic_collection tiered achievements (cards with +, ++, or +++ variants)
+    // Track mythic_collection tiered achievements (SET - only needs to be called once)
     if (totalMythicCards !== undefined) {
       const mythicCollectionTiers =
         await AchievementModel.getTieredAchievementsByBaseKey(
@@ -534,31 +535,31 @@ const AchievementService = {
       }
     }
 
-    // Rare collector (legacy)
+    // Rare collector (legacy) - INCREMENT by count
     if (RarityUtils.isRare(rarity)) {
       updatePromises.push(
         AchievementModel.updateUserAchievementProgress(
           userId,
           "rare_collector",
-          1
+          count // Increment by the number of rare cards collected
         )
       );
       keysToFetch.push("rare_collector");
     }
 
-    // Legendary hunter (legacy)
+    // Legendary hunter (legacy) - INCREMENT by count
     if (RarityUtils.isLegendary(rarity)) {
       updatePromises.push(
         AchievementModel.updateUserAchievementProgress(
           userId,
           "legendary_hunter",
-          1
+          count // Increment by the number of legendary cards collected
         )
       );
       keysToFetch.push("legendary_hunter");
     }
 
-    // Card master (legacy)
+    // Card master (legacy) - SET
     if (totalUniqueCards) {
       updatePromises.push(
         AchievementModel.setUserAchievementProgress(

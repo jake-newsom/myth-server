@@ -24,7 +24,7 @@ export const DECK_CONFIG = {
 export const XP_CONFIG = {
   // Formula parameters for calculating XP required to reach a level
   BASE_XP: 150, // Base XP multiplier
-  EXPONENT: 2, // Polynomial growth exponent
+  EXPONENT: 1.7, // Polynomial growth exponent
   SACRIFICE_MULTIPLIER: 0.5, // 50% of card's XP value
 } as const;
 
@@ -177,7 +177,7 @@ export const RATE_LIMIT_CONFIG = {
   },
   PACK_OPENING: {
     WINDOW_MS: 10 * 1000, // 10 seconds
-    MAX_REQUESTS: 10,
+    MAX_REQUESTS: 30,
   },
   GAME_ACTION: {
     WINDOW_MS: 10 * 1000, // 10 seconds
@@ -185,7 +185,7 @@ export const RATE_LIMIT_CONFIG = {
   },
   AI_ACTION: {
     WINDOW_MS: 1 * 1000, // 1 second
-    MAX_REQUESTS: 30,
+    MAX_REQUESTS: 40,
   },
 } as const;
 
