@@ -117,7 +117,7 @@ class DeckService {
     const aiCardInstanceIds: string[] = [];
     for (const playerInstanceId of playerCardInstanceIds) {
       const cardQuery = `
-        SELECT card_id, level FROM "user_owned_cards"
+        SELECT card_variant_id, level FROM "user_owned_cards"
         WHERE user_card_instance_id = $1;
       `;
       const { rows: cardDetails } = await db.query(cardQuery, [
@@ -125,15 +125,15 @@ class DeckService {
       ]);
 
       if (cardDetails.length > 0) {
-        const { card_id, level } = cardDetails[0];
+        const { card_variant_id, level } = cardDetails[0];
         const insertQuery = `
-          INSERT INTO "user_owned_cards" (user_id, card_id, level, xp, created_at)
+          INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
           VALUES ($1, $2, $3, 0, NOW())
           RETURNING user_card_instance_id;
         `;
         const { rows: insertRows } = await db.query(insertQuery, [
           AI_PLAYER_ID,
-          card_id,
+          card_variant_id,
           level,
         ]);
         if (insertRows.length > 0) {

@@ -235,17 +235,18 @@ class TowerService {
     const result = await client.query(
       `
       SELECT 
-        c.card_id,
-        c.rarity,
-        COALESCE((c.power->>'top')::integer, 0) +
-        COALESCE((c.power->>'right')::integer, 0) +
-        COALESCE((c.power->>'bottom')::integer, 0) +
-        COALESCE((c.power->>'left')::integer, 0) as total_power
+        cv.card_variant_id as card_id,
+        cv.rarity,
+        COALESCE((ch.base_power->>'top')::integer, 0) +
+        COALESCE((ch.base_power->>'right')::integer, 0) +
+        COALESCE((ch.base_power->>'bottom')::integer, 0) +
+        COALESCE((ch.base_power->>'left')::integer, 0) as total_power
       FROM deck_cards dc
       JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
-      JOIN cards c ON uoc.card_id = c.card_id
+      JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN characters ch ON cv.character_id = ch.character_id
       WHERE dc.deck_id = $1
-      GROUP BY c.card_id, c.rarity, c.power
+      GROUP BY cv.card_variant_id, cv.rarity, ch.base_power
     `,
       [deckId]
     );
@@ -524,14 +525,15 @@ class TowerService {
 
     // Build rarity filter for variants
     const rarityConditions = validRarities
-      .map((r) => `c.rarity::text LIKE '${r}%'`)
+      .map((r) => `cv.rarity::text LIKE '${r}%'`)
       .join(" OR ");
 
     const query = `
-      SELECT c.card_id, c.name, c.rarity, c.image_url
-      FROM cards c
+      SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url
+      FROM card_variants cv
+      JOIN characters ch ON cv.character_id = ch.character_id
       WHERE (${rarityConditions})
-        AND c.rarity::text LIKE '%+'
+        AND cv.rarity::text LIKE '%+'
       ORDER BY RANDOM()
       LIMIT 1;
     `;
@@ -547,7 +549,7 @@ class TowerService {
 
     // Add to user's collection
     const insertQuery = `
-      INSERT INTO user_owned_cards (user_id, card_id, level, xp)
+      INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp)
       VALUES ($1, $2, 1, 0)
       RETURNING user_card_instance_id;
     `;
@@ -573,9 +575,10 @@ class TowerService {
     rarity: "rare" | "epic" | "legendary"
   ): Promise<AwardedCard | null> {
     const query = `
-      SELECT c.card_id, c.name, c.rarity, c.image_url
-      FROM cards c
-      WHERE c.rarity::text = $1
+      SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url
+      FROM card_variants cv
+      JOIN characters ch ON cv.character_id = ch.character_id
+      WHERE cv.rarity::text = $1
       ORDER BY RANDOM()
       LIMIT 1;
     `;
@@ -590,7 +593,7 @@ class TowerService {
 
     // Add to user's collection
     const insertQuery = `
-      INSERT INTO user_owned_cards (user_id, card_id, level, xp)
+      INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp)
       VALUES ($1, $2, 1, 0)
       RETURNING user_card_instance_id;
     `;
@@ -682,19 +685,20 @@ class TowerService {
     const result = await db.query(
       `
       SELECT 
-        c.name,
+        ch.name,
         uoc.level,
-        c.power->>'top' as base_top,
-        c.power->>'right' as base_right,
-        c.power->>'bottom' as base_bottom,
-        c.power->>'left' as base_left,
+        ch.base_power->>'top' as base_top,
+        ch.base_power->>'right' as base_right,
+        ch.base_power->>'bottom' as base_bottom,
+        ch.base_power->>'left' as base_left,
         COALESCE(ucp.power_up_data->>'top', '0') as powerup_top,
         COALESCE(ucp.power_up_data->>'right', '0') as powerup_right,
         COALESCE(ucp.power_up_data->>'bottom', '0') as powerup_bottom,
         COALESCE(ucp.power_up_data->>'left', '0') as powerup_left
       FROM deck_cards dc
       JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
-      JOIN cards c ON uoc.card_id = c.card_id
+      JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN characters ch ON cv.character_id = ch.character_id
       LEFT JOIN user_card_power_ups ucp ON uoc.user_card_instance_id = ucp.user_card_instance_id
       WHERE dc.deck_id = $1
     `,
@@ -773,12 +777,13 @@ class TowerService {
       const cardsResult = await client.query(
         `
         SELECT 
-          c.card_id,
-          c.name,
-          c.rarity
+          cv.card_variant_id as card_id,
+          ch.name,
+          cv.rarity
         FROM deck_cards dc
         JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
-        JOIN cards c ON uoc.card_id = c.card_id
+        JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN characters ch ON cv.character_id = ch.character_id
         WHERE dc.deck_id = $1
       `,
         [deckId]

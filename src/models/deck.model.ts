@@ -121,22 +121,23 @@ const DeckModel = {
     const cardsQuery = `
       SELECT
         dc.user_card_instance_id,
-        uci.level, uci.xp, uci.card_id AS base_card_id,
-        c.name, c.rarity, c.image_url,
-        c.power->>'top' as base_power_top,
-        c.power->>'right' as base_power_right, 
-        c.power->>'bottom' as base_power_bottom, 
-        c.power->>'left' as base_power_left,
-        c.special_ability_id, c.set_id, c.tags,
+        uci.level, uci.xp, uci.card_variant_id AS base_card_id,
+        ch.name, cv.rarity, cv.image_url, cv.attack_animation,
+        ch.base_power->>'top' as base_power_top,
+        ch.base_power->>'right' as base_power_right, 
+        ch.base_power->>'bottom' as base_power_bottom, 
+        ch.base_power->>'left' as base_power_left,
+        ch.special_ability_id, ch.set_id, ch.tags,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
         sa.id as ability_id_string
       FROM "deck_cards" dc
       JOIN "user_owned_cards" uci ON dc.user_card_instance_id = uci.user_card_instance_id
-      JOIN "cards" c ON uci.card_id = c.card_id
-      LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
+      JOIN "card_variants" cv ON uci.card_variant_id = cv.card_variant_id
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
       WHERE dc.deck_id = $1 AND uci.user_id = $2
-      ORDER BY c.name;
+      ORDER BY ch.name;
     `;
     const cardsResult = await client.query(cardsQuery, [deckId, userId]);
 
@@ -179,7 +180,7 @@ const DeckModel = {
       const instance: UserCardInstance = {
         user_card_instance_id: row.user_card_instance_id,
         user_id: userId,
-        card_id: row.base_card_id,
+        card_variant_id: row.base_card_id,
         level: row.level,
         xp: row.xp,
         power_enhancements: powerEnhancements,

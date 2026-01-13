@@ -137,23 +137,17 @@ const PackService = {
       const uniqueCardsByRarity =
         await CardModel.default.getUserUniqueCardCountByRarity(userId);
 
-      // Trigger card collection event once per rarity with the count
-      for (const [rarity, count] of Object.entries(rarityCounts)) {
-        if (count > 0) {
-          // Trigger ONCE per rarity with the count, not once per card
-          await AchievementService.default.triggerAchievementEvent({
-            userId,
-            eventType: "card_collected",
-            eventData: {
-              rarity,
-              count, // Pass the count so the handler can increment properly
-              totalUniqueCards,
-              totalMythicCards,
-              uniqueCardsByRarity,
-            },
-          });
-        }
-      }
+      // Trigger card collection event ONCE with all rarity counts
+      await AchievementService.default.triggerAchievementEvent({
+        userId,
+        eventType: "card_collected",
+        eventData: {
+          rarityCounts,
+          totalUniqueCards,
+          totalMythicCards,
+          uniqueCardsByRarity,
+        },
+      });
     } catch (error) {
       logger.error(
         "Error processing card collection achievement events",
@@ -243,27 +237,28 @@ const PackService = {
   },
 
   async getCardsFromSet(setId: string): Promise<CardWithAbility[]> {
-    // This would need to be implemented in CardModel
-    // For now, we'll create a simple query here
+    // Query card_variants joined with characters to get all cards from a set
     const db = require("../config/db.config").default;
     const query = `
       SELECT 
-        c.card_id, c.name, c.rarity, c.image_url, 
-        c.power->>'top' as base_power_top,
-        c.power->>'right' as base_power_right, 
-        c.power->>'bottom' as base_power_bottom, 
-        c.power->>'left' as base_power_left,
-        c.special_ability_id, c.set_id, c.tags,
+        cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+        ch.name, ch.description, ch.type,
+        ch.base_power->>'top' as base_power_top,
+        ch.base_power->>'right' as base_power_right, 
+        ch.base_power->>'bottom' as base_power_bottom, 
+        ch.base_power->>'left' as base_power_left,
+        ch.special_ability_id, ch.set_id, ch.tags,
         sa.ability_id as sa_ability_id, sa.name as sa_name, sa.description as sa_description,
         sa.trigger_moments as sa_trigger_moments, sa.parameters as sa_parameters
-      FROM "cards" c
-      LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
-      WHERE c.set_id = $1;
+      FROM "card_variants" cv
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
+      WHERE ch.set_id = $1;
     `;
     const { rows } = await db.query(query, [setId]);
 
     return rows.map((row: any) => ({
-      card_id: row.card_id,
+      card_id: row.card_variant_id, // Use card_variant_id as card_id for compatibility
       name: row.name,
       rarity: row.rarity,
       image_url: row.image_url,
@@ -443,9 +438,10 @@ const PackService = {
     const db = require("../config/db.config").default;
 
     // Insert each card into user's collection
+    // card.card_id is actually the card_variant_id in the new normalized structure
     for (const card of cards) {
       const query = `
-        INSERT INTO "user_owned_cards" (user_id, card_id, level, xp, created_at)
+        INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
         VALUES ($1, $2, 1, 0, NOW());
       `;
       await db.query(query, [userId, card.card_id]);
@@ -711,7 +707,12 @@ const PackService = {
   // Add this helper method to check if a set has cards
   async getSetCardCount(setId: string): Promise<number> {
     const db = require("../config/db.config").default;
-    const query = `SELECT COUNT(*) as card_count FROM cards WHERE set_id = $1;`;
+    const query = `
+      SELECT COUNT(*) as card_count 
+      FROM card_variants cv 
+      JOIN characters ch ON cv.character_id = ch.character_id 
+      WHERE ch.set_id = $1;
+    `;
     const { rows } = await db.query(query, [setId]);
     return parseInt(rows[0]?.card_count || "0", 10);
   },

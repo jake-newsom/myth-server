@@ -153,10 +153,11 @@ const GameRewardsService = {
     deckId: string
   ): Promise<{ card_id: string; card_name: string }[]> {
     const query = `
-      SELECT uoc.user_card_instance_id as card_id, c.name as card_name
+      SELECT uoc.user_card_instance_id as card_id, ch.name as card_name
       FROM "deck_cards" dc
       JOIN "user_owned_cards" uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
-      JOIN "cards" c ON uoc.card_id = c.card_id
+      JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN "characters" ch ON cv.character_id = ch.character_id
       WHERE dc.deck_id = $1
     `;
 

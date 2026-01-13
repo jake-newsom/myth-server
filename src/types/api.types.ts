@@ -51,6 +51,7 @@ export interface CardResponse {
   user_card_instance_id?: string;
   base_card_id: string;
   name: string;
+  description?: string | null; // Mythological character description (HTML content) - only included for static cards
   rarity: Rarity;
   image_url: string;
   base_power: PowerValues;

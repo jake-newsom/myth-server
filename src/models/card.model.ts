@@ -5,7 +5,7 @@ import {
   Card as BaseCard,
   SpecialAbility,
 } from "../types/database.types";
-import { PowerValues, TriggerMoment } from "../types/card.types";
+import { TriggerMoment } from "../types/card.types";
 import PowerUpService from "../services/powerUp.service";
 
 // Helper to format the card instance response
@@ -56,11 +56,18 @@ function formatStaticCardResponse(
   CardResponse,
   "user_card_instance_id" | "level" | "xp" | "power_enhancements"
 > {
-  const { special_ability_id, card_id, attack_animation, ...rest } = baseCard;
+  const {
+    special_ability_id,
+    card_id,
+    attack_animation,
+    description,
+    ...rest
+  } = baseCard;
   return {
     ...rest,
     base_card_id: card_id,
     set_id: baseCard.set_id || null,
+    description: description ?? null, // Always include description field (null if not set)
     special_ability: baseCard.special_ability
       ? {
           ...baseCard.special_ability,
@@ -73,24 +80,30 @@ function formatStaticCardResponse(
 }
 
 const CardModel = {
+  /**
+   * Find all card instances owned by a user
+   * Joins card_variants -> characters -> special_abilities
+   */
   async findInstancesByUserId(userId: string): Promise<CardResponse[]> {
     const query = `
       SELECT 
-        uoc.user_card_instance_id, uoc.user_id, uoc.card_id, uoc.level, uoc.xp,
-        c.name, c.rarity, c.image_url, 
-        c.power->>'top' as base_power_top,
-        c.power->>'right' as base_power_right, 
-        c.power->>'bottom' as base_power_bottom, 
-        c.power->>'left' as base_power_left,
-        c.special_ability_id, c.set_id, c.tags, c.attack_animation,
+        uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp,
+        ch.name, ch.description, ch.type,
+        ch.base_power->>'top' as base_power_top,
+        ch.base_power->>'right' as base_power_right, 
+        ch.base_power->>'bottom' as base_power_bottom, 
+        ch.base_power->>'left' as base_power_left,
+        ch.special_ability_id, ch.set_id, ch.tags,
+        cv.rarity, cv.image_url, cv.attack_animation,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
       FROM "user_owned_cards" uoc
-      JOIN "cards" c ON uoc.card_id = c.card_id
-      LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
+      JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
       WHERE uoc.user_id = $1
-      ORDER BY c.name;
+      ORDER BY ch.name;
     `;
 
     const { rows } = await db.query(query, [userId]);
@@ -103,7 +116,7 @@ const CardModel = {
 
     return rows.map((row) => {
       const baseCard: BaseCard = {
-        card_id: row.card_id,
+        card_id: row.card_variant_id, // Use variant ID as card_id for compatibility
         name: row.name,
         rarity: row.rarity,
         image_url: row.image_url,
@@ -133,7 +146,7 @@ const CardModel = {
       const instance: UserCardInstance = {
         user_card_instance_id: row.user_card_instance_id,
         user_id: row.user_id,
-        card_id: row.card_id,
+        card_variant_id: row.card_variant_id,
         level: row.level,
         xp: row.xp,
         power_enhancements: powerEnhancements,
@@ -154,47 +167,31 @@ const CardModel = {
     });
   },
 
-  async findById(cardId: string): Promise<BaseCard | null> {
+  /**
+   * Find a card variant by ID (returns flattened card data)
+   */
+  async findById(cardVariantId: string): Promise<BaseCard | null> {
     const query = `
       SELECT
-        card_id, name, rarity, image_url, 
-        power->>'top' as base_power_top, 
-        power->>'right' as base_power_right,
-        power->>'bottom' as base_power_bottom, 
-        power->>'left' as base_power_left,
-        special_ability_id, set_id, tags
-      FROM "cards"
-      WHERE card_id = $1;
+        cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+        ch.name, ch.description, ch.type,
+        ch.base_power->>'top' as base_power_top, 
+        ch.base_power->>'right' as base_power_right,
+        ch.base_power->>'bottom' as base_power_bottom, 
+        ch.base_power->>'left' as base_power_left,
+        ch.special_ability_id, ch.set_id, ch.tags
+      FROM "card_variants" cv
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      WHERE cv.card_variant_id = $1;
     `;
-    const { rows } = await db.query(query, [cardId]);
+    const { rows } = await db.query(query, [cardVariantId]);
     if (rows.length === 0) return null;
 
     const row = rows[0];
     return {
-      card_id: row.card_id,
+      card_id: row.card_variant_id,
       name: row.name,
-      rarity: row.rarity,
-      image_url: row.image_url,
-      base_power: {
-        top: parseInt(row.base_power_top, 10),
-        right: parseInt(row.base_power_right, 10),
-        bottom: parseInt(row.base_power_bottom, 10),
-        left: parseInt(row.base_power_left, 10),
-      },
-      special_ability_id: row.special_ability_id,
-      set_id: row.set_id,
-      tags: row.tags,
-    };
-  },
-
-  async findBaseCardById(cardId: string): Promise<BaseCard | null> {
-    const query = `SELECT card_id, name, rarity, image_url, power->>'top' as base_power_top, power->>'right' as base_power_right, power->>'bottom' as base_power_bottom, power->>'left' as base_power_left, special_ability_id, set_id, tags, attack_animation FROM "cards" WHERE card_id = $1;`;
-    const { rows } = await db.query(query, [cardId]);
-    if (rows.length === 0) return null;
-    const row = rows[0];
-    return {
-      card_id: row.card_id,
-      name: row.name,
+      description: row.description,
       rarity: row.rarity,
       image_url: row.image_url,
       base_power: {
@@ -210,25 +207,37 @@ const CardModel = {
     };
   },
 
+  /**
+   * Find a base card by ID (alias for findById for backward compatibility)
+   */
+  async findBaseCardById(cardVariantId: string): Promise<BaseCard | null> {
+    return this.findById(cardVariantId);
+  },
+
+  /**
+   * Find a specific user card instance by ID
+   */
   async findInstanceById(
     instanceId: string,
     userId: string
   ): Promise<CardResponse | null> {
     const query = `
       SELECT 
-        uoc.user_card_instance_id, uoc.user_id, uoc.card_id, uoc.level, uoc.xp,
-        c.name, c.rarity, c.image_url, 
-        c.power->>'top' as base_power_top,
-        c.power->>'right' as base_power_right, 
-        c.power->>'bottom' as base_power_bottom, 
-        c.power->>'left' as base_power_left, 
-        c.special_ability_id, c.set_id, c.tags, c.attack_animation,
+        uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp,
+        ch.name, ch.description, ch.type,
+        ch.base_power->>'top' as base_power_top,
+        ch.base_power->>'right' as base_power_right, 
+        ch.base_power->>'bottom' as base_power_bottom, 
+        ch.base_power->>'left' as base_power_left, 
+        ch.special_ability_id, ch.set_id, ch.tags,
+        cv.rarity, cv.image_url, cv.attack_animation,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
       FROM "user_owned_cards" uoc
-      JOIN "cards" c ON uoc.card_id = c.card_id
-      LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
+      JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
       WHERE uoc.user_card_instance_id = $1 AND uoc.user_id = $2;
     `;
     const { rows } = await db.query(query, [instanceId, userId]);
@@ -250,14 +259,14 @@ const CardModel = {
     const instance: UserCardInstance = {
       user_card_instance_id: row.user_card_instance_id,
       user_id: row.user_id,
-      card_id: row.card_id,
+      card_variant_id: row.card_variant_id,
       level: row.level,
       xp: row.xp,
       power_enhancements: powerEnhancements,
     };
 
     const baseCard: BaseCard = {
-      card_id: row.card_id,
+      card_id: row.card_variant_id,
       name: row.name,
       rarity: row.rarity,
       image_url: row.image_url,
@@ -287,7 +296,9 @@ const CardModel = {
     return formatUserCardInstanceResponse(baseCard, instance, ability);
   },
 
-  // Static card data methods
+  /**
+   * Find all static card variants with optional filtering
+   */
   async findAllStatic(
     filters: {
       rarity?: string;
@@ -319,19 +330,19 @@ const CardModel = {
       let paramIndex = 1;
 
       if (rarity) {
-        whereClauses.push(`c.rarity = $${paramIndex}`);
+        whereClauses.push(`cv.rarity = $${paramIndex}`);
         queryParams.push(rarity);
         paramIndex++;
       }
 
       if (name) {
-        whereClauses.push(`c.name ILIKE $${paramIndex}`);
+        whereClauses.push(`ch.name ILIKE $${paramIndex}`);
         queryParams.push(`%${name}%`);
         paramIndex++;
       }
 
       if (tag) {
-        whereClauses.push(`$${paramIndex} = ANY(c.tags)`);
+        whereClauses.push(`$${paramIndex} = ANY(ch.tags)`);
         queryParams.push(tag);
         paramIndex++;
       }
@@ -346,7 +357,7 @@ const CardModel = {
         if (idArray.length > 0) {
           // Use a proper IN clause with UUID casting for both sides
           whereClauses.push(
-            `c.card_id IN (SELECT CAST(unnest($${paramIndex}::text[]) AS uuid))`
+            `cv.card_variant_id IN (SELECT CAST(unnest($${paramIndex}::text[]) AS uuid))`
           );
           queryParams.push(idArray);
           paramIndex++;
@@ -366,20 +377,22 @@ const CardModel = {
       }
 
       const dataQuery = `
-        SELECT c.card_id, c.name, c.rarity, c.image_url, 
-              c.power->>'top' as base_power_top, 
-              c.power->>'right' as base_power_right, 
-              c.power->>'bottom' as base_power_bottom, 
-              c.power->>'left' as base_power_left, 
-              c.special_ability_id, c.set_id, c.tags, c.attack_animation,
+        SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+              ch.name, ch.description, ch.type,
+              ch.base_power->>'top' as base_power_top, 
+              ch.base_power->>'right' as base_power_right, 
+              ch.base_power->>'bottom' as base_power_bottom, 
+              ch.base_power->>'left' as base_power_left, 
+              ch.special_ability_id, ch.set_id, ch.tags,
               sa.ability_id as sa_ability_id, sa.name as sa_name, 
               sa.description as sa_description,
               sa.trigger_moments as sa_trigger_moments, 
               sa.parameters as sa_parameters
-        FROM "cards" c
-        LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
+        FROM "card_variants" cv
+        JOIN "characters" ch ON cv.character_id = ch.character_id
+        LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
         ${whereClause}
-        ORDER BY c.name
+        ORDER BY ch.name
         ${limitClause};
       `;
 
@@ -403,20 +416,22 @@ const CardModel = {
           }
 
           const fallbackQuery = `
-            SELECT c.card_id, c.name, c.rarity, c.image_url, 
-                  c.power->>'top' as base_power_top, 
-                  c.power->>'right' as base_power_right, 
-                  c.power->>'bottom' as base_power_bottom, 
-                  c.power->>'left' as base_power_left, 
-                  c.special_ability_id, c.set_id, c.tags, c.attack_animation,
+            SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+                  ch.name, ch.description, ch.type,
+                  ch.base_power->>'top' as base_power_top, 
+                  ch.base_power->>'right' as base_power_right, 
+                  ch.base_power->>'bottom' as base_power_bottom, 
+                  ch.base_power->>'left' as base_power_left, 
+                  ch.special_ability_id, ch.set_id, ch.tags,
                   sa.ability_id as sa_ability_id, sa.name as sa_name, 
                   sa.description as sa_description,
                   sa.trigger_moments as sa_trigger_moments, 
                   sa.parameters as sa_parameters
-            FROM "cards" c
-            LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
-            WHERE c.card_id::text = ANY($1::text[])
-            ORDER BY c.name
+            FROM "card_variants" cv
+            JOIN "characters" ch ON cv.character_id = ch.character_id
+            LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
+            WHERE cv.card_variant_id::text = ANY($1::text[])
+            ORDER BY ch.name
             ${fallbackLimitClause};
           `;
 
@@ -429,7 +444,7 @@ const CardModel = {
             // Use results from fallback query instead
 
             // Get count of total matching IDs for pagination
-            const fallbackCountQuery = `SELECT COUNT(*) FROM "cards" WHERE card_id::text = ANY($1::text[])`;
+            const fallbackCountQuery = `SELECT COUNT(*) FROM "card_variants" WHERE card_variant_id::text = ANY($1::text[])`;
             const { rows: fallbackCountRows } = await db.query(
               fallbackCountQuery,
               [idArray]
@@ -437,8 +452,9 @@ const CardModel = {
 
             const data = fallbackRows.map((row) => {
               const cardWithAbility = {
-                card_id: row.card_id,
+                card_id: row.card_variant_id,
                 name: row.name,
+                description: row.description,
                 rarity: row.rarity,
                 image_url: row.image_url,
                 base_power: {
@@ -477,15 +493,16 @@ const CardModel = {
       }
 
       // Count query - use the same where clause but without limit/offset
-      const countQuery = `SELECT COUNT(*) FROM "cards" c ${whereClause}`;
+      const countQuery = `SELECT COUNT(*) FROM "card_variants" cv JOIN "characters" ch ON cv.character_id = ch.character_id ${whereClause}`;
       const countParams = queryParams.slice(0, -2); // Remove limit and offset
 
       const { rows: countRows } = await db.query(countQuery, countParams);
 
       const data = dataRows.map((row) => {
         const cardWithAbility = {
-          card_id: row.card_id,
+          card_id: row.card_variant_id,
           name: row.name,
+          description: row.description,
           rarity: row.rarity,
           image_url: row.image_url,
           ...(row.attack_animation && {
@@ -525,27 +542,32 @@ const CardModel = {
     }
   },
 
+  /**
+   * Find a static card variant by ID with ability info
+   */
   async findStaticByIdWithAbility(
-    cardId: string
+    cardVariantId: string
   ): Promise<Omit<
     CardResponse,
     "user_card_instance_id" | "level" | "xp" | "power_enhancements"
   > | null> {
     const query = `
       SELECT
-        c.card_id, c.name, c.rarity, c.image_url,
-        c.power->>'top' as base_power_top, 
-        c.power->>'right' as base_power_right,
-        c.power->>'bottom' as base_power_bottom, 
-        c.power->>'left' as base_power_left,
-        c.special_ability_id, c.set_id, c.tags, c.attack_animation,
+        cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+        ch.name, ch.description, ch.type,
+        ch.base_power->>'top' as base_power_top, 
+        ch.base_power->>'right' as base_power_right,
+        ch.base_power->>'bottom' as base_power_bottom, 
+        ch.base_power->>'left' as base_power_left,
+        ch.special_ability_id, ch.set_id, ch.tags,
         sa.ability_id as sa_ability_id, sa.name as sa_name, sa.description as sa_description,
         sa.trigger_moments as sa_trigger_moments, sa.parameters as sa_parameters
-      FROM "cards" c
-      LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
-      WHERE c.card_id = $1;
+      FROM "card_variants" cv
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
+      WHERE cv.card_variant_id = $1;
     `;
-    const { rows } = await db.query(query, [cardId]);
+    const { rows } = await db.query(query, [cardVariantId]);
     if (rows.length === 0) return null;
 
     const row = rows[0];
@@ -558,8 +580,9 @@ const CardModel = {
         parameters: any;
       } | null;
     } = {
-      card_id: row.card_id,
+      card_id: row.card_variant_id,
       name: row.name,
+      description: row.description,
       rarity: row.rarity,
       image_url: row.image_url,
       base_power: {
@@ -585,27 +608,31 @@ const CardModel = {
     return formatStaticCardResponse(card);
   },
 
-  // Add method to find multiple instances by IDs
+  /**
+   * Find multiple card instances by their IDs
+   */
   async findInstancesByIds(instanceIds: string[]): Promise<CardResponse[]> {
     if (instanceIds.length === 0) return [];
 
     const query = `
       SELECT 
-        uoc.user_card_instance_id, uoc.user_id, uoc.card_id, uoc.level, uoc.xp,
-        c.name, c.rarity, c.image_url, 
-        c.power->>'top' as base_power_top,
-        c.power->>'right' as base_power_right, 
-        c.power->>'bottom' as base_power_bottom, 
-        c.power->>'left' as base_power_left,
-        c.special_ability_id, c.set_id, c.tags,
+        uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp,
+        ch.name, ch.description, ch.type,
+        ch.base_power->>'top' as base_power_top,
+        ch.base_power->>'right' as base_power_right, 
+        ch.base_power->>'bottom' as base_power_bottom, 
+        ch.base_power->>'left' as base_power_left,
+        ch.special_ability_id, ch.set_id, ch.tags,
+        cv.rarity, cv.image_url, cv.attack_animation,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
       FROM "user_owned_cards" uoc
-      JOIN "cards" c ON uoc.card_id = c.card_id
-      LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
+      JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
       WHERE uoc.user_card_instance_id = ANY($1)
-      ORDER BY c.name;
+      ORDER BY ch.name;
     `;
 
     const { rows } = await db.query(query, [instanceIds]);
@@ -617,7 +644,7 @@ const CardModel = {
 
     return rows.map((row) => {
       const baseCard: BaseCard = {
-        card_id: row.card_id,
+        card_id: row.card_variant_id,
         name: row.name,
         rarity: row.rarity,
         image_url: row.image_url,
@@ -647,7 +674,7 @@ const CardModel = {
       const instance: UserCardInstance = {
         user_card_instance_id: row.user_card_instance_id,
         user_id: row.user_id,
-        card_id: row.card_id,
+        card_variant_id: row.card_variant_id,
         level: row.level,
         xp: row.xp,
         power_enhancements: powerEnhancements,
@@ -668,24 +695,30 @@ const CardModel = {
     });
   },
 
-  // Keep existing methods for backward compatibility
+  /**
+   * Find a card variant by character name (returns first match)
+   */
   async findByName(name: string): Promise<BaseCard | null> {
     const query = `
-      SELECT card_id, name, rarity, image_url, 
-             power->>'top' as base_power_top, 
-             power->>'right' as base_power_right, 
-             power->>'bottom' as base_power_bottom, 
-             power->>'left' as base_power_left, 
-             special_ability_id, set_id, tags
-      FROM "cards" 
-      WHERE name = $1;
+      SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+             ch.name, ch.description,
+             ch.base_power->>'top' as base_power_top, 
+             ch.base_power->>'right' as base_power_right, 
+             ch.base_power->>'bottom' as base_power_bottom, 
+             ch.base_power->>'left' as base_power_left, 
+             ch.special_ability_id, ch.set_id, ch.tags
+      FROM "card_variants" cv
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      WHERE ch.name = $1
+      LIMIT 1;
     `;
     const { rows } = await db.query(query, [name]);
     if (rows.length === 0) return null;
     const row = rows[0];
     return {
-      card_id: row.card_id,
+      card_id: row.card_variant_id,
       name: row.name,
+      description: row.description,
       rarity: row.rarity,
       image_url: row.image_url,
       base_power: {
@@ -697,27 +730,36 @@ const CardModel = {
       special_ability_id: row.special_ability_id,
       set_id: row.set_id,
       tags: row.tags,
+      ...(row.attack_animation && { attack_animation: row.attack_animation }),
     };
   },
 
+  /**
+   * Find card variants by character names (returns one variant per name)
+   */
   async findByNames(names: string[]): Promise<BaseCard[]> {
     if (names.length === 0) {
       return [];
     }
     const query = `
-      SELECT card_id, name, rarity, image_url, 
-             power->>'top' as base_power_top, 
-             power->>'right' as base_power_right, 
-             power->>'bottom' as base_power_bottom, 
-             power->>'left' as base_power_left, 
-             special_ability_id, set_id, tags
-      FROM "cards"
-      WHERE name = ANY($1::text[]);
+      SELECT DISTINCT ON (ch.name) 
+             cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+             ch.name, ch.description,
+             ch.base_power->>'top' as base_power_top, 
+             ch.base_power->>'right' as base_power_right, 
+             ch.base_power->>'bottom' as base_power_bottom, 
+             ch.base_power->>'left' as base_power_left, 
+             ch.special_ability_id, ch.set_id, ch.tags
+      FROM "card_variants" cv
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      WHERE ch.name = ANY($1::text[])
+      ORDER BY ch.name, cv.rarity;
     `;
     const { rows } = await db.query(query, [names]);
     return rows.map((row) => ({
-      card_id: row.card_id,
+      card_id: row.card_variant_id,
       name: row.name,
+      description: row.description,
       rarity: row.rarity,
       image_url: row.image_url,
       base_power: {
@@ -729,16 +771,19 @@ const CardModel = {
       special_ability_id: row.special_ability_id,
       set_id: row.set_id,
       tags: row.tags,
+      ...(row.attack_animation && { attack_animation: row.attack_animation }),
     }));
   },
 
+  /**
+   * Find all user card instances with filtering and pagination
+   */
   async findAllUserCardInstances(
     userId: string,
     filters: {
       rarity?: string;
       name?: string;
       tag?: string;
-      // Add any other user-specific filters if needed
     } = {},
     page = 1,
     limit = 20
@@ -757,19 +802,19 @@ const CardModel = {
       let paramIndex = 2; // Start after userId
 
       if (rarity) {
-        whereClauses.push(`c.rarity = $${paramIndex}`);
+        whereClauses.push(`cv.rarity = $${paramIndex}`);
         queryParams.push(rarity);
         paramIndex++;
       }
 
       if (name) {
-        whereClauses.push(`c.name ILIKE $${paramIndex}`);
+        whereClauses.push(`ch.name ILIKE $${paramIndex}`);
         queryParams.push(`%${name}%`);
         paramIndex++;
       }
 
       if (tag) {
-        whereClauses.push(`$${paramIndex} = ANY(c.tags)`);
+        whereClauses.push(`$${paramIndex} = ANY(ch.tags)`);
         queryParams.push(tag);
         paramIndex++;
       }
@@ -782,21 +827,23 @@ const CardModel = {
 
       const dataQuery = `
         SELECT 
-          uoc.user_card_instance_id, uoc.user_id, uoc.card_id, uoc.level, uoc.xp,
-          c.name, c.rarity, c.image_url, 
-          c.power->>'top' as base_power_top,
-          c.power->>'right' as base_power_right, 
-          c.power->>'bottom' as base_power_bottom, 
-          c.power->>'left' as base_power_left,
-          c.special_ability_id, c.set_id, c.tags,
+          uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp,
+          ch.name, ch.description, ch.type,
+          ch.base_power->>'top' as base_power_top,
+          ch.base_power->>'right' as base_power_right, 
+          ch.base_power->>'bottom' as base_power_bottom, 
+          ch.base_power->>'left' as base_power_left,
+          ch.special_ability_id, ch.set_id, ch.tags,
+          cv.rarity, cv.image_url, cv.attack_animation,
           sa.name as ability_name, sa.description as ability_description, 
           sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
           sa.id as ability_id_string 
         FROM "user_owned_cards" uoc
-        JOIN "cards" c ON uoc.card_id = c.card_id
-        LEFT JOIN "special_abilities" sa ON c.special_ability_id = sa.ability_id
+        JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN "characters" ch ON cv.character_id = ch.character_id
+        LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
         ${whereClause}
-        ORDER BY c.name
+        ORDER BY ch.name
         LIMIT $${paramIndex} OFFSET $${paramIndex + 1};
       `;
 
@@ -805,7 +852,8 @@ const CardModel = {
       const countQuery = `
         SELECT COUNT(*) 
         FROM "user_owned_cards" uoc
-        JOIN "cards" c ON uoc.card_id = c.card_id
+        JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN "characters" ch ON cv.character_id = ch.character_id
         ${whereClause};
       `;
       // Remove limit and offset for count query
@@ -820,7 +868,7 @@ const CardModel = {
 
       const data = dataRows.map((row) => {
         const baseCard: BaseCard = {
-          card_id: row.card_id,
+          card_id: row.card_variant_id,
           name: row.name,
           rarity: row.rarity,
           image_url: row.image_url,
@@ -849,7 +897,7 @@ const CardModel = {
         const instance: UserCardInstance = {
           user_card_instance_id: row.user_card_instance_id,
           user_id: row.user_id,
-          card_id: row.card_id,
+          card_variant_id: row.card_variant_id,
           level: row.level,
           xp: row.xp,
           power_enhancements: powerEnhancements,
@@ -882,28 +930,28 @@ const CardModel = {
   },
 
   /**
-   * Add a card to user's collection
+   * Add a card variant to user's collection
    */
   async addCardToUser(
     userId: string,
-    cardId: string
+    cardVariantId: string
   ): Promise<UserCardInstance> {
     const query = `
-      INSERT INTO "user_owned_cards" (user_id, card_id, level, xp)
+      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp)
       VALUES ($1, $2, 1, 0)
-      RETURNING user_card_instance_id, user_id, card_id, level, xp, created_at;
+      RETURNING user_card_instance_id, user_id, card_variant_id, level, xp, created_at;
     `;
 
-    const { rows } = await db.query(query, [userId, cardId]);
+    const { rows } = await db.query(query, [userId, cardVariantId]);
     return rows[0];
   },
 
   /**
-   * Get count of unique cards owned by user (by card_id, not instances)
+   * Get count of unique card variants owned by user
    */
   async getUserUniqueCardCount(userId: string): Promise<number> {
     const query = `
-      SELECT COUNT(DISTINCT card_id) as count
+      SELECT COUNT(DISTINCT card_variant_id) as count
       FROM "user_owned_cards"
       WHERE user_id = $1;
     `;
@@ -917,11 +965,11 @@ const CardModel = {
    */
   async getUserMythicCardCount(userId: string): Promise<number> {
     const query = `
-      SELECT COUNT(DISTINCT c.card_id) as count
+      SELECT COUNT(DISTINCT cv.card_variant_id) as count
       FROM "user_owned_cards" uoc
-      JOIN "cards" c ON uoc.card_id = c.card_id
+      JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
       WHERE uoc.user_id = $1
-        AND (c.rarity LIKE '%+' OR c.rarity LIKE '%++' OR c.rarity LIKE '%+++');
+        AND POSITION('+' IN cv.rarity::text) > 0;
     `;
     const { rows } = await db.query(query, [userId]);
     return parseInt(rows[0].count, 10);
@@ -935,15 +983,15 @@ const CardModel = {
   ): Promise<Record<string, Record<number, number>>> {
     const query = `
       SELECT 
-        c.rarity,
+        cv.rarity,
         uoc.level,
         COUNT(*) as count
       FROM "user_owned_cards" uoc
-      JOIN "cards" c ON uoc.card_id = c.card_id
+      JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
       WHERE uoc.user_id = $1
         AND uoc.level >= 2
-        AND c.rarity IN ('rare', 'epic', 'legendary')
-      GROUP BY c.rarity, uoc.level;
+        AND cv.rarity IN ('rare', 'epic', 'legendary')
+      GROUP BY cv.rarity, uoc.level;
     `;
     const { rows } = await db.query(query, [userId]);
 
@@ -957,7 +1005,7 @@ const CardModel = {
       const rarity = row.rarity.toLowerCase();
       const level = parseInt(row.level, 10);
       const count = parseInt(row.count, 10);
-      
+
       if (result[rarity]) {
         result[rarity][level] = count;
       }
@@ -988,10 +1036,14 @@ const CardModel = {
   ): Promise<Record<string, number>> {
     const query = `
       SELECT 
-        REGEXP_REPLACE(c.rarity::text, '\\+.*$', '') as base_rarity,
-        COUNT(DISTINCT c.card_id) as count
+        CASE 
+          WHEN POSITION('+' IN cv.rarity::text) > 0 
+            THEN SPLIT_PART(cv.rarity::text, '+', 1)
+          ELSE cv.rarity::text
+        END as base_rarity,
+        COUNT(DISTINCT cv.card_variant_id) as count
       FROM "user_owned_cards" uoc
-      JOIN "cards" c ON uoc.card_id = c.card_id
+      JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
       WHERE uoc.user_id = $1
       GROUP BY base_rarity;
     `;
@@ -1013,6 +1065,82 @@ const CardModel = {
     }
 
     return result;
+  },
+
+  /**
+   * Find all variants for a specific character
+   */
+  async findVariantsByCharacterId(characterId: string): Promise<BaseCard[]> {
+    const query = `
+      SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+             ch.name, ch.description,
+             ch.base_power->>'top' as base_power_top, 
+             ch.base_power->>'right' as base_power_right, 
+             ch.base_power->>'bottom' as base_power_bottom, 
+             ch.base_power->>'left' as base_power_left, 
+             ch.special_ability_id, ch.set_id, ch.tags
+      FROM "card_variants" cv
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      WHERE cv.character_id = $1
+      ORDER BY cv.rarity;
+    `;
+    const { rows } = await db.query(query, [characterId]);
+    return rows.map((row) => ({
+      card_id: row.card_variant_id,
+      name: row.name,
+      description: row.description,
+      rarity: row.rarity,
+      image_url: row.image_url,
+      base_power: {
+        top: parseInt(row.base_power_top, 10),
+        right: parseInt(row.base_power_right, 10),
+        bottom: parseInt(row.base_power_bottom, 10),
+        left: parseInt(row.base_power_left, 10),
+      },
+      special_ability_id: row.special_ability_id,
+      set_id: row.set_id,
+      tags: row.tags,
+      ...(row.attack_animation && { attack_animation: row.attack_animation }),
+    }));
+  },
+
+  /**
+   * Find all variants for a character by name
+   */
+  async findVariantsByCharacterName(
+    characterName: string
+  ): Promise<BaseCard[]> {
+    const query = `
+      SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+             ch.name, ch.description,
+             ch.base_power->>'top' as base_power_top, 
+             ch.base_power->>'right' as base_power_right, 
+             ch.base_power->>'bottom' as base_power_bottom, 
+             ch.base_power->>'left' as base_power_left, 
+             ch.special_ability_id, ch.set_id, ch.tags
+      FROM "card_variants" cv
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      WHERE ch.name = $1
+      ORDER BY cv.rarity;
+    `;
+    const { rows } = await db.query(query, [characterName]);
+    return rows.map((row) => ({
+      card_id: row.card_variant_id,
+      name: row.name,
+      description: row.description,
+      rarity: row.rarity,
+      image_url: row.image_url,
+      base_power: {
+        top: parseInt(row.base_power_top, 10),
+        right: parseInt(row.base_power_right, 10),
+        bottom: parseInt(row.base_power_bottom, 10),
+        left: parseInt(row.base_power_left, 10),
+      },
+      special_ability_id: row.special_ability_id,
+      set_id: row.set_id,
+      tags: row.tags,
+      ...(row.attack_animation && { attack_animation: row.attack_animation }),
+    }));
   },
 };
 

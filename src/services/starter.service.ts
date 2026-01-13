@@ -43,9 +43,11 @@ const StarterService = {
       .join(",");
 
     const cardRes = await client.query(
-      `SELECT card_id, name, rarity FROM "cards" 
-       WHERE name IN (${cardNamePlaceholders}) 
-       AND rarity::text NOT LIKE '%+%';`,
+      `SELECT cv.card_variant_id as card_id, ch.name, cv.rarity 
+       FROM "card_variants" cv
+       JOIN "characters" ch ON cv.character_id = ch.character_id
+       WHERE ch.name IN (${cardNamePlaceholders}) 
+       AND cv.rarity::text NOT LIKE '%+%';`,
       baseCardNames
     );
     const cardIdMap = new Map<string, { card_id: string; rarity: string }>(
@@ -68,7 +70,7 @@ const StarterService = {
       if (baseCardDetails) {
         for (let i = 0; i < cardInfo.quantity; i++) {
           const instanceRes = await client.query(
-            'INSERT INTO "user_owned_cards" (user_id, card_id, level, xp) VALUES ($1, $2, 1, 0) RETURNING user_card_instance_id;',
+            'INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp) VALUES ($1, $2, 1, 0) RETURNING user_card_instance_id;',
             [userId, baseCardDetails.card_id]
           );
           createdCardInstanceIds.push(

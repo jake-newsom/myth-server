@@ -71,9 +71,10 @@ const XpService = {
 
       // Query user cards directly
       const query = `
-        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, c.name
+        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, ch.name
         FROM "user_owned_cards" uoc
-        JOIN "cards" c ON uoc.card_id = c.card_id
+        JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN "characters" ch ON cv.character_id = ch.character_id
         WHERE uoc.user_card_instance_id = ANY($1) AND uoc.user_id = $2
       `;
       const { rows } = await client.query(query, [allCardIds, userId]);
@@ -239,9 +240,10 @@ const XpService = {
 
       // Get cards and validate ownership
       const query = `
-        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, c.name, c.rarity
+        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, ch.name, cv.rarity
         FROM "user_owned_cards" uoc
-        JOIN "cards" c ON uoc.card_id = c.card_id
+        JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN "characters" ch ON cv.character_id = ch.character_id
         WHERE uoc.user_card_instance_id = ANY($1) AND uoc.user_id = $2
       `;
       const { rows } = await client.query(query, [cardIds, userId]);
@@ -364,12 +366,13 @@ const XpService = {
           uoc.card_id as base_card_id,
           uoc.level, 
           uoc.xp, 
-          c.name,
-          c.rarity
+          ch.name,
+          cv.rarity
         FROM "user_owned_cards" uoc
-        JOIN "cards" c ON uoc.card_id = c.card_id
+        JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN "characters" ch ON cv.character_id = ch.character_id
         WHERE uoc.user_id = $1
-        ORDER BY c.name, uoc.xp DESC, uoc.level DESC, uoc.user_card_instance_id
+        ORDER BY ch.name, uoc.xp DESC, uoc.level DESC, uoc.user_card_instance_id
       `;
       const { rows } = await client.query(query, [userId]);
 
@@ -578,9 +581,10 @@ const XpService = {
 
       // Get target card and validate ownership
       const query = `
-        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, c.name
+        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, ch.name
         FROM "user_owned_cards" uoc
-        JOIN "cards" c ON uoc.card_id = c.card_id
+        JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN "characters" ch ON cv.character_id = ch.character_id
         WHERE uoc.user_card_instance_id = $1 AND uoc.user_id = $2
       `;
       const { rows } = await client.query(query, [targetCardId, userId]);
@@ -786,9 +790,10 @@ const XpService = {
       for (const reward of cardRewards) {
         // Get current card stats and validate ownership
         const query = `
-          SELECT uoc.user_card_instance_id, uoc.level, uoc.xp, c.name
+          SELECT uoc.user_card_instance_id, uoc.level, uoc.xp, ch.name
           FROM "user_owned_cards" uoc
-          JOIN "cards" c ON uoc.card_id = c.card_id
+          JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+          JOIN "characters" ch ON cv.character_id = ch.character_id
           WHERE uoc.user_card_instance_id = $1 AND uoc.user_id = $2
         `;
         const { rows } = await client.query(query, [reward.card_id, userId]);

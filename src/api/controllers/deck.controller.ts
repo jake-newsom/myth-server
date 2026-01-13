@@ -34,9 +34,10 @@ async function validateDeckComposition(
     .map((_, index) => `$${index + 2}`)
     .join(",");
   const batchInstanceQuery = `
-    SELECT uci.user_card_instance_id, uci.card_id as base_card_id, c.rarity, c.name
+    SELECT uci.user_card_instance_id, uci.card_variant_id as base_card_id, cv.rarity, ch.name
     FROM "user_owned_cards" uci 
-    JOIN "cards" c ON uci.card_id = c.card_id
+    JOIN "card_variants" cv ON uci.card_variant_id = cv.card_variant_id
+    JOIN "characters" ch ON cv.character_id = ch.character_id
     WHERE uci.user_card_instance_id IN (${instancePlaceholders}) AND uci.user_id = $1;
   `;
 

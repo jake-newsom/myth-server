@@ -168,6 +168,12 @@ if (require.main === module) {
     try {
       await redisCache.connect();
       console.log("✅ Redis cache connected successfully");
+      
+      // Purge all cached data on startup to ensure fresh data after schema changes
+      const cleared = await redisCache.clear();
+      if (cleared) {
+        console.log("🧹 Redis cache purged on startup");
+      }
     } catch (error) {
       console.error(
         "⚠️  Redis cache connection failed (continuing without cache):",

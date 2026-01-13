@@ -130,7 +130,12 @@ const SetModel = {
   },
 
   async getCardCount(setId: string): Promise<number> {
-    const query = `SELECT COUNT(*) as count FROM "cards" WHERE set_id = $1;`;
+    const query = `
+      SELECT COUNT(*) as count 
+      FROM "card_variants" cv 
+      JOIN "characters" ch ON cv.character_id = ch.character_id 
+      WHERE ch.set_id = $1;
+    `;
     const { rows } = await db.query(query, [setId]);
     return parseInt(rows[0].count, 10);
   },

@@ -181,6 +181,11 @@ components:
         name:
           type: string
           example: "Shadow Fiend"
+        description:
+          type: string
+          nullable: true
+          description: Mythological character description. May contain HTML content. Only included for static card queries, not for user card instances.
+          example: "<p>A fearsome creature from the shadow realm.</p>"
         rarity:
           type: string
           enum: ["common", "uncommon", "rare", "epic", "legendary"]
@@ -258,6 +263,11 @@ components:
           type: string
           example: "Baldur"
           description: Name of the card
+        description:
+          type: string
+          nullable: true
+          description: Mythological character description. May contain HTML content for rich formatting.
+          example: "<p>Baldur, the Norse god of light and purity, was beloved by all.</p>"
         rarity:
           type: string
           enum: ["common", "uncommon", "rare", "epic", "legendary"]

@@ -100,19 +100,20 @@ const DailyShopModel = {
       SELECT 
         dso.offering_id, dso.shop_date, dso.item_type, dso.card_id, 
         dso.mythology, dso.price, dso.currency, dso.slot_number, dso.created_at,
-        c.card_id as card_card_id, c.name as card_name, c.rarity as card_rarity, 
-        c.image_url as card_image_url, c.tags as card_tags, c.set_id as card_set_id,
-        c.power->>'top' as card_power_top,
-        c.power->>'right' as card_power_right, 
-        c.power->>'bottom' as card_power_bottom, 
-        c.power->>'left' as card_power_left,
-        c.special_ability_id as card_special_ability_id,
+        cv.card_variant_id as card_card_id, ch.name as card_name, cv.rarity as card_rarity, 
+        cv.image_url as card_image_url, ch.tags as card_tags, ch.set_id as card_set_id,
+        ch.base_power->>'top' as card_power_top,
+        ch.base_power->>'right' as card_power_right, 
+        ch.base_power->>'bottom' as card_power_bottom, 
+        ch.base_power->>'left' as card_power_left,
+        ch.special_ability_id as card_special_ability_id,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
       FROM daily_shop_offerings dso
-      LEFT JOIN cards c ON dso.card_id = c.card_id
-      LEFT JOIN special_abilities sa ON c.special_ability_id = sa.ability_id
+      LEFT JOIN card_variants cv ON dso.card_id = cv.card_variant_id
+      LEFT JOIN characters ch ON cv.character_id = ch.character_id
+      LEFT JOIN special_abilities sa ON ch.special_ability_id = sa.ability_id
       WHERE dso.shop_date = $1
       ORDER BY dso.item_type, dso.slot_number;
     `;
@@ -297,11 +298,12 @@ const DailyShopModel = {
     const setName = mythology.charAt(0).toUpperCase() + mythology.slice(1);
     
     const query = `
-      SELECT c.card_id, c.name, c.rarity, c.image_url, c.tags
-      FROM cards c
-      INNER JOIN sets s ON c.set_id = s.set_id
-      WHERE s.name = $1 AND c.rarity::text = $2
-      ORDER BY c.name;
+      SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url, ch.tags
+      FROM card_variants cv
+      JOIN characters ch ON cv.character_id = ch.character_id
+      INNER JOIN sets s ON ch.set_id = s.set_id
+      WHERE s.name = $1 AND cv.rarity::text = $2
+      ORDER BY ch.name;
     `;
 
     console.log(`[DEBUG] getCardsByMythologyAndRarity called with mythology="${mythology}", rarity="${rarity}", setName="${setName}"`);
@@ -312,10 +314,11 @@ const DailyShopModel = {
 
   async getEnhancedCards(limit: number = 10): Promise<any[]> {
     const query = `
-      SELECT c.card_id, c.name, c.rarity, c.image_url, c.tags, s.name as set_name
-      FROM cards c
-      INNER JOIN sets s ON c.set_id = s.set_id
-      WHERE c.rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
+      SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url, ch.tags, s.name as set_name
+      FROM card_variants cv
+      JOIN characters ch ON cv.character_id = ch.character_id
+      INNER JOIN sets s ON ch.set_id = s.set_id
+      WHERE cv.rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
       ORDER BY RANDOM()
       LIMIT $1;
     `;

@@ -73,6 +73,50 @@ export interface SpecialAbility {
   parameters: Record<string, any>;
 }
 
+/**
+ * Character represents the mythological character with shared attributes
+ * Multiple card variants can reference a single character
+ */
+export interface Character {
+  character_id: string;
+  name: string;
+  description?: string; // HTML content about the mythological character
+  type: string;
+  base_power: PowerValues;
+  special_ability_id: string | null;
+  set_id?: string | null;
+  tags: string[];
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+/**
+ * CardVariant represents a visual variant of a character
+ * Each variant has a unique image and rarity, but references a character for shared data
+ */
+export interface CardVariant {
+  card_variant_id: string;
+  character_id: string;
+  rarity: Rarity;
+  image_url: string;
+  attack_animation?: string;
+  created_at?: Date;
+}
+
+/**
+ * CardVariantWithCharacter is a joined view of variant + character data
+ * This is the typical structure returned when querying cards
+ */
+export interface CardVariantWithCharacter
+  extends Omit<CardVariant, "character_id"> {
+  character: Character;
+}
+
+/**
+ * @deprecated Use Character + CardVariant instead
+ * Card represents the legacy card structure (before normalization)
+ * Kept for backward compatibility with existing code during transition
+ */
 export interface Card {
   card_id: string;
   name: string;
@@ -93,7 +137,7 @@ export interface Card {
 export interface UserCardInstance {
   user_card_instance_id: string;
   user_id: string;
-  card_id: string;
+  card_variant_id: string; // References card_variants table
   level: number;
   xp: number;
   power_enhancements: PowerValues;

@@ -139,19 +139,20 @@ class TowerGenerationService {
   private async getAllCardsForGeneration(): Promise<CardDataForGeneration[]> {
     const result = await db.query(`
       SELECT 
-        c.card_id,
-        c.name,
-        c.rarity,
-        c.power->>'top' as power_top,
-        c.power->>'right' as power_right,
-        c.power->>'bottom' as power_bottom,
-        c.power->>'left' as power_left,
+        cv.card_variant_id as card_id,
+        ch.name,
+        cv.rarity,
+        ch.base_power->>'top' as power_top,
+        ch.base_power->>'right' as power_right,
+        ch.base_power->>'bottom' as power_bottom,
+        ch.base_power->>'left' as power_left,
         sa.name as ability_name,
         sa.description as ability_description
-      FROM cards c
-      LEFT JOIN special_abilities sa ON c.special_ability_id = sa.ability_id
-      WHERE c.rarity::text NOT LIKE '%+'
-      ORDER BY c.name
+      FROM card_variants cv
+      JOIN characters ch ON cv.character_id = ch.character_id
+      LEFT JOIN special_abilities sa ON ch.special_ability_id = sa.ability_id
+      WHERE cv.rarity::text NOT LIKE '%+'
+      ORDER BY ch.name
     `);
 
     return result.rows.map((row) => ({
@@ -740,11 +741,13 @@ IMPORTANT:
       let cardsSkipped = 0;
 
       for (const card of floor.cards) {
-        // Find the card ID by name
+        // Find the card variant ID by character name
         const cardResult = await client.query(
-          `SELECT card_id, power FROM cards 
-           WHERE LOWER(name) = LOWER($1) 
-           AND rarity::text NOT LIKE '%+'
+          `SELECT cv.card_variant_id as card_id, ch.base_power as power 
+           FROM card_variants cv
+           JOIN characters ch ON cv.character_id = ch.character_id
+           WHERE LOWER(ch.name) = LOWER($1) 
+           AND cv.rarity::text NOT LIKE '%+'
            LIMIT 1`,
           [card.card_name]
         );
@@ -757,14 +760,14 @@ IMPORTANT:
           continue;
         }
 
-        const cardId = cardResult.rows[0].card_id;
+        const cardVariantId = cardResult.rows[0].card_id;
 
         // Create card instance for AI
         const instanceResult = await client.query(
-          `INSERT INTO user_owned_cards (user_id, card_id, level, xp, created_at)
+          `INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp, created_at)
            VALUES ($1, $2, $3, 0, NOW())
            RETURNING user_card_instance_id`,
-          [AI_PLAYER_ID, cardId, card.level]
+          [AI_PLAYER_ID, cardVariantId, card.level]
         );
         const instanceId = instanceResult.rows[0].user_card_instance_id;
 

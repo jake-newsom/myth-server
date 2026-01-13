@@ -184,8 +184,8 @@ const MonthlyLoginRewardsModel = {
   // Enhanced card selection (for day 24 reward)
   async getRandomEnhancedCard(): Promise<string | null> {
     const query = `
-      SELECT card_id
-      FROM cards
+      SELECT card_variant_id as card_id
+      FROM card_variants
       WHERE rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
       ORDER BY RANDOM()
       LIMIT 1;

@@ -335,7 +335,7 @@ const MonthlyLoginRewardsService = {
 
     // Add card to user's collection and return the instance ID
     const query = `
-      INSERT INTO "user_owned_cards" (user_id, card_id, level, xp, created_at)
+      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
       VALUES ($1, $2, 1, 0, NOW())
       RETURNING user_card_instance_id;
     `;

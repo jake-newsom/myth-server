@@ -460,13 +460,21 @@ const AchievementService = {
 
     // First pack (legacy) - INCREMENT by number of packs opened
     updatePromises.push(
-      AchievementModel.updateUserAchievementProgress(userId, "first_pack", packsOpened)
+      AchievementModel.updateUserAchievementProgress(
+        userId,
+        "first_pack",
+        packsOpened
+      )
     );
     keysToFetch.push("first_pack");
 
     // Pack addict (legacy) - INCREMENT by number of packs opened
     updatePromises.push(
-      AchievementModel.updateUserAchievementProgress(userId, "pack_addict", packsOpened)
+      AchievementModel.updateUserAchievementProgress(
+        userId,
+        "pack_addict",
+        packsOpened
+      )
     );
     keysToFetch.push("pack_addict");
 
@@ -495,7 +503,7 @@ const AchievementService = {
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
-    const { rarity, count = 1, totalUniqueCards, totalMythicCards } = eventData;
+    const { rarityCounts, totalUniqueCards, totalMythicCards } = eventData;
     const keysToFetch: string[] = [];
     const updatePromises: Promise<any>[] = [];
 
@@ -535,28 +543,33 @@ const AchievementService = {
       }
     }
 
-    // Rare collector (legacy) - INCREMENT by count
-    if (RarityUtils.isRare(rarity)) {
-      updatePromises.push(
-        AchievementModel.updateUserAchievementProgress(
-          userId,
-          "rare_collector",
-          count // Increment by the number of rare cards collected
-        )
-      );
-      keysToFetch.push("rare_collector");
-    }
+    // Process rarity-specific achievements from rarityCounts
+    if (rarityCounts) {
+      // Rare collector (legacy) - INCREMENT by count
+      const rareCount = rarityCounts.rare || 0;
+      if (rareCount > 0) {
+        updatePromises.push(
+          AchievementModel.updateUserAchievementProgress(
+            userId,
+            "rare_collector",
+            rareCount
+          )
+        );
+        keysToFetch.push("rare_collector");
+      }
 
-    // Legendary hunter (legacy) - INCREMENT by count
-    if (RarityUtils.isLegendary(rarity)) {
-      updatePromises.push(
-        AchievementModel.updateUserAchievementProgress(
-          userId,
-          "legendary_hunter",
-          count // Increment by the number of legendary cards collected
-        )
-      );
-      keysToFetch.push("legendary_hunter");
+      // Legendary hunter (legacy) - INCREMENT by count
+      const legendaryCount = rarityCounts.legendary || 0;
+      if (legendaryCount > 0) {
+        updatePromises.push(
+          AchievementModel.updateUserAchievementProgress(
+            userId,
+            "legendary_hunter",
+            legendaryCount
+          )
+        );
+        keysToFetch.push("legendary_hunter");
+      }
     }
 
     // Card master (legacy) - SET

@@ -142,7 +142,7 @@ const AIAutomationService = {
   async addCardsToAICollection(cards: any[]): Promise<void> {
     for (const card of cards) {
       const query = `
-        INSERT INTO "user_owned_cards" (user_id, card_id, level, xp, created_at)
+        INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
         VALUES ($1, $2, 1, 0, NOW());
       `;
       await db.query(query, [AI_PLAYER_ID, card.card_id]);
@@ -153,21 +153,21 @@ const AIAutomationService = {
    * Remove cards from AI user's collection
    */
   async removeCardsFromAICollection(cards: any[]): Promise<void> {
-    const cardIds = cards.map((card) => card.card_id);
+    const cardVariantIds = cards.map((card) => card.card_id);
 
-    // Get the most recent card instances for these card IDs for the AI user
+    // Get the most recent card instances for these card variant IDs for the AI user
     const query = `
       DELETE FROM "user_owned_cards" 
       WHERE user_card_instance_id IN (
         SELECT user_card_instance_id 
         FROM "user_owned_cards" 
-        WHERE user_id = $1 AND card_id = ANY($2)
+        WHERE user_id = $1 AND card_variant_id = ANY($2)
         ORDER BY created_at DESC 
         LIMIT $3
       );
     `;
 
-    await db.query(query, [AI_PLAYER_ID, cardIds, cards.length]);
+    await db.query(query, [AI_PLAYER_ID, cardVariantIds, cards.length]);
     console.log(`🗑️ Removed ${cards.length} cards from AI user's collection`);
   },
 

@@ -367,7 +367,7 @@ const FatePickService = {
       let addedToCollection = false;
       try {
         const addCardQuery = `
-          INSERT INTO user_owned_cards (user_id, card_id, level, xp, created_at)
+          INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp, created_at)
           VALUES ($1, $2, 1, 0, NOW());
         `;
         await client.query(addCardQuery, [userId, wonCard.card_id]);

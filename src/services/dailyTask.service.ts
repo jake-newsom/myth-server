@@ -166,9 +166,10 @@ const DailyTaskService = {
     try {
       // Get a random common/uncommon card
       const query = `
-        SELECT card_id, name, rarity, image_url
-        FROM cards
-        WHERE rarity IN ('common', 'uncommon', 'rare')
+        SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url
+        FROM card_variants cv
+        JOIN characters ch ON cv.character_id = ch.character_id
+        WHERE cv.rarity IN ('common', 'uncommon', 'rare')
         ORDER BY RANDOM()
         LIMIT 1;
       `;
@@ -181,7 +182,7 @@ const DailyTaskService = {
 
       // Add to user's collection
       const insertQuery = `
-        INSERT INTO user_owned_cards (user_id, card_id, level, xp)
+        INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp)
         VALUES ($1, $2, 1, 0)
         RETURNING user_card_instance_id;
       `;
