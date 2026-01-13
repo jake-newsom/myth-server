@@ -359,11 +359,11 @@ const XpService = {
     try {
       await client.query("BEGIN");
 
-      // Get all user's cards grouped by base card (card_id) and card name
+      // Get all user's cards grouped by base card (card_variant_id) and card name
       const query = `
         SELECT 
           uoc.user_card_instance_id, 
-          uoc.card_id as base_card_id,
+          uoc.card_variant_id as base_card_id,
           uoc.level, 
           uoc.xp, 
           ch.name,
