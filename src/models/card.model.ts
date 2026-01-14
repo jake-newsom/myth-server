@@ -18,6 +18,7 @@ function formatUserCardInstanceResponse(
     user_card_instance_id: instance.user_card_instance_id,
     base_card_id: baseCard.card_id,
     name: baseCard.name,
+    description: baseCard.description ?? null, // Include description from character
     rarity: baseCard.rarity,
     image_url: baseCard.image_url,
     base_power: baseCard.base_power,
@@ -118,6 +119,7 @@ const CardModel = {
       const baseCard: BaseCard = {
         card_id: row.card_variant_id, // Use variant ID as card_id for compatibility
         name: row.name,
+        description: row.description,
         rarity: row.rarity,
         image_url: row.image_url,
         base_power: {
@@ -268,6 +270,7 @@ const CardModel = {
     const baseCard: BaseCard = {
       card_id: row.card_variant_id,
       name: row.name,
+      description: row.description,
       rarity: row.rarity,
       image_url: row.image_url,
       base_power: {
@@ -646,6 +649,7 @@ const CardModel = {
       const baseCard: BaseCard = {
         card_id: row.card_variant_id,
         name: row.name,
+        description: row.description,
         rarity: row.rarity,
         image_url: row.image_url,
         base_power: {
@@ -870,6 +874,7 @@ const CardModel = {
         const baseCard: BaseCard = {
           card_id: row.card_variant_id,
           name: row.name,
+          description: row.description,
           rarity: row.rarity,
           image_url: row.image_url,
           base_power: {

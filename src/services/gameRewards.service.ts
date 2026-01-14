@@ -212,6 +212,7 @@ const GameRewardsService = {
   },
 
   // Main method to process game completion and award rewards
+  // Optimized to parallelize independent operations for faster response times
   async processGameCompletion(
     userId: string,
     gameState: GameState,
@@ -223,7 +224,7 @@ const GameRewardsService = {
     gameId?: string
   ): Promise<GameCompletionResult> {
     try {
-      // Calculate game result
+      // === PHASE 1: Sequential calculations (sync, no DB) ===
       const gameResult = this.calculateGameResult(
         gameState,
         gameStartTime,
@@ -231,13 +232,16 @@ const GameRewardsService = {
         player2Id
       );
 
-      // Get current win streak multiplier for PvP games
+      // Get cards that were actually used in the game (sync)
+      const usedCards = this.getCardsUsedInGame(gameState, userId);
+
+      // === PHASE 2: Get win streak multiplier (needed for reward calculation) ===
       let winStreakMultiplier = 1.0;
       if (gameMode === "pvp") {
         winStreakMultiplier = await UserModel.getWinStreakMultiplier(userId);
       }
 
-      // Calculate currency rewards (with win streak multiplier for PvP)
+      // Calculate currency rewards (sync, depends on multiplier)
       const currencyRewards = this.calculateCurrencyRewards(
         userId,
         gameResult.winner,
@@ -246,22 +250,7 @@ const GameRewardsService = {
         winStreakMultiplier
       );
 
-      // Update win streak multiplier for PvP games only
-      if (gameMode === "pvp" && player1Id !== player2Id) {
-        if (gameResult.winner === userId) {
-          // Player won - increment multiplier
-          await UserModel.incrementWinStreakMultiplier(userId);
-        } else if (gameResult.winner !== null && gameResult.winner !== userId) {
-          // Player lost - reset multiplier
-          await UserModel.resetWinStreakMultiplier(userId);
-        }
-        // For draws (winner === null), multiplier stays the same
-      }
-
-      // Get cards that were actually used in the game
-      const usedCards = this.getCardsUsedInGame(gameState, userId);
-
-      // Calculate XP rewards
+      // Calculate XP rewards (sync)
       const cardXpRewards = this.calculateCardXpRewards(
         userId,
         gameResult.winner,
@@ -269,40 +258,59 @@ const GameRewardsService = {
         usedCards
       );
 
-      // Award gems only (game rewards don't include gold or fate coins)
+      // === PHASE 3: Award core rewards (must complete before response) ===
+      // These operations modify user data and must complete
+
+      // Parallelize win streak update and gem award
+      const coreRewardPromises: Promise<any>[] = [];
+
       if (currencyRewards.gems > 0) {
-        await UserModel.updateGems(userId, currencyRewards.gems);
+        coreRewardPromises.push(UserModel.updateGems(userId, currencyRewards.gems));
       }
 
-      // Award XP directly to individual cards
-      const xpResults = await XpService.awardDirectCardXp(
-        userId,
-        cardXpRewards
+      // Update win streak multiplier for PvP games only
+      if (gameMode === "pvp" && player1Id !== player2Id) {
+        if (gameResult.winner === userId) {
+          coreRewardPromises.push(UserModel.incrementWinStreakMultiplier(userId));
+        } else if (gameResult.winner !== null && gameResult.winner !== userId) {
+          coreRewardPromises.push(UserModel.resetWinStreakMultiplier(userId));
+        }
+      }
+
+      // Award XP directly to individual cards (this is now batched internally)
+      coreRewardPromises.push(
+        XpService.awardDirectCardXp(userId, cardXpRewards)
       );
 
-      // Update leaderboard rankings for PvP games
+      // Wait for core rewards to complete
+      const coreResults = await Promise.all(coreRewardPromises);
+
+      // Extract XP results (last item in the array)
+      const xpResults = coreResults[coreResults.length - 1] as XpReward[];
+
+      // === PHASE 4: Parallel non-blocking operations ===
+      // These operations don't affect the response data and can run in parallel
+      const parallelOps: Promise<any>[] = [];
+
+      // Leaderboard update (PvP only)
       if (gameMode === "pvp" && gameId && player1Id !== player2Id) {
-        try {
-          await LeaderboardService.processGameCompletion(
+        parallelOps.push(
+          LeaderboardService.processGameCompletion(
             gameId,
             player1Id,
             player2Id,
             gameResult.winner,
             gameMode,
             gameResult.game_duration_seconds
-          );
-        } catch (error) {
-          console.error("Error updating leaderboard rankings:", error);
-          // Don't fail the entire reward process if leaderboard update fails
-        }
+          ).catch((error) => {
+            console.error("Error updating leaderboard rankings:", error);
+          })
+        );
       }
 
-      // Trigger achievement events
-      try {
-        const AchievementService = await import("./achievement.service");
-
-        // Game completion event (for all players)
-        await AchievementService.default.triggerAchievementEvent({
+      // Game completion achievement (always)
+      parallelOps.push(
+        AchievementService.triggerAchievementEvent({
           userId,
           eventType: "game_completion",
           eventData: {
@@ -311,50 +319,54 @@ const GameRewardsService = {
             gameDurationSeconds: gameResult.game_duration_seconds,
             cardsUsed: usedCards,
           },
-        });
+        }).catch((error) => {
+          console.error("Error processing game_completion achievement:", error);
+        })
+      );
 
-        // Game victory event (only for winner)
-        if (gameResult.winner === userId) {
-          // Determine which player won to get their score
-          const winnerScore =
-            gameResult.winner === player1Id
-              ? gameResult.final_scores.player1
-              : gameResult.final_scores.player2;
-          const loserScore =
-            gameResult.winner === player1Id
-              ? gameResult.final_scores.player2
-              : gameResult.final_scores.player1;
+      // Game victory achievement and daily task (winners only)
+      if (gameResult.winner === userId) {
+        const winnerScore =
+          gameResult.winner === player1Id
+            ? gameResult.final_scores.player1
+            : gameResult.final_scores.player2;
+        const loserScore =
+          gameResult.winner === player1Id
+            ? gameResult.final_scores.player2
+            : gameResult.final_scores.player1;
 
-          await AchievementService.default.triggerAchievementEvent({
+        parallelOps.push(
+          AchievementService.triggerAchievementEvent({
             userId,
             eventType: "game_victory",
             eventData: {
               gameMode,
-              isWinStreak: false, // TODO: Implement win streak tracking
-              winStreakCount: 0, // TODO: Implement win streak tracking
+              isWinStreak: false,
+              winStreakCount: 0,
               winnerScore,
               loserScore,
               gameDurationSeconds: gameResult.game_duration_seconds,
             },
-          });
-        }
-      } catch (error) {
-        console.error("Error processing achievement events:", error);
-        // Don't fail the entire reward process if achievement processing fails
+          }).catch((error) => {
+            console.error("Error processing game_victory achievement:", error);
+          })
+        );
+
+        parallelOps.push(
+          DailyTaskService.trackWin(userId).catch((error) => {
+            console.error("Error tracking win for daily task:", error);
+          })
+        );
       }
 
-      // Track daily task progress for wins
-      if (gameResult.winner === userId) {
-        try {
-          await DailyTaskService.trackWin(userId);
-        } catch (error) {
-          console.error("Error tracking win for daily task:", error);
-          // Don't fail the reward process if tracking fails
-        }
-      }
+      // Get updated user currencies (needed for response)
+      parallelOps.push(UserModel.findById(userId));
 
-      // Get updated user currencies
-      const updatedUser = await UserModel.findById(userId);
+      // Wait for all parallel operations
+      const parallelResults = await Promise.all(parallelOps);
+
+      // Extract updated user (last item in the array)
+      const updatedUser = parallelResults[parallelResults.length - 1];
 
       // Prepare win streak info for PvP games
       let winStreakInfo = undefined;

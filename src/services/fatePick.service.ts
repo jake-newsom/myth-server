@@ -171,7 +171,7 @@ const FatePickService = {
   ): Promise<{
     success: boolean;
     participation?: FatePickParticipation;
-    updatedWonderCoins?: number;
+    remainingFateCoins?: number;
     error?: string;
   }> {
     const client = await db.getClient();
@@ -283,7 +283,7 @@ const FatePickService = {
       return {
         success: true,
         participation,
-        updatedWonderCoins: spendRows[0].fate_coins,
+        remainingFateCoins: spendRows[0].fate_coins,
       };
     } catch (error) {
       await client.query("ROLLBACK");

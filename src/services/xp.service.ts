@@ -775,72 +775,90 @@ const XpService = {
   },
 
   // Award XP directly to individual cards from game completion
+  // Optimized to use batched queries instead of N+1 pattern
   async awardDirectCardXp(
     userId: string,
     cardRewards: { card_id: string; card_name: string; xp_gained: number }[]
   ): Promise<XpReward[]> {
+    if (cardRewards.length === 0) {
+      return [];
+    }
+
     const client = await db.getClient();
     const results: XpReward[] = [];
     let anyLevelUp = false;
     let hasFirstLevelUp = false;
+    let levelUpCount = 0;
 
     try {
       await client.query("BEGIN");
 
-      for (const reward of cardRewards) {
-        // Get current card stats and validate ownership
-        const query = `
-          SELECT uoc.user_card_instance_id, uoc.level, uoc.xp, ch.name
-          FROM "user_owned_cards" uoc
-          JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
-          JOIN "characters" ch ON cv.character_id = ch.character_id
-          WHERE uoc.user_card_instance_id = $1 AND uoc.user_id = $2
-        `;
-        const { rows } = await client.query(query, [reward.card_id, userId]);
+      // Step 1: Batch fetch all card stats in a single query
+      const cardIds = cardRewards.map((r) => r.card_id);
+      const batchFetchQuery = `
+        SELECT uoc.user_card_instance_id, uoc.level, uoc.xp, ch.name
+        FROM "user_owned_cards" uoc
+        JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN "characters" ch ON cv.character_id = ch.character_id
+        WHERE uoc.user_card_instance_id = ANY($1) AND uoc.user_id = $2
+      `;
+      const { rows: cardRows } = await client.query(batchFetchQuery, [
+        cardIds,
+        userId,
+      ]);
 
-        if (rows.length === 0) {
+      // Create a map for quick lookup
+      const cardMap = new Map<
+        string,
+        { level: number; xp: number; name: string }
+      >();
+      for (const card of cardRows) {
+        cardMap.set(card.user_card_instance_id, {
+          level: card.level,
+          xp: card.xp,
+          name: card.name,
+        });
+      }
+
+      // Step 2: Calculate new XP and levels, prepare batch update data
+      const updateData: {
+        cardId: string;
+        newXp: number;
+        newLevel: number;
+        cardName: string;
+        xpGained: number;
+        didLevelUp: boolean;
+        wasLevel1: boolean;
+      }[] = [];
+
+      for (const reward of cardRewards) {
+        const card = cardMap.get(reward.card_id);
+        if (!card) {
           console.warn(`Card ${reward.card_id} not found for user ${userId}`);
           continue;
         }
 
-        const card = rows[0];
-
-        // Update card XP and level
         const newXp = card.xp + reward.xp_gained;
         const newLevel = this.calculateLevel(newXp);
         const didLevelUp = newLevel > card.level;
 
         if (didLevelUp) {
           anyLevelUp = true;
+          levelUpCount++;
           if (card.level === 1) {
             hasFirstLevelUp = true;
           }
         }
 
-        await client.query(
-          `UPDATE "user_owned_cards" SET xp = $1, level = $2 WHERE user_card_instance_id = $3`,
-          [newXp, newLevel, reward.card_id]
-        );
-
-        // Log the direct card XP award (using pool_to_card type temporarily)
-        await XpPoolModel.logXpTransfer({
-          user_id: userId,
-          transfer_type: "pool_to_card",
-          target_card_id: reward.card_id,
-          card_name: reward.card_name,
-          xp_transferred: reward.xp_gained,
-          efficiency_rate: 1.0,
+        updateData.push({
+          cardId: reward.card_id,
+          newXp,
+          newLevel,
+          cardName: reward.card_name,
+          xpGained: reward.xp_gained,
+          didLevelUp,
+          wasLevel1: card.level === 1,
         });
-
-        // Track daily task progress for level up
-        if (didLevelUp) {
-          try {
-            await DailyTaskService.trackLevelUp(userId);
-          } catch (error) {
-            console.warn("Error tracking level up for daily task:", error);
-            // Don't fail the XP award if tracking fails
-          }
-        }
 
         results.push({
           card_id: reward.card_id,
@@ -851,7 +869,49 @@ const XpService = {
         });
       }
 
-      // Update user's total XP
+      if (updateData.length > 0) {
+        // Step 3: Batch update all cards in a single query using unnest
+        const batchUpdateQuery = `
+          UPDATE "user_owned_cards" AS uoc
+          SET xp = data.new_xp, level = data.new_level
+          FROM (
+            SELECT unnest($1::uuid[]) AS card_id,
+                   unnest($2::integer[]) AS new_xp,
+                   unnest($3::integer[]) AS new_level
+          ) AS data
+          WHERE uoc.user_card_instance_id = data.card_id
+        `;
+        await client.query(batchUpdateQuery, [
+          updateData.map((d) => d.cardId),
+          updateData.map((d) => d.newXp),
+          updateData.map((d) => d.newLevel),
+        ]);
+
+        // Step 4: Batch insert all XP transfer logs in a single query
+        const batchLogQuery = `
+          INSERT INTO "xp_transfers" (
+            user_id, transfer_type, source_card_ids, target_card_id,
+            card_name, xp_transferred, efficiency_rate, created_at
+          )
+          SELECT 
+            $1,
+            'pool_to_card',
+            NULL,
+            unnest($2::uuid[]),
+            unnest($3::text[]),
+            unnest($4::integer[]),
+            1.0,
+            NOW()
+        `;
+        await client.query(batchLogQuery, [
+          userId,
+          updateData.map((d) => d.cardId),
+          updateData.map((d) => d.cardName),
+          updateData.map((d) => d.xpGained),
+        ]);
+      }
+
+      // Step 5: Update user's total XP
       const totalXpGained = cardRewards.reduce(
         (sum, r) => sum + r.xp_gained,
         0
@@ -860,7 +920,23 @@ const XpService = {
 
       await client.query("COMMIT");
 
-      // Trigger achievement event for card leveling if any cards leveled up
+      // Step 6: Track daily task progress for level ups (after transaction)
+      // Batch the level up tracking - call once with count instead of N times
+      if (levelUpCount > 0) {
+        try {
+          // Call trackLevelUp once - it increments by 1 internally
+          // For multiple level ups, we need to call it multiple times
+          // but we do it after commit so failures don't affect XP awards
+          for (let i = 0; i < levelUpCount; i++) {
+            await DailyTaskService.trackLevelUp(userId);
+          }
+        } catch (error) {
+          console.warn("Error tracking level up for daily task:", error);
+          // Don't fail the XP award if tracking fails
+        }
+      }
+
+      // Step 7: Trigger achievement event for card leveling if any cards leveled up
       if (anyLevelUp) {
         try {
           const AchievementService = await import("./achievement.service");

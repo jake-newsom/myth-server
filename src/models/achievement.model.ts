@@ -868,6 +868,41 @@ const AchievementModel = {
   },
 
   /**
+   * Get all tiers for multiple base achievement keys in a single query
+   * Returns a map of base_key -> Achievement[]
+   * This is more efficient than calling getTieredAchievementsByBaseKey multiple times
+   */
+  async getTieredAchievementsByBaseKeys(
+    baseKeys: string[]
+  ): Promise<Map<string, Achievement[]>> {
+    if (baseKeys.length === 0) {
+      return new Map();
+    }
+
+    const query = `
+      SELECT * FROM achievements
+      WHERE base_achievement_key = ANY($1) AND is_active = true
+      ORDER BY base_achievement_key, tier_level ASC;
+    `;
+
+    const { rows } = await db.query(query, [baseKeys]);
+
+    // Group by base_achievement_key
+    const result = new Map<string, Achievement[]>();
+    for (const baseKey of baseKeys) {
+      result.set(baseKey, []);
+    }
+    for (const row of rows) {
+      const key = row.base_achievement_key;
+      if (result.has(key)) {
+        result.get(key)!.push(row);
+      }
+    }
+
+    return result;
+  },
+
+  /**
    * Get highest unlocked tier level for a user and base key
    */
   async getUnlockedTierLevel(userId: string, baseKey: string): Promise<number> {

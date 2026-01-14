@@ -52,7 +52,7 @@ export const getAvailableFatePicks = async (
     res.json({
       fate_picks: result.fatePicks,
       pagination: result.pagination,
-      user_wonder_coins: result.userFateCoins,
+      remainingFateCoins: result.userFateCoins,
     });
   } catch (error) {
     console.error("Error in getAvailableFatePicks:", error);
@@ -197,9 +197,7 @@ export const participateInFatePick = async (
 
     res.json({
       participation: result.participation,
-      updated_wonder_coins: result.updatedWonderCoins,
-      message:
-        "Successfully joined wonder pick! Select a card to reveal your prize.",
+      remainingFateCoins: result.remainingFateCoins,
     });
   } catch (error) {
     console.error("Error in participateInFatePick:", error);

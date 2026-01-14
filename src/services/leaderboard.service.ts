@@ -266,7 +266,11 @@ const LeaderboardService = {
   ): Promise<GameResult> {
     const currentSeason = season || LeaderboardModel.getCurrentSeason();
 
-    // Record game result and update rankings
+    // Record game result and update ratings
+    // Note: Full rank position recalculation (updateAllRanks) has been removed
+    // from the synchronous game completion flow for performance.
+    // Ranks are calculated dynamically when viewing the leaderboard using
+    // ROW_NUMBER() OVER (ORDER BY rating DESC) in the query.
     const gameResult = await LeaderboardModel.recordGameResult(
       gameId,
       player1Id,
@@ -276,9 +280,6 @@ const LeaderboardService = {
       gameDurationSeconds,
       currentSeason
     );
-
-    // Update rank positions (this could be done async in production)
-    await LeaderboardModel.updateAllRanks(currentSeason);
 
     return gameResult;
   },

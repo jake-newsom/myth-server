@@ -205,6 +205,7 @@ const LeaderboardModel = {
 
   /**
    * Get leaderboard for a season
+   * Ranks are calculated dynamically using ROW_NUMBER() for performance
    */
   async getLeaderboard(
     season?: string,
@@ -213,20 +214,27 @@ const LeaderboardModel = {
   ): Promise<UserRankingWithUser[]> {
     const currentSeason = season || this.getCurrentSeason();
 
+    // Calculate ranks dynamically instead of relying on stored current_rank
+    // This avoids the expensive updateAllRanks operation during game completion
     const query = `
-      SELECT 
-        ur.*,
-        u.username,
-        (ur.wins + ur.losses + ur.draws) as total_games,
-        CASE 
-          WHEN (ur.wins + ur.losses + ur.draws) > 0 
-          THEN ROUND((ur.wins::DECIMAL / (ur.wins + ur.losses + ur.draws) * 100), 2)
-          ELSE 0 
-        END as win_rate
-      FROM user_rankings ur
-      JOIN users u ON ur.user_id = u.user_id
-      WHERE ur.season = $1
-      ORDER BY ur.rating DESC, ur.wins DESC
+      WITH ranked AS (
+        SELECT 
+          ur.*,
+          u.username,
+          ROW_NUMBER() OVER (ORDER BY ur.rating DESC, ur.wins DESC) as calculated_rank,
+          (ur.wins + ur.losses + ur.draws) as total_games,
+          CASE 
+            WHEN (ur.wins + ur.losses + ur.draws) > 0 
+            THEN ROUND((ur.wins::DECIMAL / (ur.wins + ur.losses + ur.draws) * 100), 2)
+            ELSE 0 
+          END as win_rate
+        FROM user_rankings ur
+        JOIN users u ON ur.user_id = u.user_id
+        WHERE ur.season = $1
+      )
+      SELECT *, calculated_rank as current_rank
+      FROM ranked
+      ORDER BY calculated_rank
       LIMIT $2 OFFSET $3;
     `;
 
@@ -286,6 +294,7 @@ const LeaderboardModel = {
 
   /**
    * Get user's complete ranking info
+   * Calculates rank dynamically for performance
    */
   async getUserRankingInfo(
     userId: string,
@@ -293,19 +302,26 @@ const LeaderboardModel = {
   ): Promise<UserRankingWithUser | null> {
     const currentSeason = season || this.getCurrentSeason();
 
+    // Calculate rank dynamically using a window function
     const query = `
-      SELECT 
-        ur.*,
-        u.username,
-        (ur.wins + ur.losses + ur.draws) as total_games,
-        CASE 
-          WHEN (ur.wins + ur.losses + ur.draws) > 0 
-          THEN ROUND((ur.wins::DECIMAL / (ur.wins + ur.losses + ur.draws) * 100), 2)
-          ELSE 0 
-        END as win_rate
-      FROM user_rankings ur
-      JOIN users u ON ur.user_id = u.user_id
-      WHERE ur.user_id = $1 AND ur.season = $2;
+      WITH ranked AS (
+        SELECT 
+          ur.*,
+          u.username,
+          ROW_NUMBER() OVER (ORDER BY ur.rating DESC, ur.wins DESC) as calculated_rank,
+          (ur.wins + ur.losses + ur.draws) as total_games,
+          CASE 
+            WHEN (ur.wins + ur.losses + ur.draws) > 0 
+            THEN ROUND((ur.wins::DECIMAL / (ur.wins + ur.losses + ur.draws) * 100), 2)
+            ELSE 0 
+          END as win_rate
+        FROM user_rankings ur
+        JOIN users u ON ur.user_id = u.user_id
+        WHERE ur.season = $2
+      )
+      SELECT *, calculated_rank as current_rank
+      FROM ranked
+      WHERE user_id = $1;
     `;
 
     const { rows } = await db.query(query, [userId, currentSeason]);

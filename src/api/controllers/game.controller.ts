@@ -295,19 +295,26 @@ class GameController {
       // Process comprehensive rewards if game is completed
       if (new_game_status_for_db === GameStatus.COMPLETED) {
         try {
-          gameCompletionResult = await GameRewardsService.processGameCompletion(
-            userId,
-            updatedGameState,
-            gameRecord.game_mode as "solo" | "pvp",
-            new Date(gameRecord.created_at), // Game start time
-            gameRecord.player1_id,
-            gameRecord.player2_id,
-            gameRecord.player1_deck_id,
-            gameId // Pass gameId for leaderboard updates
-          );
+          // Optimization: Start floor number lookup and game rewards in parallel
+          // Floor number lookup is independent and can run alongside rewards processing
+          const [gameRewardsResult, floorNumber] = await Promise.all([
+            GameRewardsService.processGameCompletion(
+              userId,
+              updatedGameState,
+              gameRecord.game_mode as "solo" | "pvp",
+              new Date(gameRecord.created_at), // Game start time
+              gameRecord.player1_id,
+              gameRecord.player2_id,
+              gameRecord.player1_deck_id,
+              gameId // Pass gameId for leaderboard updates
+            ),
+            GameService.getGameFloorNumber(gameId),
+          ]);
 
-          // Check if this is a tower game and process tower completion
-          const floorNumber = await GameService.getGameFloorNumber(gameId);
+          gameCompletionResult = gameRewardsResult;
+
+          // Process tower completion if this is a tower game
+          // This runs after we know the floor number and game result
           if (floorNumber !== null && gameCompletionResult) {
             try {
               const won = winner_id_for_db === userId;
@@ -511,19 +518,26 @@ class GameController {
       // Process comprehensive rewards if game is completed
       if (new_game_status_for_db === GameStatus.COMPLETED) {
         try {
-          gameCompletionResult = await GameRewardsService.processGameCompletion(
-            userId,
-            updatedGameState,
-            gameRecord.game_mode as "solo" | "pvp",
-            new Date(gameRecord.created_at), // Game start time
-            gameRecord.player1_id,
-            gameRecord.player2_id,
-            gameRecord.player1_deck_id,
-            gameId // Pass gameId for leaderboard updates
-          );
+          // Optimization: Start floor number lookup and game rewards in parallel
+          // Floor number lookup is independent and can run alongside rewards processing
+          const [gameRewardsResult, floorNumberAI] = await Promise.all([
+            GameRewardsService.processGameCompletion(
+              userId,
+              updatedGameState,
+              gameRecord.game_mode as "solo" | "pvp",
+              new Date(gameRecord.created_at), // Game start time
+              gameRecord.player1_id,
+              gameRecord.player2_id,
+              gameRecord.player1_deck_id,
+              gameId // Pass gameId for leaderboard updates
+            ),
+            GameService.getGameFloorNumber(gameId),
+          ]);
 
-          // Check if this is a tower game and process tower completion
-          const floorNumberAI = await GameService.getGameFloorNumber(gameId);
+          gameCompletionResult = gameRewardsResult;
+
+          // Process tower completion if this is a tower game
+          // This runs after we know the floor number and game result
           if (floorNumberAI !== null && gameCompletionResult) {
             try {
               const wonAI = winner_id_for_db === userId;

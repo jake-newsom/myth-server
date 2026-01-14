@@ -230,18 +230,33 @@ const AchievementService = {
 
   /**
    * Handle game victory events
+   * Optimized to batch tier lookups for better performance
    */
   async handleGameVictory(
     userId: string,
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
-    console.log("handleGameVictory", eventData);
     const { gameMode, isWinStreak, winStreakCount, winnerScore, loserScore } =
       eventData;
 
     const keysToFetch: string[] = [];
     const updatePromises: Promise<any>[] = [];
+
+    // Determine which tiered achievements we need to look up
+    const tieredKeysToFetch: string[] = [];
+    if (gameMode === "solo") {
+      tieredKeysToFetch.push("solo_wins");
+    } else if (gameMode === "pvp") {
+      tieredKeysToFetch.push("pvp_wins");
+      if (isWinStreak && winStreakCount) {
+        tieredKeysToFetch.push("pvp_win_streak");
+      }
+    }
+
+    // Batch fetch all tiered achievements in a single query
+    const tieredAchievements =
+      await AchievementModel.getTieredAchievementsByBaseKeys(tieredKeysToFetch);
 
     // First Victory
     updatePromises.push(
@@ -252,8 +267,7 @@ const AchievementService = {
     // Game mode specific victories - tiered achievements
     if (gameMode === "solo") {
       // Track solo_wins tiered achievements
-      const soloWinsTiers =
-        await AchievementModel.getTieredAchievementsByBaseKey("solo_wins");
+      const soloWinsTiers = tieredAchievements.get("solo_wins") || [];
       for (const tier of soloWinsTiers) {
         updatePromises.push(
           AchievementModel.updateUserAchievementProgress(
@@ -272,8 +286,7 @@ const AchievementService = {
       keysToFetch.push("solo_master");
     } else if (gameMode === "pvp") {
       // Track pvp_wins tiered achievements
-      const pvpWinsTiers =
-        await AchievementModel.getTieredAchievementsByBaseKey("pvp_wins");
+      const pvpWinsTiers = tieredAchievements.get("pvp_wins") || [];
       for (const tier of pvpWinsTiers) {
         updatePromises.push(
           AchievementModel.updateUserAchievementProgress(
@@ -287,10 +300,7 @@ const AchievementService = {
 
       // Track pvp_win_streak tiered achievements
       if (isWinStreak && winStreakCount) {
-        const streakTiers =
-          await AchievementModel.getTieredAchievementsByBaseKey(
-            "pvp_win_streak"
-          );
+        const streakTiers = tieredAchievements.get("pvp_win_streak") || [];
         for (const tier of streakTiers) {
           if (winStreakCount >= tier.target_value) {
             updatePromises.push(
@@ -386,6 +396,7 @@ const AchievementService = {
 
   /**
    * Handle game completion events (including losses)
+   * Optimized to batch tier lookups for better performance
    */
   async handleGameCompletion(
     userId: string,
@@ -395,9 +406,12 @@ const AchievementService = {
     const keysToFetch: string[] = [];
     const updatePromises: Promise<any>[] = [];
 
+    // Batch fetch all tiered achievements in a single query
+    const tieredAchievements =
+      await AchievementModel.getTieredAchievementsByBaseKeys(["total_matches"]);
+
     // Track total_matches tiered achievements (solo + multiplayer combined)
-    const totalMatchesTiers =
-      await AchievementModel.getTieredAchievementsByBaseKey("total_matches");
+    const totalMatchesTiers = tieredAchievements.get("total_matches") || [];
     for (const tier of totalMatchesTiers) {
       updatePromises.push(
         AchievementModel.updateUserAchievementProgress(
