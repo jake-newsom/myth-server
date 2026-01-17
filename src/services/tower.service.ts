@@ -96,21 +96,25 @@ class TowerService {
     let reward_legendary_card = 0;
     let reward_epic_card = 0;
 
-    if (floor % 1000 === 0) {
+    if (floor % 100 === 0) {
       // Every 1000 floors: rare art + legendary equivalent fragments
       reward_rare_art_card = 1;
       reward_card_fragments += 100; // 1 legendary card worth
-    } else if (floor % 500 === 0) {
+      reward_gems += gemValue;
+    } else if (floor % 50 === 0) {
       // Every 500 floors: legendary card
       reward_legendary_card = 1;
       reward_card_fragments += 100;
-    } else if (floor % 250 === 0) {
+      reward_gems += Math.floor(gemValue * 0.5);
+    } else if (floor % 25 === 0) {
       // Every 250 floors: epic card
       reward_epic_card = 1;
       reward_card_fragments += 50; // 1 epic
-    } else if (floor % 100 === 0) {
+      reward_gems += Math.floor(gemValue * 0.25);
+    } else if (floor % 10 === 0) {
       // Every 100 floors: bonus fragments
       reward_card_fragments += 25;
+      reward_gems += Math.floor(gemValue * 0.1);
     }
 
     return {

@@ -1,7 +1,6 @@
 import { Router } from "express";
 import authMiddleware from "../middlewares/auth.middleware";
 import {
-  strictRateLimit,
   moderateRateLimit,
   lenientRateLimit,
 } from "../middlewares/rateLimit.middleware";
@@ -91,7 +90,7 @@ router.get(
 router.post(
   "/:achievementId/claim",
   authMiddleware.protect, // Requires authentication
-  strictRateLimit, // Strict rate limiting for reward claiming
+  moderateRateLimit, // Strict rate limiting for reward claiming
   achievementController.claimAchievementReward
 );
 

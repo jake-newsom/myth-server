@@ -165,7 +165,7 @@ export const RATE_LIMIT_CONFIG = {
   },
   MODERATE: {
     WINDOW_MS: 60 * 1000, // 1 minute
-    MAX_REQUESTS: 120,
+    MAX_REQUESTS: 75,
   },
   LENIENT: {
     WINDOW_MS: 60 * 1000, // 1 minute
