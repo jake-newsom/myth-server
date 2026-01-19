@@ -198,11 +198,16 @@ export class AILogic {
   }
 
   /**
-   * Main AI move selection with difficulty-based strategy
+   * Main AI move selection with difficulty-based strategy.
+   *
+   * @param currentGameState The current game state
+   * @param aiDifficulty Difficulty level for move evaluation
+   * @param forPlayerId Optional: specific player ID to make move for (used in PvP timeout scenarios)
    */
   async makeAIMove(
     currentGameState: GameState,
-    aiDifficulty = "medium"
+    aiDifficulty = "medium",
+    forPlayerId?: string
   ): Promise<{
     action_type: string;
     user_card_instance_id: string;
@@ -210,9 +215,20 @@ export class AILogic {
   } | null> {
     const startTime = Date.now();
 
-    const aiPlayer = currentGameState.player1.user_id.startsWith("AI_")
-      ? currentGameState.player1
-      : currentGameState.player2;
+    // Determine which player to make a move for
+    let aiPlayer;
+    if (forPlayerId) {
+      // PvP timeout scenario: use the specified player
+      aiPlayer =
+        currentGameState.player1.user_id === forPlayerId
+          ? currentGameState.player1
+          : currentGameState.player2;
+    } else {
+      // Solo game scenario: find the AI player by ID prefix
+      aiPlayer = currentGameState.player1.user_id.startsWith("AI_")
+        ? currentGameState.player1
+        : currentGameState.player2;
+    }
 
     if (aiPlayer.hand.length === 0) return null;
 

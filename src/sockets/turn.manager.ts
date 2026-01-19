@@ -6,19 +6,26 @@ import {
 
 interface TurnManagerOptions {
   allowedDurations?: number[]; // seconds
+  animationDelay?: number; // milliseconds to wait before starting turn timer
 }
+
+/** Default delay for animations before turn timer starts (ms) */
+const DEFAULT_ANIMATION_DELAY_MS = 4000;
 
 /**
  * Handles per-game turn timing, strike escalation and timeouts.
  *
- * Phase-2 scope: timer tracking & timeout callback (AI integration later).
+ * After a move is processed, there's an automatic delay (default 4s) for
+ * animations to play, then the turn timer starts for the next player.
  */
 export class TurnManager {
   private readonly io: Namespace;
   private readonly room: string; // socket.io room (e.g., game:123)
   private readonly allowedDurations: number[];
+  private readonly animationDelay: number;
 
   private timeoutHandle: NodeJS.Timeout | null = null;
+  private animationDelayHandle: NodeJS.Timeout | null = null;
   private strikes: Map<string, number> = new Map(); // playerId -> strike index
   private currentPlayerId: string;
 
@@ -36,21 +43,43 @@ export class TurnManager {
     this.room = room;
     this.currentPlayerId = currentPlayerId;
     this.allowedDurations = options?.allowedDurations ?? [30, 15, 10, 5];
+    this.animationDelay = options?.animationDelay ?? DEFAULT_ANIMATION_DELAY_MS;
 
     // Initialise strike counters to 0
     players.forEach((p) => this.strikes.set(p, 0));
   }
 
   /**
-   * Begin the timer for the provided player and emit server:start_turn.
+   * Start a new turn for the given player.
+   * If isFirstTurn is true, the timer starts immediately.
+   * Otherwise, there's an automatic animation delay before the timer starts.
    */
-  public startTurn(playerId: string): void {
-    this.clearTimer();
+  public startTurn(playerId: string, isFirstTurn: boolean = false): void {
+    this.clearAllTimers();
     this.currentPlayerId = playerId;
 
     const strikeIndex = this.strikes.get(playerId) ?? 0;
-    const timeAllowed = this.allowedDurations[strikeIndex] ?? 5; // fallback
+    const timeAllowed = this.allowedDurations[strikeIndex] ?? 5;
 
+    if (isFirstTurn) {
+      // First turn of the game - start immediately
+      this.emitStartTurnAndArmTimer(playerId, timeAllowed);
+    } else {
+      // Delay for animations, then start the turn timer
+      this.animationDelayHandle = setTimeout(() => {
+        this.animationDelayHandle = null;
+        this.emitStartTurnAndArmTimer(playerId, timeAllowed);
+      }, this.animationDelay);
+    }
+  }
+
+  /**
+   * Emit server:start_turn and arm the timeout timer.
+   */
+  private emitStartTurnAndArmTimer(
+    playerId: string,
+    timeAllowed: number
+  ): void {
     // Emit start turn to room
     const payload: ServerStartTurnResponse = {
       currentPlayerId: playerId,
@@ -72,20 +101,24 @@ export class TurnManager {
 
     // Successful action resets strikes for that player
     this.strikes.set(playerId, 0);
-    this.clearTimer();
+    this.clearAllTimers();
   }
 
   /**
-   * Clean up timers when game ends.
+   * Clean up all timers when game ends.
    */
   public dispose(): void {
-    this.clearTimer();
+    this.clearAllTimers();
   }
 
   /**
-   * Internal helpers
+   * Clear both the animation delay timer and the turn timeout timer.
    */
-  private clearTimer(): void {
+  private clearAllTimers(): void {
+    if (this.animationDelayHandle) {
+      clearTimeout(this.animationDelayHandle);
+      this.animationDelayHandle = null;
+    }
     if (this.timeoutHandle) {
       clearTimeout(this.timeoutHandle);
       this.timeoutHandle = null;

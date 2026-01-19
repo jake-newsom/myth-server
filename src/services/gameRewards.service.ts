@@ -75,12 +75,14 @@ const GameRewardsService = {
 
   // Calculate currency rewards based on game outcome
   // Game rewards only include gems (no gold, no fate coins)
+  // isForfeit: true if game ended via surrender/disconnect (loser gets nothing)
   calculateCurrencyRewards(
     userId: string,
     winnerId: string | null,
     gameMode: "solo" | "pvp",
     gameDurationSeconds: number,
-    winStreakMultiplier: number = 1.0
+    winStreakMultiplier: number = 1.0,
+    isForfeit: boolean = false
   ): CurrencyRewards {
     let gemsReward = 0;
 
@@ -111,8 +113,14 @@ const GameRewardsService = {
         gemsReward = Math.floor(gemsReward * winStreakMultiplier);
       }
     } else {
-      // Loss rewards (small participation reward)
-      gemsReward = gameMode === "solo" ? 1 : 2;
+      // Loss rewards
+      if (isForfeit) {
+        // Forfeit (surrender/disconnect): loser gets nothing
+        gemsReward = 0;
+      } else {
+        // Normal completion: loser gets participation reward
+        gemsReward = gameMode === "solo" ? 1 : 5;
+      }
       // No multiplier applied to losses
     }
 
@@ -122,13 +130,20 @@ const GameRewardsService = {
   },
 
   // Calculate XP rewards for individual cards used in the game
+  // isForfeit: true if game ended via surrender/disconnect (loser gets no XP)
   calculateCardXpRewards(
     userId: string,
     winnerId: string | null,
     gameMode: "solo" | "pvp",
-    playerDeckCards: { card_id: string; card_name: string }[]
+    playerDeckCards: { card_id: string; card_name: string }[],
+    isForfeit: boolean = false
   ): { card_id: string; card_name: string; xp_gained: number }[] {
     const xpRewards = [];
+
+    // If this is a forfeit and user is the loser, no XP
+    if (isForfeit && winnerId !== userId && winnerId !== null) {
+      return [];
+    }
 
     for (const card of playerDeckCards) {
       let baseXp = 20; // Base XP for cards used in games
@@ -213,6 +228,7 @@ const GameRewardsService = {
 
   // Main method to process game completion and award rewards
   // Optimized to parallelize independent operations for faster response times
+  // isForfeit: true if game ended via surrender/disconnect (loser gets nothing)
   async processGameCompletion(
     userId: string,
     gameState: GameState,
@@ -221,7 +237,8 @@ const GameRewardsService = {
     player1Id: string,
     player2Id: string,
     playerDeckId: string,
-    gameId?: string
+    gameId?: string,
+    isForfeit: boolean = false
   ): Promise<GameCompletionResult> {
     try {
       // === PHASE 1: Sequential calculations (sync, no DB) ===
@@ -247,7 +264,8 @@ const GameRewardsService = {
         gameResult.winner,
         gameMode,
         gameResult.game_duration_seconds,
-        winStreakMultiplier
+        winStreakMultiplier,
+        isForfeit
       );
 
       // Calculate XP rewards (sync)
@@ -255,7 +273,8 @@ const GameRewardsService = {
         userId,
         gameResult.winner,
         gameMode,
-        usedCards
+        usedCards,
+        isForfeit
       );
 
       // === PHASE 3: Award core rewards (must complete before response) ===
