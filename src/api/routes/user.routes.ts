@@ -42,4 +42,11 @@ router.post(
   UserController.claimMonthlyReward
 );
 
+// Account reset - accessible by user (for own account) or admin (for any account)
+router.post(
+  "/me/reset-account",
+  authMiddleware.protect,
+  UserController.resetAccount
+);
+
 export default router;

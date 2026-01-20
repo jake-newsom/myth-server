@@ -362,6 +362,134 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/users/me/reset-account:
+    post:
+      summary: Reset account to starter state
+      description: |
+        Resets a user's account by deleting all cards, decks, card XP, currencies, achievements, 
+        and other data, then grants them the same starter content as a new account.
+        
+        This endpoint can be used in two ways:
+        - **User self-reset**: Authenticated user can reset their own account (no userId in request body)
+        - **Admin reset**: Admin users can reset any user's account by providing the userId in the request body
+      tags:
+        - Users
+        - Account
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                  description: |
+                    Optional. ID of the user account to reset.
+                    - If not provided, resets the authenticated user's own account.
+                    - If provided, only admins can reset a different user's account. 
+                    - Non-admin users can only reset their own account.
+            examples:
+              selfReset:
+                summary: Reset own account
+                description: No body required to reset your own account
+                value: {}
+              adminReset:
+                summary: Admin reset another user's account
+                description: Admin provides the target user's ID
+                value:
+                  userId: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        "200":
+          description: Account reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Account reset successfully"
+                  user:
+                    type: object
+                    properties:
+                      user_id:
+                        type: string
+                        format: uuid
+                      username:
+                        type: string
+                      gems:
+                        type: integer
+                        example: 0
+                      fate_coins:
+                        type: integer
+                        example: 2
+                      card_fragments:
+                        type: integer
+                        example: 0
+                      total_xp:
+                        type: integer
+                        example: 0
+                      pack_count:
+                        type: integer
+                        example: 10
+                  timestamp:
+                    type: string
+                    format: date-time
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden - non-admin user tried to reset another user's account
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  message:
+                    type: string
+                    example: "You can only reset your own account."
+                  timestamp:
+                    type: string
+                    format: date-time
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  message:
+                    type: string
+                    example: "Internal server error during account reset"
+                  error:
+                    type: string
+                    description: Error details
+                  timestamp:
+                    type: string
+                    format: date-time
+
 components:
   securitySchemes:
     bearerAuth:

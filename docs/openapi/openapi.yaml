@@ -395,8 +395,8 @@ paths:
   /api/admin/database-status:
     $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1database-status"
 
-  /api/admin/reset-account:
-    $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1reset-account"
+  /api/users/me/reset-account:
+    $ref: "./user.openapi.yaml#/paths/~1api~1users~1me~1reset-account"
 
   # System Endpoints - Health Monitoring
   /api/health:

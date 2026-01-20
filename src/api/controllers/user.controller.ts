@@ -4,6 +4,9 @@ import CardModel from "../../models/card.model";
 import DeckModel from "../../models/deck.model";
 import GameService from "../../services/game.service";
 import MonthlyLoginRewardsService from "../../services/monthlyLoginRewards.service";
+import StarterService from "../../services/starter.service";
+import db from "../../config/db.config";
+import logger from "../../utils/logger";
 import { Request, Response, NextFunction } from "express"; // Assuming Express types
 import bcrypt from "bcrypt";
 import {
@@ -446,6 +449,217 @@ const UserController = {
       });
     } catch (error) {
       next(error);
+    }
+  },
+
+  /**
+   * Reset a user's account to starter state
+   * @route POST /api/users/me/reset-account
+   * @param {AuthenticatedRequest} req - Express request object with authenticated user
+   * @param {Response} res - Express response object
+   *
+   * This endpoint can be used by:
+   * - A user to reset their own account (no userId in body)
+   * - An admin to reset any user's account (userId in body)
+   *
+   * WARNING: This is a destructive operation that:
+   * - Deletes all user progress
+   * - Resets all currencies to default
+   * - Removes all cards, decks, and game history
+   * - Grants fresh starter content
+   */
+  async resetAccount(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<Response> {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          status: "error",
+          message: "User not authenticated.",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const isAdmin = req.user.role === "admin";
+      const requestedUserId = req.body.userId;
+
+      // Determine which user to reset
+      let targetUserId: string;
+
+      if (requestedUserId) {
+        // If userId is provided, only admins can reset other users' accounts
+        if (!isAdmin && requestedUserId !== req.user.user_id) {
+          return res.status(403).json({
+            status: "error",
+            message: "You can only reset your own account.",
+            timestamp: new Date().toISOString(),
+          });
+        }
+        targetUserId = requestedUserId;
+      } else {
+        // No userId provided - reset the authenticated user's own account
+        targetUserId = req.user.user_id;
+      }
+
+      // Verify target user exists
+      const user = await UserModel.findById(targetUserId);
+      if (!user) {
+        return res.status(404).json({
+          status: "error",
+          message: "User not found",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      const isResettingOwnAccount = targetUserId === req.user.user_id;
+
+      logger.info("Resetting user account", {
+        requesterId: req.user.user_id,
+        requesterUsername: req.user.username,
+        requesterIsAdmin: isAdmin,
+        targetUserId: targetUserId,
+        targetUsername: user.username,
+        isResettingOwnAccount,
+      });
+
+      const client = await db.getClient();
+      await client.query("BEGIN");
+
+      try {
+        // Delete all user-related data
+        // Note: Many tables have CASCADE delete, but we explicitly delete for clarity
+
+        // Delete user achievements
+        await client.query(
+          `DELETE FROM "user_achievements" WHERE user_id = $1`,
+          [targetUserId]
+        );
+
+        // Delete XP transfers
+        await client.query(`DELETE FROM "xp_transfers" WHERE user_id = $1`, [
+          targetUserId,
+        ]);
+
+        // Delete XP pools
+        await client.query(
+          `DELETE FROM "user_card_xp_pools" WHERE user_id = $1`,
+          [targetUserId]
+        );
+
+        // Delete pack opening history
+        await client.query(
+          `DELETE FROM "pack_opening_history" WHERE user_id = $1`,
+          [targetUserId]
+        );
+
+        // Delete mail
+        await client.query(`DELETE FROM "mail" WHERE user_id = $1`, [targetUserId]);
+
+        // Delete fate pick participations
+        await client.query(
+          `DELETE FROM "fate_pick_participations" WHERE participant_id = $1`,
+          [targetUserId]
+        );
+
+        // Delete fate picks created by user
+        await client.query(
+          `DELETE FROM "fate_picks" WHERE original_owner_id = $1`,
+          [targetUserId]
+        );
+
+        // Delete friendships (both as requester and addressee)
+        await client.query(
+          `DELETE FROM "friendships" WHERE requester_id = $1 OR addressee_id = $1`,
+          [targetUserId]
+        );
+
+        // Delete user rankings
+        await client.query(`DELETE FROM "user_rankings" WHERE user_id = $1`, [
+          targetUserId,
+        ]);
+
+        // Delete game results
+        await client.query(
+          `DELETE FROM "game_results" WHERE player1_id = $1 OR player2_id = $1`,
+          [targetUserId]
+        );
+
+        // Delete games (decks will cascade)
+        await client.query(
+          `DELETE FROM "games" WHERE player1_id = $1 OR player2_id = $1`,
+          [targetUserId]
+        );
+
+        // Delete decks (deck_cards will cascade)
+        await client.query(`DELETE FROM "decks" WHERE user_id = $1`, [targetUserId]);
+
+        // Delete user owned cards (user_card_power_ups will cascade)
+        await client.query(
+          `DELETE FROM "user_owned_cards" WHERE user_id = $1`,
+          [targetUserId]
+        );
+
+        // Reset user currencies and tower progress to default values
+        await client.query(
+          `UPDATE "users" 
+           SET gems = 0, 
+               fate_coins = 2, 
+               card_fragments = 0, 
+               total_xp = 0, 
+               pack_count = 0,
+               in_game_currency = 0,
+               tower_floor = 1
+           WHERE user_id = $1`,
+          [targetUserId]
+        );
+
+        await client.query("COMMIT");
+
+        // Grant starter content (cards, deck, packs)
+        await StarterService.grantStarterContent(targetUserId);
+
+        // Fetch updated user to return
+        const updatedUser = await UserModel.findById(targetUserId);
+
+        logger.info("Account reset successfully", {
+          requesterId: req.user.user_id,
+          targetUserId: targetUserId,
+          targetUsername: user.username,
+        });
+
+        return res.status(200).json({
+          status: "success",
+          message: "Account reset successfully",
+          user: {
+            user_id: updatedUser?.user_id,
+            username: updatedUser?.username,
+            gems: updatedUser?.gems,
+            fate_coins: updatedUser?.fate_coins,
+            card_fragments: updatedUser?.card_fragments,
+            total_xp: updatedUser?.total_xp,
+            pack_count: updatedUser?.pack_count,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      logger.error(
+        "Reset account endpoint error",
+        { userId: req.body.userId || req.user?.user_id },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error during account reset",
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
     }
   },
 };

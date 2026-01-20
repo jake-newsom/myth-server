@@ -40,13 +40,6 @@ router.get("/user-pack-count/:userId", AdminController.getUserPackCount);
  */
 router.post("/give-fate-coins", AdminController.giveUserFateCoins);
 
-/**
- * Reset a user's account to starter state
- * POST /api/admin/reset-account
- * Body: { userId: string }
- */
-router.post("/reset-account", AdminController.resetAccount);
-
 // ============================================================================
 // AUTOMATION TRIGGER ENDPOINTS (for manual override of scheduled tasks)
 // ============================================================================

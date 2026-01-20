@@ -95,7 +95,7 @@ export function createBoardCell(
   const boardCell: BoardCell = {
     card,
     tile_enabled: true,
-    tile_effect: undefined,
+    tile_effect: existingTileEffect,
   };
 
   return { boardCell, tileEffectTransferred };
