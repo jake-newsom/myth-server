@@ -512,6 +512,26 @@ components:
           type: string
           format: email
           description: User's email address
+        facebook_id:
+          type: string
+          nullable: true
+          description: User's Facebook ID if connected, null otherwise
+        apple_id:
+          type: string
+          nullable: true
+          description: User's Apple ID if connected, null otherwise
+        google_id:
+          type: string
+          nullable: true
+          description: User's Google ID if connected, null otherwise
+        auth_provider:
+          type: string
+          enum:
+            - local
+            - facebook
+            - apple
+            - google
+          description: The primary authentication provider used to create the account
         in_game_currency:
           type: integer
           description: User's legacy currency amount (deprecated, use gold/gems)
@@ -548,6 +568,7 @@ components:
         - user_id
         - username
         - email
+        - auth_provider
         - in_game_currency
         - gold
         - gems

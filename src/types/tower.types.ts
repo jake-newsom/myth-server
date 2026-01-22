@@ -56,6 +56,7 @@ export interface TowerGameStartResponse {
   game_id: string;
   floor_number: number;
   floor_name: string;
+  opponent_mythology?: string | null; // The dominant mythology/set of the AI deck (for theming)
   ai_deck_preview?: {
     name: string;
     card_count: number;

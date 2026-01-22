@@ -332,6 +332,11 @@ components:
           type: string
           description: Creative thematic name for the floor
           example: "The Frozen Wastes"
+        opponent_mythology:
+          type: string
+          nullable: true
+          description: The dominant mythology/set of the AI deck (for background/music theming)
+          example: "Norse"
         ai_deck_preview:
           type: object
           properties:

@@ -478,6 +478,23 @@ components:
           items:
             type: string
             format: uuid
+        deck_effect:
+          type: string
+          nullable: true
+          enum: [norse, polynesian, japanese]
+          description: |
+            Passive deck effect based on mythology composition (12+ cards of same set):
+            - norse: Played card gains +1 to all sides when opponent leads
+            - polynesian: Random card in hand gains +1 when terrain is added (once per round)
+            - japanese: Random card in hand gains +1 when a card receives a curse (once per round)
+        deck_effect_state:
+          type: object
+          nullable: true
+          description: State tracking for once-per-round deck effects
+          properties:
+            last_triggered_round:
+              type: integer
+              description: The last round number when the deck effect was triggered
 
     Game:
       type: object
@@ -504,6 +521,11 @@ components:
           type: string
           format: uuid
           description: ID of the AI deck used (only in solo mode)
+        opponent_mythology:
+          type: string
+          nullable: true
+          description: The dominant mythology/set of the AI opponent's deck (for theming). Only present in solo/tower mode.
+          example: "Norse"
         game_mode:
           type: string
           enum: [solo, pvp]

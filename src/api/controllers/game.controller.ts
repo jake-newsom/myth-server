@@ -107,11 +107,28 @@ class GameController {
       const startingPlayerId = Math.random() < 0.5 ? userId : AI_PLAYER_ID;
       initialGameState.current_player_id = startingPlayerId;
 
+      // 4. Attach deck effects based on mythology composition
+      const [playerDeckEffect, aiDeckEffect, opponentMythology] =
+        await Promise.all([
+          DeckService.getDeckEffect(deckId),
+          DeckService.getDeckEffect(aiDeckIdToUse),
+          DeckService.getDeckDominantMythology(aiDeckIdToUse),
+        ]);
+
+      if (playerDeckEffect) {
+        initialGameState.player1.deck_effect = playerDeckEffect;
+        initialGameState.player1.deck_effect_state = { last_triggered_round: 0 };
+      }
+      if (aiDeckEffect) {
+        initialGameState.player2.deck_effect = aiDeckEffect;
+        initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
+      }
+
       // Set the final game state (no automatic AI moves)
       let finalGameState = initialGameState;
       let events: BaseGameEvent[] = [];
 
-      // 4. Create game record in database
+      // 5. Create game record in database
       const createdGameResponse: CreateGameResponse =
         await GameService.createGameRecord(
           userId,
@@ -133,6 +150,7 @@ class GameController {
         game_state: gameStateObject,
         game_status: createdGameResponse.game_status,
         ai_deck_id: aiDeckIdToUse,
+        opponent_mythology: opponentMythology,
         current_user_id: userId,
         events,
       });
@@ -180,12 +198,21 @@ class GameController {
       // Hydrate any missing cards in the game state before sanitizing
       await hydrateGameStateCards(game.game_state);
 
+      // Get opponent mythology for solo games (for theming)
+      let opponentMythology: string | null = null;
+      if (game.game_mode === "solo" && game.player2_deck_id) {
+        opponentMythology = await DeckService.getDeckDominantMythology(
+          game.player2_deck_id
+        );
+      }
+
       // Format response to match startSoloGame structure
       res.status(200).json({
         game_id: game.game_id,
         game_state: sanitizeGameStateForPlayer(game.game_state, userId),
         game_status: game.game_status,
         ai_deck_id: game.game_mode === "solo" ? game.player2_deck_id : null,
+        opponent_mythology: opponentMythology,
         current_user_id: userId,
         events: [], // Initialize with empty events array since this is just a get request
       });

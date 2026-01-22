@@ -13,6 +13,11 @@ import {
   CardPlacedEvent,
   EVENT_TYPES,
 } from "./game-events";
+import {
+  applyNorseDeckEffect,
+  triggerTerrainDeckEffects,
+  triggerCurseDeckEffects,
+} from "./deck.effects";
 
 import { v4 as uuidv4 } from "uuid";
 import PowerUpService from "../services/powerUp.service";
@@ -266,11 +271,15 @@ export class GameLogic {
       );
       if (!canPlace) throw new Error(errorMessage);
 
+      // Apply Norse deck effect BEFORE card is placed (checks if opponent leads)
+      // This modifies playedCardData in place with a +1 buff if conditions are met
+      events.push(...applyNorseDeckEffect(newState, playerId, playedCardData));
+
       // Get existing tile effect before placing the card
       const existingTileEffect =
         newState.board[position.y][position.x]?.tile_effect;
 
-      const { boardCell: newBoardCell, tileEffectTransferred } =
+      const { boardCell: newBoardCell, tileEffectTransferred, curseTransferred } =
         gameUtils.createBoardCell(playedCardData, playerId, existingTileEffect);
       player.hand.splice(cardIndexInHand, 1);
 
@@ -281,6 +290,11 @@ export class GameLogic {
           timestamp: Date.now(),
           position,
         } as CardEvent);
+      }
+
+      // Trigger Japanese deck effect if a curse was transferred to the card
+      if (curseTransferred) {
+        events.push(...triggerCurseDeckEffects(newState));
       }
 
       newState.board[position.y][position.x] = newBoardCell;
@@ -294,6 +308,9 @@ export class GameLogic {
         position,
       } as CardPlacedEvent);
 
+      // Track events before abilities to detect terrain additions
+      const eventsBeforeAbilities = events.length;
+
       events.push(
         ...triggerAbilities(TriggerMoment.OnPlace, {
           state: newState,
@@ -302,6 +319,17 @@ export class GameLogic {
           position,
         })
       );
+
+      // Check if any abilities added terrain effects (for Polynesian deck effect)
+      const abilityEvents = events.slice(eventsBeforeAbilities);
+      const terrainAdded = abilityEvents.some(
+        (e) =>
+          e.type === EVENT_TYPES.TILE_STATE_CHANGED &&
+          (e as any).tile?.tile_effect?.terrain !== undefined
+      );
+      if (terrainAdded) {
+        events.push(...triggerTerrainDeckEffects(newState));
+      }
 
       // Resolve combat with adjacent cards
       const combatResult = gameUtils.resolveCombat(
@@ -470,6 +498,9 @@ export class GameLogic {
         ? newState.player2.user_id
         : newState.player1.user_id;
 
+    // Track events to detect terrain additions for deck effects
+    const eventsBeforeTurnEnd = events.length;
+
     events.push(
       ...gameUtils.triggerIndirectAbilities(TriggerMoment.OnTurnEnd, {
         state: newState,
@@ -501,6 +532,17 @@ export class GameLogic {
           position: { x: 0, y: 0 },
         })
       );
+    }
+
+    // Check if any abilities added terrain effects (for Polynesian deck effect)
+    const turnEndEvents = events.slice(eventsBeforeTurnEnd);
+    const terrainAddedDuringTurn = turnEndEvents.some(
+      (e) =>
+        e.type === EVENT_TYPES.TILE_STATE_CHANGED &&
+        (e as any).tile?.tile_effect?.terrain !== undefined
+    );
+    if (terrainAddedDuringTurn) {
+      events.push(...triggerTerrainDeckEffects(newState));
     }
 
     newState.turn_number++;

@@ -3,6 +3,8 @@ import {
   BoardPosition,
   BoardCell,
   TileEffect,
+  TileTerrain,
+  TileStatus,
 } from "../types/game.types";
 import {
   EffectType,
@@ -66,8 +68,9 @@ export function createBoardCell(
   playedCardData: InGameCard | null,
   playerId: string,
   existingTileEffect?: TileEffect
-): { boardCell: BoardCell; tileEffectTransferred: boolean } {
+): { boardCell: BoardCell; tileEffectTransferred: boolean; curseTransferred: boolean } {
   let tileEffectTransferred = false;
+  let curseTransferred = false;
 
   const card: InGameCard | null = playedCardData
     ? {
@@ -85,6 +88,10 @@ export function createBoardCell(
   // Transfer tile effect to card if present and applicable
   if (card && existingTileEffect) {
     tileEffectTransferred = transferTileEffectToCard(card, existingTileEffect);
+    // Check if the transferred effect was a curse
+    if (tileEffectTransferred && existingTileEffect.status === TileStatus.Cursed) {
+      curseTransferred = true;
+    }
   }
 
   // Recalculate power after potential tile effect transfer
@@ -92,13 +99,16 @@ export function createBoardCell(
     card.current_power = updateCurrentPower(card);
   }
 
+  // Only preserve terrain effects (water/lava) on the tile - other effects (curses, boosts) are consumed
+  const preserveTileEffect = existingTileEffect?.terrain !== undefined;
+
   const boardCell: BoardCell = {
     card,
     tile_enabled: true,
-    tile_effect: existingTileEffect,
+    tile_effect: preserveTileEffect ? existingTileEffect : undefined,
   };
 
-  return { boardCell, tileEffectTransferred };
+  return { boardCell, tileEffectTransferred, curseTransferred };
 }
 
 /**

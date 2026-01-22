@@ -5,6 +5,7 @@ import { GameLogic } from "../../game-engine/game.logic";
 import { v4 as uuidv4 } from "uuid";
 import { Request, Response, NextFunction } from "express";
 import { GameState } from "../../types/game.types";
+import DeckService from "../../services/deck.service";
 
 // Define interfaces for queue entries and active matches
 interface QueueEntry {
@@ -175,6 +176,21 @@ const MatchmakingController = {
 
         // Player who initiated match often goes first
         initialGameState.current_player_id = p1UserIdForGame;
+
+        // Attach deck effects based on mythology composition
+        const [p1DeckEffect, p2DeckEffect] = await Promise.all([
+          DeckService.getDeckEffect(deckId),
+          DeckService.getDeckEffect(opponent.deckId),
+        ]);
+
+        if (p1DeckEffect) {
+          initialGameState.player1.deck_effect = p1DeckEffect;
+          initialGameState.player1.deck_effect_state = { last_triggered_round: 0 };
+        }
+        if (p2DeckEffect) {
+          initialGameState.player2.deck_effect = p2DeckEffect;
+          initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
+        }
 
         // Create a new game in the database
         const gameQuery = `

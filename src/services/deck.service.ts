@@ -4,6 +4,7 @@ import db from "../config/db.config";
 // Let's adjust the import based on where AI_PLAYER_ID is defined.
 // If it's exported from game.controller.ts:
 import { AI_PLAYER_ID } from "../api/controllers/game.controller";
+import { DeckEffectType } from "../types/game.types";
 
 // Define a simple type for deck data, expand as needed
 interface Deck {
@@ -110,6 +111,27 @@ class DeckService {
   }
 
   /**
+   * Gets the dominant mythology (set) of a deck by counting the most common set.
+   * Returns the set name, or null if the deck is empty or has no sets.
+   */
+  async getDeckDominantMythology(deckId: string): Promise<string | null> {
+    const query = `
+      SELECT s.name, COUNT(*) as count
+      FROM deck_cards dc
+      JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
+      JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN characters ch ON cv.character_id = ch.character_id
+      JOIN sets s ON ch.set_id = s.set_id
+      WHERE dc.deck_id = $1
+      GROUP BY s.name
+      ORDER BY count DESC
+      LIMIT 1;
+    `;
+    const { rows } = await db.query(query, [deckId]);
+    return rows.length > 0 ? rows[0].name : null;
+  }
+
+  /**
    * Creates AI card copies based on player's card instances.
    * (This is the logic moved from game.controller.ts)
    */
@@ -142,6 +164,53 @@ class DeckService {
       }
     }
     return aiCardInstanceIds;
+  }
+
+  /**
+   * Gets the deck effect type based on mythology composition.
+   * Returns the effect type if a single mythology has at least minCount cards.
+   * Supported mythologies: Norse, Polynesian, Japanese
+   * 
+   * @param deckId - The deck ID to analyze
+   * @param minCount - Minimum cards of a single mythology required (default: 12)
+   * @returns The deck effect type or null if no mythology meets the threshold
+   */
+  async getDeckEffect(
+    deckId: string,
+    minCount: number = 12
+  ): Promise<DeckEffectType | null> {
+    const query = `
+      SELECT LOWER(s.name) as set_name, COUNT(*) as count
+      FROM deck_cards dc
+      JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
+      JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN characters ch ON cv.character_id = ch.character_id
+      JOIN sets s ON ch.set_id = s.set_id
+      WHERE dc.deck_id = $1
+      GROUP BY s.name
+      HAVING COUNT(*) >= $2
+      ORDER BY count DESC
+      LIMIT 1;
+    `;
+    const { rows } = await db.query(query, [deckId, minCount]);
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const setName = rows[0].set_name as string;
+
+    // Map set names to deck effect types
+    if (setName === "norse") {
+      return "norse";
+    } else if (setName === "polynesian") {
+      return "polynesian";
+    } else if (setName === "japanese") {
+      return "japanese";
+    }
+
+    // Other mythologies don't have deck effects yet
+    return null;
   }
 }
 

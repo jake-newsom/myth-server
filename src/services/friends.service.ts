@@ -466,6 +466,7 @@ class FriendsService {
       const DeckModel = require("../models/deck.model").default;
       const GameLogic = require("../game-engine/game.logic").GameLogic;
       const db = require("../config/db.config").default;
+      const DeckService = require("./deck.service").default;
 
       // Validate challenger's deck
       const challengerDeck = await DeckModel.findByIdAndUserIdWithCards(
@@ -534,6 +535,21 @@ class FriendsService {
 
       // Challenger goes first
       initialGameState.current_player_id = challengerId;
+
+      // Attach deck effects based on mythology composition
+      const [challengerDeckEffect, friendDeckEffect] = await Promise.all([
+        DeckService.getDeckEffect(deckId),
+        DeckService.getDeckEffect(friendDeckId),
+      ]);
+
+      if (challengerDeckEffect) {
+        initialGameState.player1.deck_effect = challengerDeckEffect;
+        initialGameState.player1.deck_effect_state = { last_triggered_round: 0 };
+      }
+      if (friendDeckEffect) {
+        initialGameState.player2.deck_effect = friendDeckEffect;
+        initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
+      }
 
       // Create the game in the database
       const gameQuery = `

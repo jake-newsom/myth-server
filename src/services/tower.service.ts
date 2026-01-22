@@ -19,7 +19,6 @@ import {
 import UserModel from "../models/user.model";
 import DeckService from "./deck.service";
 import { GameLogic } from "../game-engine/game.logic";
-import GameService from "./game.service";
 import { AI_PLAYER_ID } from "../api/controllers/game.controller";
 
 // Constants for reward calculation
@@ -333,6 +332,21 @@ class TowerService {
       const startingPlayerId = Math.random() < 0.5 ? userId : AI_PLAYER_ID;
       initialGameState.current_player_id = startingPlayerId;
 
+      // Attach deck effects based on mythology composition
+      const [playerDeckEffect, aiDeckEffect] = await Promise.all([
+        DeckService.getDeckEffect(playerDeckId),
+        DeckService.getDeckEffect(floor.ai_deck_id),
+      ]);
+
+      if (playerDeckEffect) {
+        initialGameState.player1.deck_effect = playerDeckEffect;
+        initialGameState.player1.deck_effect_state = { last_triggered_round: 0 };
+      }
+      if (aiDeckEffect) {
+        initialGameState.player2.deck_effect = aiDeckEffect;
+        initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
+      }
+
       // Create game record with floor_number
       const createdGame = await this.createTowerGameRecord(
         userId,
@@ -343,16 +357,19 @@ class TowerService {
         initialGameState
       );
 
-      // Get AI deck info for preview
-      const aiDeckResult = await client.query(
-        "SELECT name FROM decks WHERE deck_id = $1",
-        [floor.ai_deck_id]
-      );
+      // Get AI deck info for preview and opponent mythology in parallel
+      const [aiDeckResult, opponentMythology] = await Promise.all([
+        client.query("SELECT name FROM decks WHERE deck_id = $1", [
+          floor.ai_deck_id,
+        ]),
+        DeckService.getDeckDominantMythology(floor.ai_deck_id),
+      ]);
 
       return {
         game_id: createdGame.game_id,
         floor_number: floorNumber,
         floor_name: floor.name,
+        opponent_mythology: opponentMythology,
         ai_deck_preview: aiDeckResult.rows.length
           ? {
               name: aiDeckResult.rows[0].name,
