@@ -1,7 +1,7 @@
 import { TemporaryEffect, TriggerMoment } from "../../types/card.types";
 import {
   AbilityMap,
-  CardEvent,
+  CardPowerChangedEvent,
   CombatResolverMap,
   EVENT_TYPES,
 } from "../../types/game-engine.types";
@@ -79,7 +79,7 @@ export const polynesianCombatResolvers: CombatResolverMap = {
 
   // Harbor Guardian: Sacrifices 3 power to protect allies from defeat
   "Harbor Guardian": (context) => {
-    const { triggerCard, flippedCard, flippedBy } = context;
+    const { triggerCard, flippedCard, flippedBy, position } = context;
 
     // Only protect allies, not self
     if (
@@ -109,7 +109,7 @@ export const polynesianCombatResolvers: CombatResolverMap = {
       return {
         preventDefeat: true,
         events: [
-          createOrUpdateDebuff(triggerCard, 1000, 3, "Harbor Protection", {
+          createOrUpdateDebuff(triggerCard, 1000, 3, "Harbor Protection", position, {
             animation: "harbor-protection",
           }),
         ],
@@ -144,7 +144,7 @@ export const polynesianAbilities: AbilityMap = {
 
     if (!hasLavaEffect && !isOnLavaTile) return [];
 
-    return [createOrUpdateBuff(triggerCard, 1000, 1, "Lava Field")];
+    return [createOrUpdateBuff(triggerCard, 1000, 1, "Lava Field", position)];
   },
 
   // Cleansing Hula: At the start of each round, cleanse a random ally of all curses
@@ -159,7 +159,10 @@ export const polynesianAbilities: AbilityMap = {
     );
 
     if (randomAlly) {
-      return [cleanseDebuffs(randomAlly, 1000, "nature-swirl")];
+      const allyPosition = getPositionOfCardById(randomAlly.user_card_instance_id, board);
+      if (allyPosition) {
+        return [cleanseDebuffs(randomAlly, 1000, allyPosition, "nature-swirl")];
+      }
     }
     return [];
   },
@@ -185,7 +188,10 @@ export const polynesianAbilities: AbilityMap = {
 
     const allAllies = getAllAlliesOnBoard(board, triggerCard.owner);
     for (const ally of allAllies) {
-      gameEvents.push(cleanseDebuffs(ally, 1000, "rain"));
+      const allyPosition = getPositionOfCardById(ally.user_card_instance_id, board);
+      if (allyPosition) {
+        gameEvents.push(cleanseDebuffs(ally, 1000, allyPosition, "rain"));
+      }
     }
 
     return gameEvents;
@@ -196,6 +202,7 @@ export const polynesianAbilities: AbilityMap = {
     const {
       triggerCard,
       triggerMoment,
+      position,
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
@@ -206,12 +213,18 @@ export const polynesianAbilities: AbilityMap = {
       context.originalTriggerCard!.user_card_instance_id !==
         triggerCard.user_card_instance_id
     ) {
-      gameEvents.push(
-        createOrUpdateBuff(context.originalTriggerCard!, 1000, 1, "Tide Ward", {
-          animation: "tide-ward",
-          sourceCardId: triggerCard.user_card_instance_id,
-        })
+      const originalCardPosition = getPositionOfCardById(
+        context.originalTriggerCard!.user_card_instance_id,
+        board
       );
+      if (originalCardPosition) {
+        gameEvents.push(
+          createOrUpdateBuff(context.originalTriggerCard!, 1000, 1, "Tide Ward", originalCardPosition, {
+            animation: "tide-ward",
+            sourceCardId: triggerCard.user_card_instance_id,
+          })
+        );
+      }
     } else if (triggerMoment === TriggerMoment.OnPlace) {
       //get cards with tideward buff
       const tideWardCards = getCardsByCondition(board, (card) =>
@@ -224,22 +237,28 @@ export const polynesianAbilities: AbilityMap = {
       console.log("Tide Ward cards", tideWardCards);
 
       //buff kanaloa
-      if (tideWardCards.length > 0) {
+      if (tideWardCards.length > 0 && position) {
         gameEvents.push(
-          addTempBuff(triggerCard, 1000, tideWardCards.length, "Tide Ward", {
+          addTempBuff(triggerCard, 1000, tideWardCards.length, {
+            name: "Tide Ward",
             animation: "bubble-swirl",
+            position,
           })
         );
       }
 
       //remove tideward buff from cards
       for (const card of tideWardCards) {
-        gameEvents.push(
-          removeBuffsByCondition(
-            card,
-            (effect: TemporaryEffect) => effect.name === "Tide Ward"
-          )
-        );
+        const cardPosition = getPositionOfCardById(card.user_card_instance_id, board);
+        if (cardPosition) {
+          gameEvents.push(
+            removeBuffsByCondition(
+              card,
+              (effect: TemporaryEffect) => effect.name === "Tide Ward",
+              cardPosition
+            )
+          );
+        }
       }
     }
 
@@ -248,12 +267,12 @@ export const polynesianAbilities: AbilityMap = {
 
   // War Stance: Gain +1 whenever an ally is defeated up to 5. At max, attack adjacent enemies again.
   "War Stance": (context) => {
-    const { triggerCard, originalTriggerCard, state } = context;
+    const { triggerCard, originalTriggerCard, state, position } = context;
     const label = "War Stance";
     const gameEvents: BaseGameEvent[] = [];
 
-    if (originalTriggerCard?.owner !== triggerCard.owner) {
-      gameEvents.push(createOrUpdateBuff(triggerCard, 1000, 1, label));
+    if (originalTriggerCard?.owner !== triggerCard.owner && position) {
+      gameEvents.push(createOrUpdateBuff(triggerCard, 1000, 1, label, position));
     }
 
     //check buff for max value
@@ -292,11 +311,16 @@ export const polynesianAbilities: AbilityMap = {
       });
 
       if (hasBlessing) {
-        gameEvents.push(
-          addTempBuff(ally, 3, 1, "Fertile Ground", {
-            animation: "nature-swirl",
-          })
-        );
+        const allyPosition = getPositionOfCardById(ally.user_card_instance_id, board);
+        if (allyPosition) {
+          gameEvents.push(
+            addTempBuff(ally, 3, 1, {
+              name: "Fertile Ground",
+              animation: "nature-swirl",
+              position: allyPosition,
+            })
+          );
+        }
       }
     }
 
@@ -305,15 +329,27 @@ export const polynesianAbilities: AbilityMap = {
 
   // Sun Trick: Gain +1 every round in hand, resets after combat
   "Sun Trick": (context) => {
-    const { triggerCard } = context;
+    const { triggerCard, position, state } = context;
     const label = "Sun Trick";
 
     const gameEvents: BaseGameEvent[] = [];
 
+    // Sentinel position for cards in hand
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
+
     if (context.triggerMoment === TriggerMoment.HandOnRoundEnd) {
-      gameEvents.push(createOrUpdateBuff(triggerCard, 1000, 1, label));
+      gameEvents.push(createOrUpdateBuff(triggerCard, 1000, 1, label, HAND_POSITION));
       // triggerCard.current_power = updateCurrentPower(triggerCard);
     } else if (context.triggerMoment === TriggerMoment.AfterCombat) {
+      // Calculate power being removed
+      const sunTrickBuff = triggerCard.temporary_effects.find(
+        (effect) => effect.name === label
+      );
+      const powerRemoved = sunTrickBuff
+        ? (sunTrickBuff.power.top || 0) + (sunTrickBuff.power.bottom || 0) +
+          (sunTrickBuff.power.left || 0) + (sunTrickBuff.power.right || 0)
+        : 0;
+
       //after combat, remove the buff
       triggerCard.temporary_effects = triggerCard.temporary_effects.filter(
         (effect) => effect.name !== label
@@ -326,7 +362,10 @@ export const polynesianAbilities: AbilityMap = {
         eventId: uuidv4(),
         timestamp: Date.now(),
         cardId: triggerCard.user_card_instance_id,
-      } as CardEvent);
+        powerDelta: -powerRemoved,
+        effectName: label,
+        position,
+      } as CardPowerChangedEvent);
     }
 
     return gameEvents;
@@ -415,9 +454,13 @@ export const polynesianAbilities: AbilityMap = {
       const randomIndex = Math.floor(Math.random() * player.hand.length);
       const randomCard = hydrated_card_data_cache?.[player.hand[randomIndex]];
       if (randomCard) {
+        // Card is in hand, use sentinel position
+        const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
         gameEvents.push(
-          addTempBuff(randomCard, 1000, 1, "Sacred Spring", {
+          addTempBuff(randomCard, 1000, 1, {
+            name: "Sacred Spring",
             animation: "bubble-swirl-in",
+            position: HAND_POSITION,
           })
         );
       }
@@ -442,9 +485,16 @@ export const polynesianAbilities: AbilityMap = {
       triggerCard.owner
     );
     for (const enemy of adjacentEnemies) {
-      gameEvents.push(
-        debuff(enemy, -1, "Icy Presence", { animation: "icicle" })
-      );
+      const enemyPosition = getPositionOfCardById(enemy.user_card_instance_id, board);
+      if (enemyPosition) {
+        gameEvents.push(
+          debuff(enemy, -1, {
+            name: "Icy Presence",
+            animation: "icicle",
+            position: enemyPosition,
+          })
+        );
+      }
     }
 
     return gameEvents;
@@ -497,22 +547,25 @@ export const polynesianAbilities: AbilityMap = {
     } else if (triggerMoment === TriggerMoment.AnyOnPlace) {
       const { originalTriggerCard } = context;
       if (originalTriggerCard?.owner === triggerCard.owner) {
-        const randomSide = getRandomSide();
-        gameEvents.push(
-          addTempBuff(
-            originalTriggerCard,
-            1000,
-            { [randomSide]: 1 },
-            "Rain's Blessing",
-            {
-              animation: "bubbles-centered",
-              position: getPositionOfCardById(
-                originalTriggerCard.user_card_instance_id,
-                board
-              )!,
-            }
-          )
+        const cardPosition = getPositionOfCardById(
+          originalTriggerCard.user_card_instance_id,
+          board
         );
+        if (cardPosition) {
+          const randomSide = getRandomSide();
+          gameEvents.push(
+            addTempBuff(
+              originalTriggerCard,
+              1000,
+              { [randomSide]: 1 },
+              {
+                name: "Rain's Blessing",
+                animation: "bubbles-centered",
+                position: cardPosition,
+              }
+            )
+          );
+        }
       }
     }
 
@@ -521,12 +574,19 @@ export const polynesianAbilities: AbilityMap = {
 
   // Spirit Bind: Any card that flips Milu loses 2 power permanently.
   "Spirit Bind": (context) => {
-    const { flippedBy } = context;
+    const { flippedBy, state: { board } } = context;
 
     if (flippedBy) {
-      return [
-        debuff(flippedBy, -2, "Spirit Bind", { animation: "smoke-shrink" }),
-      ];
+      const flippedByPosition = getPositionOfCardById(flippedBy.user_card_instance_id, board);
+      if (flippedByPosition) {
+        return [
+          debuff(flippedBy, -2, {
+            name: "Spirit Bind",
+            animation: "smoke-shrink",
+            position: flippedByPosition,
+          }),
+        ];
+      }
     }
 
     return [];
@@ -631,6 +691,8 @@ export const polynesianAbilities: AbilityMap = {
       board
     );
 
+    if (!enemyPosition) return [];
+
     const randomSide = getRandomSide();
 
     const event = addTempDebuff(
@@ -638,8 +700,9 @@ export const polynesianAbilities: AbilityMap = {
       1000,
       { [randomSide]: -2 },
       {
+        name: "Thunderous Omen",
         animation: "lightning",
-        ...(enemyPosition && { position: enemyPosition }),
+        position: enemyPosition,
       }
     );
 
@@ -667,9 +730,16 @@ export const polynesianAbilities: AbilityMap = {
 
     for (let i = 0; i < waterTiles.length; i++) {
       const randomEnemy = chooseRandomCard(enemies);
-      gameEvents.push(
-        addTempDebuff(randomEnemy, 1000, -1, { animation: "water-circles-few" })
-      );
+      const enemyPosition = getPositionOfCardById(randomEnemy.user_card_instance_id, board);
+      if (enemyPosition) {
+        gameEvents.push(
+          addTempDebuff(randomEnemy, 1000, -1, {
+            name: "Dual Aspect",
+            animation: "water-circles-few",
+            position: enemyPosition,
+          })
+        );
+      }
     }
     return gameEvents;
   },

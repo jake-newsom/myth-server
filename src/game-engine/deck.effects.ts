@@ -7,11 +7,14 @@
  * - Japanese: Random card in hand gains +1 when a card receives a curse (once per round)
  */
 
-import { GameState, Player, DeckEffectType } from "../types/game.types";
+import { GameState, Player, DeckEffectType, BoardPosition } from "../types/game.types";
 import { InGameCard } from "../types/card.types";
-import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../types/game-engine.types";
+import { BaseGameEvent, CardPowerChangedEvent, EVENT_TYPES } from "../types/game-engine.types";
 import { addTempBuff, updateCurrentPower } from "./ability.utils";
 import { v4 as uuidv4 } from "uuid";
+
+// Sentinel position for cards in hand (not on board)
+const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
 
 /**
  * Calculate the current round number from turn number.
@@ -117,10 +120,13 @@ export function applyNorseDeckEffect(
   }
 
   // Apply +1 buff to all sides of the placed card
+  // Card is being placed, use HAND_POSITION as the buff is applied before board placement
   const events: BaseGameEvent[] = [];
   events.push(
-    addTempBuff(placedCard, 1000, 1, "Norse Deck Bonus", {
+    addTempBuff(placedCard, 1000, 1, {
+      name: "Norse Deck Bonus",
       animation: "norse-deck-effect",
+      position: HAND_POSITION,
     })
   );
 
@@ -181,8 +187,10 @@ export function applyPolynesianDeckEffect(
   // Apply +1 buff to the random hand card
   const events: BaseGameEvent[] = [];
   events.push(
-    addTempBuff(randomCard, 1000, 1, "Polynesian Deck Bonus", {
+    addTempBuff(randomCard, 1000, 1, {
+      name: "Polynesian Deck Bonus",
       animation: "polynesian-deck-effect",
+      position: HAND_POSITION,
     })
   );
 
@@ -206,7 +214,10 @@ export function applyPolynesianDeckEffect(
     cardId: randomCard.user_card_instance_id,
     animation: "polynesian-deck-effect",
     sourcePlayerId: beneficiaryPlayerId,
-  } as CardEvent);
+    powerDelta: 1,
+    effectName: "Polynesian Deck Bonus",
+    position: HAND_POSITION,
+  } as CardPowerChangedEvent);
 
   return events;
 }
@@ -252,8 +263,10 @@ export function applyJapaneseDeckEffect(
   // Apply +1 buff to the random hand card
   const events: BaseGameEvent[] = [];
   events.push(
-    addTempBuff(randomCard, 1000, 1, "Japanese Deck Bonus", {
+    addTempBuff(randomCard, 1000, 1, {
+      name: "Japanese Deck Bonus",
       animation: "japanese-deck-effect",
+      position: HAND_POSITION,
     })
   );
 
@@ -277,7 +290,10 @@ export function applyJapaneseDeckEffect(
     cardId: randomCard.user_card_instance_id,
     animation: "japanese-deck-effect",
     sourcePlayerId: beneficiaryPlayerId,
-  } as CardEvent);
+    powerDelta: 1,
+    effectName: "Japanese Deck Bonus",
+    position: HAND_POSITION,
+  } as CardPowerChangedEvent);
 
   return events;
 }

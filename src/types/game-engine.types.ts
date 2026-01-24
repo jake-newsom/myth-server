@@ -61,6 +61,13 @@ export interface TileEvent extends BaseGameEvent {
   tile: Pick<BoardCell, "tile_enabled" | "tile_effect">;
 }
 
+export interface CardPowerChangedEvent extends CardEvent {
+  type: typeof EVENT_TYPES.CARD_POWER_CHANGED;
+  powerDelta: number;      // e.g., +2 or -3
+  effectName?: string;     // e.g., "Blessing of Amaterasu"
+  position: BoardPosition; // Required for power change events
+}
+
 export type CombatContext = TriggerContext & {
   combatType: (typeof COMBAT_TYPES)[keyof typeof COMBAT_TYPES];
 };

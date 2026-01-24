@@ -4,6 +4,7 @@ import {
   BaseGameEvent,
   CardEvent,
   CardPlacedEvent,
+  CardPowerChangedEvent,
   TileEvent,
   batchEvents,
 } from "../types";
@@ -15,6 +16,7 @@ export {
   BaseGameEvent,
   CardEvent,
   CardPlacedEvent,
+  CardPowerChangedEvent,
   TileEvent,
   batchEvents,
 };

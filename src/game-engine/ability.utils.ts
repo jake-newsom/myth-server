@@ -16,6 +16,7 @@ import { simulationContext } from "./simulation.context";
 import {
   BaseGameEvent,
   CardEvent,
+  CardPowerChangedEvent,
   EVENT_TYPES,
   TileEvent,
 } from "./game-events";
@@ -101,30 +102,49 @@ export function getOpponentId(playerId: string, gameState: GameState): string {
     : gameState.player1.user_id;
 }
 
+/**
+ * Helper to calculate total power delta from a power value
+ */
+function calculatePowerDelta(
+  power: number | Partial<PowerValues>,
+  isDebuff = false
+): number {
+  if (typeof power === "number") {
+    return isDebuff ? -Math.abs(power) : power;
+  }
+  // For partial power values, sum all defined values
+  const total = (power.top || 0) + (power.bottom || 0) + (power.left || 0) + (power.right || 0);
+  return isDebuff ? -Math.abs(total) : total;
+}
+
+type PowerChangeEventOptions = {
+  name?: string;
+  data?: Record<string, any>;
+  animation?: string;
+  position: BoardPosition;
+};
+
 export function buff(
   card: InGameCard,
   amount: number | PowerValues,
-  name?: string,
-  data?: Record<string, any>
+  options: PowerChangeEventOptions
 ): BaseGameEvent {
-  return addTempBuff(card, 1000, amount, name, data);
+  return addTempBuff(card, 1000, amount, options);
 }
 
 export function debuff(
   card: InGameCard,
   amount: number | PowerValues,
-  name?: string,
-  data?: Record<string, any>
+  options: PowerChangeEventOptions
 ): BaseGameEvent {
-  return addTempDebuff(card, 1000, amount, { name, data });
+  return addTempDebuff(card, 1000, amount, options);
 }
 
 export function addTempBuff(
   card: InGameCard,
   duration: number,
   power: number | Partial<PowerValues>,
-  name?: string,
-  data?: Record<string, any>
+  options: PowerChangeEventOptions
 ): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
@@ -143,32 +163,28 @@ export function addTempBuff(
   card.temporary_effects.push({
     power: buff,
     duration,
-    name,
-    data,
+    name: options.name,
+    data: options.data,
     type: EffectType.Buff,
   });
 
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
-    animation: data?.animation || "buff",
+    animation: options.data?.animation || options.animation || "buff",
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
-  } as CardEvent;
+    powerDelta: calculatePowerDelta(power),
+    effectName: options.name,
+    position: options.position,
+  } as CardPowerChangedEvent;
 }
-
-type EventOptions = {
-  name?: string;
-  data?: Record<string, any>;
-  animation?: string;
-  position?: BoardPosition;
-};
 
 /**
  *
  * @param card - The card to add the debuff to
  * @param duration - The duration of the debuff
- * @param power - The power of the debuff (send a negative integer)
+ * @param power - The power of the debuff (send a positive integer, will be negated)
  * @param options - The options for the debuff
  * @returns A game event
  */
@@ -176,7 +192,7 @@ export function addTempDebuff(
   card: InGameCard,
   duration: number,
   power: number | Partial<PowerValues>,
-  options?: EventOptions
+  options: PowerChangeEventOptions
 ): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
@@ -194,19 +210,21 @@ export function addTempDebuff(
   card.temporary_effects.push({
     power: negativePower,
     duration,
-    name: options?.name,
-    data: options?.data,
+    name: options.name,
+    data: options.data,
     type: EffectType.Debuff,
   });
 
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
-    animation: options?.animation || "debuff",
+    animation: options.animation || "debuff",
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
-    position: options?.position,
-  } as CardEvent;
+    powerDelta: calculatePowerDelta(power, true),
+    effectName: options.name,
+    position: options.position,
+  } as CardPowerChangedEvent;
 }
 
 export function createOrUpdateBuff(
@@ -214,11 +232,12 @@ export function createOrUpdateBuff(
   duration: number,
   power: number | Partial<PowerValues>,
   name: string,
+  position: BoardPosition,
   data?: Record<string, any>
 ): BaseGameEvent {
   //create the initial buff if it doesn't exist
   if (!card.temporary_effects.some((effect) => effect.name === name)) {
-    addTempBuff(card, duration, 0, name, data);
+    addTempBuff(card, duration, 0, { name, data, position });
   }
 
   //increase the value by whatever was provided
@@ -248,7 +267,10 @@ export function createOrUpdateBuff(
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
-  } as CardEvent;
+    powerDelta: calculatePowerDelta(power),
+    effectName: name,
+    position,
+  } as CardPowerChangedEvent;
 }
 
 /**
@@ -257,6 +279,7 @@ export function createOrUpdateBuff(
  * @param duration - The duration of the debuff
  * @param power - The power of the debuff (send a positive integer)
  * @param name - The name of the debuff
+ * @param position - The position of the card on the board
  * @param data - The data of the debuff
  * @returns A game event
  */
@@ -265,11 +288,12 @@ export function createOrUpdateDebuff(
   duration: number,
   power: number | Partial<PowerValues>,
   name: string,
+  position: BoardPosition,
   data?: Record<string, any>
 ): BaseGameEvent {
   //create the initial debuff if it doesn't exist
   if (!card.temporary_effects.some((effect) => effect.name === name)) {
-    addTempDebuff(card, duration, 0, { name, ...data });
+    addTempDebuff(card, duration, 0, { name, data, position });
   }
 
   //increase the value by whatever was provided
@@ -299,7 +323,10 @@ export function createOrUpdateDebuff(
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
-  } as CardEvent;
+    powerDelta: calculatePowerDelta(power, true),
+    effectName: name,
+    position,
+  } as CardPowerChangedEvent;
 }
 
 export const getPositionOfCardById = (
@@ -800,10 +827,22 @@ export function getCardsInSameColumn(
 
 export function removeTemporaryBuffs(
   card: InGameCard,
+  position: BoardPosition,
   animation?: string
 ): BaseGameEvent {
-  // Remove positive temporary effects only, keeping debuffs
+  // Calculate total power being removed before filtering
+  let totalRemoved = 0;
   if (card.temporary_effects) {
+    for (const effect of card.temporary_effects) {
+      const totalPowerChange = Object.values(effect.power).reduce(
+        (sum, val) => sum + (val || 0),
+        0
+      );
+      if (totalPowerChange > 0) {
+        totalRemoved += totalPowerChange;
+      }
+    }
+    // Remove positive temporary effects only, keeping debuffs
     card.temporary_effects = card.temporary_effects.filter((effect) => {
       const totalPowerChange = Object.values(effect.power).reduce(
         (sum, val) => sum + (val || 0),
@@ -819,15 +858,30 @@ export function removeTemporaryBuffs(
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
-  } as CardEvent;
+    powerDelta: -totalRemoved,
+    effectName: "Buff Removed",
+    position,
+  } as CardPowerChangedEvent;
 }
 
 export function removeBuffsByCondition(
   card: InGameCard,
   condition: (effect: TemporaryEffect) => boolean,
+  position: BoardPosition,
   animation?: string
 ): BaseGameEvent {
+  // Calculate total power being removed before filtering
+  let totalRemoved = 0;
   if (card.temporary_effects) {
+    for (const effect of card.temporary_effects) {
+      if (condition(effect)) {
+        const totalPowerChange = Object.values(effect.power).reduce(
+          (sum, val) => sum + (val || 0),
+          0
+        );
+        totalRemoved += totalPowerChange;
+      }
+    }
     card.temporary_effects = card.temporary_effects.filter(
       (effect) => !condition(effect)
     );
@@ -838,7 +892,10 @@ export function removeBuffsByCondition(
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
-  } as CardEvent;
+    powerDelta: -totalRemoved,
+    effectName: "Buff Removed",
+    position,
+  } as CardPowerChangedEvent;
 }
 
 // New utility functions for Polynesian abilities
@@ -892,9 +949,11 @@ export function getSurroundingTiles(
 export function cleanseDebuffs(
   card: InGameCard,
   count: number,
+  position: BoardPosition,
   animation?: string
 ): BaseGameEvent {
   // Remove negative temporary effects (debuffs) up to the specified count
+  let totalCleansed = 0;
   if (card.temporary_effects) {
     let removed = 0;
     card.temporary_effects = card.temporary_effects.filter((effect) => {
@@ -907,6 +966,7 @@ export function cleanseDebuffs(
 
       if (totalPowerChange < 0) {
         removed++;
+        totalCleansed += Math.abs(totalPowerChange); // Track cleansed amount
         return false; // Remove this debuff
       }
       return true;
@@ -919,7 +979,10 @@ export function cleanseDebuffs(
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
-  } as CardEvent;
+    powerDelta: totalCleansed, // Positive because we're removing debuffs
+    effectName: "Cleanse",
+    position,
+  } as CardPowerChangedEvent;
 }
 
 export function getAllAlliesOnBoard(
@@ -964,12 +1027,19 @@ export function applyTileEffectsToMovedCard(
   const newTile = getTileAtPosition(newPosition, board);
 
   if (newTile?.tile_effect) {
+    const tileEffect = newTile.tile_effect;
     const tileEffectTransferred = transferTileEffectToCard(
       card,
-      newTile.tile_effect
+      tileEffect
     );
 
     if (tileEffectTransferred) {
+      // Calculate powerDelta from tile effect
+      const powerDelta = tileEffect.power
+        ? (tileEffect.power.top || 0) + (tileEffect.power.bottom || 0) +
+          (tileEffect.power.left || 0) + (tileEffect.power.right || 0)
+        : 0;
+
       // Update the card's current power after applying tile effect
       card.current_power = updateCurrentPower(card);
 
@@ -979,7 +1049,9 @@ export function applyTileEffectsToMovedCard(
         timestamp: Date.now(),
         cardId: card.user_card_instance_id,
         position: newPosition,
-      } as CardEvent);
+        powerDelta,
+        effectName: tileEffect.animation_label || "Tile Effect",
+      } as CardPowerChangedEvent);
     }
   }
 
@@ -1176,7 +1248,8 @@ export function getAlternatingTurnEffect(
 
 export function disableAbilities(
   card: InGameCard,
-  turns: number
+  turns: number,
+  position: BoardPosition
 ): BaseGameEvent {
   // TODO: Need to implement ability disabling system
   // This would require adding a disabled_abilities field to the card or a game state system
@@ -1186,20 +1259,16 @@ export function disableAbilities(
     card.temporary_effects = [];
   }
 
-  // return {
-  //   type: EVENT_TYPES.CARD_POWER_CHANGED,
-  //   animation: "abilities-disabled",
-  //   eventId: uuidv4(),
-  //   timestamp: Date.now(),
-  //   cardId: card.user_card_instance_id,
-  // } as CardEvent;
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
     animation: "abilities-disabled",
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
-  } as CardEvent;
+    powerDelta: 0,
+    effectName: "Abilities Disabled",
+    position,
+  } as CardPowerChangedEvent;
 }
 
 export function addTileBlessing(
@@ -1237,7 +1306,8 @@ export function addTileBlessing(
 
 export function protectFromDefeat(
   card: InGameCard,
-  turns: number
+  turns: number,
+  position: BoardPosition
 ): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
@@ -1255,7 +1325,10 @@ export function protectFromDefeat(
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
-  } as CardEvent;
+    powerDelta: 0,
+    effectName: "Protection",
+    position,
+  } as CardPowerChangedEvent;
 }
 
 export function blockTile(

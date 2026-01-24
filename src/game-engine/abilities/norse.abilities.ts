@@ -108,9 +108,16 @@ export const norseAbilities: AbilityMap = {
     const gameEvents: BaseGameEvent[] = [];
     const allAllies = getAllAlliesOnBoard(board, triggerCard.owner);
     for (const ally of allAllies) {
-      gameEvents.push(
-        buff(ally, 1, "Foresight", { animation: "red-lightning" })
-      );
+      const allyPosition = getPositionOfCardById(ally.user_card_instance_id, board);
+      if (allyPosition) {
+        gameEvents.push(
+          buff(ally, 1, {
+            name: "Foresight",
+            animation: "red-lightning",
+            position: allyPosition,
+          })
+        );
+      }
     }
     return gameEvents;
   },
@@ -132,22 +139,21 @@ export const norseAbilities: AbilityMap = {
 
     //OWEN
     for (const enemy of enemyCards) {
-      gameEvents.push(
-        addTempDebuff(
-          enemy,
-          1000,
-          { top: -2 },
-          {
-            animation: "lightning-6",
-            ...(getPositionOfCardById(enemy.user_card_instance_id, board) && {
-              position: getPositionOfCardById(
-                enemy.user_card_instance_id,
-                board
-              )!,
-            }),
-          }
-        )
-      );
+      const enemyPosition = getPositionOfCardById(enemy.user_card_instance_id, board);
+      if (enemyPosition) {
+        gameEvents.push(
+          addTempDebuff(
+            enemy,
+            1000,
+            { top: -2 },
+            {
+              name: "Thunderous Push",
+              animation: "lightning-6",
+              position: enemyPosition,
+            }
+          )
+        );
+      }
     }
 
     return gameEvents;
@@ -167,9 +173,16 @@ export const norseAbilities: AbilityMap = {
       triggerCard.owner
     );
     for (const ally of adjacentAllies) {
-      gameEvents.push(
-        buff(ally, 1, "Mother's Blessing", { animation: "light-cross-spin" })
-      );
+      const allyPosition = getPositionOfCardById(ally.user_card_instance_id, board);
+      if (allyPosition) {
+        gameEvents.push(
+          buff(ally, 1, {
+            name: "Mother's Blessing",
+            animation: "light-cross-spin",
+            position: allyPosition,
+          })
+        );
+      }
     }
 
     return gameEvents;
@@ -179,9 +192,11 @@ export const norseAbilities: AbilityMap = {
   "Watchman's Gate": (context) => {
     const {
       triggerCard,
+      position,
       state: { board, player1, player2, hydrated_card_data_cache },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const HAND_POSITION = { x: -1, y: -1 };
 
     const existingBuff = triggerCard.temporary_effects.find(
       (effect) => effect.name === "Watchman's Gate"
@@ -190,27 +205,41 @@ export const norseAbilities: AbilityMap = {
       if (existingBuff.data?.rounds === 3) {
         const allCards = getCardsByCondition(board, (card) => true);
         for (const card of allCards) {
-          gameEvents.push(
-            debuff(card, -1, "Watchman's Gate", {
-              animation: "lightning-circle",
-            })
-          );
+          const cardPosition = getPositionOfCardById(card.user_card_instance_id, board);
+          if (cardPosition) {
+            gameEvents.push(
+              debuff(card, -1, {
+                name: "Watchman's Gate",
+                animation: "lightning-circle",
+                position: cardPosition,
+              })
+            );
+          }
         }
         const player =
           player1.user_id === triggerCard.owner ? player1 : player2;
         for (const cardId of player.hand) {
           const card = hydrated_card_data_cache?.[cardId];
           if (card) {
-            gameEvents.push(addTempBuff(card, 1000, 1));
+            gameEvents.push(addTempBuff(card, 1000, 1, {
+              name: "Watchman's Gate",
+              position: HAND_POSITION,
+            }));
           }
         }
       } else {
-        createOrUpdateBuff(triggerCard, 3, 0, "Watchman's Gate", {
-          rounds: existingBuff.data?.rounds + 1,
-        });
+        const triggerPosition = position || getPositionOfCardById(triggerCard.user_card_instance_id, board);
+        if (triggerPosition) {
+          createOrUpdateBuff(triggerCard, 3, 0, "Watchman's Gate", triggerPosition, {
+            rounds: existingBuff.data?.rounds + 1,
+          });
+        }
       }
     } else {
-      createOrUpdateBuff(triggerCard, 3, 0, "Watchman's Gate", { rounds: 1 });
+      const triggerPosition = position || getPositionOfCardById(triggerCard.user_card_instance_id, board);
+      if (triggerPosition) {
+        createOrUpdateBuff(triggerCard, 3, 0, "Watchman's Gate", triggerPosition, { rounds: 1 });
+      }
     }
 
     return gameEvents;
@@ -273,9 +302,16 @@ export const norseAbilities: AbilityMap = {
     }
     if (odinDefeated) {
       for (const ally of getAllAlliesOnBoard(board, triggerCard.owner)) {
-        gameEvents.push(
-          buff(ally, 3, "Silent Vengeance", { animation: "triangle-shield" })
-        );
+        const allyPosition = getPositionOfCardById(ally.user_card_instance_id, board);
+        if (allyPosition) {
+          gameEvents.push(
+            buff(ally, 3, {
+              name: "Silent Vengeance",
+              animation: "triangle-shield",
+              position: allyPosition,
+            })
+          );
+        }
       }
     }
     return gameEvents;
@@ -308,13 +344,17 @@ export const norseAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    if (!position) return [];
+    
     const adjacentSeaCards = getAdjacentCards(position, board, {
       tag: "Sea",
     });
     if (adjacentSeaCards.length > 0) {
       gameEvents.push(
-        buff(triggerCard, 3, "Sea's Protection", {
+        buff(triggerCard, 3, {
+          name: "Sea's Protection",
           animation: "splash-up-down",
+          position,
         })
       );
     }
@@ -335,11 +375,16 @@ export const norseAbilities: AbilityMap = {
       triggerCard.owner
     );
     for (const ally of adjacentAllies) {
-      gameEvents.push(
-        addTempBuff(ally, 2, 2, "Warrior's Blessing", {
-          animation: "light-cross-spin",
-        })
-      );
+      const allyPosition = getPositionOfCardById(ally.user_card_instance_id, board);
+      if (allyPosition) {
+        gameEvents.push(
+          addTempBuff(ally, 2, 2, {
+            name: "Warrior's Blessing",
+            animation: "light-cross-spin",
+            position: allyPosition,
+          })
+        );
+      }
     }
     return gameEvents;
   },
@@ -352,13 +397,18 @@ export const norseAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    if (!position) return [];
+    
     const adjacentEnemies = getEnemiesAdjacentTo(
       position,
       board,
       triggerCard.owner
     );
     if (adjacentEnemies.length === 0) {
-      gameEvents.push(buff(triggerCard, 2));
+      gameEvents.push(buff(triggerCard, 2, {
+        name: "Peaceful Strength",
+        position,
+      }));
     }
     return gameEvents;
   },
@@ -449,9 +499,14 @@ export const norseAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    if (!position) return [];
+    
     const adjacentCards = getAdjacentCards(position, board);
     if (adjacentCards.length === 0) {
-      gameEvents.push(buff(triggerCard, 2));
+      gameEvents.push(buff(triggerCard, 2, {
+        name: "Primordial Force",
+        position,
+      }));
     }
     return gameEvents;
   },
@@ -500,9 +555,16 @@ export const norseAbilities: AbilityMap = {
         // This enemy is already being removed, don't also debuff it.
         continue;
       }
-      gameEvents.push(
-        debuff(enemy, -1, "Flames of Muspelheim", { animation: "flames" })
-      );
+      const enemyPosition = getPositionOfCardById(enemy.user_card_instance_id, board);
+      if (enemyPosition) {
+        gameEvents.push(
+          debuff(enemy, -1, {
+            name: "Flames of Muspelheim",
+            animation: "flames",
+            position: enemyPosition,
+          })
+        );
+      }
     }
 
     return gameEvents;
@@ -516,11 +578,16 @@ export const norseAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    if (!position) return [];
+    
     const adjacentGoddessCards = getAdjacentCards(position, board, {
       tag: "Goddess",
     });
     if (adjacentGoddessCards.length > 0) {
-      gameEvents.push(buff(triggerCard, 3));
+      gameEvents.push(buff(triggerCard, 3, {
+        name: "Bride Demand",
+        position,
+      }));
     }
     return gameEvents;
   },
@@ -531,12 +598,17 @@ export const norseAbilities: AbilityMap = {
       position,
       state: { board },
     } = context;
+    if (!position) return [];
+    
     const adjacentThorCards = getAdjacentCards(position, board, {
       name: "Thor",
     });
 
     if (adjacentThorCards.length > 0) {
-      return [buff(triggerCard, 1)];
+      return [buff(triggerCard, 1, {
+        name: "Worthy Opponent",
+        position,
+      })];
     }
     return [];
   },
@@ -565,12 +637,17 @@ export const norseAbilities: AbilityMap = {
       position,
       state: { board },
     } = context;
+    if (!position) return [];
+    
     const adjacentValkyrieCards = getAdjacentCards(position, board, {
       tag: "Valkyrie",
     });
 
     if (adjacentValkyrieCards.length > 0) {
-      return [buff(triggerCard, 2)];
+      return [buff(triggerCard, 2, {
+        name: "Valkyrie Sisterhood",
+        position,
+      })];
     }
     return [];
   },
@@ -589,7 +666,10 @@ export const norseAbilities: AbilityMap = {
       triggerCard.owner
     );
     for (const ally of adjacentAllies) {
-      gameEvents.push(cleanseDebuffs(ally, 1000, "light-purple-swirls"));
+      const allyPosition = getPositionOfCardById(ally.user_card_instance_id, board);
+      if (allyPosition) {
+        gameEvents.push(cleanseDebuffs(ally, 1000, allyPosition, "light-purple-swirls"));
+      }
     }
     return gameEvents;
   },
@@ -608,7 +688,13 @@ export const norseAbilities: AbilityMap = {
 
     const gameEvents: BaseGameEvent[] = [];
     for (const ally of adjacentAllies) {
-      gameEvents.push(buff(ally, 1));
+      const allyPosition = getPositionOfCardById(ally.user_card_instance_id, board);
+      if (allyPosition) {
+        gameEvents.push(buff(ally, 1, {
+          name: "Battle Cry",
+          position: allyPosition,
+        }));
+      }
     }
     return gameEvents;
   },
@@ -637,12 +723,15 @@ export const norseAbilities: AbilityMap = {
         (effect) => effect.name === "Dragon Slayer"
       );
       const diff = dragonsOnBoard.length * 2 - (currentBuff?.power.top ?? 0);
+      const triggerPosition = getPositionOfCardById(triggerCard.user_card_instance_id, board);
 
-      return [
-        createOrUpdateBuff(triggerCard, 1000, diff, "Dragon Slayer", {
-          animation: "dragon-slayer",
-        }),
-      ];
+      if (triggerPosition) {
+        return [
+          createOrUpdateBuff(triggerCard, 1000, diff, "Dragon Slayer", triggerPosition, {
+            animation: "dragon-slayer",
+          }),
+        ];
+      }
     }
     return [];
   },
@@ -660,7 +749,13 @@ export const norseAbilities: AbilityMap = {
     );
 
     if (strongestEnemy) {
-      return [debuff(strongestEnemy, -2)];
+      const enemyPosition = getPositionOfCardById(strongestEnemy.user_card_instance_id, board);
+      if (enemyPosition) {
+        return [debuff(strongestEnemy, -2, {
+          name: "Venomous Presence",
+          position: enemyPosition,
+        })];
+      }
     }
     return [];
   },
@@ -687,19 +782,19 @@ export const norseAbilities: AbilityMap = {
     for (const card of allCards) {
       const highestPower = getCardHighestPower(card);
       const diff = meanHighestPower - highestPower.value;
+      const cardPosition = getPositionOfCardById(card.user_card_instance_id, board);
+      if (!cardPosition) continue;
+      
       if (diff > 0) {
         gameEvents.push(
           addTempBuff(
             card,
             1000,
             { [highestPower.key]: diff },
-            "Binding Justice",
             {
+              name: "Binding Justice",
               animation: "triangle-shield",
-              position: getPositionOfCardById(
-                card.user_card_instance_id,
-                board
-              )!,
+              position: cardPosition,
             }
           )
         );
@@ -710,11 +805,9 @@ export const norseAbilities: AbilityMap = {
             1000,
             { [highestPower.key]: diff },
             {
+              name: "Binding Justice",
               animation: "triangle-shield-down",
-              position: getPositionOfCardById(
-                card.user_card_instance_id,
-                board
-              )!,
+              position: cardPosition,
             }
           )
         );
@@ -760,8 +853,10 @@ export const norseAbilities: AbilityMap = {
         gameEvents.push(destroyEvent);
         const side = getRandomSide();
         gameEvents.push(
-          addTempBuff(triggerCard, 1000, { [side]: 1 }, "Devourer's Surge", {
+          addTempBuff(triggerCard, 1000, { [side]: 1 }, {
+            name: "Devourer's Surge",
             animation: "magic-up",
+            position,
           })
         );
       }
@@ -785,16 +880,22 @@ export const norseAbilities: AbilityMap = {
   "Past Weaves": (context) => {
     const {
       triggerCard,
+      position,
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    if (!position) return [];
+    
     const destroyedAllies = getCardsByCondition(
       board,
       (card) => card.defeats.length > 0
     );
 
     for (let i = 0; i < destroyedAllies.length; i++) {
-      gameEvents.push(buff(triggerCard, 1));
+      gameEvents.push(buff(triggerCard, 1, {
+        name: "Past Weaves",
+        position,
+      }));
     }
     return gameEvents;
   },

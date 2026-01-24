@@ -11,6 +11,7 @@ import {
   batchEvents,
   CardEvent,
   CardPlacedEvent,
+  CardPowerChangedEvent,
   EVENT_TYPES,
 } from "./game-events";
 import {
@@ -284,12 +285,21 @@ export class GameLogic {
       player.hand.splice(cardIndexInHand, 1);
 
       if (tileEffectTransferred) {
+        // Calculate power delta from tile effect
+        const tileEffectPowerDelta = existingTileEffect?.power
+          ? (existingTileEffect.power.top || 0) + (existingTileEffect.power.bottom || 0) +
+            (existingTileEffect.power.left || 0) + (existingTileEffect.power.right || 0)
+          : 0;
+
         events.push({
           type: EVENT_TYPES.CARD_POWER_CHANGED,
           eventId: uuidv4(),
           timestamp: Date.now(),
+          cardId: playedCardData.user_card_instance_id,
           position,
-        } as CardEvent);
+          powerDelta: tileEffectPowerDelta,
+          effectName: existingTileEffect?.animation_label || "Tile Effect",
+        } as CardPowerChangedEvent);
       }
 
       // Trigger Japanese deck effect if a curse was transferred to the card
