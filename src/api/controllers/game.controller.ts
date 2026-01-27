@@ -333,7 +333,9 @@ class GameController {
               gameRecord.player1_id,
               gameRecord.player2_id,
               gameRecord.player1_deck_id,
-              gameId // Pass gameId for leaderboard updates
+              gameId, // Pass gameId for leaderboard updates
+              false, // isForfeit
+              gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id : undefined // AI deck ID for rare card drops
             ),
             GameService.getGameFloorNumber(gameId),
           ]);
@@ -556,7 +558,9 @@ class GameController {
               gameRecord.player1_id,
               gameRecord.player2_id,
               gameRecord.player1_deck_id,
-              gameId // Pass gameId for leaderboard updates
+              gameId, // Pass gameId for leaderboard updates
+              false, // isForfeit
+              gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id : undefined // AI deck ID for rare card drops
             ),
             GameService.getGameFloorNumber(gameId),
           ]);

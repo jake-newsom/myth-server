@@ -212,6 +212,29 @@ class DeckService {
     // Other mythologies don't have deck effects yet
     return null;
   }
+
+  /**
+   * Gets all rare variant cards (+/++/+++) from a deck.
+   * Returns card_variant_id, name, rarity, and image_url for each rare variant found.
+   * 
+   * @param deckId - The deck ID to search for rare cards
+   * @returns Array of rare variant cards from the deck
+   */
+  async getRareVariantCardsFromDeck(deckId: string): Promise<
+    { card_variant_id: string; name: string; rarity: string; image_url: string }[]
+  > {
+    const query = `
+      SELECT DISTINCT cv.card_variant_id, ch.name, cv.rarity::text as rarity, cv.image_url
+      FROM deck_cards dc
+      JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
+      JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN characters ch ON cv.character_id = ch.character_id
+      WHERE dc.deck_id = $1
+        AND POSITION('+' IN cv.rarity::text) > 0;
+    `;
+    const { rows } = await db.query(query, [deckId]);
+    return rows;
+  }
 }
 
 export default new DeckService();

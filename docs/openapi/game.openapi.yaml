@@ -690,6 +690,31 @@ components:
                     type: integer
                   new_level:
                     type: integer
+            rare_card_drop:
+              type: object
+              nullable: true
+              description: |
+                A rare card (+/++/+++) dropped from the AI deck. This only occurs for solo game
+                victories with a 1/1000 chance. The card is randomly selected from any +/++/+++
+                rarity cards in the AI's deck.
+              properties:
+                user_card_instance_id:
+                  type: string
+                  format: uuid
+                  description: The ID of the new card instance added to the user's collection
+                card_variant_id:
+                  type: string
+                  format: uuid
+                  description: The ID of the card variant
+                name:
+                  type: string
+                  description: The name of the card
+                rarity:
+                  type: string
+                  description: The rarity of the card (e.g., "legendary+", "epic++", "rare+++")
+                image_url:
+                  type: string
+                  description: URL to the card's image
         updated_currencies:
           type: object
           properties:

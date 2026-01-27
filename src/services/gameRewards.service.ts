@@ -6,6 +6,8 @@ import db from "../config/db.config";
 import LeaderboardService from "./leaderboard.service";
 import AchievementService from "./achievement.service";
 import DailyTaskService from "./dailyTask.service";
+import DeckService from "./deck.service";
+import CardModel from "../models/card.model";
 
 export interface GameResult {
   winner: string | null;
@@ -17,9 +19,18 @@ export interface CurrencyRewards {
   gems: number;
 }
 
+export interface RareCardReward {
+  user_card_instance_id: string;
+  card_variant_id: string;
+  name: string;
+  rarity: string;
+  image_url: string;
+}
+
 export interface GameRewards {
   currency: CurrencyRewards;
   card_xp_rewards: XpReward[];
+  rare_card_drop?: RareCardReward;
 }
 
 export interface GameCompletionResult {
@@ -229,6 +240,7 @@ const GameRewardsService = {
   // Main method to process game completion and award rewards
   // Optimized to parallelize independent operations for faster response times
   // isForfeit: true if game ended via surrender/disconnect (loser gets nothing)
+  // aiDeckId: For solo games, the AI deck ID (used for rare card drop chance)
   async processGameCompletion(
     userId: string,
     gameState: GameState,
@@ -238,7 +250,8 @@ const GameRewardsService = {
     player2Id: string,
     playerDeckId: string,
     gameId?: string,
-    isForfeit: boolean = false
+    isForfeit: boolean = false,
+    aiDeckId?: string
   ): Promise<GameCompletionResult> {
     try {
       // === PHASE 1: Sequential calculations (sync, no DB) ===
@@ -306,6 +319,52 @@ const GameRewardsService = {
 
       // Extract XP results (last item in the array)
       const xpResults = coreResults[coreResults.length - 1] as XpReward[];
+
+      // === PHASE 3.5: Rare card drop for solo game wins (1/1000 chance) ===
+      let rareCardDrop: RareCardReward | undefined;
+      if (
+        gameMode === "solo" &&
+        gameResult.winner === userId &&
+        aiDeckId &&
+        !isForfeit
+      ) {
+        // Roll for 1/1000 chance (TEMPORARILY SET TO 100% FOR TESTING)
+        const dropRoll = Math.random();
+        if (dropRoll < 1.0) { // TODO: Change back to 0.001 after testing
+          try {
+            // Get rare variant cards (+/++/+++) from the AI deck
+            const rareCards =
+              await DeckService.getRareVariantCardsFromDeck(aiDeckId);
+
+            if (rareCards.length > 0) {
+              // Pick a random rare card from the AI deck
+              const randomIndex = Math.floor(Math.random() * rareCards.length);
+              const selectedCard = rareCards[randomIndex];
+
+              // Award the card to the user
+              const awardedCard = await CardModel.addCardToUser(
+                userId,
+                selectedCard.card_variant_id
+              );
+
+              rareCardDrop = {
+                user_card_instance_id: awardedCard.user_card_instance_id,
+                card_variant_id: selectedCard.card_variant_id,
+                name: selectedCard.name,
+                rarity: selectedCard.rarity,
+                image_url: selectedCard.image_url,
+              };
+
+              console.log(
+                `[GameRewards] Rare card drop! User ${userId} received ${selectedCard.name} (${selectedCard.rarity}) from AI deck ${aiDeckId}`
+              );
+            }
+          } catch (error) {
+            console.error("Error processing rare card drop:", error);
+            // Don't fail the entire reward process for rare card drop errors
+          }
+        }
+      }
 
       // === PHASE 4: Parallel non-blocking operations ===
       // These operations don't affect the response data and can run in parallel
@@ -401,6 +460,7 @@ const GameRewardsService = {
         rewards: {
           currency: currencyRewards,
           card_xp_rewards: xpResults,
+          rare_card_drop: rareCardDrop,
         },
         updated_currencies: {
           gems: updatedUser?.gems || 0,
