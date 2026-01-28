@@ -57,9 +57,8 @@ export class GameLogic {
         JOIN "card_variants" cv ON uci.card_variant_id = cv.card_variant_id
         JOIN "characters" ch ON cv.character_id = ch.character_id
         LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
-        WHERE uci.user_card_instance_id IN (${placeholders}) ${
-        userIdToVerifyOwnership ? "AND uci.user_id = $1" : ""
-      };
+        WHERE uci.user_card_instance_id IN (${placeholders}) ${userIdToVerifyOwnership ? "AND uci.user_id = $1" : ""
+        };
       `;
 
       const params = userIdToVerifyOwnership
@@ -112,14 +111,14 @@ export class GameLogic {
             tags: row.tags,
             special_ability: row.ability_name
               ? {
-                  ability_id: row.special_ability_id,
-                  id: row.special_ability_id,
-                  name: row.ability_name,
-                  description: row.ability_description,
-                  triggerMoments:
-                    (row.ability_triggers as TriggerMoment[]) || [],
-                  parameters: row.ability_parameters,
-                }
+                ability_id: row.special_ability_id,
+                id: row.special_ability_id,
+                name: row.ability_name,
+                description: row.ability_description,
+                triggerMoments:
+                  (row.ability_triggers as TriggerMoment[]) || [],
+                parameters: row.ability_parameters,
+              }
               : null,
             ...(row.attack_animation && {
               attack_animation: row.attack_animation,
@@ -288,7 +287,7 @@ export class GameLogic {
         // Calculate power delta from tile effect
         const tileEffectPowerDelta = existingTileEffect?.power
           ? (existingTileEffect.power.top || 0) + (existingTileEffect.power.bottom || 0) +
-            (existingTileEffect.power.left || 0) + (existingTileEffect.power.right || 0)
+          (existingTileEffect.power.left || 0) + (existingTileEffect.power.right || 0)
           : 0;
 
         events.push({
@@ -342,6 +341,7 @@ export class GameLogic {
       }
 
       // Resolve combat with adjacent cards
+      const eventsBeforeCombat = events.length;
       const combatResult = gameUtils.resolveCombat(
         newState,
         position,
@@ -349,6 +349,18 @@ export class GameLogic {
       );
       newState = combatResult.state;
       events.push(...combatResult.events);
+
+      // Check if any combat/flip abilities added terrain effects (for Polynesian deck effect)
+      // This catches abilities like "Feast or Famine" that trigger on flip
+      const combatEvents = events.slice(eventsBeforeCombat);
+      const terrainAddedDuringCombat = combatEvents.some(
+        (e) =>
+          e.type === EVENT_TYPES.TILE_STATE_CHANGED &&
+          (e as any).tile?.tile_effect?.terrain !== undefined
+      );
+      if (terrainAddedDuringCombat) {
+        events.push(...triggerTerrainDeckEffects(newState));
+      }
 
       const scores = validators.calculateScores(
         newState.board,
@@ -431,8 +443,7 @@ export class GameLogic {
         } as CardEvent);
       } catch (err) {
         console.error(
-          `[DEBUG] Error during drawn card hydration: ${
-            err instanceof Error ? err.message : String(err)
+          `[DEBUG] Error during drawn card hydration: ${err instanceof Error ? err.message : String(err)
           }`
         );
         // Continue even if this fails, it's not critical

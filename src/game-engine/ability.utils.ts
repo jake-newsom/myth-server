@@ -112,9 +112,15 @@ function calculatePowerDelta(
   if (typeof power === "number") {
     return isDebuff ? -Math.abs(power) : power;
   }
-  // For partial power values, sum all defined values
-  const total = (power.top || 0) + (power.bottom || 0) + (power.left || 0) + (power.right || 0);
-  return isDebuff ? -Math.abs(total) : total;
+  // For partial power values, return the largest absolute value across all sides
+  const values = [
+    Math.abs(power.top || 0),
+    Math.abs(power.bottom || 0),
+    Math.abs(power.left || 0),
+    Math.abs(power.right || 0),
+  ];
+  const maxValue = Math.max(...values);
+  return isDebuff ? -maxValue : maxValue;
 }
 
 type PowerChangeEventOptions = {
@@ -153,11 +159,11 @@ export function addTempBuff(
   const buff =
     typeof power === "number"
       ? {
-          top: power,
-          bottom: power,
-          left: power,
-          right: power,
-        }
+        top: power,
+        bottom: power,
+        left: power,
+        right: power,
+      }
       : power;
 
   card.temporary_effects.push({
@@ -200,11 +206,11 @@ export function addTempDebuff(
   const negativePower =
     typeof power === "number"
       ? {
-          top: power,
-          bottom: power,
-          left: power,
-          right: power,
-        }
+        top: power,
+        bottom: power,
+        left: power,
+        right: power,
+      }
       : power;
 
   card.temporary_effects.push({
@@ -691,7 +697,7 @@ export const destroyCardAtPosition = (
   // Track daily task progress for card destruction (fire-and-forget)
   if (actingPlayerId) {
     try {
-      DailyTaskService.trackDestroy(actingPlayerId).catch(() => {});
+      DailyTaskService.trackDestroy(actingPlayerId).catch(() => { });
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }
@@ -737,7 +743,7 @@ export const setTileStatus = (
   // Track daily task progress for curses (fire-and-forget)
   if (actingPlayerId && effect.status === TileStatus.Cursed) {
     try {
-      DailyTaskService.trackCurse(actingPlayerId).catch(() => {});
+      DailyTaskService.trackCurse(actingPlayerId).catch(() => { });
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }
@@ -746,7 +752,7 @@ export const setTileStatus = (
   // Track daily task progress for blessings (fire-and-forget)
   if (actingPlayerId && effect.status === TileStatus.Boosted) {
     try {
-      DailyTaskService.trackBless(actingPlayerId).catch(() => {});
+      DailyTaskService.trackBless(actingPlayerId).catch(() => { });
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }
@@ -1037,7 +1043,7 @@ export function applyTileEffectsToMovedCard(
       // Calculate powerDelta from tile effect
       const powerDelta = tileEffect.power
         ? (tileEffect.power.top || 0) + (tileEffect.power.bottom || 0) +
-          (tileEffect.power.left || 0) + (tileEffect.power.right || 0)
+        (tileEffect.power.left || 0) + (tileEffect.power.right || 0)
         : 0;
 
       // Update the card's current power after applying tile effect
@@ -1280,7 +1286,7 @@ export function addTileBlessing(
   // Track daily task progress for blessings (fire-and-forget)
   if (actingPlayerId) {
     try {
-      DailyTaskService.trackBless(actingPlayerId).catch(() => {});
+      DailyTaskService.trackBless(actingPlayerId).catch(() => { });
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }

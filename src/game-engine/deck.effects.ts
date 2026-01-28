@@ -7,11 +7,10 @@
  * - Japanese: Random card in hand gains +1 when a card receives a curse (once per round)
  */
 
-import { GameState, Player, DeckEffectType, BoardPosition } from "../types/game.types";
+import { GameState, Player, BoardPosition } from "../types/game.types";
 import { InGameCard } from "../types/card.types";
-import { BaseGameEvent, CardPowerChangedEvent, EVENT_TYPES } from "../types/game-engine.types";
+import { BaseGameEvent } from "../types/game-engine.types";
 import { addTempBuff, updateCurrentPower } from "./ability.utils";
-import { v4 as uuidv4 } from "uuid";
 
 // Sentinel position for cards in hand (not on board)
 const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
@@ -124,7 +123,7 @@ export function applyNorseDeckEffect(
   const events: BaseGameEvent[] = [];
   events.push(
     addTempBuff(placedCard, 1000, 1, {
-      name: "Norse Deck Bonus",
+      name: "Fated Resolve",
       animation: "norse-deck-effect",
       position: HAND_POSITION,
     })
@@ -188,7 +187,7 @@ export function applyPolynesianDeckEffect(
   const events: BaseGameEvent[] = [];
   events.push(
     addTempBuff(randomCard, 1000, 1, {
-      name: "Polynesian Deck Bonus",
+      name: "ʻĀina Bound",
       animation: "polynesian-deck-effect",
       position: HAND_POSITION,
     })
@@ -205,19 +204,6 @@ export function applyPolynesianDeckEffect(
     gameState.hydrated_card_data_cache[randomCard.user_card_instance_id] =
       randomCard;
   }
-
-  // Add a specific event to notify the client about the deck effect
-  events.push({
-    type: EVENT_TYPES.CARD_POWER_CHANGED,
-    eventId: uuidv4(),
-    timestamp: Date.now(),
-    cardId: randomCard.user_card_instance_id,
-    animation: "polynesian-deck-effect",
-    sourcePlayerId: beneficiaryPlayerId,
-    powerDelta: 1,
-    effectName: "Polynesian Deck Bonus",
-    position: HAND_POSITION,
-  } as CardPowerChangedEvent);
 
   return events;
 }
@@ -264,7 +250,7 @@ export function applyJapaneseDeckEffect(
   const events: BaseGameEvent[] = [];
   events.push(
     addTempBuff(randomCard, 1000, 1, {
-      name: "Japanese Deck Bonus",
+      name: "Measured Technique",
       animation: "japanese-deck-effect",
       position: HAND_POSITION,
     })
@@ -281,19 +267,6 @@ export function applyJapaneseDeckEffect(
     gameState.hydrated_card_data_cache[randomCard.user_card_instance_id] =
       randomCard;
   }
-
-  // Add a specific event to notify the client about the deck effect
-  events.push({
-    type: EVENT_TYPES.CARD_POWER_CHANGED,
-    eventId: uuidv4(),
-    timestamp: Date.now(),
-    cardId: randomCard.user_card_instance_id,
-    animation: "japanese-deck-effect",
-    sourcePlayerId: beneficiaryPlayerId,
-    powerDelta: 1,
-    effectName: "Japanese Deck Bonus",
-    position: HAND_POSITION,
-  } as CardPowerChangedEvent);
 
   return events;
 }

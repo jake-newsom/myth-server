@@ -7,25 +7,25 @@ const STARTER_BASE_CARD_NAMES_AND_QUANTITIES: {
   name: string;
   quantity: number;
 }[] = [
-  { name: "Oni", quantity: 2 },
-  { name: "Tengu", quantity: 2 },
-  { name: "Shieldmaiden", quantity: 2 },
-  { name: "Peasant Archer", quantity: 2 },
-  { name: "Kappa", quantity: 2 },
+    { name: "Oni", quantity: 2 },
+    { name: "Tengu", quantity: 2 },
+    { name: "Shieldmaiden", quantity: 2 },
+    { name: "Peasant Archer", quantity: 2 },
+    { name: "Kappa", quantity: 2 },
 
-  { name: "Futakuchi-onna", quantity: 2 },
-  { name: "Noppera-bō", quantity: 2 },
-  { name: "Ushi-oni", quantity: 1 },
-  { name: "Yuki-onna", quantity: 1 },
+    { name: "Futakuchi-onna", quantity: 2 },
+    { name: "Noppera-bō", quantity: 2 },
+    { name: "Ushi-oni", quantity: 1 },
+    { name: "Yuki-onna", quantity: 1 },
 
-  { name: "Benkei", quantity: 1 },
-  { name: "Momotaro", quantity: 1 },
-  { name: "Bragi", quantity: 1 },
-  { name: "Frigg", quantity: 1 },
-];
+    { name: "Benkei", quantity: 1 },
+    { name: "Momotaro", quantity: 1 },
+    { name: "Bragi", quantity: 1 },
+    { name: "Frigg", quantity: 1 },
+  ];
 
 const STARTER_DECK_CONFIG = {
-  name: "Norse Starter Deck",
+  name: "Starter Deck",
 };
 
 const STARTER_PACKS_QUANTITY = 10; // Temporarily increased for testing - will be reduced before launch

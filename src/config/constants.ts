@@ -132,7 +132,7 @@ export const AI_CONFIG = {
 
 // Starter Pack Configuration
 export const STARTER_CONFIG = {
-  DECK_NAME: "Norse Starter Deck",
+  DECK_NAME: "Starter Deck",
   PACKS_QUANTITY: 3,
   CARD_NAMES_AND_QUANTITIES: [
     { name: "Shieldmaiden", quantity: 2 },

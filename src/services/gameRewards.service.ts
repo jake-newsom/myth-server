@@ -328,9 +328,9 @@ const GameRewardsService = {
         aiDeckId &&
         !isForfeit
       ) {
-        // Roll for 1/1000 chance (TEMPORARILY SET TO 100% FOR TESTING)
+        // Roll for 1/500 chance
         const dropRoll = Math.random();
-        if (dropRoll < 1.0) { // TODO: Change back to 0.001 after testing
+        if (dropRoll < 0.002) {
           try {
             // Get rare variant cards (+/++/+++) from the AI deck
             const rareCards =
