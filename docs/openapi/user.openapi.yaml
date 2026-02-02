@@ -67,13 +67,8 @@ paths:
                   type: string
                   format: password
                   minLength: 6
-                  description: New password (optional, requires currentPassword)
+                  description: New password (optional, minimum 6 characters)
                   example: newpassword123
-                currentPassword:
-                  type: string
-                  format: password
-                  description: Current password (required when updating password)
-                  example: currentpassword123
             examples:
               updateUsername:
                 summary: Update username only
@@ -87,14 +82,12 @@ paths:
                 summary: Update password
                 value:
                   password: newpassword123
-                  currentPassword: currentpassword123
               updateAll:
                 summary: Update all fields
                 value:
                   username: new_username
                   email: newemail@example.com
                   password: newpassword123
-                  currentPassword: currentpassword123
       responses:
         "200":
           description: Account details updated successfully
@@ -125,11 +118,6 @@ paths:
                   value:
                     error:
                       message: New password must be at least 6 characters long.
-                currentPasswordRequired:
-                  summary: Current password required
-                  value:
-                    error:
-                      message: Current password is required to update password.
                 invalidEmail:
                   summary: Invalid email format
                   value:
@@ -141,7 +129,7 @@ paths:
                     error:
                       message: Username must be 32 characters or less.
         "401":
-          description: Unauthorized - missing/invalid token or incorrect current password
+          description: Unauthorized - missing or invalid token
           content:
             application/json:
               schema:
@@ -152,11 +140,6 @@ paths:
                   value:
                     error:
                       message: User not authenticated.
-                incorrectPassword:
-                  summary: Incorrect current password
-                  value:
-                    error:
-                      message: Current password is incorrect.
         "409":
           description: Conflict - username or email already in use
           content:
@@ -190,6 +173,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete user account
+      description: |
+        Permanently delete the authenticated user's account and all associated data.
+
+        This is an irreversible operation that deletes:
+        - All cards and decks
+        - Game history and results
+        - Achievements and progress
+        - Friendships and social data
+        - All currencies and XP
+        - The user account itself
+      tags:
+        - Users
+        - Account
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Account deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Account deleted successfully."
+        "401":
+          description: Unauthorized - missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                notAuthenticated:
+                  summary: Not authenticated
+                  value:
+                    error:
+                      message: User not authenticated.
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Failed to delete account."
+                      details:
+                        type: string
+                        description: Error details
 
   /api/users/me/cards:
     get:
@@ -368,7 +408,7 @@ paths:
       description: |
         Resets a user's account by deleting all cards, decks, card XP, currencies, achievements, 
         and other data, then grants them the same starter content as a new account.
-        
+
         This endpoint can be used in two ways:
         - **User self-reset**: Authenticated user can reset their own account (no userId in request body)
         - **Admin reset**: Admin users can reset any user's account by providing the userId in the request body

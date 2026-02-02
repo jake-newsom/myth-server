@@ -13,6 +13,7 @@ router.patch(
   authMiddleware.protect,
   UserController.updateAccountDetails
 );
+router.delete("/me", authMiddleware.protect, UserController.deleteAccount);
 router.get(
   "/me/cards",
   authMiddleware.protect,

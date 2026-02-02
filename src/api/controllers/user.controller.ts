@@ -5,10 +5,10 @@ import DeckModel from "../../models/deck.model";
 import GameService from "../../services/game.service";
 import MonthlyLoginRewardsService from "../../services/monthlyLoginRewards.service";
 import StarterService from "../../services/starter.service";
+import SessionService from "../../services/session.service";
 import db from "../../config/db.config";
 import logger from "../../utils/logger";
 import { Request, Response, NextFunction } from "express"; // Assuming Express types
-import bcrypt from "bcrypt";
 import {
   UserCard,
   CardResponse,
@@ -31,13 +31,13 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
     set_id: card.set_id,
     special_ability: card.special_ability
       ? {
-          id: card.special_ability.ability_id,
-          name: card.special_ability.name,
-          ability_id: card.special_ability.ability_id,
-          description: card.special_ability.description,
-          triggerMoments: card.special_ability.triggerMoments,
-          parameters: card.special_ability.parameters,
-        }
+        id: card.special_ability.ability_id,
+        name: card.special_ability.name,
+        ability_id: card.special_ability.ability_id,
+        description: card.special_ability.description,
+        triggerMoments: card.special_ability.triggerMoments,
+        parameters: card.special_ability.parameters,
+      }
       : null,
   },
   level: card.level!,
@@ -306,7 +306,7 @@ const UserController = {
         return;
       }
 
-      const { username, email, password, currentPassword } = req.body;
+      const { username, email, password } = req.body;
 
       // At least one field must be provided for update
       if (!username && !email && !password) {
@@ -319,53 +319,14 @@ const UserController = {
         return;
       }
 
-      // If updating password, current password is required
-      if (password) {
-        if (!currentPassword) {
-          res.status(400).json({
-            error: {
-              message: "Current password is required to update password.",
-            },
-          });
-          return;
-        }
-
-        // Validate new password length
-        if (password.length < 6) {
-          res.status(400).json({
-            error: {
-              message: "New password must be at least 6 characters long.",
-            },
-          });
-          return;
-        }
-
-        // Verify current password
-        const userWithPassword = await UserModel.findByIdWithPassword(
-          req.user.user_id
-        );
-        if (!userWithPassword || !userWithPassword.password_hash) {
-          res.status(400).json({
-            error: {
-              message:
-                "Cannot update password for accounts without password authentication.",
-            },
-          });
-          return;
-        }
-
-        const isPasswordValid = await bcrypt.compare(
-          currentPassword,
-          userWithPassword.password_hash
-        );
-        if (!isPasswordValid) {
-          res.status(401).json({
-            error: {
-              message: "Current password is incorrect.",
-            },
-          });
-          return;
-        }
+      // Validate new password length if updating password
+      if (password && password.length < 6) {
+        res.status(400).json({
+          error: {
+            message: "New password must be at least 6 characters long.",
+          },
+        });
+        return;
       }
 
       // Check if username is already taken by another user
@@ -659,6 +620,149 @@ const UserController = {
         message: "Internal server error during account reset",
         error: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
+  /**
+   * Delete a user's account permanently
+   * @route DELETE /api/users/me
+   * @param {AuthenticatedRequest} req - Express request object with authenticated user
+   * @param {Response} res - Express response object
+   *
+   * WARNING: This is a permanent, irreversible operation that:
+   * - Deletes all user data including cards, decks, game history
+   * - Removes the user account entirely
+   * - Cannot be undone
+   */
+  async deleteAccount(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<Response> {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          error: { message: "User not authenticated." },
+        });
+      }
+
+      const userId = req.user.user_id;
+
+      logger.info("Deleting user account", {
+        userId,
+        username: req.user.username,
+      });
+
+      // Invalidate all sessions first
+      await SessionService.invalidateAllUserSessions(userId);
+
+      const client = await db.getClient();
+      await client.query("BEGIN");
+
+      try {
+        // Delete all user-related data
+        // Note: Many tables have CASCADE delete, but we explicitly delete for clarity
+
+        // Delete user achievements
+        await client.query(
+          `DELETE FROM "user_achievements" WHERE user_id = $1`,
+          [userId]
+        );
+
+        // Delete XP transfers
+        await client.query(`DELETE FROM "xp_transfers" WHERE user_id = $1`, [
+          userId,
+        ]);
+
+        // Delete XP pools
+        await client.query(
+          `DELETE FROM "user_card_xp_pools" WHERE user_id = $1`,
+          [userId]
+        );
+
+        // Delete pack opening history
+        await client.query(
+          `DELETE FROM "pack_opening_history" WHERE user_id = $1`,
+          [userId]
+        );
+
+        // Delete mail
+        await client.query(`DELETE FROM "mail" WHERE user_id = $1`, [userId]);
+
+        // Delete fate pick participations
+        await client.query(
+          `DELETE FROM "fate_pick_participations" WHERE participant_id = $1`,
+          [userId]
+        );
+
+        // Delete fate picks created by user
+        await client.query(
+          `DELETE FROM "fate_picks" WHERE original_owner_id = $1`,
+          [userId]
+        );
+
+        // Delete friendships (both as requester and addressee)
+        await client.query(
+          `DELETE FROM "friendships" WHERE requester_id = $1 OR addressee_id = $1`,
+          [userId]
+        );
+
+        // Delete user rankings
+        await client.query(`DELETE FROM "user_rankings" WHERE user_id = $1`, [
+          userId,
+        ]);
+
+        // Delete game results
+        await client.query(
+          `DELETE FROM "game_results" WHERE player1_id = $1 OR player2_id = $1`,
+          [userId]
+        );
+
+        // Delete games (decks will cascade)
+        await client.query(
+          `DELETE FROM "games" WHERE player1_id = $1 OR player2_id = $1`,
+          [userId]
+        );
+
+        // Delete decks (deck_cards will cascade)
+        await client.query(`DELETE FROM "decks" WHERE user_id = $1`, [userId]);
+
+        // Delete user owned cards (user_card_power_ups will cascade)
+        await client.query(
+          `DELETE FROM "user_owned_cards" WHERE user_id = $1`,
+          [userId]
+        );
+
+        // Delete sessions (should be cleared already, but ensure)
+        await client.query(`DELETE FROM "sessions" WHERE user_id = $1`, [userId]);
+
+        // Finally, delete the user record itself
+        await client.query(`DELETE FROM "users" WHERE user_id = $1`, [userId]);
+
+        await client.query("COMMIT");
+
+        logger.info("Account deleted successfully", { userId });
+
+        return res.status(200).json({
+          message: "Account deleted successfully.",
+        });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      logger.error(
+        "Delete account error",
+        { userId: req.user?.user_id },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res.status(500).json({
+        error: {
+          message: "Failed to delete account.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        },
       });
     }
   },

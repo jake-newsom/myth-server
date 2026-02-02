@@ -20,6 +20,10 @@ router.post("/refresh", authRateLimit, AuthController.refresh);
 // Facebook compliance endpoints (no rate limiting as they're called by Facebook)
 router.post("/facebook/deauthorize", AuthController.facebookDeauthorize);
 router.post("/facebook/data-deletion", AuthController.facebookDataDeletion);
+router.get(
+  "/facebook/data-deletion-status",
+  AuthController.facebookDataDeletionStatus
+);
 
 // Protected auth routes - require authentication
 router.post("/logout", protect, AuthController.logout);

@@ -351,7 +351,15 @@ paths:
   /api/auth/facebook/data-deletion:
     post:
       summary: Facebook data deletion callback
-      description: Handles data deletion requests from Facebook for GDPR compliance
+      description: |
+        Handles data deletion requests from Facebook for GDPR compliance.
+
+        This endpoint:
+        1. Verifies the HMAC-SHA256 signature of the signed_request using FACEBOOK_APP_SECRET
+        2. Removes the facebook_id from the user record (if found)
+        3. Returns a confirmation code and status URL for tracking
+
+        Facebook calls this endpoint when a user requests deletion of their data.
       tags:
         - Authentication
         - Compliance
@@ -366,7 +374,7 @@ paths:
               properties:
                 signed_request:
                   type: string
-                  description: Signed request from Facebook containing user ID
+                  description: HMAC-SHA256 signed request from Facebook containing user ID
       responses:
         200:
           description: Data deletion request processed successfully
@@ -378,11 +386,93 @@ paths:
                   url:
                     type: string
                     description: Status URL for tracking deletion progress
-                    example: "https://yourapp.com/data-deletion-status?code=DEL_123456789"
+                    example: "https://yourapp.com/api/auth/facebook/data-deletion-status?fb_id=123456&ts=1640995200000"
                   confirmation_code:
                     type: string
-                    description: Unique code for tracking the deletion request
-                    example: "DEL_1640995200000_abcd1234"
+                    description: Unique code for tracking the deletion request (format fb_id_timestamp)
+                    example: "123456_1640995200000"
+
+  /api/auth/facebook/data-deletion-status:
+    get:
+      summary: Check Facebook data deletion status
+      description: |
+        Public endpoint to check the status of a Facebook data deletion request.
+
+        Returns "complete" if the facebook_id has been removed from all user records,
+        or "in_progress" if a user still has that facebook_id (should not normally occur
+        since deletion happens immediately).
+      tags:
+        - Authentication
+        - Compliance
+      parameters:
+        - in: query
+          name: fb_id
+          required: true
+          schema:
+            type: string
+          description: The Facebook user ID from the deletion request
+          example: "123456789"
+        - in: query
+          name: ts
+          required: true
+          schema:
+            type: string
+          description: Timestamp when the deletion was requested (milliseconds since epoch)
+          example: "1640995200000"
+      responses:
+        200:
+          description: Deletion status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - complete
+                      - in_progress
+                    description: Current status of the data deletion
+                  message:
+                    type: string
+                    description: Human-readable status message
+              examples:
+                complete:
+                  summary: Deletion completed
+                  value:
+                    status: "complete"
+                    message: "Data deletion complete."
+                inProgress:
+                  summary: Deletion in progress
+                  value:
+                    status: "in_progress"
+                    message: "Data deletion in progress."
+        400:
+          description: Missing required parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Missing required parameters: fb_id and ts"
+        500:
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "Failed to check deletion status."
 
   /api/auth/facebook/link:
     post:
@@ -449,7 +539,8 @@ paths:
                         example: "This Facebook account is already linked to another user."
                       code:
                         type: string
-                        enum: ["FACEBOOK_ALREADY_LINKED", "FACEBOOK_ALREADY_EXISTS"]
+                        enum:
+                          ["FACEBOOK_ALREADY_LINKED", "FACEBOOK_ALREADY_EXISTS"]
         500:
           description: Server error
 

@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import http from "http";
 import dotenv from "dotenv";
+import { marked } from "marked";
 import * as cron from "node-cron";
 
 // Load environment variables
@@ -108,6 +109,63 @@ app.get("/health", (req: Request, res: Response) => {
   res.status(200).json({ status: "UP", timestamp: new Date().toISOString() });
 });
 
+// Helper function to render markdown as HTML
+const renderMarkdownPage = (title: string, markdownContent: string): string => {
+  const htmlContent = marked(markdownContent);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} - Myth</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+      color: #333;
+      background-color: #fafafa;
+    }
+    h1, h2, h3 { color: #1a1a1a; }
+    h1 { border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
+    a { color: #0066cc; }
+    code { background: #f4f4f4; padding: 0.2em 0.4em; border-radius: 3px; }
+    pre { background: #f4f4f4; padding: 1rem; border-radius: 5px; overflow-x: auto; }
+    blockquote { border-left: 4px solid #ddd; margin: 0; padding-left: 1rem; color: #666; }
+  </style>
+</head>
+<body>
+  ${htmlContent}
+</body>
+</html>`;
+};
+
+// Privacy Policy page
+app.get("/privacy", (req: Request, res: Response) => {
+  try {
+    const markdownPath = path.join(__dirname, "../content/privacy.md");
+    const markdownContent = fs.readFileSync(markdownPath, "utf8");
+    const html = renderMarkdownPage("Privacy Policy", markdownContent);
+    res.type("html").send(html);
+  } catch (error) {
+    res.status(500).send("Error loading privacy policy");
+  }
+});
+
+// Terms of Service page
+app.get("/terms", (req: Request, res: Response) => {
+  try {
+    const markdownPath = path.join(__dirname, "../content/terms.md");
+    const markdownContent = fs.readFileSync(markdownPath, "utf8");
+    const html = renderMarkdownPage("Terms of Service", markdownContent);
+    res.type("html").send(html);
+  } catch (error) {
+    res.status(500).send("Error loading terms of service");
+  }
+});
+
 // Centralized Error Handling
 app.use(errorHandler);
 
@@ -168,7 +226,7 @@ if (require.main === module) {
     try {
       await redisCache.connect();
       console.log("✅ Redis cache connected successfully");
-      
+
       // Purge all cached data on startup to ensure fresh data after schema changes
       const cleared = await redisCache.clear();
       if (cleared) {

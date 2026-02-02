@@ -15,6 +15,8 @@ tags:
     description: System status and health
   - name: Health
     description: Health monitoring and status endpoints
+  - name: Legal
+    description: Legal document pages (Privacy Policy, Terms of Service)
   - name: Users
     description: User profile and card collection management
   - name: Cards
@@ -53,6 +55,13 @@ tags:
     description: Infinite Tower game mode with scaling difficulty and rewards
 
 paths:
+  # Legal Pages (Root-level, no /api prefix)
+  /privacy:
+    $ref: "./legal.openapi.yaml#/paths/~1privacy"
+
+  /terms:
+    $ref: "./legal.openapi.yaml#/paths/~1terms"
+
   # Authentication Endpoints
   /api/auth/register:
     $ref: "./auth.openapi.yaml#/paths/~1api~1auth~1register"

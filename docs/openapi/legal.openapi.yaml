@@ -1,0 +1,54 @@
+openapi: 3.0.3
+info:
+  title: Legal Pages API
+  description: Legal document pages (Privacy Policy and Terms of Service)
+  version: 1.0.0
+
+paths:
+  /privacy:
+    get:
+      summary: Privacy Policy
+      description: Returns the Privacy Policy page rendered as HTML from Markdown
+      tags:
+        - Legal
+      responses:
+        "200":
+          description: Privacy Policy page
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML rendered Privacy Policy
+        "500":
+          description: Error loading privacy policy
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Error loading privacy policy"
+
+  /terms:
+    get:
+      summary: Terms of Service
+      description: Returns the Terms of Service page rendered as HTML from Markdown
+      tags:
+        - Legal
+      responses:
+        "200":
+          description: Terms of Service page
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML rendered Terms of Service
+        "500":
+          description: Error loading terms of service
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Error loading terms of service"
+
+tags:
+  - name: Legal
+    description: Legal document pages

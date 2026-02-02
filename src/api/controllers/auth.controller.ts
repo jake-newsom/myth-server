@@ -1,6 +1,7 @@
 // myth-server/src/api/controllers/auth.controller.ts
 import { Request, Response, NextFunction } from "express";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import UserModel from "../../models/user.model";
 import StarterService from "../../services/starter.service";
 import SessionService from "../../services/session.service";
@@ -467,17 +468,15 @@ const AuthController = {
 
       // Facebook expects a 200 response with a confirmation URL
       res.status(200).json({
-        url: `${
-          process.env.CLIENT_URL || "http://localhost:3000"
-        }/account-deauthorized`,
+        url: `${process.env.CLIENT_URL || "http://localhost:3000"
+          }/account-deauthorized`,
       });
     } catch (error) {
       console.error("Facebook deauthorization error:", error);
       // Still return 200 to Facebook to avoid retries
       res.status(200).json({
-        url: `${
-          process.env.CLIENT_URL || "http://localhost:3000"
-        }/account-deauthorized`,
+        url: `${process.env.CLIENT_URL || "http://localhost:3000"
+          }/account-deauthorized`,
       });
     }
   },
@@ -496,58 +495,145 @@ const AuthController = {
         });
       }
 
-      // Parse the signed request from Facebook
+      // Parse and verify the signed request from Facebook
+      const appSecret = process.env.FACEBOOK_APP_SECRET;
+      if (!appSecret) {
+        console.error("FACEBOOK_APP_SECRET not configured");
+        return res.status(500).json({
+          error: { message: "Server configuration error." },
+        });
+      }
+
       const [encodedSig, payload] = signed_request.split(".");
 
-      if (!payload) {
+      if (!payload || !encodedSig) {
         return res.status(400).json({
           error: { message: "Invalid signed_request format." },
         });
       }
 
+      // Base64 URL decode the signature
+      const sig = Buffer.from(
+        encodedSig.replace(/-/g, "+").replace(/_/g, "/"),
+        "base64"
+      );
+
+      // Verify HMAC-SHA256 signature
+      const expectedSig = crypto
+        .createHmac("sha256", appSecret)
+        .update(payload)
+        .digest();
+
+      if (sig.length !== expectedSig.length || !crypto.timingSafeEqual(sig, expectedSig)) {
+        console.error("Bad Signed JSON signature!");
+        // Still return 200 to Facebook to avoid retries, but log the error
+        return res.status(200).json({
+          url: `${process.env.CLIENT_URL || "http://localhost:3000"
+            }/api/auth/facebook/data-deletion-status`,
+          confirmation_code: "invalid_signature",
+        });
+      }
+
       // Decode the payload
-      const decodedPayload = Buffer.from(payload, "base64").toString("utf8");
+      const decodedPayload = Buffer.from(
+        payload.replace(/-/g, "+").replace(/_/g, "/"),
+        "base64"
+      ).toString("utf8");
       const data = JSON.parse(decodedPayload);
 
       if (data.user_id) {
-        const user = await UserModel.findByFacebookId(data.user_id);
+        const facebookUserId = data.user_id;
+        const timestamp = Date.now();
+        const confirmationCode = `${facebookUserId}_${timestamp}`;
+
+        // Find user with this Facebook ID
+        const user = await UserModel.findByFacebookId(facebookUserId);
 
         if (user) {
           console.log(
-            `Facebook data deletion request for user: ${user.user_id} (Facebook ID: ${data.user_id})`
+            `Facebook data deletion request for user: ${user.user_id} (Facebook ID: ${facebookUserId})`
           );
 
-          // Generate a confirmation code for tracking
-          const confirmationCode = `DEL_${Date.now()}_${user.user_id.slice(
-            -8
-          )}`;
+          // Remove the facebook_id from the user record
+          const client = await db.getClient();
+          try {
+            await client.query(
+              `UPDATE "users" SET facebook_id = NULL WHERE facebook_id = $1`,
+              [facebookUserId]
+            );
+          } finally {
+            client.release();
+          }
 
-          // Log the deletion request - you might want to store this in a separate table
-          // for compliance tracking and to handle the actual deletion process
-
-          // Return confirmation code and status URL
-          return res.status(200).json({
-            url: `${
-              process.env.CLIENT_URL || "http://localhost:3000"
-            }/data-deletion-status?code=${confirmationCode}`,
-            confirmation_code: confirmationCode,
-          });
+          console.log(`Facebook ID ${facebookUserId} removed from user ${user.user_id}`);
+        } else {
+          console.log(
+            `Facebook data deletion request for unknown Facebook ID: ${facebookUserId}`
+          );
         }
+
+        // Return confirmation code and status URL
+        return res.status(200).json({
+          url: `${process.env.CLIENT_URL || "http://localhost:3000"
+            }/api/auth/facebook/data-deletion-status?fb_id=${facebookUserId}&ts=${timestamp}`,
+          confirmation_code: confirmationCode,
+        });
       }
 
-      // Default response if user not found
+      // Default response if no user_id in payload
       res.status(200).json({
-        url: `${
-          process.env.CLIENT_URL || "http://localhost:3000"
-        }/data-deletion-status`,
+        url: `${process.env.CLIENT_URL || "http://localhost:3000"
+          }/api/auth/facebook/data-deletion-status`,
+        confirmation_code: "no_user_id",
       });
     } catch (error) {
       console.error("Facebook data deletion error:", error);
-      // Still return 200 to Facebook
+      // Still return 200 to Facebook to avoid retries
       res.status(200).json({
-        url: `${
-          process.env.CLIENT_URL || "http://localhost:3000"
-        }/data-deletion-status`,
+        url: `${process.env.CLIENT_URL || "http://localhost:3000"
+          }/api/auth/facebook/data-deletion-status`,
+        confirmation_code: "error",
+      });
+    }
+  },
+
+  facebookDataDeletionStatus: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const { fb_id, ts } = req.query;
+
+      if (!fb_id || !ts) {
+        return res.status(400).json({
+          error: { message: "Missing required parameters: fb_id and ts" },
+        });
+      }
+
+      const facebookId = fb_id as string;
+
+      // Check if any user still has this facebook_id
+      const user = await UserModel.findByFacebookId(facebookId);
+
+      if (user) {
+        // User still exists with this facebook_id - deletion in progress
+        // This shouldn't normally happen since we delete immediately
+        return res.status(200).json({
+          status: "in_progress",
+          message: "Data deletion in progress.",
+        });
+      }
+
+      // No user has this facebook_id - deletion complete
+      return res.status(200).json({
+        status: "complete",
+        message: "Data deletion complete.",
+      });
+    } catch (error) {
+      console.error("Facebook data deletion status error:", error);
+      return res.status(500).json({
+        error: { message: "Failed to check deletion status." },
       });
     }
   },
@@ -788,8 +874,7 @@ const AuthController = {
       // Create new user with Apple authentication
       // Apple may provide user info on first sign-in only
       const userName = appleUser?.name
-        ? `${appleUser.name.firstName || ""} ${
-            appleUser.name.lastName || ""
+        ? `${appleUser.name.firstName || ""} ${appleUser.name.lastName || ""
           }`.trim()
         : undefined;
 
