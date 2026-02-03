@@ -74,15 +74,15 @@ export function createBoardCell(
 
   const card: InGameCard | null = playedCardData
     ? {
-        ...playedCardData,
-        owner: playerId,
-        temporary_effects: [...playedCardData.temporary_effects], // Preserve existing temporary effects
-        card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
-        card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
-        // Preserve the power_enhancements from the hydrated card data (includes power-ups)
-        power_enhancements: playedCardData.power_enhancements,
-        current_power: { ...playedCardData.base_card_data.base_power },
-      }
+      ...playedCardData,
+      owner: playerId,
+      temporary_effects: [...playedCardData.temporary_effects], // Preserve existing temporary effects
+      card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
+      card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
+      // Preserve the power_enhancements from the hydrated card data (includes power-ups)
+      power_enhancements: playedCardData.power_enhancements,
+      current_power: { ...playedCardData.base_card_data.base_power },
+    }
     : null;
 
   // Transfer tile effect to card if present and applicable
@@ -126,18 +126,17 @@ export function resolveCombat(
   const events: BaseGameEvent[] = [];
 
   try {
-    // No longer cloning - mutate the state passed in since placeCard already cloned it
     const directions: {
       dx: number;
       dy: number;
       from: keyof PowerValues;
       to: keyof PowerValues;
     }[] = [
-      { dx: 0, dy: -1, from: "top", to: "bottom" }, // Card above
-      { dx: 1, dy: 0, from: "right", to: "left" }, // Card to the right
-      { dx: 0, dy: 1, from: "bottom", to: "top" }, // Card below
-      { dx: -1, dy: 0, from: "left", to: "right" }, // Card to the left
-    ];
+        { dx: 0, dy: -1, from: "top", to: "bottom" }, // Card above
+        { dx: 1, dy: 0, from: "right", to: "left" }, // Card to the right
+        { dx: 0, dy: 1, from: "bottom", to: "top" }, // Card below
+        { dx: -1, dy: 0, from: "left", to: "right" }, // Card to the left
+      ];
 
     const placedCell = gameState.board[position.y][position.x];
 
@@ -178,7 +177,8 @@ export function resolveCombat(
           let abilityPreventedDefeat = false;
 
           const combatContext = {
-            triggerCard: adjacentCell.card,
+            flippedCard: adjacentCell.card,
+            triggerCard: placedCell.card,
             triggerMoment: TriggerMoment.OnCombat,
             position: { x: nx, y: ny },
             state: gameState,
@@ -300,13 +300,11 @@ export function resolveCombat(
     return { state: gameState, events };
   } catch (error) {
     console.error(
-      `[DEBUG] Error in resolveCombat: ${
-        error instanceof Error ? error.message : String(error)
+      `[DEBUG] Error in resolveCombat: ${error instanceof Error ? error.message : String(error)
       }`
     );
     console.error(
-      `[DEBUG] Error stack: ${
-        error instanceof Error ? error.stack : "No stack trace"
+      `[DEBUG] Error stack: ${error instanceof Error ? error.stack : "No stack trace"
       }`
     );
     throw error;
@@ -385,13 +383,13 @@ export function flipCard(
     const setId = source.base_card_data?.set_id;
 
     setImmediate(() => {
-      DailyTaskService.trackDefeat(defeatingPlayerId).catch(() => {});
+      DailyTaskService.trackDefeat(defeatingPlayerId).catch(() => { });
       DailyTaskService.trackDefeatWithMythology(
         defeatingPlayerId,
         setId!
-      ).catch(() => {});
+      ).catch(() => { });
     });
-  } catch {}
+  } catch { }
 
   return events;
 }

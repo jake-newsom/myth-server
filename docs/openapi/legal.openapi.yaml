@@ -49,6 +49,28 @@ paths:
                 type: string
                 example: "Error loading terms of service"
 
+  /docs/delete-account:
+    get:
+      summary: Delete Account Instructions
+      description: Returns the Delete Account instructions page rendered as HTML from Markdown
+      tags:
+        - Legal
+      responses:
+        "200":
+          description: Delete Account instructions page
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML rendered Delete Account instructions
+        "500":
+          description: Error loading delete account instructions
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Error loading delete account instructions"
+
 tags:
   - name: Legal
     description: Legal document pages

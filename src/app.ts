@@ -166,6 +166,18 @@ app.get("/terms", (req: Request, res: Response) => {
   }
 });
 
+// Delete Account Instructions page
+app.get("/docs/delete-account", (req: Request, res: Response) => {
+  try {
+    const markdownPath = path.join(__dirname, "../content/delete-account.md");
+    const markdownContent = fs.readFileSync(markdownPath, "utf8");
+    const html = renderMarkdownPage("Delete Account", markdownContent);
+    res.type("html").send(html);
+  } catch (error) {
+    res.status(500).send("Error loading delete account instructions");
+  }
+});
+
 // Centralized Error Handling
 app.use(errorHandler);
 

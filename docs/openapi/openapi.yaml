@@ -62,6 +62,9 @@ paths:
   /terms:
     $ref: "./legal.openapi.yaml#/paths/~1terms"
 
+  /docs/delete-account:
+    $ref: "./legal.openapi.yaml#/paths/~1docs~1delete-account"
+
   # Authentication Endpoints
   /api/auth/register:
     $ref: "./auth.openapi.yaml#/paths/~1api~1auth~1register"

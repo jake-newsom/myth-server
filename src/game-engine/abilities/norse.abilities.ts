@@ -44,7 +44,7 @@ export const norseCombatResolvers: CombatResolverMap = {
   "Titan Shell": (context) => {
     const { triggerCard, flippedCard } = context;
 
-    if (!flippedCard || !isSameCard(triggerCard, flippedCard)) {
+    if (!flippedCard || isSameCard(triggerCard, flippedCard)) {
       return { preventDefeat: false };
     }
 
@@ -345,7 +345,7 @@ export const norseAbilities: AbilityMap = {
     } = context;
     const gameEvents: BaseGameEvent[] = [];
     if (!position) return [];
-    
+
     const adjacentSeaCards = getAdjacentCards(position, board, {
       tag: "Sea",
     });
@@ -398,7 +398,7 @@ export const norseAbilities: AbilityMap = {
     } = context;
     const gameEvents: BaseGameEvent[] = [];
     if (!position) return [];
-    
+
     const adjacentEnemies = getEnemiesAdjacentTo(
       position,
       board,
@@ -500,7 +500,7 @@ export const norseAbilities: AbilityMap = {
     } = context;
     const gameEvents: BaseGameEvent[] = [];
     if (!position) return [];
-    
+
     const adjacentCards = getAdjacentCards(position, board);
     if (adjacentCards.length === 0) {
       gameEvents.push(buff(triggerCard, 2, {
@@ -579,7 +579,7 @@ export const norseAbilities: AbilityMap = {
     } = context;
     const gameEvents: BaseGameEvent[] = [];
     if (!position) return [];
-    
+
     const adjacentGoddessCards = getAdjacentCards(position, board, {
       tag: "Goddess",
     });
@@ -599,7 +599,7 @@ export const norseAbilities: AbilityMap = {
       state: { board },
     } = context;
     if (!position) return [];
-    
+
     const adjacentThorCards = getAdjacentCards(position, board, {
       name: "Thor",
     });
@@ -638,7 +638,7 @@ export const norseAbilities: AbilityMap = {
       state: { board },
     } = context;
     if (!position) return [];
-    
+
     const adjacentValkyrieCards = getAdjacentCards(position, board, {
       tag: "Valkyrie",
     });
@@ -784,7 +784,7 @@ export const norseAbilities: AbilityMap = {
       const diff = meanHighestPower - highestPower.value;
       const cardPosition = getPositionOfCardById(card.user_card_instance_id, board);
       if (!cardPosition) continue;
-      
+
       if (diff > 0) {
         gameEvents.push(
           addTempBuff(
@@ -885,7 +885,7 @@ export const norseAbilities: AbilityMap = {
     } = context;
     const gameEvents: BaseGameEvent[] = [];
     if (!position) return [];
-    
+
     const destroyedAllies = getCardsByCondition(
       board,
       (card) => card.defeats.length > 0
