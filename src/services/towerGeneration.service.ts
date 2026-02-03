@@ -19,6 +19,53 @@ let isGenerating = false;
 // Constants for deck constraints
 const CARDS_PER_DECK = 20;
 
+// Flavorful floor name components for fallback generation
+const FLOOR_NAME_PREFIXES = [
+  "The", "Realm of", "Domain of", "Temple of", "Shrine of", "Gates of",
+  "Sanctum of", "Halls of", "Depths of", "Heights of", "Path of", "Trial of",
+  "Chamber of", "Throne of", "Citadel of", "Fortress of", "Garden of",
+  "Labyrinth of", "Crypt of", "Tower of", "Abyss of", "Pinnacle of"
+];
+
+const FLOOR_NAME_THEMES = [
+  // Elemental themes
+  "Eternal Flames", "Frozen Shadows", "Howling Winds", "Shifting Sands",
+  "Thunderous Fury", "Raging Waters", "Living Stone", "Sacred Light",
+  // Mythological themes
+  "Forgotten Gods", "Ancient Titans", "Celestial Beings", "Primordial Chaos",
+  "Divine Wrath", "Eternal Spirits", "Ancestral Power", "Mythic Heroes",
+  // Atmospheric themes
+  "Endless Night", "Crimson Dawn", "Starless Void", "Twilight Mists",
+  "Golden Radiance", "Silver Moonlight", "Obsidian Darkness", "Emerald Dreams",
+  // Challenge themes
+  "Unyielding Trials", "Final Reckoning", "Supreme Test", "Ultimate Challenge",
+  "Perilous Ascent", "Relentless Storm", "Unforgiving Judgment", "Fated Destiny",
+  // Nature themes
+  "Whispering Forest", "Roaring Seas", "Volcanic Fury", "Glacial Silence",
+  "Desert Mirage", "Mountain's Peak", "Jungle's Heart", "Ocean's Depths",
+  // Abstract themes
+  "Lost Memories", "Shattered Dreams", "Burning Ambition", "Hollow Echoes",
+  "Twisted Fate", "Broken Oaths", "Vengeful Spirits", "Triumphant Glory"
+];
+
+/**
+ * Generate a creative floor name for fallback generation
+ */
+function generateCreativeFloorName(floorNumber: number): string {
+  // Use floor number to seed somewhat consistent results
+  const prefixIndex = floorNumber % FLOOR_NAME_PREFIXES.length;
+  const themeIndex = Math.floor(floorNumber * 1.618) % FLOOR_NAME_THEMES.length; // Golden ratio for variety
+
+  return `${FLOOR_NAME_PREFIXES[prefixIndex]} ${FLOOR_NAME_THEMES[themeIndex]}`;
+}
+
+/**
+ * Check if a floor name is generic (just "Floor X")
+ */
+function isGenericFloorName(name: string): boolean {
+  return /^Floor\s+\d+$/i.test(name.trim());
+}
+
 // AI deck constraints (more lenient than player decks)
 const AI_MAX_LEGENDARY_CARDS = 4;
 const AI_MAX_SAME_NAME_CARDS = 4;
@@ -53,21 +100,21 @@ function calculateTargetAverageLevel(floorNumber: number): number {
   } else if (floorNumber <= 50) {
     // Floors 1-50: Very slow progression (1.0 -> 2.0)
     // ~0.02 per floor
-    return baseLevel + (floorNumber - 1) * 0.02;
+    return baseLevel + (floorNumber - 1) * 0.03;
   } else if (floorNumber <= 100) {
     // Floors 51-100: Slightly faster (2.0 -> 3.5)
     // ~0.03 per floor
     const previousLevel = 2.0;
-    return previousLevel + (floorNumber - 50) * 0.03;
+    return previousLevel + (floorNumber - 50) * 0.04;
   } else if (floorNumber <= 200) {
     // Floors 101-200: Steady progression (3.5 -> 6.5)
     // ~0.03 per floor
     const previousLevel = 3.5;
-    return previousLevel + (floorNumber - 100) * 0.03;
+    return previousLevel + (floorNumber - 100) * 0.04;
   } else {
     // Floors 201+: Moderate scaling (~0.04 per floor)
     const previousLevel = 6.5;
-    return previousLevel + (floorNumber - 200) * 0.04;
+    return previousLevel + (floorNumber - 200) * 0.05;
   }
 }
 
@@ -88,8 +135,7 @@ class TowerGenerationService {
     try {
       isGenerating = true;
       console.log(
-        `[TowerGen] Starting generation of floors ${startingFloor} to ${
-          startingFloor + count - 1
+        `[TowerGen] Starting generation of floors ${startingFloor} to ${startingFloor + count - 1
         }`
       );
 
@@ -167,9 +213,9 @@ class TowerGenerationService {
       },
       special_ability: row.ability_name
         ? {
-            name: row.ability_name,
-            description: row.ability_description,
-          }
+          name: row.ability_name,
+          description: row.ability_description,
+        }
         : undefined,
     }));
   }
@@ -321,17 +367,15 @@ class TowerGenerationService {
       targetLevels.push(`Floor ${floorNum}: ~${target.toFixed(1)}`);
     }
 
-    return `You are a game designer for a card battle game. Generate ${count} AI opponent decks for tower floors ${startingFloor} to ${
-      startingFloor + count - 1
-    }.
+    return `You are a game designer for a card battle game. Generate ${count} AI opponent decks for tower floors ${startingFloor} to ${startingFloor + count - 1
+      }.
 
 AVAILABLE CARDS:
 ${cardListText}
 
-REFERENCE DECK (Floor ${referenceDeck.floor_number}, Average Level: ${
-      referenceDeck.cards.reduce((sum, c) => sum + c.level, 0) /
+REFERENCE DECK (Floor ${referenceDeck.floor_number}, Average Level: ${referenceDeck.cards.reduce((sum, c) => sum + c.level, 0) /
       referenceDeck.cards.length
-    }, Average Power: ${referenceDeck.average_power.toFixed(1)}):
+      }, Average Power: ${referenceDeck.average_power.toFixed(1)}):
 ${referenceDeckText}
 
 TARGET AVERAGE LEVELS FOR THESE FLOORS:
@@ -409,9 +453,19 @@ IMPORTANT:
 - Use exact card names from the available cards list
 - Ensure powerup totals match the level formula: (level - 1) × ${AI_POWERUPS_PER_LEVEL}
 - Focus on creating interesting level distributions within each deck
-- Give each floor a creative, thematic name (floor_name) that hints at the challenge
-- Give each deck a thematic name (deck_name) that matches the floor theme
-- Make names evocative and exciting (e.g., "The Abyssal Depths", "Olympian Heights", "Realm of Shadows")`;
+
+FLOOR NAMING REQUIREMENTS (CRITICAL):
+- Each floor_name MUST be creative and evocative (3-6 words)
+- NEVER use generic names like "Floor 39" or "Floor X" - these will be rejected
+- Draw from mythology, nature, emotions, and epic fantasy themes
+- Examples of GOOD names:
+  * "The Sunken Temple of Leviathan"
+  * "Realm of Forgotten Ancestors"
+  * "Citadel of Eternal Storms"
+  * "The Crimson Halls of Judgment"
+  * "Domain of the Frost Giants"
+  * "Shrine of the Celestial Serpent"
+- Give each deck a thematic name (deck_name) that matches the floor theme`;
   }
 
   /**
@@ -482,8 +536,7 @@ IMPORTANT:
                 left: Math.floor((powerUps.left || 0) * scale),
               };
               console.log(
-                `[TowerGen]   ⚠️  Card "${
-                  card.card_name || card.name
+                `[TowerGen]   ⚠️  Card "${card.card_name || card.name
                 }" level ${level} had ${totalPowerups} powerups (max: ${maxPowerups}), scaled down`
               );
             }
@@ -505,10 +558,27 @@ IMPORTANT:
               ? Math.round((totalLevel / cards.length) * 10) / 10 // Round to 1 decimal
               : 1;
 
+          const floorNumber = floor.floor_number || startingFloor + index;
+
+          // Get floor name - use provided name if flavorful, otherwise generate one
+          let floorName = floor.floor_name;
+          if (!floorName || isGenericFloorName(floorName)) {
+            floorName = generateCreativeFloorName(floorNumber);
+            console.log(
+              `[TowerGen]   ⚠️  Floor ${floorNumber} had generic name, generated: "${floorName}"`
+            );
+          }
+
+          // Get deck name - use provided or derive from floor name
+          let deckName = floor.deck_name;
+          if (!deckName || /^Floor\s+\d+\s+Deck$/i.test(deckName.trim())) {
+            deckName = `${floorName} Deck`;
+          }
+
           return {
-            floor_number: floor.floor_number || startingFloor + index,
-            floor_name: floor.floor_name || `Floor ${startingFloor + index}`,
-            deck_name: floor.deck_name || `Floor ${startingFloor + index} Deck`,
+            floor_number: floorNumber,
+            floor_name: floorName,
+            deck_name: deckName,
             cards,
             average_card_level,
           };
@@ -551,7 +621,7 @@ IMPORTANT:
     const avgLevel =
       referenceDeck.cards.length > 0
         ? referenceDeck.cards.reduce((sum, c) => sum + c.level, 0) /
-          referenceDeck.cards.length
+        referenceDeck.cards.length
         : 1;
 
     // Group cards by rarity
@@ -678,10 +748,13 @@ IMPORTANT:
           ? Math.round((totalLevel / deckCards.length) * 10) / 10 // Round to 1 decimal
           : 1;
 
+      // Generate creative floor name instead of generic "Floor X"
+      const floorName = generateCreativeFloorName(floorNumber);
+
       floors.push({
         floor_number: floorNumber,
-        floor_name: `Floor ${floorNumber}`,
-        deck_name: `Floor ${floorNumber} Deck`,
+        floor_name: floorName,
+        deck_name: `${floorName} Deck`,
         cards: deckCards,
         average_card_level: deckAvgLevel,
       });
