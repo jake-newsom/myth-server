@@ -212,6 +212,28 @@ paths:
           description: Invalid request
         '401':
           description: User not authenticated
+        '500':
+          description: Server error (includes idempotency violations)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              examples:
+                alreadyRewarded:
+                  summary: Rewards already claimed for this game
+                  value:
+                    error: "Rewards for this game have already been claimed"
+                wrongFloor:
+                  summary: User is not on the requested floor
+                  value:
+                    error: "User is on floor 6, not 5"
+                gameNotFound:
+                  summary: Game not found
+                  value:
+                    error: "Game not found"
 
 components:
   securitySchemes:

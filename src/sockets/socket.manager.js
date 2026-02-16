@@ -38,6 +38,21 @@ function initializeSocketManager(io) {
       `User connected: ${username} (ID: ${userId}, Socket ID: ${socket.id})`
     );
 
+    // Force-disconnect previous socket for this user (prevent duplicate connections)
+    const previousSocketId = userSocketMap.get(userId);
+    if (previousSocketId && previousSocketId !== socket.id) {
+      const previousSocket = io.sockets.sockets.get(previousSocketId);
+      if (previousSocket) {
+        console.log(
+          `Force-disconnecting previous socket for user ${userId} (old: ${previousSocketId}, new: ${socket.id})`
+        );
+        previousSocket.emit("session:replaced", {
+          message: "Your session has been replaced by a new connection.",
+        });
+        previousSocket.disconnect(true);
+      }
+    }
+
     // Map this user's ID to their socket ID
     userSocketMap.set(userId, socket.id);
 

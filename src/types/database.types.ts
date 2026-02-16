@@ -40,10 +40,10 @@ export interface XpTransfer {
   id: string;
   user_id: string;
   transfer_type:
-    | "card_to_card"
-    | "sacrifice_to_pool"
-    | "pool_to_card"
-    | "game_reward_to_pool";
+  | "card_to_card"
+  | "sacrifice_to_pool"
+  | "pool_to_card"
+  | "game_reward_to_pool";
   source_card_ids?: string[];
   target_card_id?: string;
   card_name: string;
@@ -166,7 +166,7 @@ export interface Game {
   player2_deck_id: string;
   game_mode: "solo" | "pvp";
   winner_id: string | null;
-  game_status: "pending" | "active" | "completed" | "aborted";
+  game_status: "pending" | "active" | "completed" | "aborted" | "rewarded";
   game_state: Record<string, any>;
   board_layout: "4x4";
   created_at: Date;
@@ -212,13 +212,13 @@ export interface UserRanking {
   current_rank?: number;
   peak_rank?: number;
   rank_tier:
-    | "Bronze"
-    | "Silver"
-    | "Gold"
-    | "Platinum"
-    | "Diamond"
-    | "Master"
-    | "Grandmaster";
+  | "Bronze"
+  | "Silver"
+  | "Gold"
+  | "Platinum"
+  | "Diamond"
+  | "Master"
+  | "Grandmaster";
   last_game_at?: Date;
   created_at: Date;
   updated_at: Date;
@@ -259,12 +259,12 @@ export interface Achievement {
   title: string;
   description: string;
   category:
-    | "gameplay"
-    | "collection"
-    | "social"
-    | "progression"
-    | "special"
-    | "story_mode";
+  | "gameplay"
+  | "collection"
+  | "social"
+  | "progression"
+  | "special"
+  | "story_mode";
   type: "single" | "progress" | "milestone";
   target_value: number;
   rarity: Rarity;
@@ -306,13 +306,13 @@ export interface Mail {
   id: string;
   user_id: string;
   mail_type:
-    | "system"
-    | "achievement"
-    | "friend"
-    | "admin"
-    | "event"
-    | "welcome"
-    | "reward";
+  | "system"
+  | "achievement"
+  | "friend"
+  | "admin"
+  | "event"
+  | "welcome"
+  | "reward";
   subject: string;
   content: string;
   sender_id?: string;

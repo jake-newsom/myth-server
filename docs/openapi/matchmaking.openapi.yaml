@@ -85,6 +85,36 @@ paths:
                       message: "deckId is required to join matchmaking."
         401:
           description: Unauthorized - Invalid or missing token
+        409:
+          description: Player already has an active game in progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "You already have an active game in progress."
+                      code:
+                        type: string
+                        example: "ACTIVE_GAME_EXISTS"
+                  gameId:
+                    type: string
+                    format: uuid
+                    description: The ID of the existing active game
+                    example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+        429:
+          description: Concurrent matchmaking request already in progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  message: "Matchmaking request already in progress. Please wait."
         500:
           description: Server error
 

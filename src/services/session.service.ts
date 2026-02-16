@@ -309,6 +309,27 @@ class SessionService {
   }
 
   /**
+   * Invalidate all other active sessions for a user except the specified one.
+   * Used during login to enforce single-session-per-user.
+   * Returns the number of sessions that were invalidated.
+   */
+  async invalidateOtherUserSessions(
+    userId: string,
+    currentSessionId: string
+  ): Promise<number> {
+    const client = await db.getClient();
+    try {
+      const result = await client.query(
+        "UPDATE user_sessions SET is_active = false WHERE user_id = $1 AND session_id != $2 AND is_active = true",
+        [userId, currentSessionId]
+      );
+      return result.rowCount || 0;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
    * Clean up expired sessions (should be run periodically)
    */
   async cleanupExpiredSessions(): Promise<number> {

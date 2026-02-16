@@ -18,6 +18,9 @@ interface QueueEntry {
 const matchmakingQueue: QueueEntry[] = []; // Stores { userId, deckId, timestamp }
 const activeMatches = new Map<string, string>(); // Stores gameId by userId if they are matched
 
+// Lock set to prevent race conditions when the same user sends concurrent joinQueue requests
+const joinInProgress = new Set<string>();
+
 // --- Match Cleanup Function ---
 function clearActiveMatch(userId: string) {
   if (activeMatches.has(userId)) {
@@ -48,198 +51,229 @@ const MatchmakingController = {
         });
       }
 
-      // Validate deck ownership and validity
-      const playerDeck = await DeckModel.findDeckWithInstanceDetails(
-        deckId,
-        userId
-      );
-      if (!playerDeck || playerDeck.cards.length < 10) {
-        // Min deck size requirement
-        return res.status(400).json({
-          error: { message: "Invalid or incomplete deck selected." },
+      // --- Atomic guard: prevent race condition from concurrent requests by the same user ---
+      if (joinInProgress.has(userId)) {
+        return res.status(429).json({
+          error: { message: "Matchmaking request already in progress. Please wait." },
         });
       }
+      joinInProgress.add(userId);
 
-      // Prevent joining if already in queue or an active match
-      const existingQueueEntry = matchmakingQueue.find(
-        (p) => p.userId === userId
-      );
-      const hasActiveMatch = activeMatches.has(userId);
-
-      if (existingQueueEntry || hasActiveMatch) {
-        // If already matched, return existing gameId
-        if (hasActiveMatch) {
-          return res.status(200).json({
-            status: "matched",
-            gameId: activeMatches.get(userId),
-          });
-        }
-
-        // If in queue, check if entry is stale (older than 5 minutes)
-        if (existingQueueEntry) {
-          const now = new Date();
-          const entryAge =
-            now.getTime() - existingQueueEntry.timestamp.getTime();
-          const staleThreshold = 5 * 60 * 1000; // 5 minutes
-
-          if (entryAge > staleThreshold) {
-            // Remove stale entry and allow rejoin
-            const index = matchmakingQueue.findIndex(
-              (p) => p.userId === userId
-            );
-            if (index > -1) {
-              matchmakingQueue.splice(index, 1);
-              console.log(
-                `Removed stale queue entry for user ${userId}, age: ${Math.floor(
-                  entryAge / 1000
-                )}s`
-              );
-            }
-          } else {
-            // Entry is fresh, user is legitimately in queue
-            return res.status(400).json({
-              error: { message: "Already in queue or an active match." },
-            });
-          }
-        }
-      }
-
-      // Check if there's someone else waiting in the queue
-      if (matchmakingQueue.length > 0) {
-        const opponent = matchmakingQueue.shift(); // Get first player from queue
-
-        if (!opponent) {
-          // TypeScript safety check
-          return res.status(500).json({
-            error: { message: "Error processing matchmaking queue." },
-          });
-        }
-
-        if (opponent.userId === userId) {
-          // Safeguard against matching with self
-          matchmakingQueue.push(opponent);
-          return res.status(202).json({
-            status: "queued",
-            message: "Waiting for an opponent.",
-          });
-        }
-
-        // --- Create Game ---
-        const player1Deck = await DeckModel.findDeckWithInstanceDetails(
+      try {
+        // Validate deck ownership and validity
+        const playerDeck = await DeckModel.findDeckWithInstanceDetails(
           deckId,
           userId
         );
-        const player2Deck = await DeckModel.findDeckWithInstanceDetails(
-          opponent.deckId,
-          opponent.userId
-        );
-
-        if (!player1Deck || !player2Deck) {
+        if (!playerDeck || playerDeck.cards.length < 10) {
+          // Min deck size requirement
           return res.status(400).json({
-            error: { message: "Error retrieving deck information." },
+            error: { message: "Invalid or incomplete deck selected." },
           });
         }
 
-        // Extract card IDs for the game initialization
-        const p1DeckCardIds = player1Deck.cards.reduce(
-          (acc: string[], card) => {
-            // Each card in the deck is an instance, so we add it once
-            if (card.user_card_instance_id) {
-              acc.push(card.user_card_instance_id);
-            }
-            return acc;
-          },
-          []
+        // --- Database-level active game check (survives server restarts) ---
+        const activeGameResult = await db.query(
+          `SELECT game_id FROM "games" WHERE (player1_id = $1 OR player2_id = $1) AND game_status = 'active' LIMIT 1`,
+          [userId]
         );
-
-        const p2DeckCardIds = player2Deck.cards.reduce(
-          (acc: string[], card) => {
-            // Each card in the deck is an instance, so we add it once
-            if (card.user_card_instance_id) {
-              acc.push(card.user_card_instance_id);
-            }
-            return acc;
-          },
-          []
-        );
-
-        // Initialize game with the current player as P1, queued player as P2
-        const p1UserIdForGame = userId;
-        const p2UserIdForGame = opponent.userId;
-
-        const initialGameState = await GameLogic.initializeGame(
-          p1DeckCardIds,
-          p2DeckCardIds,
-          p1UserIdForGame,
-          p2UserIdForGame
-        );
-
-        // Player who initiated match often goes first
-        initialGameState.current_player_id = p1UserIdForGame;
-
-        // Attach deck effects based on mythology composition
-        const [p1DeckEffect, p2DeckEffect] = await Promise.all([
-          DeckService.getDeckEffect(deckId),
-          DeckService.getDeckEffect(opponent.deckId),
-        ]);
-
-        if (p1DeckEffect) {
-          initialGameState.player1.deck_effect = p1DeckEffect;
-          initialGameState.player1.deck_effect_state = { last_triggered_round: 0 };
-        }
-        if (p2DeckEffect) {
-          initialGameState.player2.deck_effect = p2DeckEffect;
-          initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
+        if (activeGameResult.rows.length > 0) {
+          const existingGameId = activeGameResult.rows[0].game_id;
+          // Sync the in-memory map
+          activeMatches.set(userId, existingGameId);
+          return res.status(409).json({
+            error: {
+              message: "You already have an active game in progress.",
+              code: "ACTIVE_GAME_EXISTS",
+            },
+            gameId: existingGameId,
+          });
         }
 
-        // Create a new game in the database
-        const gameQuery = `
-          INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-          RETURNING game_id;
-        `;
-        const gameValues = [
-          p1UserIdForGame,
-          p2UserIdForGame,
-          deckId,
-          opponent.deckId,
-          "pvp",
-          "active",
-          "4x4",
-          JSON.stringify(initialGameState),
-        ];
+        // Prevent joining if already in queue or an active match (in-memory check)
+        const existingQueueEntry = matchmakingQueue.find(
+          (p) => p.userId === userId
+        );
+        const hasActiveMatch = activeMatches.has(userId);
 
-        const gameResult = await db.query(gameQuery, gameValues);
-        const newGameId = gameResult.rows[0].game_id;
+        if (existingQueueEntry || hasActiveMatch) {
+          // If already matched, return existing gameId
+          if (hasActiveMatch) {
+            return res.status(200).json({
+              status: "matched",
+              gameId: activeMatches.get(userId),
+            });
+          }
 
-        // Store the match for both players
-        activeMatches.set(userId, newGameId);
-        activeMatches.set(opponent.userId, newGameId);
+          // If in queue, check if entry is stale (older than 5 minutes)
+          if (existingQueueEntry) {
+            const now = new Date();
+            const entryAge =
+              now.getTime() - existingQueueEntry.timestamp.getTime();
+            const staleThreshold = 5 * 60 * 1000; // 5 minutes
 
-        // Get opponent username for response
-        const opponentUser = await UserModel.findById(opponent.userId);
-        const opponentUsername = opponentUser
-          ? opponentUser.username
-          : "Opponent";
+            if (entryAge > staleThreshold) {
+              // Remove stale entry and allow rejoin
+              const index = matchmakingQueue.findIndex(
+                (p) => p.userId === userId
+              );
+              if (index > -1) {
+                matchmakingQueue.splice(index, 1);
+                console.log(
+                  `Removed stale queue entry for user ${userId}, age: ${Math.floor(
+                    entryAge / 1000
+                  )}s`
+                );
+              }
+            } else {
+              // Entry is fresh, user is legitimately in queue
+              return res.status(400).json({
+                error: { message: "Already in queue or an active match." },
+              });
+            }
+          }
+        }
 
-        // Return match information to the player
-        res.status(200).json({
-          status: "matched",
-          gameId: newGameId,
-          opponentUsername: opponentUsername,
-        });
-      } else {
-        // No opponent available, add to queue and wait
-        matchmakingQueue.push({
-          userId,
-          deckId,
-          timestamp: new Date(),
-        });
+        // Check if there's someone else waiting in the queue
+        if (matchmakingQueue.length > 0) {
+          const opponent = matchmakingQueue.shift(); // Get first player from queue
 
-        res.status(202).json({
-          status: "queued",
-          message: "Added to queue. Waiting for an opponent.",
-        });
+          if (!opponent) {
+            // TypeScript safety check
+            return res.status(500).json({
+              error: { message: "Error processing matchmaking queue." },
+            });
+          }
+
+          if (opponent.userId === userId) {
+            // Safeguard against matching with self
+            matchmakingQueue.push(opponent);
+            return res.status(202).json({
+              status: "queued",
+              message: "Waiting for an opponent.",
+            });
+          }
+
+          // --- Create Game ---
+          const player1Deck = await DeckModel.findDeckWithInstanceDetails(
+            deckId,
+            userId
+          );
+          const player2Deck = await DeckModel.findDeckWithInstanceDetails(
+            opponent.deckId,
+            opponent.userId
+          );
+
+          if (!player1Deck || !player2Deck) {
+            return res.status(400).json({
+              error: { message: "Error retrieving deck information." },
+            });
+          }
+
+          // Extract card IDs for the game initialization
+          const p1DeckCardIds = player1Deck.cards.reduce(
+            (acc: string[], card) => {
+              // Each card in the deck is an instance, so we add it once
+              if (card.user_card_instance_id) {
+                acc.push(card.user_card_instance_id);
+              }
+              return acc;
+            },
+            []
+          );
+
+          const p2DeckCardIds = player2Deck.cards.reduce(
+            (acc: string[], card) => {
+              // Each card in the deck is an instance, so we add it once
+              if (card.user_card_instance_id) {
+                acc.push(card.user_card_instance_id);
+              }
+              return acc;
+            },
+            []
+          );
+
+          // Initialize game with the current player as P1, queued player as P2
+          const p1UserIdForGame = userId;
+          const p2UserIdForGame = opponent.userId;
+
+          const initialGameState = await GameLogic.initializeGame(
+            p1DeckCardIds,
+            p2DeckCardIds,
+            p1UserIdForGame,
+            p2UserIdForGame
+          );
+
+          // Player who initiated match often goes first
+          initialGameState.current_player_id = p1UserIdForGame;
+
+          // Attach deck effects based on mythology composition
+          const [p1DeckEffect, p2DeckEffect] = await Promise.all([
+            DeckService.getDeckEffect(deckId),
+            DeckService.getDeckEffect(opponent.deckId),
+          ]);
+
+          if (p1DeckEffect) {
+            initialGameState.player1.deck_effect = p1DeckEffect;
+            initialGameState.player1.deck_effect_state = { last_triggered_round: 0 };
+          }
+          if (p2DeckEffect) {
+            initialGameState.player2.deck_effect = p2DeckEffect;
+            initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
+          }
+
+          // Create a new game in the database
+          const gameQuery = `
+            INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            RETURNING game_id;
+          `;
+          const gameValues = [
+            p1UserIdForGame,
+            p2UserIdForGame,
+            deckId,
+            opponent.deckId,
+            "pvp",
+            "active",
+            "4x4",
+            JSON.stringify(initialGameState),
+          ];
+
+          const gameResult = await db.query(gameQuery, gameValues);
+          const newGameId = gameResult.rows[0].game_id;
+
+          // Store the match for both players
+          activeMatches.set(userId, newGameId);
+          activeMatches.set(opponent.userId, newGameId);
+
+          // Get opponent username for response
+          const opponentUser = await UserModel.findById(opponent.userId);
+          const opponentUsername = opponentUser
+            ? opponentUser.username
+            : "Opponent";
+
+          // Return match information to the player
+          res.status(200).json({
+            status: "matched",
+            gameId: newGameId,
+            opponentUsername: opponentUsername,
+          });
+        } else {
+          // No opponent available, add to queue and wait
+          matchmakingQueue.push({
+            userId,
+            deckId,
+            timestamp: new Date(),
+          });
+
+          res.status(202).json({
+            status: "queued",
+            message: "Added to queue. Waiting for an opponent.",
+          });
+        }
+      } finally {
+        // Always release the atomic guard
+        joinInProgress.delete(userId);
       }
     } catch (error) {
       console.error("Matchmaking error:", error);

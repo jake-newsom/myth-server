@@ -67,14 +67,14 @@ class TowerService {
       floor % 100 === 0
         ? "S"
         : floor % 50 === 0
-        ? "A"
-        : floor % 25 === 0
-        ? "B"
-        : floor % 10 === 0
-        ? "C"
-        : floor % 5 === 0
-        ? "D"
-        : "E";
+          ? "A"
+          : floor % 25 === 0
+            ? "B"
+            : floor % 10 === 0
+              ? "C"
+              : floor % 5 === 0
+                ? "D"
+                : "E";
 
     // Scaled gem value
     let gemValue = Math.round(BASE_GEM_VALUE_BY_TIER[tier] * m);
@@ -372,9 +372,9 @@ class TowerService {
         opponent_mythology: opponentMythology,
         ai_deck_preview: aiDeckResult.rows.length
           ? {
-              name: aiDeckResult.rows[0].name,
-              card_count: 20,
-            }
+            name: aiDeckResult.rows[0].name,
+            card_count: 20,
+          }
           : undefined,
       };
     } finally {
@@ -415,6 +415,14 @@ class TowerService {
 
   /**
    * Process tower game completion
+   *
+   * Idempotency guarantees:
+   * 1. SELECT ... FOR UPDATE on the user row serializes concurrent requests
+   *    so two in-flight calls for the same user never race.
+   * 2. If a gameId is provided, we verify it hasn't already been reward-
+   *    processed (game_status must still be 'completed', not 'rewarded').
+   *    After granting rewards we mark it 'rewarded' atomically inside the
+   *    same transaction.
    */
   async processTowerCompletion(
     userId: string,
@@ -434,9 +442,48 @@ class TowerService {
     try {
       await client.query("BEGIN");
 
-      // Verify the user is actually on this floor
+      // --- Idempotency check 1: game-level dedup ---
+      // If a gameId was provided, verify the game exists, belongs to this user,
+      // is for this floor, and hasn't already been rewarded.
+      if (gameId) {
+        const gameCheck = await client.query(
+          `SELECT game_id, game_status, floor_number, player1_id
+           FROM "games"
+           WHERE game_id = $1
+           FOR UPDATE`,
+          [gameId]
+        );
+
+        if (gameCheck.rows.length === 0) {
+          throw new Error("Game not found");
+        }
+
+        const game = gameCheck.rows[0];
+
+        if (game.player1_id !== userId) {
+          throw new Error("Game does not belong to this user");
+        }
+
+        if (game.floor_number !== floorNumber) {
+          throw new Error(
+            `Game floor (${game.floor_number}) does not match requested floor (${floorNumber})`
+          );
+        }
+
+        if (game.game_status === "rewarded") {
+          console.log(
+            `[Tower] Duplicate reward claim blocked for game ${gameId}, user ${userId}, floor ${floorNumber}`
+          );
+          throw new Error("Rewards for this game have already been claimed");
+        }
+      }
+
+      // --- Idempotency check 2: row-level lock on user ---
+      // FOR UPDATE serializes concurrent requests for the same user.
+      // The second request will block here until the first commits/rolls back,
+      // at which point tower_floor will already be incremented.
       const progressResult = await client.query(
-        "SELECT tower_floor FROM users WHERE user_id = $1",
+        "SELECT tower_floor FROM users WHERE user_id = $1 FOR UPDATE",
         [userId]
       );
 
@@ -502,6 +549,14 @@ class TowerService {
         [newFloor, userId]
       );
 
+      // --- Mark game as rewarded (prevents replay) ---
+      if (gameId) {
+        await client.query(
+          `UPDATE "games" SET game_status = 'rewarded' WHERE game_id = $1`,
+          [gameId]
+        );
+      }
+
       // Check if we need to generate new floors
       const maxFloor = await this.getMaxFloorNumber();
       const generationTriggered = await this.checkAndTriggerFloorGeneration(
@@ -541,8 +596,8 @@ class TowerService {
       minRarity === "legendary"
         ? ["legendary"]
         : minRarity === "epic"
-        ? ["epic", "legendary"]
-        : ["rare", "epic", "legendary"];
+          ? ["epic", "legendary"]
+          : ["rare", "epic", "legendary"];
 
     // Build rarity filter for variants
     const rarityConditions = validRarities

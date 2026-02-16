@@ -116,6 +116,8 @@ export interface ServerJoinedResponse {
   gameState: GameState;
   /** 1 if the connecting user is player1, otherwise 2 */
   playerNumber: 1 | 2;
+  /** The opponent's display name */
+  opponentUsername: string;
 }
 
 // Broadcast when the *other* player joins after you (optional for Phase-1)

@@ -52,7 +52,7 @@ export function setupGameNamespace(io: Server): void {
     const meta = activeGames.get(gameId);
     if (!meta) {
       // No game metadata, return a no-op lock
-      return Promise.resolve(() => {});
+      return Promise.resolve(() => { });
     }
 
     let release: () => void;
@@ -88,6 +88,9 @@ export function setupGameNamespace(io: Server): void {
     }
   }
 
+  // Track per-user sockets in the /game namespace to force-disconnect duplicates
+  const userGameSocketMap = new Map<string, string>(); // userId -> socketId
+
   // Handle new socket connections after successful auth.
   gameNs.on("connection", (socket: Socket) => {
     const authedSocket = socket as AuthenticatedSocket;
@@ -97,6 +100,23 @@ export function setupGameNamespace(io: Server): void {
     (socket as any).data.user_id = userId;
 
     console.log(`[/game] Connected – userId=${userId}, socketId=${socket.id}`);
+
+    // Force-disconnect previous /game socket for this user (prevent duplicate control)
+    const previousSocketId = userGameSocketMap.get(userId);
+    if (previousSocketId && previousSocketId !== socket.id) {
+      const previousSocket = gameNs.sockets.get(previousSocketId);
+      if (previousSocket) {
+        console.log(
+          `[/game] Force-disconnecting previous game socket for user ${userId} (old: ${previousSocketId}, new: ${socket.id})`
+        );
+        previousSocket.emit("server:error", {
+          message: "You have connected from another session. This connection has been closed.",
+          code: "SESSION_REPLACED",
+        });
+        previousSocket.disconnect(true);
+      }
+    }
+    userGameSocketMap.set(userId, socket.id);
 
     /**
      * client:join_game — Client requests to enter a game room once the REST
@@ -136,8 +156,7 @@ export function setupGameNamespace(io: Server): void {
 
         if (game.game_state.hydrated_card_data_cache) {
           console.log(
-            `[/game] Original hydrated_card_data_cache has ${
-              Object.keys(game.game_state.hydrated_card_data_cache).length
+            `[/game] Original hydrated_card_data_cache has ${Object.keys(game.game_state.hydrated_card_data_cache).length
             } entries`
           );
         } else {
@@ -180,10 +199,17 @@ export function setupGameNamespace(io: Server): void {
           }
         }
 
+        // Resolve the opponent's username from the already-joined query data
+        const opponentUsername =
+          playerNumber === 1
+            ? (game as any).player2_username || "Opponent"
+            : (game as any).player1_username || "Opponent";
+
         // Emit confirmation back only to this socket.
         const joinResponse: ServerJoinedResponse = {
           gameState: sanitizedGameState,
           playerNumber,
+          opponentUsername,
         };
         socket.emit(GameNamespaceEvent.SERVER_JOINED, joinResponse);
 
@@ -494,10 +520,10 @@ export function setupGameNamespace(io: Server): void {
                 },
                 rewards: playerRewards
                   ? {
-                      gems: playerRewards.rewards.currency.gems,
-                      cardXp: playerRewards.rewards.card_xp_rewards,
-                      winStreakInfo: playerRewards.win_streak_info,
-                    }
+                    gems: playerRewards.rewards.currency.gems,
+                    cardXp: playerRewards.rewards.card_xp_rewards,
+                    winStreakInfo: playerRewards.win_streak_info,
+                  }
                   : null,
               });
             }
@@ -512,6 +538,12 @@ export function setupGameNamespace(io: Server): void {
     // Clean-up on disconnect.
     socket.on("disconnect", async (reason) => {
       console.log(`[/game] Disconnect – userId=${userId}: ${reason}`);
+
+      // Remove from user-socket map only if this socket is the current one
+      // (avoids removing a newer socket's entry when an old one disconnects)
+      if (userGameSocketMap.get(userId) === socket.id) {
+        userGameSocketMap.delete(userId);
+      }
 
       // Clean up matchmaking queue on disconnect
       const queueIndex = matchmakingQueue.findIndex((p) => p.userId === userId);
@@ -655,10 +687,10 @@ export function setupGameNamespace(io: Server): void {
               },
               rewards: playerRewards
                 ? {
-                    gems: playerRewards.rewards.currency.gems,
-                    cardXp: playerRewards.rewards.card_xp_rewards,
-                    winStreakInfo: playerRewards.win_streak_info,
-                  }
+                  gems: playerRewards.rewards.currency.gems,
+                  cardXp: playerRewards.rewards.card_xp_rewards,
+                  winStreakInfo: playerRewards.win_streak_info,
+                }
                 : null,
             });
           }

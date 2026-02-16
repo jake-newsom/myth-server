@@ -155,6 +155,18 @@ const AuthController = {
         sessionMetadata
       );
 
+      // Invalidate all previous sessions (enforce single active session)
+      const invalidatedCount =
+        await SessionService.invalidateOtherUserSessions(
+          user.user_id,
+          sessionId
+        );
+      if (invalidatedCount > 0) {
+        console.log(
+          `Invalidated ${invalidatedCount} previous session(s) for user ${user.user_id} on login`
+        );
+      }
+
       res.status(200).json({
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
@@ -321,6 +333,12 @@ const AuthController = {
           user.user_id,
           tokens,
           sessionMetadata
+        );
+
+        // Invalidate all previous sessions (enforce single active session)
+        await SessionService.invalidateOtherUserSessions(
+          user.user_id,
+          sessionId
         );
 
         return res.status(200).json({
@@ -853,6 +871,12 @@ const AuthController = {
           sessionMetadata
         );
 
+        // Invalidate all previous sessions (enforce single active session)
+        await SessionService.invalidateOtherUserSessions(
+          user.user_id,
+          sessionId
+        );
+
         return res.status(200).json({
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
@@ -1145,6 +1169,12 @@ const AuthController = {
           user.user_id,
           tokens,
           sessionMetadata
+        );
+
+        // Invalidate all previous sessions (enforce single active session)
+        await SessionService.invalidateOtherUserSessions(
+          user.user_id,
+          sessionId
         );
 
         return res.status(200).json({
