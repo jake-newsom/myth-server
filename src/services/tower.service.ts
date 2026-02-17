@@ -16,7 +16,6 @@ import {
   AwardedCard,
   rowToTowerFloor,
 } from "../types/tower.types";
-import UserModel from "../models/user.model";
 import DeckService from "./deck.service";
 import { GameLogic } from "../game-engine/game.logic";
 import { AI_PLAYER_ID } from "../api/controllers/game.controller";
@@ -499,24 +498,39 @@ class TowerService {
       // Calculate rewards
       const rewards = this.getTowerReward(floorNumber);
 
-      // Award currency rewards
-      const awardPromises: Promise<any>[] = [];
+      // Award currency rewards using the transaction client directly.
+      // IMPORTANT: The users row is locked by FOR UPDATE above, so we MUST use
+      // the same client connection. Using pool queries (e.g. UserModel.updateGems)
+      // would deadlock because pool queries run on separate connections that
+      // cannot acquire the row lock held by this transaction.
+      const setClauses: string[] = [];
+      const values: any[] = [userId];
+      let paramIndex = 2;
 
       if (rewards.reward_gems > 0) {
-        awardPromises.push(UserModel.updateGems(userId, rewards.reward_gems));
+        setClauses.push(`gems = gems + $${paramIndex}`);
+        values.push(rewards.reward_gems);
+        paramIndex++;
       }
 
       if (rewards.reward_packs > 0) {
-        awardPromises.push(UserModel.addPacks(userId, rewards.reward_packs));
+        setClauses.push(`pack_count = pack_count + $${paramIndex}`);
+        values.push(rewards.reward_packs);
+        paramIndex++;
       }
 
       if (rewards.reward_card_fragments > 0) {
-        awardPromises.push(
-          UserModel.updateCardFragments(userId, rewards.reward_card_fragments)
-        );
+        setClauses.push(`card_fragments = card_fragments + $${paramIndex}`);
+        values.push(rewards.reward_card_fragments);
+        paramIndex++;
       }
 
-      await Promise.all(awardPromises);
+      if (setClauses.length > 0) {
+        await client.query(
+          `UPDATE "users" SET ${setClauses.join(", ")} WHERE user_id = $1`,
+          values
+        );
+      }
 
       // Award special cards
       const cardsAwarded: TowerCompletionResult["cards_awarded"] = {};
