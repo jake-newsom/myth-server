@@ -24,16 +24,20 @@ const XpService = {
     );
   },
 
-  // Calculate level from XP using inverse of the formula
-  // Solves for level: xp = BASE_XP * (level - 1)^EXPONENT
-  // level = 1 + (xp / BASE_XP)^(1/EXPONENT)
+  // Calculate level from XP by comparing against exact thresholds.
+  // Uses the inverse formula as an initial estimate, then verifies against
+  // getXpForLevel to avoid floating-point precision errors at boundaries.
   calculateLevel(xp: number): number {
     if (xp <= 0) return 1;
-    // Calculate the level using the inverse formula
-    const rawLevel =
-      1 + Math.pow(xp / XP_CONFIG.BASE_XP, 1 / XP_CONFIG.EXPONENT);
-    // Floor to get the current level (you need to fully reach the XP threshold)
-    return Math.floor(rawLevel);
+    const estimate = Math.floor(
+      1 + Math.pow(xp / XP_CONFIG.BASE_XP, 1 / XP_CONFIG.EXPONENT)
+    );
+    // The formula can undershoot by 1 at exact thresholds due to floating-point,
+    // so check if we actually qualify for the next level.
+    if (xp >= this.getXpForLevel(estimate + 1)) {
+      return estimate + 1;
+    }
+    return estimate;
   },
 
   // Calculate XP value of a card for sacrifice based on rarity
@@ -540,11 +544,9 @@ const XpService = {
 
       return {
         success: true,
-        message: `Sacrificed ${
-          cardsToSacrifice.length
-        } cards with 0 XP for ${totalXpGained} XP and ${totalCardFragments} Card Fragments across ${
-          Object.keys(cardsByName).length
-        } different card types`,
+        message: `Sacrificed ${cardsToSacrifice.length
+          } cards with 0 XP for ${totalXpGained} XP and ${totalCardFragments} Card Fragments across ${Object.keys(cardsByName).length
+          } different card types`,
         sacrificed_cards: sacrificedCardsByBaseId,
         total_xp_gained: totalXpGained,
         total_card_fragments_gained: totalCardFragments,
