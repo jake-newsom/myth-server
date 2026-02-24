@@ -441,15 +441,12 @@ class TowerService {
     try {
       await client.query("BEGIN");
 
-      // --- Idempotency check 1: game-level dedup ---
-      // If a gameId was provided, verify the game exists, belongs to this user,
-      // is for this floor, and hasn't already been rewarded.
+      // --- Game validation (sanity check) ---
       if (gameId) {
         const gameCheck = await client.query(
-          `SELECT game_id, game_status, floor_number, player1_id
+          `SELECT game_id, floor_number, player1_id
            FROM "games"
-           WHERE game_id = $1
-           FOR UPDATE`,
+           WHERE game_id = $1`,
           [gameId]
         );
 
@@ -468,16 +465,9 @@ class TowerService {
             `Game floor (${game.floor_number}) does not match requested floor (${floorNumber})`
           );
         }
-
-        if (game.game_status === "rewarded") {
-          console.log(
-            `[Tower] Duplicate reward claim blocked for game ${gameId}, user ${userId}, floor ${floorNumber}`
-          );
-          throw new Error("Rewards for this game have already been claimed");
-        }
       }
 
-      // --- Idempotency check 2: row-level lock on user ---
+      // --- Idempotency: row-level lock on user ---
       // FOR UPDATE serializes concurrent requests for the same user.
       // The second request will block here until the first commits/rolls back,
       // at which point tower_floor will already be incremented.
@@ -562,14 +552,6 @@ class TowerService {
         "UPDATE users SET tower_floor = $1 WHERE user_id = $2",
         [newFloor, userId]
       );
-
-      // --- Mark game as rewarded (prevents replay) ---
-      if (gameId) {
-        await client.query(
-          `UPDATE "games" SET game_status = 'rewarded' WHERE game_id = $1`,
-          [gameId]
-        );
-      }
 
       // Check if we need to generate new floors
       const maxFloor = await this.getMaxFloorNumber();
