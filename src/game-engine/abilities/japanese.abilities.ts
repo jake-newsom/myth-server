@@ -179,7 +179,7 @@ export const japaneseAbilities: AbilityMap = {
     if (randomEnemy) {
       const enemyPosition = getPositionOfCardById(randomEnemy.user_card_instance_id, board);
       const triggerPosition = getPositionOfCardById(triggerCard.user_card_instance_id, board);
-      
+
       //select a random buff from the enemy
       const buffs = randomEnemy.temporary_effects.filter((effect) => {
         const totalPower = Object.values(effect.power).reduce(
@@ -463,11 +463,14 @@ export const japaneseAbilities: AbilityMap = {
       adjacentCards.filter(
         (enemy) => getCardTotalPower(enemy) > getCardTotalPower(triggerCard)
       ).length * 2;
-    gameEvents.push(
-      createOrUpdateBuff(triggerCard, 1000, buffAmount, "Beast Friend", position, {
-        animation: "phoenix-right",
-      })
-    );
+
+    if (buffAmount > 0) {
+      gameEvents.push(
+        createOrUpdateBuff(triggerCard, 1000, buffAmount, "Beast Friend", position, {
+          animation: "phoenix-right",
+        })
+      );
+    }
 
     return gameEvents;
   },

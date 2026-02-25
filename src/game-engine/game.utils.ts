@@ -502,7 +502,7 @@ export function triggerIndirectAbilities(
   }
 
   // Now process all collected cards
-  for (const { card } of cardsToTrigger) {
+  for (const { card, position } of cardsToTrigger) {
     const ability = card.base_card_data.special_ability;
     if (!ability) continue; // Safety check (shouldn't happen, but TypeScript needs it)
 
@@ -510,6 +510,7 @@ export function triggerIndirectAbilities(
       ...context,
       triggerCard: card,
       triggerMoment: `Any${trigger}` as TriggerMoment,
+      position,
     };
 
     if (triggerCard) {
