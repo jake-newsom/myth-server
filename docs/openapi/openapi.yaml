@@ -68,6 +68,9 @@ paths:
   /privacy:
     $ref: "./legal.openapi.yaml#/paths/~1privacy"
 
+  /privacy-policy:
+    $ref: "./legal.openapi.yaml#/paths/~1privacy-policy"
+
   /terms:
     $ref: "./legal.openapi.yaml#/paths/~1terms"
 

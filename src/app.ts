@@ -157,7 +157,7 @@ const renderMarkdownPage = (title: string, markdownContent: string): string => {
 };
 
 // Privacy Policy page
-app.get("/privacy", (req: Request, res: Response) => {
+app.get(["/privacy", "/privacy-policy"], (req: Request, res: Response) => {
   try {
     const markdownPath = path.join(__dirname, "../content/privacy.md");
     const markdownContent = fs.readFileSync(markdownPath, "utf8");

@@ -57,6 +57,28 @@ paths:
                 type: string
                 example: "Error loading privacy policy"
 
+  /privacy-policy:
+    get:
+      summary: Privacy Policy (alternate)
+      description: Returns the Privacy Policy page rendered as HTML from Markdown (alias for /privacy)
+      tags:
+        - Legal
+      responses:
+        "200":
+          description: Privacy Policy page
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML rendered Privacy Policy
+        "500":
+          description: Error loading privacy policy
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Error loading privacy policy"
+
   /terms:
     get:
       summary: Terms of Service
