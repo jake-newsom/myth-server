@@ -1,10 +1,40 @@
 openapi: 3.0.3
 info:
-  title: Legal Pages API
-  description: Legal document pages (Privacy Policy and Terms of Service)
+  title: Static Pages API
+  description: Static pages (Home, Privacy Policy, Terms of Service, etc.)
   version: 1.0.0
 
 paths:
+  /:
+    get:
+      summary: Home Page
+      description: Returns the home page as HTML
+      tags:
+        - Static
+      responses:
+        "200":
+          description: Home page
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML home page
+
+  /index.html:
+    get:
+      summary: Home Page (alternate)
+      description: Returns the home page as HTML (alias for /)
+      tags:
+        - Static
+      responses:
+        "200":
+          description: Home page
+          content:
+            text/html:
+              schema:
+                type: string
+                description: HTML home page
+
   /privacy:
     get:
       summary: Privacy Policy
@@ -72,5 +102,7 @@ paths:
                 example: "Error loading delete account instructions"
 
 tags:
+  - name: Static
+    description: Static pages (home page)
   - name: Legal
     description: Legal document pages

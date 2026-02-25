@@ -101,12 +101,26 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Swagger documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+// Static assets (images, etc.)
+app.use("/assets", express.static(path.join(__dirname, "../content/assets")));
+
 // API Routes
 app.use("/api", apiRoutes);
 
 // Health check route
 app.get("/health", (req: Request, res: Response) => {
   res.status(200).json({ status: "UP", timestamp: new Date().toISOString() });
+});
+
+// Home page
+app.get(["/", "/index.html"], (req: Request, res: Response) => {
+  try {
+    const htmlPath = path.join(__dirname, "../content/index.html");
+    const htmlContent = fs.readFileSync(htmlPath, "utf8");
+    res.type("html").send(htmlContent);
+  } catch (error) {
+    res.status(500).send("Error loading page");
+  }
 });
 
 // Helper function to render markdown as HTML
