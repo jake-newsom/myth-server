@@ -131,7 +131,6 @@
       text-decoration: none;
       font-size: 0.8rem;
       transition: color 0.2s;
-      cursor: pointer;
     }
 
     footer a:hover {
@@ -141,149 +140,6 @@
     footer span {
       color: rgba(255, 255, 255, 0.15);
       font-size: 0.8rem;
-    }
-
-    /* Modal styles */
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 100;
-      background: rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(4px);
-      align-items: center;
-      justify-content: center;
-      padding: 1rem;
-    }
-
-    .modal-overlay.active {
-      display: flex;
-    }
-
-    .modal {
-      background: #12122a;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      max-width: 700px;
-      width: 100%;
-      max-height: 80vh;
-      display: flex;
-      flex-direction: column;
-      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
-    }
-
-    .modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 1.25rem 1.5rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .modal-title {
-      font-size: 1.1rem;
-      font-weight: 600;
-      color: #fff;
-    }
-
-    .modal-close {
-      background: rgba(255, 255, 255, 0.1);
-      border: none;
-      border-radius: 8px;
-      width: 32px;
-      height: 32px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      color: rgba(255, 255, 255, 0.6);
-      transition: background 0.2s, color 0.2s;
-    }
-
-    .modal-close:hover {
-      background: rgba(255, 255, 255, 0.15);
-      color: #fff;
-    }
-
-    .modal-body {
-      padding: 1.5rem;
-      overflow-y: auto;
-      color: rgba(255, 255, 255, 0.75);
-      line-height: 1.7;
-    }
-
-    .modal-body h1,
-    .modal-body h2,
-    .modal-body h3 {
-      color: #fff;
-      margin-top: 1.5rem;
-      margin-bottom: 0.75rem;
-    }
-
-    .modal-body h1:first-child,
-    .modal-body h2:first-child,
-    .modal-body h3:first-child {
-      margin-top: 0;
-    }
-
-    .modal-body h1 {
-      font-size: 1.5rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      padding-bottom: 0.5rem;
-    }
-
-    .modal-body h2 {
-      font-size: 1.25rem;
-    }
-
-    .modal-body h3 {
-      font-size: 1.1rem;
-    }
-
-    .modal-body p {
-      margin-bottom: 1rem;
-    }
-
-    .modal-body a {
-      color: #93c5fd;
-    }
-
-    .modal-body ul,
-    .modal-body ol {
-      margin-bottom: 1rem;
-      padding-left: 1.5rem;
-    }
-
-    .modal-body li {
-      margin-bottom: 0.5rem;
-    }
-
-    .modal-body code {
-      background: rgba(255, 255, 255, 0.1);
-      padding: 0.2em 0.4em;
-      border-radius: 4px;
-      font-size: 0.9em;
-    }
-
-    .modal-body pre {
-      background: rgba(255, 255, 255, 0.05);
-      padding: 1rem;
-      border-radius: 8px;
-      overflow-x: auto;
-      margin-bottom: 1rem;
-    }
-
-    .modal-body blockquote {
-      border-left: 3px solid rgba(147, 197, 253, 0.5);
-      padding-left: 1rem;
-      margin: 1rem 0;
-      color: rgba(255, 255, 255, 0.6);
-    }
-
-    .modal-loading {
-      text-align: center;
-      padding: 2rem;
-      color: rgba(255, 255, 255, 0.5);
     }
   </style>
 </head>
@@ -297,64 +153,10 @@
     <p class="tagline">Strategic card battles with Mythological Characters.<br>Available on iOS &amp; Android.</p>
   </main>
   <footer>
-    <a onclick="openModal('Privacy Policy', '/privacy')">Privacy Policy</a>
+    <a href="/privacy" target="_blank">Privacy Policy</a>
     <span>·</span>
-    <a onclick="openModal('Terms of Service', '/terms')">Terms of Service</a>
+    <a href="/terms" target="_blank">Terms of Service</a>
   </footer>
-
-  <!-- Modal -->
-  <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <span class="modal-title" id="modalTitle">Title</span>
-        <button class="modal-close" onclick="closeModal()" aria-label="Close">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-      <div class="modal-body" id="modalBody">
-        <div class="modal-loading">Loading...</div>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    async function openModal(title, url) {
-      const overlay = document.getElementById('modalOverlay');
-      const modalTitle = document.getElementById('modalTitle');
-      const modalBody = document.getElementById('modalBody');
-
-      modalTitle.textContent = title;
-      modalBody.innerHTML = '<div class="modal-loading">Loading...</div>';
-      overlay.classList.add('active');
-      document.body.style.overflow = 'hidden';
-
-      try {
-        const response = await fetch(url);
-        const html = await response.text();
-
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const bodyContent = doc.body.innerHTML;
-
-        modalBody.innerHTML = bodyContent;
-      } catch (error) {
-        modalBody.innerHTML = '<p>Error loading content. Please try again.</p>';
-      }
-    }
-
-    function closeModal(event) {
-      if (event && event.target !== event.currentTarget) return;
-      const overlay = document.getElementById('modalOverlay');
-      overlay.classList.remove('active');
-      document.body.style.overflow = '';
-    }
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
-    });
-  </script>
 </body>
 
 </html>
