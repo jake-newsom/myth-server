@@ -78,12 +78,13 @@ const MatchmakingController = {
         // auto-aborted so they don't block matchmaking forever.
         const STALE_GAME_THRESHOLD = "2 hours";
 
-        // Auto-abort stale active games for this user
+        // Auto-abort stale active PvP games for this user
         const abortedResult = await db.query(
           `UPDATE "games"
            SET game_status = 'aborted', completed_at = NOW()
            WHERE (player1_id = $1 OR player2_id = $1)
              AND game_status = 'active'
+             AND game_mode = 'pvp'
              AND created_at < NOW() - INTERVAL '${STALE_GAME_THRESHOLD}'
            RETURNING game_id`,
           [userId]
@@ -98,11 +99,13 @@ const MatchmakingController = {
           }
         }
 
-        // Now check for legitimately active recent games
+        // Now check for legitimately active recent PvP games
+        // Solo/tower games should not block online matchmaking
         const activeGameResult = await db.query(
           `SELECT game_id FROM "games"
            WHERE (player1_id = $1 OR player2_id = $1)
              AND game_status = 'active'
+             AND game_mode = 'pvp'
            LIMIT 1`,
           [userId]
         );
