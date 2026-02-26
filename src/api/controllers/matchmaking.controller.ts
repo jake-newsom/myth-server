@@ -73,8 +73,37 @@ const MatchmakingController = {
         }
 
         // --- Database-level active game check (survives server restarts) ---
+        // Only consider games created within the last 2 hours as legitimately active.
+        // Older "active" games are stale (crashed sessions, abandoned games) and get
+        // auto-aborted so they don't block matchmaking forever.
+        const STALE_GAME_THRESHOLD = "2 hours";
+
+        // Auto-abort stale active games for this user
+        const abortedResult = await db.query(
+          `UPDATE "games"
+           SET game_status = 'aborted', completed_at = NOW()
+           WHERE (player1_id = $1 OR player2_id = $1)
+             AND game_status = 'active'
+             AND created_at < NOW() - INTERVAL '${STALE_GAME_THRESHOLD}'
+           RETURNING game_id`,
+          [userId]
+        );
+        if (abortedResult.rowCount && abortedResult.rowCount > 0) {
+          console.log(
+            `Auto-aborted ${abortedResult.rowCount} stale game(s) for user ${userId}: ${abortedResult.rows.map((r: any) => r.game_id).join(", ")}`
+          );
+          // Clean up in-memory state for aborted games
+          for (const row of abortedResult.rows) {
+            clearActiveMatch(userId);
+          }
+        }
+
+        // Now check for legitimately active recent games
         const activeGameResult = await db.query(
-          `SELECT game_id FROM "games" WHERE (player1_id = $1 OR player2_id = $1) AND game_status = 'active' LIMIT 1`,
+          `SELECT game_id FROM "games"
+           WHERE (player1_id = $1 OR player2_id = $1)
+             AND game_status = 'active'
+           LIMIT 1`,
           [userId]
         );
         if (activeGameResult.rows.length > 0) {
