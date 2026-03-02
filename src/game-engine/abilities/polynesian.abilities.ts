@@ -66,7 +66,8 @@ export const polynesianCombatResolvers: CombatResolverMap = {
   "Ocean's Shield": (context) => {
     const { triggerCard, flippedCard } = context;
 
-    if (!flippedCard || !isSameCard(triggerCard, flippedCard))
+    // Only protect the card that actually has Ocean's Shield (self-protection only)
+    if (!flippedCard || flippedCard.base_card_data.special_ability?.name !== "Ocean's Shield")
       return { preventDefeat: false };
 
     const enemyTotalPower = getCardTotalPower(triggerCard);
@@ -211,7 +212,7 @@ export const polynesianAbilities: AbilityMap = {
       triggerMoment === TriggerMoment.HandOnPlace &&
       context.originalTriggerCard!.owner === triggerCard.owner &&
       context.originalTriggerCard!.user_card_instance_id !==
-        triggerCard.user_card_instance_id
+      triggerCard.user_card_instance_id
     ) {
       const originalCardPosition = getPositionOfCardById(
         context.originalTriggerCard!.user_card_instance_id,
@@ -347,7 +348,7 @@ export const polynesianAbilities: AbilityMap = {
       );
       const powerRemoved = sunTrickBuff
         ? (sunTrickBuff.power.top || 0) + (sunTrickBuff.power.bottom || 0) +
-          (sunTrickBuff.power.left || 0) + (sunTrickBuff.power.right || 0)
+        (sunTrickBuff.power.left || 0) + (sunTrickBuff.power.right || 0)
         : 0;
 
       //after combat, remove the buff
@@ -608,7 +609,7 @@ export const polynesianAbilities: AbilityMap = {
       //pick random adjacent empty tile
       const randomAdjacentEmptyTile =
         adjacentEmptyTiles[
-          Math.floor(Math.random() * adjacentEmptyTiles.length)
+        Math.floor(Math.random() * adjacentEmptyTiles.length)
         ];
       //move to random adjacent empty tile
       gameEvents.push(

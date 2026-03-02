@@ -44,7 +44,8 @@ export const norseCombatResolvers: CombatResolverMap = {
   "Titan Shell": (context) => {
     const { triggerCard, flippedCard } = context;
 
-    if (!flippedCard || isSameCard(triggerCard, flippedCard)) {
+    // Only protect the card that actually has Titan Shell (self-protection only)
+    if (!flippedCard || flippedCard.base_card_data.special_ability?.name !== "Titan Shell") {
       return { preventDefeat: false };
     }
 
