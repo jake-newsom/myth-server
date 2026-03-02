@@ -142,6 +142,19 @@ export function setupGameNamespace(io: Server): void {
           return;
         }
 
+        // If the game is no longer active, tell the client it already ended
+        // instead of letting them "join" a completed/aborted game.
+        if (game.game_status !== GameStatus.ACTIVE) {
+          clearActiveMatch(userId);
+          socket.emit(GameNamespaceEvent.SERVER_GAME_END, {
+            result: {
+              winnerId: game.winner_id ?? game.game_state?.winner ?? null,
+              reason: game.game_status === "aborted" ? "aborted" : "completed",
+            },
+          });
+          return;
+        }
+
         const roomName = `game:${gameId}`;
         socket.join(roomName);
         socket.data.gameId = gameId; // Save for disconnect handler

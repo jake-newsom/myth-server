@@ -126,7 +126,24 @@ const MatchmakingController = {
         const existingQueueEntry = matchmakingQueue.find(
           (p) => p.userId === userId
         );
-        const hasActiveMatch = activeMatches.has(userId);
+        let hasActiveMatch = activeMatches.has(userId);
+
+        // Validate stale in-memory match entries against the DB
+        if (hasActiveMatch) {
+          const cachedGameId = activeMatches.get(userId)!;
+          const gameCheck = await db.query(
+            `SELECT game_status FROM "games" WHERE game_id = $1`,
+            [cachedGameId]
+          );
+          const dbStatus = gameCheck.rows[0]?.game_status;
+          if (!dbStatus || dbStatus !== "active") {
+            console.log(
+              `Clearing stale activeMatches entry for user ${userId} (game ${cachedGameId} is ${dbStatus ?? "missing"})`
+            );
+            clearActiveMatch(userId);
+            hasActiveMatch = false;
+          }
+        }
 
         if (existingQueueEntry || hasActiveMatch) {
           // If already matched, return existing gameId
@@ -327,28 +344,36 @@ const MatchmakingController = {
       if (activeMatches.has(userId)) {
         const gameId = activeMatches.get(userId);
 
-        // Get opponent details
         const gameDetails = await db.query(
-          'SELECT player1_id, player2_id FROM "games" WHERE game_id = $1',
+          'SELECT player1_id, player2_id, game_status FROM "games" WHERE game_id = $1',
           [gameId]
         );
 
-        let opponentUsername = "Opponent";
-        if (gameDetails.rows.length > 0) {
-          const opponentId =
-            gameDetails.rows[0].player1_id === userId
-              ? gameDetails.rows[0].player2_id
-              : gameDetails.rows[0].player1_id;
+        const dbStatus = gameDetails.rows[0]?.game_status;
+        if (!dbStatus || dbStatus !== "active") {
+          console.log(
+            `[getMatchStatus] Clearing stale activeMatches entry for user ${userId} (game ${gameId} is ${dbStatus ?? "missing"})`
+          );
+          clearActiveMatch(userId);
+          // Fall through to queue check / idle below
+        } else {
+          let opponentUsername = "Opponent";
+          if (gameDetails.rows.length > 0) {
+            const opponentId =
+              gameDetails.rows[0].player1_id === userId
+                ? gameDetails.rows[0].player2_id
+                : gameDetails.rows[0].player1_id;
 
-          const opponentUser = await UserModel.findById(opponentId);
-          if (opponentUser) opponentUsername = opponentUser.username;
+            const opponentUser = await UserModel.findById(opponentId);
+            if (opponentUser) opponentUsername = opponentUser.username;
+          }
+
+          return res.status(200).json({
+            status: "matched",
+            gameId: gameId,
+            opponentUsername: opponentUsername,
+          });
         }
-
-        res.status(200).json({
-          status: "matched",
-          gameId: gameId,
-          opponentUsername: opponentUsername,
-        });
       }
       // Check if user is in queue
       else if (matchmakingQueue.find((p) => p.userId === userId)) {
