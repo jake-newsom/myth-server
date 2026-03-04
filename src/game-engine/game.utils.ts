@@ -527,8 +527,9 @@ export function triggerIndirectAbilities(
 
 export function updateAllBoardCards(gameState: GameState) {
   //Update board card's current powers
-  for (let y = 0; y < 4; y++) {
-    for (let x = 0; x < 4; x++) {
+  const size = gameState.board.length;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
       const cell = gameState.board[y][x];
       if (!cell?.card) continue;
 

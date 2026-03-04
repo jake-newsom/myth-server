@@ -481,7 +481,7 @@ export function setupGameNamespace(io: Server): void {
                 gameStartTime,
                 player1Id,
                 player2Id,
-                gameRecord.player1_deck_id,
+                gameRecord.player1_deck_id!,
                 gameId,
                 isForfeit
               ).catch((err) => {
@@ -502,7 +502,7 @@ export function setupGameNamespace(io: Server): void {
                 gameStartTime,
                 player1Id,
                 player2Id,
-                gameRecord.player2_deck_id,
+                gameRecord.player2_deck_id!,
                 gameId,
                 isForfeit
               ).catch((err) => {
@@ -649,7 +649,7 @@ export function setupGameNamespace(io: Server): void {
               gameStartTime,
               player1Id,
               player2Id,
-              latestRecord.player1_deck_id,
+              latestRecord.player1_deck_id!,
               gameId,
               isForfeit
             ).catch((err) => {
@@ -670,7 +670,7 @@ export function setupGameNamespace(io: Server): void {
               gameStartTime,
               player1Id,
               player2Id,
-              latestRecord.player2_deck_id,
+              latestRecord.player2_deck_id!,
               gameId,
               isForfeit
             ).catch((err) => {

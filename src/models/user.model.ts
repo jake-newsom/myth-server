@@ -86,7 +86,7 @@ const UserModel = {
   },
 
   async findById(userId: string): Promise<User | null> {
-    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, tower_floor, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
+    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
     const { rows } = await db.query(query, [userId]);
     return rows[0] || null;
   },
@@ -407,6 +407,15 @@ const UserModel = {
     `;
     const { rows } = await db.query(query, [userId]);
     return rows[0] || null;
+  },
+
+  async markTutorialComplete(userId: string): Promise<void> {
+    const query = `
+      UPDATE "users"
+      SET tutorial_completed_at = NOW()
+      WHERE user_id = $1 AND tutorial_completed_at IS NULL;
+    `;
+    await db.query(query, [userId]);
   },
 };
 

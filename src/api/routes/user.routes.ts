@@ -43,6 +43,13 @@ router.post(
   UserController.claimMonthlyReward
 );
 
+// Mark tutorial as completed
+router.post(
+  "/me/tutorial-complete",
+  authMiddleware.protect,
+  UserController.completeTutorial
+);
+
 // Account reset - accessible by user (for own account) or admin (for any account)
 router.post(
   "/me/reset-account",

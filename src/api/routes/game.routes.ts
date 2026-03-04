@@ -17,6 +17,14 @@ router.post(
   gameController.startSoloGame
 );
 
+// Create a tutorial game with predetermined cards
+router.post(
+  "/tutorial",
+  authMiddleware.protect,
+  moderateRateLimit,
+  gameController.startTutorialGame
+);
+
 // Get game state (moderate rate limiting for reads)
 router.get(
   "/:gameId",

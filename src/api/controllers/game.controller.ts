@@ -27,6 +27,10 @@ import GameRewardsService, {
 import TowerService from "../../services/tower.service";
 import { BaseGameEvent } from "../../game-engine/game-events";
 import { sanitizeGameStateForPlayer } from "../../utils/sanitize";
+import {
+  buildTutorialGameState,
+  getTutorialAIMove,
+} from "../../game-engine/tutorial.data";
 
 // Initialize ability registry
 // AbilityRegistry.initialize();
@@ -36,8 +40,8 @@ export const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
 
 class GameController {
   constructor() {
-    // Bind methods to ensure 'this' is correct
     this.startSoloGame = this.startSoloGame.bind(this);
+    this.startTutorialGame = this.startTutorialGame.bind(this);
     this.getGame = this.getGame.bind(this);
     this.submitAction = this.submitAction.bind(this);
     this.submitAIAction = this.submitAIAction.bind(this);
@@ -166,6 +170,45 @@ class GameController {
       } else {
         res.status(500).json({ error: "Server error creating game" });
       }
+    }
+  }
+
+  /**
+   * Start a tutorial game with predetermined cards and a 3x3 board.
+   */
+  async startTutorialGame(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.user_id;
+
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const initialGameState = await buildTutorialGameState(userId);
+
+      const createdGameResponse: CreateGameResponse =
+        await GameService.createTutorialGameRecord(
+          userId,
+          AI_PLAYER_ID,
+          initialGameState
+        );
+
+      const gameStateObject =
+        typeof createdGameResponse.game_state === "string"
+          ? JSON.parse(createdGameResponse.game_state)
+          : createdGameResponse.game_state;
+
+      res.status(201).json({
+        game_id: createdGameResponse.game_id,
+        game_state: gameStateObject,
+        game_status: createdGameResponse.game_status,
+        current_user_id: userId,
+        events: [],
+      });
+    } catch (error) {
+      console.error("Error creating tutorial game:", error);
+      res.status(500).json({ error: "Server error creating tutorial game" });
     }
   }
 
@@ -310,40 +353,38 @@ class GameController {
       }
 
       // Hydrate any missing cards that were drawn during ability execution
-      // This must happen before saving to database so the cache is persisted
-      await hydrateGameStateCards(updatedGameState);
+      // Skip for tutorial games since all cards are pre-cached synthetic data
+      const isSubmitTutorial = !!gameRecord.is_tutorial;
+      if (!isSubmitTutorial) {
+        await hydrateGameStateCards(updatedGameState);
+      }
 
-      // Process game completion if the status indicates game over
       let winner_id_for_db: string | null = updatedGameState.winner || null;
       let new_game_status_for_db: GameStatus = updatedGameState.status;
       let gameCompletionResult: GameCompletionResult | null = null;
       let towerCompletion: any = null;
 
-      // Process comprehensive rewards if game is completed
-      if (new_game_status_for_db === GameStatus.COMPLETED) {
+      // Skip rewards entirely for tutorial games
+      if (new_game_status_for_db === GameStatus.COMPLETED && !isSubmitTutorial) {
         try {
-          // Optimization: Start floor number lookup and game rewards in parallel
-          // Floor number lookup is independent and can run alongside rewards processing
           const [gameRewardsResult, floorNumber] = await Promise.all([
             GameRewardsService.processGameCompletion(
               userId,
               updatedGameState,
               gameRecord.game_mode as "solo" | "pvp",
-              new Date(gameRecord.created_at), // Game start time
+              new Date(gameRecord.created_at),
               gameRecord.player1_id,
               gameRecord.player2_id,
-              gameRecord.player1_deck_id,
-              gameId, // Pass gameId for leaderboard updates
-              false, // isForfeit
-              gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id : undefined // AI deck ID for rare card drops
+              gameRecord.player1_deck_id!,
+              gameId,
+              false,
+              gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id ?? undefined : undefined
             ),
             GameService.getGameFloorNumber(gameId),
           ]);
 
           gameCompletionResult = gameRewardsResult;
 
-          // Process tower completion if this is a tower game
-          // This runs after we know the floor number and game result
           if (floorNumber !== null && gameCompletionResult) {
             try {
               const won = winner_id_for_db === userId;
@@ -355,34 +396,29 @@ class GameController {
               );
             } catch (error) {
               console.error("Error processing tower completion:", error);
-              // Don't fail the entire response if tower processing fails
             }
           }
         } catch (error) {
           console.error("Error processing game completion rewards:", error);
-          // Fallback to legacy currency award for solo wins
           if (winner_id_for_db === userId && gameRecord.game_mode === "solo") {
             await UserService.awardCurrency(userId, 10);
           }
         }
       }
 
-      // Update game in database using GameService
       const updatedGameResponse: UpdatedGameResponse =
         await GameService.updateGameAfterAction(
           gameId,
-          updatedGameState, // This is the fully updated state object
+          updatedGameState,
           new_game_status_for_db,
           winner_id_for_db
         );
 
-      // game_state from updateGameAfterAction (via DB) is a JSON string. Parse it.
       const finalGameStateObject =
         typeof updatedGameResponse.game_state === "string"
           ? JSON.parse(updatedGameResponse.game_state)
           : updatedGameResponse.game_state;
 
-      // Enhanced response with game completion rewards
       const response: any = {
         game_id: updatedGameResponse.game_id,
         game_state: finalGameStateObject,
@@ -391,26 +427,34 @@ class GameController {
         events,
       };
 
-      // Add reward data if game completed
-      if (gameCompletionResult) {
+      if (isSubmitTutorial && new_game_status_for_db === GameStatus.COMPLETED) {
+        response.game_result = {
+          winner: winner_id_for_db,
+          final_scores: {
+            player1: updatedGameState.player1.score,
+            player2: updatedGameState.player2.score,
+          },
+          game_duration_seconds: 0,
+        };
+        response.rewards = {
+          currency: { gems: 0 },
+          card_xp_rewards: [],
+        };
+        response.updated_currencies = { gems: 0, total_xp: 0 };
+      } else if (gameCompletionResult) {
         response.game_result = gameCompletionResult.game_result;
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
 
-        // Merge tower rewards if this was a tower game
         if (towerCompletion && towerCompletion.won) {
-          // Add tower rewards to the existing rewards
           if (towerCompletion.rewards_earned) {
-            // Merge gems (tower rewards include gems)
             if (towerCompletion.rewards_earned.reward_gems) {
               response.rewards.currency.gems =
                 (response.rewards.currency.gems || 0) +
                 towerCompletion.rewards_earned.reward_gems;
             }
-            // Note: tower packs and card fragments are handled by tower service
           }
 
-          // Add tower completion info
           response.tower_completion = {
             floor_number: towerCompletion.floor_number,
             new_floor: towerCompletion.new_floor,
@@ -493,82 +537,104 @@ class GameController {
 
       let updatedGameState: GameState = _.cloneDeep(currentGameState);
       let events: BaseGameEvent[] = [];
+      const isTutorial = !!gameRecord.is_tutorial;
 
-      // Make AI move
-      const ai = new AILogic();
-      const aiMove = await ai.makeAIMove(_.cloneDeep(currentGameState));
+      if (isTutorial) {
+        // Use scripted move for tutorial games
+        const tutorialMove = getTutorialAIMove(currentGameState.turn_number);
 
-      if (aiMove) {
-        const placeCardResult = await GameLogic.placeCard(
-          currentGameState,
-          AI_PLAYER_ID,
-          aiMove.user_card_instance_id,
-          aiMove.position
-        );
-        updatedGameState = placeCardResult.state;
-        events.push(...placeCardResult.events);
-      } else {
-        // AI has no valid moves, end turn
-        const endTurnResult = await GameLogic.endTurn(
-          currentGameState,
-          AI_PLAYER_ID
-        );
-        updatedGameState = endTurnResult.state;
-        events.push(...endTurnResult.events);
-
-        // Draw a card for the AI if needed after ending turn
-        const aiPlayer = validators.getPlayer(updatedGameState, AI_PLAYER_ID);
-
-        if (
-          validators.shouldDrawCard(
-            aiPlayer,
-            updatedGameState.max_cards_in_hand
-          )
-        ) {
-          const drawCardResult = await GameLogic.drawCard(
-            updatedGameState,
+        if (tutorialMove) {
+          const placeCardResult = await GameLogic.placeCard(
+            currentGameState,
+            AI_PLAYER_ID,
+            tutorialMove.cardId,
+            tutorialMove.position
+          );
+          updatedGameState = placeCardResult.state;
+          events.push(...placeCardResult.events);
+        } else {
+          // No scripted move for this turn — game should be ending
+          const endTurnResult = await GameLogic.endTurn(
+            currentGameState,
             AI_PLAYER_ID
           );
-          updatedGameState = drawCardResult.state;
-          events.push(...drawCardResult.events);
+          updatedGameState = endTurnResult.state;
+          events.push(...endTurnResult.events);
+        }
+      } else {
+        // Normal AI move calculation
+        const ai = new AILogic();
+        const aiMove = await ai.makeAIMove(_.cloneDeep(currentGameState));
+
+        if (aiMove) {
+          const placeCardResult = await GameLogic.placeCard(
+            currentGameState,
+            AI_PLAYER_ID,
+            aiMove.user_card_instance_id,
+            aiMove.position
+          );
+          updatedGameState = placeCardResult.state;
+          events.push(...placeCardResult.events);
+        } else {
+          const endTurnResult = await GameLogic.endTurn(
+            currentGameState,
+            AI_PLAYER_ID
+          );
+          updatedGameState = endTurnResult.state;
+          events.push(...endTurnResult.events);
+
+          const aiPlayer = validators.getPlayer(updatedGameState, AI_PLAYER_ID);
+
+          if (
+            validators.shouldDrawCard(
+              aiPlayer,
+              updatedGameState.max_cards_in_hand
+            )
+          ) {
+            const drawCardResult = await GameLogic.drawCard(
+              updatedGameState,
+              AI_PLAYER_ID
+            );
+            updatedGameState = drawCardResult.state;
+            events.push(...drawCardResult.events);
+          }
         }
       }
 
-      // Hydrate any missing cards that were drawn during ability execution
-      // This must happen before saving to database so the cache is persisted
-      await hydrateGameStateCards(updatedGameState);
+      // Hydrate any missing cards (no-op for tutorial since all cards are pre-cached)
+      if (!isTutorial) {
+        await hydrateGameStateCards(updatedGameState);
+      }
 
-      // Process game completion if the status indicates game over
       let winner_id_for_db: string | null = updatedGameState.winner || null;
       let new_game_status_for_db: GameStatus = updatedGameState.status;
       let gameCompletionResult: GameCompletionResult | null = null;
       let towerCompletionAI: any = null;
 
-      // Process comprehensive rewards if game is completed
-      if (new_game_status_for_db === GameStatus.COMPLETED) {
+      // Skip rewards entirely for tutorial games
+      if (
+        new_game_status_for_db === GameStatus.COMPLETED &&
+        !isTutorial
+      ) {
         try {
-          // Optimization: Start floor number lookup and game rewards in parallel
-          // Floor number lookup is independent and can run alongside rewards processing
           const [gameRewardsResult, floorNumberAI] = await Promise.all([
             GameRewardsService.processGameCompletion(
               userId,
               updatedGameState,
               gameRecord.game_mode as "solo" | "pvp",
-              new Date(gameRecord.created_at), // Game start time
+              new Date(gameRecord.created_at),
               gameRecord.player1_id,
               gameRecord.player2_id,
-              gameRecord.player1_deck_id,
-              gameId, // Pass gameId for leaderboard updates
-              false, // isForfeit
-              gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id : undefined // AI deck ID for rare card drops
+              gameRecord.player1_deck_id!,
+              gameId,
+              false,
+              gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id ?? undefined : undefined
             ),
             GameService.getGameFloorNumber(gameId),
           ]);
 
           gameCompletionResult = gameRewardsResult;
 
-          // Process tower completion if this is a tower game
-          // This runs after we know the floor number and game result
           if (floorNumberAI !== null && gameCompletionResult) {
             try {
               const wonAI = winner_id_for_db === userId;
@@ -580,19 +646,16 @@ class GameController {
               );
             } catch (error) {
               console.error("Error processing tower completion:", error);
-              // Don't fail the entire response if tower processing fails
             }
           }
         } catch (error) {
           console.error("Error processing game completion rewards:", error);
-          // Fallback to legacy currency award for solo wins
           if (winner_id_for_db === userId && gameRecord.game_mode === "solo") {
             await UserService.awardCurrency(userId, 10);
           }
         }
       }
 
-      // Update game in database using GameService
       const updatedGameResponse: UpdatedGameResponse =
         await GameService.updateGameAfterAction(
           gameId,
@@ -601,13 +664,11 @@ class GameController {
           winner_id_for_db
         );
 
-      // game_state from updateGameAfterAction (via DB) is a JSON string. Parse it.
       const finalGameStateObject =
         typeof updatedGameResponse.game_state === "string"
           ? JSON.parse(updatedGameResponse.game_state)
           : updatedGameResponse.game_state;
 
-      // Enhanced response with game completion rewards
       const response: any = {
         game_id: updatedGameResponse.game_id,
         game_state: finalGameStateObject,
@@ -616,26 +677,34 @@ class GameController {
         events,
       };
 
-      // Add reward data if game completed
-      if (gameCompletionResult) {
+      if (isTutorial && new_game_status_for_db === GameStatus.COMPLETED) {
+        response.game_result = {
+          winner: winner_id_for_db,
+          final_scores: {
+            player1: updatedGameState.player1.score,
+            player2: updatedGameState.player2.score,
+          },
+          game_duration_seconds: 0,
+        };
+        response.rewards = {
+          currency: { gems: 0 },
+          card_xp_rewards: [],
+        };
+        response.updated_currencies = { gems: 0, total_xp: 0 };
+      } else if (gameCompletionResult) {
         response.game_result = gameCompletionResult.game_result;
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
 
-        // Merge tower rewards if this was a tower game
         if (towerCompletionAI && towerCompletionAI.won) {
-          // Add tower rewards to the existing rewards
           if (towerCompletionAI.rewards_earned) {
-            // Merge gems (tower rewards include gems)
             if (towerCompletionAI.rewards_earned.reward_gems) {
               response.rewards.currency.gems =
                 (response.rewards.currency.gems || 0) +
                 towerCompletionAI.rewards_earned.reward_gems;
             }
-            // Note: tower packs and card fragments are handled by tower service
           }
 
-          // Add tower completion info
           response.tower_completion = {
             floor_number: towerCompletionAI.floor_number,
             new_floor: towerCompletionAI.new_floor,

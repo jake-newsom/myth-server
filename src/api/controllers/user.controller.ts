@@ -625,6 +625,28 @@ const UserController = {
   },
 
   /**
+   * Mark the tutorial as completed for the current user.
+   * Idempotent — calling again after completion is a no-op.
+   * @route POST /api/users/me/tutorial-complete
+   */
+  async completeTutorial(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "User not authenticated." } });
+        return;
+      }
+      await UserModel.markTutorialComplete(req.user.user_id);
+      res.status(200).json({ status: "ok" });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
    * Delete a user's account permanently
    * @route DELETE /api/users/me
    * @param {AuthenticatedRequest} req - Express request object with authenticated user

@@ -102,7 +102,7 @@ paths:
       tags:
         - Users
       summary: Get user's active games
-      description: Retrieve all active games for the authenticated user with complete game state information
+      description: Retrieve all active games for the authenticated user with complete game state information. Tutorial games are excluded.
       security:
         - bearerAuth: []
       responses:

@@ -23,6 +23,7 @@ export interface User {
   pack_count: number;
   win_streak_multiplier: number; // Win streak multiplier for online games (1.0 - 5.0)
   tower_floor: number; // Current unbeaten tower floor for the user (default: 1)
+  tutorial_completed_at: Date | null;
   created_at: Date;
   last_login: Date;
 }
@@ -162,13 +163,14 @@ export interface Game {
   game_id: string;
   player1_id: string;
   player2_id: string;
-  player1_deck_id: string;
-  player2_deck_id: string;
+  player1_deck_id: string | null;
+  player2_deck_id: string | null;
   game_mode: "solo" | "pvp";
   winner_id: string | null;
   game_status: "pending" | "active" | "completed" | "aborted" | "rewarded";
   game_state: Record<string, any>;
-  board_layout: "4x4";
+  board_layout: "4x4" | "3x3";
+  is_tutorial: boolean;
   created_at: Date;
   completed_at: Date | null;
 }

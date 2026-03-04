@@ -195,6 +195,97 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/games/tutorial:
+    post:
+      summary: Create a tutorial game
+      description: |
+        Creates a tutorial game with a fixed 3x3 board and predetermined player and AI cards
+        using real in-game characters with tutorial-tuned power values.
+        The player always goes first. Tutorial games do not affect stats, leaderboards, or
+        grant rewards.
+
+        Player cards: Shieldmaiden (tut-p1), Oni (tut-p2), Odin (tut-p3), Koa Warrior (tut-p4),
+        Kitsune (tut-p5). AI cards: Akaname (tut-a1), Mokumokuren (tut-a2), Hitotsume-kozō
+        (tut-a3), Runestone Keeper (tut-a4), Young Jarl (tut-a5).
+
+        Most tutorial cards have no special abilities, except for tut-p3 (Odin) which has the
+        "Foresight" ability (OnPlace: grant +1 to all allies on the board). This introduces
+        the concept of card abilities during the tutorial.
+      security:
+        - bearerAuth: []
+      operationId: startTutorialGame
+      tags:
+        - Games
+        - Tutorial
+      responses:
+        "201":
+          description: Tutorial game created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game_id:
+                    type: string
+                    format: uuid
+                  game_state:
+                    type: object
+                    description: Full game state with 3x3 board and predetermined cards
+                    properties:
+                      board:
+                        type: array
+                        items:
+                          type: array
+                          items:
+                            $ref: "#/components/schemas/BoardCell"
+                      player1:
+                        $ref: "#/components/schemas/Player"
+                      player2:
+                        $ref: "#/components/schemas/Player"
+                      current_player_id:
+                        type: string
+                        description: Always the requesting user (player goes first)
+                      turn_number:
+                        type: integer
+                        example: 1
+                      status:
+                        type: string
+                        enum: [active]
+                      max_cards_in_hand:
+                        type: integer
+                        example: 5
+                      initial_cards_to_draw:
+                        type: integer
+                        example: 5
+                      winner:
+                        type: string
+                        nullable: true
+                      hydrated_card_data_cache:
+                        type: object
+                        additionalProperties:
+                          type: object
+                  game_status:
+                    type: string
+                    enum: [active]
+                  current_user_id:
+                    type: string
+                  events:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/games/solo:
     post:
       summary: Create a new solo game against AI
@@ -296,7 +387,11 @@ paths:
   /api/games/{gameId}/ai-action:
     post:
       summary: Submit an AI action for a solo game
-      description: Processes an AI turn in a solo game. This endpoint should be called after the player's turn when it's the AI's turn to play.
+      description: |
+        Processes an AI turn in a solo game. This endpoint should be called after the player's turn when it's the AI's turn to play.
+
+        For tutorial games (`is_tutorial: true`), the AI uses scripted moves instead of computed AI logic.
+        Tutorial games do not grant rewards upon completion.
       security:
         - bearerAuth: []
       operationId: submitAIAction

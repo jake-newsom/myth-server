@@ -7,13 +7,14 @@ export interface GameRecord {
   game_id: string;
   player1_id: string;
   player2_id: string;
-  player1_deck_id: string;
-  player2_deck_id: string;
+  player1_deck_id: string | null;
+  player2_deck_id: string | null;
   game_mode: string;
-  game_status: GameStatus; // Use enum instead of string
+  game_status: GameStatus;
   board_layout: string;
-  game_state: GameState; // Stored as JSONB, parsed to GameState object
-  floor_number?: number | null; // Tower floor number for tower games
+  game_state: GameState;
+  floor_number?: number | null;
+  is_tutorial?: boolean;
   created_at: Date;
   completed_at?: Date | null;
   winner_id?: string | null;
@@ -77,26 +78,26 @@ class GameService {
       `;
     const values = floorNumber !== undefined
       ? [
-          player1Id,
-          player2Id,
-          player1DeckId,
-          player2DeckId,
-          gameMode,
-          GameStatus.ACTIVE, // Initial status
-          "4x4", // Assuming '4x4' as default or pass as param if variable
-          JSON.stringify(initialGameState),
-          floorNumber,
-        ]
+        player1Id,
+        player2Id,
+        player1DeckId,
+        player2DeckId,
+        gameMode,
+        GameStatus.ACTIVE, // Initial status
+        "4x4", // Assuming '4x4' as default or pass as param if variable
+        JSON.stringify(initialGameState),
+        floorNumber,
+      ]
       : [
-          player1Id,
-          player2Id,
-          player1DeckId,
-          player2DeckId,
-          gameMode,
-          GameStatus.ACTIVE, // Initial status
-          "4x4", // Assuming '4x4' as default or pass as param if variable
-          JSON.stringify(initialGameState),
-        ];
+        player1Id,
+        player2Id,
+        player1DeckId,
+        player2DeckId,
+        gameMode,
+        GameStatus.ACTIVE, // Initial status
+        "4x4", // Assuming '4x4' as default or pass as param if variable
+        JSON.stringify(initialGameState),
+      ];
     const { rows } = await db.query(query, values);
     if (rows.length === 0) {
       throw new Error("Failed to create game record."); // Or a more specific error
@@ -265,6 +266,7 @@ class GameService {
       LEFT JOIN "users" p2 ON g.player2_id = p2.user_id AND g.player2_id != $2
       WHERE (g.player1_id = $1 OR g.player2_id = $1) 
         AND g.game_status = 'active'
+        AND g.is_tutorial = false
       ORDER BY g.created_at DESC;
     `;
     const { rows } = await db.query(query, [userId, AI_PLAYER_ID]);
@@ -303,6 +305,7 @@ class GameService {
       LEFT JOIN "users" p2 ON g.player2_id = p2.user_id AND g.player2_id != $2
       WHERE (g.player1_id = $1 OR g.player2_id = $1) 
         AND g.game_status = 'active'
+        AND g.is_tutorial = false
       ORDER BY g.created_at DESC;
     `;
     const { rows } = await db.query(query, [userId, AI_PLAYER_ID]);
@@ -319,6 +322,32 @@ class GameService {
         turn_number: gameState.turn_number || 1,
       };
     });
+  }
+
+  /**
+   * Creates a tutorial game record (no real decks needed).
+   */
+  async createTutorialGameRecord(
+    playerId: string,
+    aiPlayerId: string,
+    initialGameState: GameState
+  ): Promise<CreateGameResponse> {
+    const query = `
+      INSERT INTO "games" (player1_id, player2_id, game_mode, game_status, board_layout, game_state, is_tutorial, created_at)
+      VALUES ($1, $2, 'solo', $3, '3x3', $4, true, NOW())
+      RETURNING game_id, game_state, game_status;
+    `;
+    const values = [
+      playerId,
+      aiPlayerId,
+      GameStatus.ACTIVE,
+      JSON.stringify(initialGameState),
+    ];
+    const { rows } = await db.query(query, values);
+    if (rows.length === 0) {
+      throw new Error("Failed to create tutorial game record.");
+    }
+    return rows[0] as CreateGameResponse;
   }
 
   /**

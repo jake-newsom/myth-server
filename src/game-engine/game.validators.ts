@@ -5,7 +5,9 @@ import {
   TileStatus,
 } from "../types/game.types";
 
-const BOARD_SIZE = 4;
+export function getBoardSize(gameState: GameState): number {
+  return gameState.board.length;
+}
 
 export function isPlayerTurn(gameState: GameState, playerId: string): boolean {
   return gameState.current_player_id === playerId;
@@ -15,18 +17,17 @@ export function canPlaceOnTile(
   gameState: GameState,
   position: BoardPosition
 ): { canPlace: boolean; errorMessage: string } {
-  if (!isValidBoardPosition(position)) {
+  if (!isValidBoardPosition(position, gameState)) {
     return { canPlace: false, errorMessage: "Invalid board position." };
   }
 
   if (isBoardPositionOccupied(gameState, position)) {
     return {
       canPlace: false,
-      errorMessage: `Board position ${position.x},${
-        position.y
-      } is occupied: ${JSON.stringify(
-        gameState.board[position.y][position.x].card
-      )}`,
+      errorMessage: `Board position ${position.x},${position.y
+        } is occupied: ${JSON.stringify(
+          gameState.board[position.y][position.x].card
+        )}`,
     };
   }
 
@@ -37,12 +38,16 @@ export function canPlaceOnTile(
   return { canPlace: true, errorMessage: "" };
 }
 
-export function isValidBoardPosition(position: BoardPosition): boolean {
+export function isValidBoardPosition(
+  position: BoardPosition,
+  gameState?: GameState
+): boolean {
+  const size = gameState ? getBoardSize(gameState) : 4;
   const result =
     position.x >= 0 &&
-    position.x < BOARD_SIZE &&
+    position.x < size &&
     position.y >= 0 &&
-    position.y < BOARD_SIZE;
+    position.y < size;
   return result;
 }
 
@@ -100,8 +105,9 @@ export function getOpponent(gameState: GameState, playerId: string) {
 }
 
 export function isBoardFull(board: (BoardCell | null)[][]): boolean {
-  for (let y = 0; y < BOARD_SIZE; y++) {
-    for (let x = 0; x < BOARD_SIZE; x++) {
+  const size = board.length;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < (board[y]?.length ?? size); x++) {
       if (board[y][x]?.card === null) {
         return false;
       }
@@ -118,8 +124,9 @@ export function calculateScores(
   let player1Score = 0;
   let player2Score = 0;
 
-  for (let y = 0; y < BOARD_SIZE; y++) {
-    for (let x = 0; x < BOARD_SIZE; x++) {
+  const size = board.length;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < (board[y]?.length ?? size); x++) {
       if (board[y][x] !== null && board[y][x]!.card) {
         if (board[y][x]!.card!.owner === player1Id) {
           player1Score++;

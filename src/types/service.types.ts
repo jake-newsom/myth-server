@@ -56,12 +56,13 @@ export interface GameRecord {
   game_id: string;
   player1_id: string;
   player2_id: string;
-  player1_deck_id: string;
-  player2_deck_id: string;
+  player1_deck_id: string | null;
+  player2_deck_id: string | null;
   game_mode: string;
   game_status: import("../game-engine/game.logic").GameStatus;
   board_layout: string;
   game_state: GameState;
+  is_tutorial?: boolean;
   created_at: Date;
   completed_at?: Date | null;
   winner_id?: string | null;
@@ -345,13 +346,13 @@ export interface SetCreateInput {
 export interface CreateMailInput {
   user_id: string;
   mail_type:
-    | "system"
-    | "achievement"
-    | "friend"
-    | "admin"
-    | "event"
-    | "welcome"
-    | "reward";
+  | "system"
+  | "achievement"
+  | "friend"
+  | "admin"
+  | "event"
+  | "welcome"
+  | "reward";
   subject: string;
   content: string;
   sender_id?: string;
