@@ -365,6 +365,7 @@ class GameController {
       let towerCompletion: any = null;
 
       // Skip rewards entirely for tutorial games
+      const isTowerGame = gameRecord.floor_number != null;
       if (new_game_status_for_db === GameStatus.COMPLETED && !isSubmitTutorial) {
         try {
           const [gameRewardsResult, floorNumber] = await Promise.all([
@@ -378,7 +379,8 @@ class GameController {
               gameRecord.player1_deck_id!,
               gameId,
               false,
-              gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id ?? undefined : undefined
+              gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id ?? undefined : undefined,
+              isTowerGame
             ),
             GameService.getGameFloorNumber(gameId),
           ]);
@@ -400,7 +402,7 @@ class GameController {
           }
         } catch (error) {
           console.error("Error processing game completion rewards:", error);
-          if (winner_id_for_db === userId && gameRecord.game_mode === "solo") {
+          if (winner_id_for_db === userId && gameRecord.game_mode === "solo" && !isTowerGame) {
             await UserService.awardCurrency(userId, 10);
           }
         }
@@ -446,7 +448,8 @@ class GameController {
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
 
-        if (towerCompletion && towerCompletion.won) {
+        // TODO: TEMP — always show tower rewards for UI testing
+        if (towerCompletion) {
           if (towerCompletion.rewards_earned) {
             if (towerCompletion.rewards_earned.reward_gems) {
               response.rewards.currency.gems =
@@ -612,6 +615,7 @@ class GameController {
       let towerCompletionAI: any = null;
 
       // Skip rewards entirely for tutorial games
+      const isTowerGameAI = gameRecord.floor_number != null;
       if (
         new_game_status_for_db === GameStatus.COMPLETED &&
         !isTutorial
@@ -628,7 +632,8 @@ class GameController {
               gameRecord.player1_deck_id!,
               gameId,
               false,
-              gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id ?? undefined : undefined
+              gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id ?? undefined : undefined,
+              isTowerGameAI
             ),
             GameService.getGameFloorNumber(gameId),
           ]);
@@ -650,7 +655,7 @@ class GameController {
           }
         } catch (error) {
           console.error("Error processing game completion rewards:", error);
-          if (winner_id_for_db === userId && gameRecord.game_mode === "solo") {
+          if (winner_id_for_db === userId && gameRecord.game_mode === "solo" && !isTowerGameAI) {
             await UserService.awardCurrency(userId, 10);
           }
         }
@@ -696,7 +701,8 @@ class GameController {
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
 
-        if (towerCompletionAI && towerCompletionAI.won) {
+        // TODO: TEMP — always show tower rewards for UI testing
+        if (towerCompletionAI) {
           if (towerCompletionAI.rewards_earned) {
             if (towerCompletionAI.rewards_earned.reward_gems) {
               response.rewards.currency.gems =

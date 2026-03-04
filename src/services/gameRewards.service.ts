@@ -251,7 +251,8 @@ const GameRewardsService = {
     playerDeckId: string,
     gameId?: string,
     isForfeit: boolean = false,
-    aiDeckId?: string
+    aiDeckId?: string,
+    skipCurrency: boolean = false
   ): Promise<GameCompletionResult> {
     try {
       // === PHASE 1: Sequential calculations (sync, no DB) ===
@@ -272,14 +273,17 @@ const GameRewardsService = {
       }
 
       // Calculate currency rewards (sync, depends on multiplier)
-      const currencyRewards = this.calculateCurrencyRewards(
-        userId,
-        gameResult.winner,
-        gameMode,
-        gameResult.game_duration_seconds,
-        winStreakMultiplier,
-        isForfeit
-      );
+      // Tower games handle their own currency via TowerService
+      const currencyRewards = skipCurrency
+        ? { gems: 0 }
+        : this.calculateCurrencyRewards(
+          userId,
+          gameResult.winner,
+          gameMode,
+          gameResult.game_duration_seconds,
+          winStreakMultiplier,
+          isForfeit
+        );
 
       // Calculate XP rewards (sync)
       const cardXpRewards = this.calculateCardXpRewards(
@@ -326,7 +330,8 @@ const GameRewardsService = {
         gameMode === "solo" &&
         gameResult.winner === userId &&
         aiDeckId &&
-        !isForfeit
+        !isForfeit &&
+        !skipCurrency
       ) {
         // Roll for 1/500 chance
         const dropRoll = Math.random();

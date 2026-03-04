@@ -115,6 +115,9 @@ class TowerService {
       reward_gems += Math.floor(gemValue * 0.1);
     }
 
+    // TODO: TEMP — force legendary on every floor for UI testing
+    reward_legendary_card = 1;
+
     return {
       floor,
       band,
@@ -429,13 +432,14 @@ class TowerService {
     won: boolean,
     gameId?: string
   ): Promise<TowerCompletionResult> {
-    if (!won) {
-      return {
-        success: true,
-        won: false,
-        floor_number: floorNumber,
-      };
-    }
+    // TODO: TEMP — skip early return on defeat so rewards are always granted for UI testing
+    // if (!won) {
+    //   return {
+    //     success: true,
+    //     won: false,
+    //     floor_number: floorNumber,
+    //   };
+    // }
 
     const client = await db.getClient();
     try {
@@ -468,11 +472,11 @@ class TowerService {
       }
 
       // --- Idempotency: row-level lock on user ---
-      // FOR UPDATE serializes concurrent requests for the same user.
-      // The second request will block here until the first commits/rolls back,
-      // at which point tower_floor will already be incremented.
+      // FOR NO KEY UPDATE serializes concurrent requests for the same user
+      // without conflicting with FOR KEY SHARE locks acquired by FK checks
+      // (e.g. INSERT INTO user_owned_cards during card awards on a pool connection).
       const progressResult = await client.query(
-        "SELECT tower_floor FROM users WHERE user_id = $1 FOR UPDATE",
+        "SELECT tower_floor FROM users WHERE user_id = $1 FOR NO KEY UPDATE",
         [userId]
       );
 
