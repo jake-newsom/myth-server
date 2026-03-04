@@ -115,9 +115,6 @@ class TowerService {
       reward_gems += Math.floor(gemValue * 0.1);
     }
 
-    // TODO: TEMP — force legendary on every floor for UI testing
-    reward_legendary_card = 1;
-
     return {
       floor,
       band,
@@ -432,14 +429,13 @@ class TowerService {
     won: boolean,
     gameId?: string
   ): Promise<TowerCompletionResult> {
-    // TODO: TEMP — skip early return on defeat so rewards are always granted for UI testing
-    // if (!won) {
-    //   return {
-    //     success: true,
-    //     won: false,
-    //     floor_number: floorNumber,
-    //   };
-    // }
+    if (!won) {
+      return {
+        success: true,
+        won: false,
+        floor_number: floorNumber,
+      };
+    }
 
     const client = await db.getClient();
     try {

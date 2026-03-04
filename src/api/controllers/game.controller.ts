@@ -448,8 +448,7 @@ class GameController {
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
 
-        // TODO: TEMP — always show tower rewards for UI testing
-        if (towerCompletion) {
+        if (towerCompletion && towerCompletion.won) {
           if (towerCompletion.rewards_earned) {
             if (towerCompletion.rewards_earned.reward_gems) {
               response.rewards.currency.gems =
@@ -701,8 +700,7 @@ class GameController {
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
 
-        // TODO: TEMP — always show tower rewards for UI testing
-        if (towerCompletionAI) {
+        if (towerCompletionAI && towerCompletionAI.won) {
           if (towerCompletionAI.rewards_earned) {
             if (towerCompletionAI.rewards_earned.reward_gems) {
               response.rewards.currency.gems =
