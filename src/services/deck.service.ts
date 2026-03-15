@@ -95,6 +95,88 @@ class DeckService {
   }
 
   /**
+   * Calculates the average total power across all cards in a deck.
+   * Total power per card = sum of base_power (top+bottom+left+right) + power_up enhancements.
+   * Returns null if the deck has no cards.
+   */
+  async getDeckAveragePower(deckId: string): Promise<number | null> {
+    const query = `
+      SELECT AVG(
+        (ch.base_power->>'top')::int + (ch.base_power->>'bottom')::int +
+        (ch.base_power->>'left')::int + (ch.base_power->>'right')::int +
+        COALESCE((pup.power_up_data->>'top')::int, 0) +
+        COALESCE((pup.power_up_data->>'bottom')::int, 0) +
+        COALESCE((pup.power_up_data->>'left')::int, 0) +
+        COALESCE((pup.power_up_data->>'right')::int, 0)
+      ) as avg_power
+      FROM deck_cards dc
+      JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
+      JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN characters ch ON cv.character_id = ch.character_id
+      LEFT JOIN user_card_power_ups pup ON uoc.user_card_instance_id = pup.user_card_instance_id
+      WHERE dc.deck_id = $1;
+    `;
+    const { rows } = await db.query(query, [deckId]);
+    if (rows.length === 0 || rows[0].avg_power === null) {
+      return null;
+    }
+    return parseFloat(rows[0].avg_power);
+  }
+
+  /**
+   * Finds an AI deck whose average power is within ±tolerance of the target.
+   * If no deck falls within range, returns the closest AI deck by average power.
+   * Falls back to a fully random AI deck if power data is unavailable.
+   */
+  async getBalancedAIDeckId(
+    targetAvgPower: number,
+    tolerance: number = 3
+  ): Promise<string | null> {
+    const query = `
+      WITH ai_deck_powers AS (
+        SELECT dc.deck_id, AVG(
+          (ch.base_power->>'top')::int + (ch.base_power->>'bottom')::int +
+          (ch.base_power->>'left')::int + (ch.base_power->>'right')::int +
+          COALESCE((pup.power_up_data->>'top')::int, 0) +
+          COALESCE((pup.power_up_data->>'bottom')::int, 0) +
+          COALESCE((pup.power_up_data->>'left')::int, 0) +
+          COALESCE((pup.power_up_data->>'right')::int, 0)
+        ) as avg_power
+        FROM deck_cards dc
+        JOIN decks d ON dc.deck_id = d.deck_id
+        JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
+        JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN characters ch ON cv.character_id = ch.character_id
+        LEFT JOIN user_card_power_ups pup ON uoc.user_card_instance_id = pup.user_card_instance_id
+        WHERE d.user_id = $1
+        GROUP BY dc.deck_id
+        HAVING COUNT(dc.deck_card_id) > 0
+      )
+      SELECT deck_id, avg_power, ABS(avg_power - $2) as power_diff
+      FROM ai_deck_powers
+      ORDER BY
+        CASE WHEN avg_power BETWEEN $3 AND $4 THEN 0 ELSE 1 END,
+        RANDOM()
+      LIMIT 1;
+    `;
+
+    const lowerBound = targetAvgPower - tolerance;
+    const upperBound = targetAvgPower + tolerance;
+    const { rows } = await db.query(query, [
+      AI_PLAYER_ID,
+      targetAvgPower,
+      lowerBound,
+      upperBound,
+    ]);
+
+    if (rows.length === 0) {
+      return this.getRandomAIDeckId();
+    }
+
+    return rows[0].deck_id;
+  }
+
+  /**
    * Validates that a specified AI deck exists and belongs to the AI player.
    * Throws DeckNotFoundError if validation fails.
    */

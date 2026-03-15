@@ -639,6 +639,14 @@ expo install @react-native-google-signin/google-signin
 - Add SHA-1 fingerprint for Android
 - Configure OAuth consent screen
 
+**Production / Error 16 "Account reauth failed":**  
+This error occurs on the **client** when obtaining the Google ID token (before the server is called). Common causes:
+
+- **Google Play App Signing:** Production builds are re-signed by Google Play. Add the **Play App Signing** SHA-1 from [Google Play Console](https://play.google.com/console) → Your app → **Setup** → **App signing** (under "App integrity") to your OAuth 2.0 Android client in [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials. Keep both your upload key SHA-1 and the Play signing certificate SHA-1 if you use both.
+- **Wrong client ID type:** Some flows (e.g. Credentials Manager) require the **Web client ID** in the client config, not the Android client ID. Server-side `GOOGLE_CLIENT_ID` should match the audience of the ID token (usually the Web client ID when using One Tap / Credentials API).
+- **Package name:** Ensure the production app's package name exactly matches the one on the OAuth Android client in Cloud Console.
+- **OAuth consent:** If the app is in "Testing", add the signing-in Google account as a test user in the OAuth consent screen.
+
 ### Facebook Login
 ```bash
 # React Native

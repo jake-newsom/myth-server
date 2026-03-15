@@ -1,6 +1,7 @@
 // myth-server/src/sockets/socket.manager.js
 const { socketAuthMiddleware } = require("./socket.auth.middleware");
 const { setupGameNamespace } = require("./namespace.game");
+const { setupPresenceNamespace } = require("./namespace.presence");
 const db = require("../config/db.config").default; // Access the database
 const GameLogic = require("../game-engine/game.logic").GameLogic; // Import GameLogic class for game actions
 const UserModel = require("../models/user.model").default; // Import UserModel for updating currency
@@ -28,6 +29,7 @@ function initializeSocketManager(io) {
 
   // Initialize the namespaced multiplayer layer
   setupGameNamespace(io);
+  setupPresenceNamespace(io);
 
   io.on("connection", (socket) => {
     // At this point, socket has been authenticated and has socket.user

@@ -78,10 +78,15 @@ class GameController {
         return;
       }
 
-      // 2. Determine and prepare AI deck
+      // 2. Determine and prepare AI deck (balanced by average power level)
       let aiDeckIdToUse = requestedAiDeckId;
       if (!aiDeckIdToUse) {
-        aiDeckIdToUse = await DeckService.getRandomAIDeckId();
+        const playerAvgPower = await DeckService.getDeckAveragePower(deckId);
+        if (playerAvgPower !== null) {
+          aiDeckIdToUse = await DeckService.getBalancedAIDeckId(playerAvgPower);
+        } else {
+          aiDeckIdToUse = await DeckService.getRandomAIDeckId();
+        }
         if (!aiDeckIdToUse) {
           res.status(500).json({ error: "No AI decks available" });
           return;

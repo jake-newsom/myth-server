@@ -289,6 +289,10 @@ paths:
   /api/games/solo:
     post:
       summary: Create a new solo game against AI
+      description: |
+        Creates a solo game against an AI opponent. When no specific AI deck is requested,
+        the server selects an AI deck whose average card power is within ±3 of the player's
+        deck average power. If no AI deck falls within that range, the closest match is used.
       security:
         - bearerAuth: []
       operationId: startSoloGame

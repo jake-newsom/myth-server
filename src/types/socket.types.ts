@@ -58,6 +58,15 @@ export enum GameNamespaceEvent {
   SERVER_GAME_END = "server:game_end",
 }
 
+// Presence namespace ("/presence") events for players-online count
+export enum PresenceNamespaceEvent {
+  SERVER_PLAYER_COUNT = "presence:player_count",
+}
+
+export interface PresencePlayerCountPayload {
+  count: number;
+}
+
 // Payload types for socket events
 export interface JoinGamePayload {
   gameId: string;
