@@ -514,6 +514,26 @@ const PackService = {
     return selectedRarity;
   },
 
+  getPackRateConfiguration() {
+    return {
+      cards_per_pack: CARDS_PER_PACK,
+      god_pack_chance: GOD_PACK_CHANCE,
+      god_pack_rarity_weights: {
+        legendary: 50,
+        epic: 20,
+        rare: 15,
+        common: 15,
+      },
+      rarity_weights: this.getPackRarityWeights(),
+      variant_base_tier_chances: {
+        legendary: 15,
+        epic: 20,
+        rare: 30,
+        common: 35,
+      },
+    };
+  },
+
   async openMultiplePacks(userId: string, setId: string, count: number) {
     // 1. Verify the set exists and is released
     const set = await SetModel.findById(setId);

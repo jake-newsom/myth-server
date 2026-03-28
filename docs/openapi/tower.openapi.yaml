@@ -235,6 +235,61 @@ paths:
                   value:
                     error: "Game not found"
 
+  /api/tower/leaderboard:
+    get:
+      tags:
+        - Tower
+      summary: Get tower leaderboard
+      description: |
+        Returns a paginated list of players ranked by their highest completed tower floor,
+        sorted descending by floor. When two players share the same floor, the player who
+        reached it earlier is ranked higher. Players who have not completed any floor are
+        excluded. Page size is fixed at 100 entries. No authentication required.
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number (1-based)
+      responses:
+        '200':
+          description: Tower leaderboard retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      rankings:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/TowerRankingEntry'
+                      pagination:
+                        type: object
+                        properties:
+                          page:
+                            type: integer
+                            example: 1
+                          page_size:
+                            type: integer
+                            example: 100
+                          total:
+                            type: integer
+                            description: Total number of ranked players
+                            example: 342
+                          total_pages:
+                            type: integer
+                            example: 4
+        '500':
+          description: Server error
+
 components:
   securitySchemes:
     bearerAuth:
@@ -243,6 +298,27 @@ components:
       bearerFormat: JWT
 
   schemas:
+    TowerRankingEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+          description: Global rank position (1-based, continuous across pages)
+          example: 1
+        username:
+          type: string
+          example: "Odin_Slayer"
+        highest_completed:
+          type: integer
+          description: Highest tower floor the player has completed
+          example: 42
+        reached_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when the player advanced to their current floor (null for pre-migration users where created_at was used as backfill)
+          example: "2026-03-15T14:22:00Z"
+
     TowerProgress:
       type: object
       properties:

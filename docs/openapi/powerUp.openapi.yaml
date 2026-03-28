@@ -5,6 +5,158 @@ info:
   version: 1.0.0
 
 paths:
+  /api/power-ups/stats/{cardId}:
+    get:
+      summary: Get power-up position statistics for a character
+      description: |
+        Returns power-up allocation statistics aggregated across all player instances of a character,
+        covering every rarity variant (common, rare, epic, legendary, +, ++, +++).
+
+        Pass the `base_card_id` from any owned card or card library entry. The server resolves
+        this to the underlying character and aggregates across all rarities automatically —
+        so epic Skadi, common Skadi, and Skadi+ are all included in the same result.
+        No authentication required.
+
+        Two distribution views are returned:
+        - `aggregate_distribution`: share of every point ever spent, weighted by how much each player invested
+        - `average_distribution`: each card instance's own split averaged equally — what a "typical" card looks like
+      tags:
+        - Power Ups
+      parameters:
+        - name: cardId
+          in: path
+          required: true
+          description: The base_card_id from an owned card or card library entry (card_variant_id)
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        "200":
+          description: Power-up position statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: object
+                    properties:
+                      character_id:
+                        type: string
+                        format: uuid
+                        example: "123e4567-e89b-12d3-a456-426614174000"
+                      sample_size:
+                        type: integer
+                        description: Number of card instances (across all rarities) with at least one power-up applied
+                        example: 120
+                      totals:
+                        $ref: "#/components/schemas/PowerValues"
+                      aggregate_distribution:
+                        type: object
+                        description: |
+                          Fraction of all points spent per position (values sum to ~1.0).
+                          Weighted by total investment — cards with more power-ups applied have more influence.
+                        properties:
+                          top:
+                            type: number
+                            format: float
+                            example: 0.5
+                          bottom:
+                            type: number
+                            format: float
+                            example: 0.25
+                          left:
+                            type: number
+                            format: float
+                            example: 0.13
+                          right:
+                            type: number
+                            format: float
+                            example: 0.12
+                      average_distribution:
+                        type: object
+                        description: |
+                          Each card instance's own position split, averaged equally across all instances.
+                          Reflects what a "typical" card looks like regardless of level or total investment.
+                        properties:
+                          top:
+                            type: number
+                            format: float
+                            example: 0.48
+                          bottom:
+                            type: number
+                            format: float
+                            example: 0.27
+                          left:
+                            type: number
+                            format: float
+                            example: 0.14
+                          right:
+                            type: number
+                            format: float
+                            example: 0.11
+              examples:
+                with_data:
+                  summary: Character with power-up data
+                  value:
+                    status: success
+                    data:
+                      character_id: "123e4567-e89b-12d3-a456-426614174000"
+                      sample_size: 120
+                      totals:
+                        top: 500
+                        bottom: 250
+                        left: 130
+                        right: 120
+                      aggregate_distribution:
+                        top: 0.5
+                        bottom: 0.25
+                        left: 0.13
+                        right: 0.12
+                      average_distribution:
+                        top: 0.48
+                        bottom: 0.27
+                        left: 0.14
+                        right: 0.11
+                no_data:
+                  summary: Character with no power-up data
+                  value:
+                    status: success
+                    data:
+                      character_id: "123e4567-e89b-12d3-a456-426614174000"
+                      sample_size: 0
+                      totals:
+                        top: 0
+                        bottom: 0
+                        left: 0
+                        right: 0
+                      aggregate_distribution:
+                        top: 0
+                        bottom: 0
+                        left: 0
+                        right: 0
+                      average_distribution:
+                        top: 0
+                        bottom: 0
+                        left: 0
+                        right: 0
+        "400":
+          description: Bad request - missing cardId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/power-ups/apply:
     post:
       summary: Apply a level up boost to a user card

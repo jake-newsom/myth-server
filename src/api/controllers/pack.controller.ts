@@ -4,6 +4,22 @@ import UserModel from "../../models/user.model";
 import { AuthenticatedRequest } from "../../types";
 
 const PackController = {
+  async getPackRates(_req: Request, res: Response) {
+    try {
+      const config = PackService.getPackRateConfiguration();
+      return res.status(200).json({
+        status: "success",
+        data: config,
+      });
+    } catch (error) {
+      console.error("Error getting pack rates:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error",
+      });
+    }
+  },
+
   async openPack(req: AuthenticatedRequest, res: Response) {
     try {
       const userId = req.user?.user_id;

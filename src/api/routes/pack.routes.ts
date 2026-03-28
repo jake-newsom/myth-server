@@ -8,6 +8,9 @@ import {
 
 const router = Router();
 
+// GET /api/packs/rates - Public: current pack opening rate configuration
+router.get("/rates", PackController.getPackRates);
+
 // Get user's pack inventory - requires authentication (moderate rate limiting)
 router.get(
   "/",

@@ -280,6 +280,20 @@ const FatePickService = {
 
       await client.query("COMMIT");
 
+      // Reward the fate pick creator with 20 gems for each new participant.
+      // Skipped for AI-generated picks (owner is the AI player).
+      const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
+      if (fatePick.original_owner_id !== AI_PLAYER_ID) {
+        try {
+          await UserModel.updateGems(fatePick.original_owner_id, 20);
+        } catch (rewardError) {
+          console.error(
+            "Error awarding gems to fate pick creator:",
+            rewardError
+          );
+        }
+      }
+
       return {
         success: true,
         participation,

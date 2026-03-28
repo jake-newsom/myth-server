@@ -193,7 +193,10 @@ paths:
   /api/fate-picks/{id}/participate:
     post:
       summary: Participate in fate pick
-      description: Participate in a fate pick (spend fate coins and shuffle)
+      description: |
+        Participate in a fate pick by spending fate coins. Cards are shuffled into random positions
+        for the participant to choose from. When a player successfully joins a fate pick, the creator
+        of that fate pick is automatically awarded 20 gems as a reward.
       tags:
         - Fate Picks
       security:

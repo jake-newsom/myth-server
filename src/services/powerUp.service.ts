@@ -240,6 +240,131 @@ class PowerUpService {
   }
 
   /**
+   * Gets aggregated power-up distribution statistics for a character across all
+   * of its card variant rarities (common, rare, epic, legendary, +, ++, +++).
+   *
+   * Accepts a card_variant_id (what the API calls base_card_id / card_id) and
+   * resolves it to the underlying character_id so stats cover every rarity variant
+   * of that character.
+   *
+   * Returns two complementary views:
+   *  - aggregate_distribution: share of every point ever spent, weighted by total investment per card
+   *  - average_distribution:   each card instance's own split averaged equally (what a "typical" card looks like)
+   */
+  async getCardPowerUpStats(cardVariantId: string): Promise<{
+    character_id: string;
+    sample_size: number;
+    totals: PowerValues;
+    aggregate_distribution: PowerValues;
+    average_distribution: PowerValues;
+  }> {
+    const query = `
+      WITH instances AS (
+        SELECT
+          (ucp.power_up_data->>'top')::int    AS t,
+          (ucp.power_up_data->>'bottom')::int AS b,
+          (ucp.power_up_data->>'left')::int   AS l,
+          (ucp.power_up_data->>'right')::int  AS r
+        FROM user_card_power_ups ucp
+        JOIN user_owned_cards uoc ON ucp.user_card_instance_id = uoc.user_card_instance_id
+        JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+        WHERE cv.character_id = (
+          SELECT character_id FROM card_variants WHERE card_variant_id = $1
+        )
+          AND uoc.user_id != '00000000-0000-0000-0000-000000000000'
+          AND (
+            (ucp.power_up_data->>'top')::int
+            + (ucp.power_up_data->>'bottom')::int
+            + (ucp.power_up_data->>'left')::int
+            + (ucp.power_up_data->>'right')::int
+          ) > 0
+      ),
+      totals AS (
+        SELECT
+          COALESCE(SUM(t), 0) AS total_top,
+          COALESCE(SUM(b), 0) AS total_bottom,
+          COALESCE(SUM(l), 0) AS total_left,
+          COALESCE(SUM(r), 0) AS total_right,
+          COUNT(*)            AS sample_size
+        FROM instances
+      ),
+      per_instance_pct AS (
+        SELECT
+          t::float / NULLIF(t + b + l + r, 0) AS pct_top,
+          b::float / NULLIF(t + b + l + r, 0) AS pct_bottom,
+          l::float / NULLIF(t + b + l + r, 0) AS pct_left,
+          r::float / NULLIF(t + b + l + r, 0) AS pct_right
+        FROM instances
+      ),
+      averages AS (
+        SELECT
+          COALESCE(AVG(pct_top),    0) AS avg_top,
+          COALESCE(AVG(pct_bottom), 0) AS avg_bottom,
+          COALESCE(AVG(pct_left),   0) AS avg_left,
+          COALESCE(AVG(pct_right),  0) AS avg_right
+        FROM per_instance_pct
+      )
+      SELECT
+        t.total_top, t.total_bottom, t.total_left, t.total_right, t.sample_size,
+        a.avg_top, a.avg_bottom, a.avg_left, a.avg_right,
+        (SELECT character_id FROM card_variants WHERE card_variant_id = $1) AS character_id
+      FROM totals t, averages a
+    `;
+
+    const result = await db.query(query, [cardVariantId]);
+    const row = result.rows[0];
+
+    const resolvedCharacterId: string = row.character_id ?? cardVariantId;
+    const sampleSize = parseInt(row.sample_size, 10);
+    const zero: PowerValues = { top: 0, bottom: 0, left: 0, right: 0 };
+
+    if (sampleSize === 0) {
+      return {
+        character_id: resolvedCharacterId,
+        sample_size: 0,
+        totals: zero,
+        aggregate_distribution: zero,
+        average_distribution: zero,
+      };
+    }
+
+    const totals: PowerValues = {
+      top: parseInt(row.total_top, 10),
+      bottom: parseInt(row.total_bottom, 10),
+      left: parseInt(row.total_left, 10),
+      right: parseInt(row.total_right, 10),
+    };
+
+    const grand = totals.top + totals.bottom + totals.left + totals.right;
+    const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+    const aggregate_distribution: PowerValues =
+      grand > 0
+        ? {
+            top: round4(totals.top / grand),
+            bottom: round4(totals.bottom / grand),
+            left: round4(totals.left / grand),
+            right: round4(totals.right / grand),
+          }
+        : zero;
+
+    const average_distribution: PowerValues = {
+      top: round4(parseFloat(row.avg_top)),
+      bottom: round4(parseFloat(row.avg_bottom)),
+      left: round4(parseFloat(row.avg_left)),
+      right: round4(parseFloat(row.avg_right)),
+    };
+
+    return {
+      character_id: resolvedCharacterId,
+      sample_size: sampleSize,
+      totals,
+      aggregate_distribution,
+      average_distribution,
+    };
+  }
+
+  /**
    * Gets power up data for multiple user cards
    * @param userCardInstanceIds - Array of user card instance IDs
    * @returns Map of userCardInstanceId to UserCardPowerUp

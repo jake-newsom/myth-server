@@ -142,6 +142,7 @@ class TowerService {
     }
 
     const currentFloor = result.rows[0].tower_floor || 1;
+
     return {
       current_floor: currentFloor,
       highest_completed: currentFloor - 1,
@@ -172,6 +173,65 @@ class TowerService {
       "SELECT MAX(floor_number) as max_floor FROM tower_floors WHERE is_active = true"
     );
     return result.rows[0]?.max_floor || 0;
+  }
+
+  /**
+   * Get paginated tower leaderboard sorted by highest completed floor,
+   * with floor advancement timestamp as tiebreaker (earlier = ranked higher).
+   * Players who haven't completed any floor (tower_floor = 1) are excluded.
+   */
+  async getTowerLeaderboard(page: number = 1): Promise<{
+    rankings: Array<{
+      rank: number;
+      username: string;
+      highest_completed: number;
+      reached_at: Date | null;
+    }>;
+    pagination: {
+      page: number;
+      page_size: number;
+      total: number;
+      total_pages: number;
+    };
+  }> {
+    const PAGE_SIZE = 100;
+    const offset = (page - 1) * PAGE_SIZE;
+
+    const [rankResult, countResult] = await Promise.all([
+      db.query(
+        `SELECT
+           username,
+           tower_floor - 1         AS highest_completed,
+           tower_floor_updated_at  AS reached_at
+         FROM users
+         WHERE tower_floor > 1
+         ORDER BY tower_floor DESC, tower_floor_updated_at ASC NULLS LAST
+         LIMIT $1 OFFSET $2`,
+        [PAGE_SIZE, offset]
+      ),
+      db.query(
+        "SELECT COUNT(*) AS total FROM users WHERE tower_floor > 1"
+      ),
+    ]);
+
+    const total = parseInt(countResult.rows[0].total, 10);
+
+    const rankings = rankResult.rows.map((row, index) => ({
+      rank: offset + index + 1,
+      username: row.username as string,
+      highest_completed: row.highest_completed as number,
+      reached_at: row.reached_at as Date | null,
+    }));
+
+    return {
+      rankings,
+      pagination: {
+        page,
+        page_size: PAGE_SIZE,
+        total,
+        total_pages: Math.ceil(total / PAGE_SIZE),
+      },
+    };
   }
 
   /**
@@ -546,10 +606,10 @@ class TowerService {
         }
       }
 
-      // Increment user's tower floor
+      // Increment user's tower floor and record when they advanced
       const newFloor = floorNumber + 1;
       await client.query(
-        "UPDATE users SET tower_floor = $1 WHERE user_id = $2",
+        "UPDATE users SET tower_floor = $1, tower_floor_updated_at = NOW() WHERE user_id = $2",
         [newFloor, userId]
       );
 

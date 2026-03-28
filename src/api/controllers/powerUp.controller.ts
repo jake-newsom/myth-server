@@ -1,8 +1,42 @@
-import { Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from "express";
 import PowerUpService from "../../services/powerUp.service";
 import { AuthenticatedRequest, ApplyPowerUpRequest } from "../../types";
 
 const PowerUpController = {
+  /**
+   * Get aggregated power-up position statistics for a character across all its card variants.
+   * Accepts the base_card_id (card_variant_id) from the client and resolves it to the
+   * underlying character to aggregate across all rarities.
+   * @route GET /api/power-ups/stats/:cardId
+   * Public endpoint - no authentication required
+   */
+  async getCardPowerUpStats(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { cardId } = req.params;
+
+      if (!cardId) {
+        res.status(400).json({
+          status: "error",
+          message: "cardId parameter is required",
+        });
+        return;
+      }
+
+      const stats = await PowerUpService.getCardPowerUpStats(cardId);
+
+      res.status(200).json({
+        status: "success",
+        data: stats,
+      });
+    } catch (error) {
+      console.error("Error in getCardPowerUpStats controller:", error);
+      next(error);
+    }
+  },
   /**
    * Apply a level up boost to a user card
    * @route POST /api/power-ups/apply

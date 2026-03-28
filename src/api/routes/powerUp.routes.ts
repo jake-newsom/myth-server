@@ -4,6 +4,9 @@ import { authenticateJWT } from "../middlewares/auth.middleware";
 
 const router = Router();
 
+// GET /api/power-ups/stats/:cardId - Public: power-up distribution across all variants of a character
+router.get("/stats/:cardId", PowerUpController.getCardPowerUpStats);
+
 // POST /api/power-ups/apply - Apply a level up boost to a user card
 router.post("/apply", authenticateJWT, PowerUpController.applyPowerUp);
 

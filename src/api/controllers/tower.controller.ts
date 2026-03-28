@@ -2,7 +2,7 @@
  * Tower Controller - Handles Infinite Tower API endpoints
  */
 
-import { Response } from "express";
+import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../../types/middleware.types";
 import TowerService from "../../services/tower.service";
 
@@ -212,6 +212,30 @@ export class TowerController {
       res.status(500).json({
         error:
           error instanceof Error ? error.message : "Failed to get tower floor",
+      });
+    }
+  }
+
+  /**
+   * Get paginated tower leaderboard
+   * GET /api/tower/leaderboard (public)
+   */
+  static async getLeaderboard(req: Request, res: Response): Promise<void> {
+    try {
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const result = await TowerService.getTowerLeaderboard(page);
+
+      res.status(200).json({
+        status: "success",
+        data: result,
+      });
+    } catch (error) {
+      console.error("Error getting tower leaderboard:", error);
+      res.status(500).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to get tower leaderboard",
       });
     }
   }

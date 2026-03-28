@@ -1,4 +1,89 @@
 paths:
+  /api/packs/rates:
+    get:
+      tags:
+        - Packs
+      summary: Get pack opening rate configuration
+      description: |
+        Returns the current configuration for pack opening, including rarity weights,
+        god pack chance, variant base-tier probabilities, and cards per pack.
+        No authentication required.
+      responses:
+        "200":
+          description: Pack rate configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      cards_per_pack:
+                        type: integer
+                        description: Number of cards in each pack
+                        example: 5
+                      god_pack_chance:
+                        type: number
+                        format: float
+                        description: Probability of a god pack (e.g. 0.000833 = 1 in 1200)
+                        example: 0.000833
+                      god_pack_rarity_weights:
+                        type: object
+                        description: Percentage weights for base rarities in a god pack (all cards are variant)
+                        properties:
+                          legendary:
+                            type: integer
+                            example: 50
+                          epic:
+                            type: integer
+                            example: 20
+                          rare:
+                            type: integer
+                            example: 15
+                          common:
+                            type: integer
+                            example: 15
+                      rarity_weights:
+                        type: object
+                        description: |
+                          Relative weights for each rarity slot in a normal pack. Higher numbers mean more likely.
+                          The "+" / "++" / "+++" entries represent variant slots whose base tier is then resolved
+                          by variant_base_tier_chances.
+                        additionalProperties:
+                          type: number
+                        example:
+                          common: 55
+                          rare: 20
+                          epic: 15
+                          legendary: 6.5
+                          "+": 2.3
+                          "++": 0.8
+                          "+++": 0.4
+                      variant_base_tier_chances:
+                        type: object
+                        description: |
+                          Percentage chances used to resolve the base rarity of a variant slot (+/++/+++).
+                          Values are cumulative breakpoints (legendary < 15%, epic < 35%, rare < 65%, common otherwise).
+                        properties:
+                          legendary:
+                            type: integer
+                            example: 15
+                          epic:
+                            type: integer
+                            example: 20
+                          rare:
+                            type: integer
+                            example: 30
+                          common:
+                            type: integer
+                            example: 35
+        "500":
+          description: Internal server error
+
   /api/packs/open:
     post:
       tags:

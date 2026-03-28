@@ -9,6 +9,9 @@ import { gameActionRateLimit } from "../middlewares/rateLimit.middleware";
 
 const router = Router();
 
+// GET /api/tower/leaderboard - Public: paginated tower rankings (100 per page)
+router.get("/leaderboard", TowerController.getLeaderboard);
+
 /**
  * @swagger
  * /api/tower/progress:
