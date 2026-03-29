@@ -50,6 +50,13 @@ router.post(
   UserController.completeTutorial
 );
 
+// Mark a feature tutorial as completed
+router.post(
+  "/me/feature-tutorial-complete",
+  authMiddleware.protect,
+  UserController.completeFeatureTutorial
+);
+
 // Account reset - accessible by user (for own account) or admin (for any account)
 router.post(
   "/me/reset-account",

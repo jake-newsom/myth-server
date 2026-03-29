@@ -86,7 +86,7 @@ const UserModel = {
   },
 
   async findById(userId: string): Promise<User | null> {
-    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
+    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, completed_feature_tutorials, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
     const { rows } = await db.query(query, [userId]);
     return rows[0] || null;
   },
@@ -416,6 +416,32 @@ const UserModel = {
       WHERE user_id = $1 AND tutorial_completed_at IS NULL;
     `;
     await db.query(query, [userId]);
+  },
+
+  async completeFeatureTutorial(
+    userId: string,
+    tutorialId: string
+  ): Promise<string[]> {
+    const query = `
+      UPDATE "users"
+      SET completed_feature_tutorials = array_append(
+        completed_feature_tutorials,
+        $2::text
+      )
+      WHERE user_id = $1
+        AND NOT ($2::text = ANY(completed_feature_tutorials))
+      RETURNING completed_feature_tutorials;
+    `;
+    const { rows } = await db.query(query, [userId, tutorialId]);
+    if (rows.length > 0) {
+      return rows[0].completed_feature_tutorials;
+    }
+    // Already present — fetch current value
+    const { rows: existing } = await db.query(
+      `SELECT completed_feature_tutorials FROM "users" WHERE user_id = $1`,
+      [userId]
+    );
+    return existing[0]?.completed_feature_tutorials ?? [];
   },
 };
 

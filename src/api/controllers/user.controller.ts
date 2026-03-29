@@ -625,6 +625,42 @@ const UserController = {
   },
 
   /**
+   * Mark a feature tutorial as completed for the current user.
+   * Idempotent — calling again with the same tutorial_id is a no-op.
+   * @route POST /api/users/me/feature-tutorial-complete
+   */
+  async completeFeatureTutorial(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "User not authenticated." } });
+        return;
+      }
+      const { tutorial_id } = req.body;
+      const validIds = ["levelup", "sacrifice", "fate_picks"];
+      if (!tutorial_id || !validIds.includes(tutorial_id)) {
+        res.status(400).json({
+          error: {
+            message: `tutorial_id must be one of: ${validIds.join(", ")}`,
+          },
+        });
+        return;
+      }
+      const completed_feature_tutorials =
+        await UserModel.completeFeatureTutorial(
+          req.user.user_id,
+          tutorial_id
+        );
+      res.status(200).json({ success: true, completed_feature_tutorials });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
    * Mark the tutorial as completed for the current user.
    * Idempotent — calling again after completion is a no-op.
    * @route POST /api/users/me/tutorial-complete

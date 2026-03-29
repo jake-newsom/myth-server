@@ -419,6 +419,9 @@ paths:
   /api/admin/database-status:
     $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1database-status"
 
+  /api/users/me/feature-tutorial-complete:
+    $ref: "./user.openapi.yaml#/paths/~1api~1users~1me~1feature-tutorial-complete"
+
   /api/users/me/reset-account:
     $ref: "./user.openapi.yaml#/paths/~1api~1users~1me~1reset-account"
 

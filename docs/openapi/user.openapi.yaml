@@ -437,6 +437,77 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/users/me/feature-tutorial-complete:
+    post:
+      summary: Mark a feature tutorial as completed
+      description: |
+        Appends the given `tutorial_id` to the user's `completed_feature_tutorials` array.
+        Idempotent — if the ID is already present the call succeeds and the full array is returned unchanged.
+      tags:
+        - Users
+        - Tutorial
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tutorial_id
+              properties:
+                tutorial_id:
+                  type: string
+                  enum:
+                    - levelup
+                    - sacrifice
+                    - fate_picks
+                  description: The feature tutorial ID to mark as completed
+            examples:
+              levelup:
+                summary: Mark levelup tutorial complete
+                value:
+                  tutorial_id: levelup
+      responses:
+        "200":
+          description: Feature tutorial marked as complete (or already completed)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - completed_feature_tutorials
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  completed_feature_tutorials:
+                    type: array
+                    items:
+                      type: string
+                    description: Full updated array of completed feature tutorial IDs
+                    example: ["levelup"]
+        "400":
+          description: Bad request - invalid tutorial_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/users/me/reset-account:
     post:
       summary: Reset account to starter state
@@ -636,6 +707,16 @@ components:
           format: date-time
           nullable: true
           description: When the user completed the tutorial, or null if not yet completed
+        completed_feature_tutorials:
+          type: array
+          items:
+            type: string
+            enum:
+              - levelup
+              - sacrifice
+              - fate_picks
+          description: List of feature tutorial IDs the user has completed
+          example: ["levelup"]
         created_at:
           type: string
           format: date-time
@@ -656,6 +737,7 @@ components:
         - total_xp
         - pack_count
         - win_streak_multiplier
+        - completed_feature_tutorials
         - created_at
         - last_login_at
 

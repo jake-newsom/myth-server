@@ -42,8 +42,21 @@ export interface UserProfile {
   card_fragments: number;
   total_xp: number;
   pack_count: number;
+  tutorial_completed_at?: string | null;
+  completed_feature_tutorials: string[];
   created_at: string; // ISO Date string
   last_login_at: string; // ISO Date string
+}
+
+export type FeatureTutorialId = "levelup" | "sacrifice" | "fate_picks";
+
+export interface FeatureTutorialCompleteRequest {
+  tutorial_id: FeatureTutorialId;
+}
+
+export interface FeatureTutorialCompleteResponse {
+  success: true;
+  completed_feature_tutorials: string[];
 }
 
 // Card types for API responses

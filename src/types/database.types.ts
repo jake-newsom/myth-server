@@ -24,6 +24,7 @@ export interface User {
   win_streak_multiplier: number; // Win streak multiplier for online games (1.0 - 5.0)
   tower_floor: number; // Current unbeaten tower floor for the user (default: 1)
   tutorial_completed_at: Date | null;
+  completed_feature_tutorials: string[];
   created_at: Date;
   last_login: Date;
 }
