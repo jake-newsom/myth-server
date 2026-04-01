@@ -1,162 +1,277 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cards of Myth</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&display=swap");
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cards of Myth</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700&display=swap');
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+      body {
+        font-family: "Inter", sans-serif;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #0a0a1a;
+        color: #fff;
+        overflow: hidden;
+      }
 
-    body {
-      font-family: 'Inter', sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: #0a0a1a;
-      color: #fff;
-      overflow: hidden;
-    }
+      .bg {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        background:
+          radial-gradient(
+            ellipse at 30% 20%,
+            rgba(30, 80, 200, 0.3) 0%,
+            transparent 60%
+          ),
+          radial-gradient(
+            ellipse at 70% 80%,
+            rgba(56, 140, 240, 0.2) 0%,
+            transparent 60%
+          ),
+          #0a0a1a;
+      }
 
-    .bg {
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      background:
-        radial-gradient(ellipse at 30% 20%, rgba(30, 80, 200, 0.3) 0%, transparent 60%),
-        radial-gradient(ellipse at 70% 80%, rgba(56, 140, 240, 0.2) 0%, transparent 60%),
-        #0a0a1a;
-    }
+      main {
+        position: relative;
+        z-index: 1;
+        text-align: center;
+        padding: 2rem;
+        max-width: 480px;
+      }
 
-    main {
-      position: relative;
-      z-index: 1;
-      text-align: center;
-      padding: 2rem;
-      max-width: 480px;
-    }
+      .icon {
+        width: 25vw;
+        aspect-ratio: 1/1;
+        margin: 0 auto 2rem;
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
 
-    .icon {
-      width: 25vw;
-      aspect-ratio: 1/1;
-      margin: 0 auto 2rem;
-      border-radius: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
+      .icon img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
 
-    .icon img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
+      h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.75rem;
+        background: linear-gradient(135deg, #fff 30%, #93c5fd);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
 
-    h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      margin-bottom: 0.75rem;
-      background: linear-gradient(135deg, #fff 30%, #93c5fd);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
+      .tagline {
+        font-size: 1.05rem;
+        font-weight: 300;
+        color: rgba(255, 255, 255, 0.55);
+        margin-bottom: 2.5rem;
+        line-height: 1.5;
+      }
 
-    .tagline {
-      font-size: 1.05rem;
-      font-weight: 300;
-      color: rgba(255, 255, 255, 0.55);
-      margin-bottom: 2.5rem;
-      line-height: 1.5;
-    }
+      .badges {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 3rem;
+      }
 
-    .badges {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-bottom: 3rem;
-    }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 12px 20px;
+        font-size: 0.9rem;
+        color: rgba(255, 255, 255, 0.8);
+        text-decoration: none;
+        transition:
+          background 0.2s,
+          border-color 0.2s;
+        cursor: pointer;
+      }
 
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: rgba(255, 255, 255, 0.07);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
-      padding: 12px 20px;
-      font-size: 0.9rem;
-      color: rgba(255, 255, 255, 0.8);
-      text-decoration: none;
-      transition: background 0.2s, border-color 0.2s;
-      cursor: pointer;
-    }
+      .badge:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.2);
+      }
 
-    .badge:hover {
-      background: rgba(255, 255, 255, 0.12);
-      border-color: rgba(255, 255, 255, 0.2);
-    }
+      .badge svg {
+        width: 20px;
+        height: 20px;
+        opacity: 0.7;
+      }
 
-    .badge svg {
-      width: 20px;
-      height: 20px;
-      opacity: 0.7;
-    }
+      .store-buttons {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 3rem;
+      }
 
-    footer {
-      position: fixed;
-      bottom: 0;
-      width: 100%;
-      z-index: 1;
-      padding: 1.5rem;
-      text-align: center;
-      display: flex;
-      justify-content: center;
-      gap: 1.5rem;
-      background: linear-gradient(to top, #0a0a1a 40%, transparent);
-    }
+      .store-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.75rem;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 14px;
+        padding: 12px 22px;
+        text-decoration: none;
+        color: #fff;
+        transition:
+          background 0.2s,
+          border-color 0.2s,
+          transform 0.15s;
+        cursor: pointer;
+      }
 
-    footer a {
-      color: rgba(255, 255, 255, 0.35);
-      text-decoration: none;
-      font-size: 0.8rem;
-      transition: color 0.2s;
-    }
+      .store-btn:hover {
+        background: rgba(255, 255, 255, 0.13);
+        border-color: rgba(255, 255, 255, 0.28);
+        transform: translateY(-1px);
+      }
 
-    footer a:hover {
-      color: rgba(255, 255, 255, 0.7);
-    }
+      .store-btn svg {
+        width: 24px;
+        height: 24px;
+        flex-shrink: 0;
+      }
 
-    footer span {
-      color: rgba(255, 255, 255, 0.15);
-      font-size: 0.8rem;
-    }
-  </style>
-</head>
+      .store-btn-text {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        line-height: 1.2;
+      }
 
-<body>
-  <div class="bg"></div>
-  <main>
-    <div class="icon">
-      <img src="/assets/logo.png" alt="Cards of Myth" />
-    </div>
-    <p class="tagline">Strategic card battles with Mythological Characters.<br>Available on iOS &amp; Android.</p>
-  </main>
-  <footer>
-    <a href="/privacy-policy" target="_blank">Privacy Policy</a>
-    <span>·</span>
-    <a href="/terms" target="_blank">Terms of Service</a>
-  </footer>
-</body>
+      .store-btn-sub {
+        font-size: 0.7rem;
+        font-weight: 300;
+        color: rgba(255, 255, 255, 0.55);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
 
+      .store-btn-name {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #fff;
+      }
+
+      footer {
+        position: fixed;
+        bottom: 0;
+        width: 100%;
+        z-index: 1;
+        padding: 1.5rem;
+        text-align: center;
+        display: flex;
+        justify-content: center;
+        gap: 1.5rem;
+        background: linear-gradient(to top, #0a0a1a 40%, transparent);
+      }
+
+      footer a {
+        color: rgba(255, 255, 255, 0.35);
+        text-decoration: none;
+        font-size: 0.8rem;
+        transition: color 0.2s;
+      }
+
+      footer a:hover {
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      footer span {
+        color: rgba(255, 255, 255, 0.15);
+        font-size: 0.8rem;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="bg"></div>
+    <main>
+      <div class="icon">
+        <img src="/assets/logo.png" alt="Cards of Myth" />
+      </div>
+      <p class="tagline">
+        Strategic card battles with Mythological Characters.<br />Available on
+        iOS &amp; Android.
+      </p>
+
+      <div class="store-buttons">
+        <a
+          href="https://testflight.apple.com/join/Wx331yG4"
+          target="_blank"
+          class="store-btn"
+          aria-label="Download on the App Store"
+        >
+          <!-- Apple logo -->
+          <svg
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"
+            />
+          </svg>
+          <div class="store-btn-text">
+            <span class="store-btn-sub">Download on the</span>
+            <span class="store-btn-name">App Store</span>
+          </div>
+        </a>
+
+        <a
+          href="https://play.google.com/store/apps/details?id=com.nurdturd.myth"
+          target="_blank"
+          class="store-btn"
+          aria-label="Get it on Google Play"
+        >
+          <!-- Google Play logo -->
+          <svg
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M3.18 23.76c.3.17.64.24.99.2l12.75-11.75L13.4 8.7 3.18 23.76zm16.7-11.19L16.7 10.9 3.06.26A1.2 1.2 0 0 0 2 .12v23.76c.37 0 .74-.1 1.06-.3l13.64-7.61 3.18-1.82c.57-.32.94-.9.94-1.54 0-.65-.37-1.22-.94-1.54zM3.18.24 13.4 15.3l3.52-3.31L3.18.24z"
+            />
+          </svg>
+          <div class="store-btn-text">
+            <span class="store-btn-sub">Get it on</span>
+            <span class="store-btn-name">Google Play</span>
+          </div>
+        </a>
+      </div>
+    </main>
+    <footer>
+      <a href="/privacy-policy" target="_blank">Privacy Policy</a>
+      <span>·</span>
+      <a href="/terms" target="_blank">Terms of Service</a>
+    </footer>
+  </body>
 </html>

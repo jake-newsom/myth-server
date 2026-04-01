@@ -3,7 +3,7 @@
 **Game:** Cards of Myth
 **Publisher/Developer:** Nurd Turd Productions
 **Support Email:** [themythcardgame@gmail.com](mailto:themythcardgame@gmail.com)
-**Effective Date:** _[Insert date]_
+**Effective Date:** 02/01/2026
 
 ---
 
