@@ -80,7 +80,8 @@ export interface CardResponse {
     parameters: Record<string, any>;
   } | null;
   power_enhancements?: PowerValues;
-  attack_animation?: string; // Custom attack animation for card flips
+  attack_animation?: string;
+  is_exclusive?: boolean;
 }
 
 export interface StaticCardCollectionResponse {

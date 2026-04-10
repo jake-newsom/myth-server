@@ -170,6 +170,7 @@ const DailyTaskService = {
         FROM card_variants cv
         JOIN characters ch ON cv.character_id = ch.character_id
         WHERE cv.rarity IN ('common', 'uncommon', 'rare')
+          AND cv.is_exclusive = false
         ORDER BY RANDOM()
         LIMIT 1;
       `;

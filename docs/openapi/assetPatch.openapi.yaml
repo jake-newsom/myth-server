@@ -1,0 +1,144 @@
+openapi: 3.0.0
+info:
+  title: Asset Patches API
+  description: Manifest endpoint for client-side asset patch downloads.
+  version: 1.0.0
+
+paths:
+  /api/asset-patches/manifest:
+    get:
+      summary: Get asset patch manifest
+      description: |
+        Returns the current list of available asset patch ZIPs. The client fetches
+        this on every app launch to determine whether new patches need to be downloaded.
+
+        A patch entry's `version` integer is the only field the client uses for
+        update detection — when the server value is greater than the locally stored
+        version, the client re-downloads that patch ZIP.
+
+        **Cache policy:** `Cache-Control: no-store` is set on this response so it
+        is never cached by Cloudflare or the client. The ZIP files referenced in
+        `patches[].url` are served with `Cache-Control: public, max-age=31536000, immutable`
+        and should use versioned filenames (e.g. `audio-sfx-v2.zip`) so CDN cache
+        is never stale.
+
+        **ZIP file structure:** Files inside the ZIP must use paths relative to
+        `assets/`, without the leading `assets/` segment. For example:
+        - `audio/sfx/norse-battle.aac` → cached as `/assets/audio/sfx/norse-battle.aac`
+        - `cards/greek/rare/zeus.webp` → cached as `/assets/cards/greek/rare/zeus.webp`
+      tags:
+        - Asset Patches
+      security: []
+      responses:
+        "200":
+          description: Manifest retrieved successfully
+          headers:
+            Cache-Control:
+              description: Always set to `no-store` — must not be cached
+              schema:
+                type: string
+                example: "no-store"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetPatchManifest"
+              example:
+                version: 1
+                patches:
+                  - id: "audio-sfx-v1"
+                    version: 1
+                    type: "audio"
+                    url: "https://myth-server.onrender.com/assets/patches/audio-sfx-v1.zip"
+                    checksum: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                    size: 5242880
+                    description: "New SFX batch"
+
+components:
+  schemas:
+    AssetPatchManifest:
+      type: object
+      description: Top-level manifest describing all available asset patch ZIPs.
+      required:
+        - version
+        - patches
+      properties:
+        version:
+          type: integer
+          description: >
+            Manifest schema version. Currently unused by the client but reserved
+            for future compatibility checks.
+          example: 1
+        patches:
+          type: array
+          description: >
+            Ordered list of asset patches. An empty array means no patches are
+            available; the client will skip patching silently.
+          items:
+            $ref: "#/components/schemas/AssetPatch"
+
+    AssetPatch:
+      type: object
+      description: Describes a single versioned asset patch ZIP.
+      required:
+        - id
+        - version
+        - type
+        - url
+        - checksum
+        - size
+        - description
+      properties:
+        id:
+          type: string
+          description: >
+            Stable unique identifier for this patch. Never change this value
+            once the patch has been deployed.
+          example: "audio-sfx-v1"
+        version:
+          type: integer
+          description: >
+            Monotonically increasing integer. The client re-downloads the ZIP
+            when the server version is greater than the locally stored version.
+            Increment this whenever the ZIP content changes; also update `url`,
+            `checksum`, and `size` to match the new file.
+          example: 1
+        type:
+          type: string
+          enum:
+            - audio
+            - graphics
+            - mixed
+          description: >
+            Informational category for the patch. Not used in download logic.
+          example: "audio"
+        url:
+          type: string
+          format: uri
+          description: >
+            Full URL to the ZIP file. Must be served under `/assets/patches/`
+            with a versioned filename so CDN cache is never stale.
+          example: "https://myth-server.onrender.com/assets/patches/audio-sfx-v1.zip"
+        checksum:
+          type: string
+          description: >
+            SHA-256 hash of the ZIP file, prefixed with `sha256:`. The client
+            verifies this before unpacking.
+            Generate with: `sha256sum <file>.zip`
+          pattern: "^sha256:[0-9a-f]{64}$"
+          example: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        size:
+          type: integer
+          description: >
+            Byte size of the ZIP file. Used by the client to render a download
+            progress bar.
+            Generate with: `wc -c < <file>.zip`
+          example: 5242880
+        description:
+          type: string
+          description: >
+            Human-readable label shown on the loading screen during download.
+          example: "New SFX batch"
+
+tags:
+  - name: Asset Patches
+    description: Client asset patch manifest and static ZIP hosting

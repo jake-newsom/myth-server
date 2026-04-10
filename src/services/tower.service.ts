@@ -666,6 +666,7 @@ class TowerService {
       JOIN characters ch ON cv.character_id = ch.character_id
       WHERE (${rarityConditions})
         AND cv.rarity::text LIKE '%+'
+        AND cv.is_exclusive = false
       ORDER BY RANDOM()
       LIMIT 1;
     `;
@@ -711,6 +712,7 @@ class TowerService {
       FROM card_variants cv
       JOIN characters ch ON cv.character_id = ch.character_id
       WHERE cv.rarity::text = $1
+        AND cv.is_exclusive = false
       ORDER BY RANDOM()
       LIMIT 1;
     `;

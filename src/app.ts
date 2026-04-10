@@ -28,6 +28,8 @@ import DailyRewardsService from "./services/dailyRewards.service";
 import DailyTaskService from "./services/dailyTask.service";
 import StartupService from "./services/startup.service";
 import { redisCache } from "./services/redis.cache.service";
+import SeasonService from "./services/season.service";
+import SeasonSoulsService from "./services/seasonSouls.service";
 
 // Setup Swagger
 const swaggerOptions = {
@@ -57,6 +59,7 @@ const app = express();
 let automationSchedulerTask: any = null;
 let dailyRewardsSchedulerTasks: any[] = [];
 let dailyTaskScheduler: any = null;
+let seasonMaintenanceScheduler: any = null;
 
 // Middleware
 app.use(compression()); // Enable gzip compression for all responses
@@ -100,6 +103,22 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Swagger documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+// Static patch ZIPs — served with long-lived immutable cache so Cloudflare
+// caches them aggressively. Must be registered before the broad /assets handler.
+// Use versioned filenames (e.g. audio-sfx-v2.zip) when updating a patch; never
+// overwrite an existing ZIP.
+app.use(
+  "/assets/patches",
+  express.static(path.join(__dirname, "../content/assets/patches"), {
+    setHeaders(res) {
+      res.setHeader(
+        "Cache-Control",
+        "public, max-age=31536000, immutable"
+      );
+    },
+  })
+);
 
 // Static assets (images, etc.)
 app.use("/assets", express.static(path.join(__dirname, "../content/assets")));
@@ -268,6 +287,10 @@ if (require.main === module) {
     // Run startup initialization
     try {
       await StartupService.initialize();
+
+      await SeasonService.initialize();
+      seasonMaintenanceScheduler = SeasonService.startMaintenanceScheduler();
+      SeasonSoulsService.start();
     } catch (error) {
       console.error("❌ Startup initialization failed:", error);
     }
@@ -337,6 +360,15 @@ process.on("SIGTERM", async () => {
     dailyTaskScheduler.stop();
     console.log("🎯 Daily Task Scheduler stopped");
   }
+  if (seasonMaintenanceScheduler) {
+    SeasonService.stopMaintenanceScheduler(seasonMaintenanceScheduler);
+  }
+  try {
+    await SeasonSoulsService.flushNow();
+  } catch (error) {
+    console.error("⚠️ Failed to flush season souls during SIGTERM:", error);
+  }
+  SeasonSoulsService.stop();
   SessionCleanupService.stop();
   await redisCache.disconnect();
   process.exit(0);
@@ -354,6 +386,15 @@ process.on("SIGINT", async () => {
     dailyTaskScheduler.stop();
     console.log("🎯 Daily Task Scheduler stopped");
   }
+  if (seasonMaintenanceScheduler) {
+    SeasonService.stopMaintenanceScheduler(seasonMaintenanceScheduler);
+  }
+  try {
+    await SeasonSoulsService.flushNow();
+  } catch (error) {
+    console.error("⚠️ Failed to flush season souls during SIGINT:", error);
+  }
+  SeasonSoulsService.stop();
   SessionCleanupService.stop();
   await redisCache.disconnect();
   process.exit(0);

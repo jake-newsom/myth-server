@@ -312,7 +312,8 @@ class DeckService {
       JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
       JOIN characters ch ON cv.character_id = ch.character_id
       WHERE dc.deck_id = $1
-        AND POSITION('+' IN cv.rarity::text) > 0;
+        AND POSITION('+' IN cv.rarity::text) > 0
+        AND cv.is_exclusive = false;
     `;
     const { rows } = await db.query(query, [deckId]);
     return rows;

@@ -253,7 +253,8 @@ const PackService = {
       FROM "card_variants" cv
       JOIN "characters" ch ON cv.character_id = ch.character_id
       LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
-      WHERE ch.set_id = $1;
+      WHERE ch.set_id = $1
+        AND cv.is_exclusive = false;
     `;
     const { rows } = await db.query(query, [setId]);
 

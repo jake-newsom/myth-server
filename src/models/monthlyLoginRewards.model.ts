@@ -187,6 +187,7 @@ const MonthlyLoginRewardsModel = {
       SELECT card_variant_id as card_id
       FROM card_variants
       WHERE rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
+        AND is_exclusive = false
       ORDER BY RANDOM()
       LIMIT 1;
     `;

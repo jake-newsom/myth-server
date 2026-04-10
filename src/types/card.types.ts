@@ -135,8 +135,9 @@ export interface BaseCardData {
   image_url: string;
   base_power: PowerValues;
   special_ability_id: string | null;
-  tags: string[]; // Replaces card_type
-  attack_animation?: string; // Custom attack animation for card flips
+  tags: string[];
+  attack_animation?: string;
+  is_exclusive?: boolean;
 }
 
 /**
@@ -168,7 +169,8 @@ export interface BaseCard {
   base_power: PowerValues;
   set_id: string | null;
   special_ability: SpecialAbility | null;
-  attack_animation?: string; // Custom attack animation for card flips
+  attack_animation?: string;
+  is_exclusive?: boolean;
 }
 
 export type UserCard = {

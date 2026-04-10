@@ -21,6 +21,8 @@ import powerUpRoutes from "./powerUp.routes";
 import dailyShopRoutes from "./dailyShop.routes";
 import towerRoutes from "./tower.routes";
 import dailyTaskRoutes from "./dailyTask.routes";
+import seasonRoutes from "./season.routes";
+import assetPatchRoutes from "./assetPatch.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -51,6 +53,8 @@ router.use("/power-ups", powerUpRoutes);
 router.use("/daily-shop", dailyShopRoutes);
 router.use("/tower", towerRoutes);
 router.use("/daily-tasks", dailyTaskRoutes);
+router.use("/seasons", seasonRoutes);
+router.use("/asset-patches", assetPatchRoutes);
 
 // Global error handler
 router.use(errorHandler);

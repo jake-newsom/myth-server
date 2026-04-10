@@ -303,6 +303,7 @@ const DailyShopModel = {
       JOIN characters ch ON cv.character_id = ch.character_id
       INNER JOIN sets s ON ch.set_id = s.set_id
       WHERE s.name = $1 AND cv.rarity::text = $2
+        AND cv.is_exclusive = false
       ORDER BY ch.name;
     `;
 
@@ -319,6 +320,7 @@ const DailyShopModel = {
       JOIN characters ch ON cv.character_id = ch.character_id
       INNER JOIN sets s ON ch.set_id = s.set_id
       WHERE cv.rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
+        AND cv.is_exclusive = false
       ORDER BY RANDOM()
       LIMIT $1;
     `;

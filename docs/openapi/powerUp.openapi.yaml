@@ -164,6 +164,10 @@ paths:
         Applies a power up enhancement to a user's card instance. Cards can only have (level - 1) power ups.
         For example, a level 5 card can have maximum 4 power ups. If the card already has the maximum number 
         of power ups for its level, the request will be rejected.
+
+        Each power-up application must distribute exactly 1 total point across the four sides.
+        For example: {top: 1, bottom: 0, left: 0, right: 0} or {top: 0, bottom: 0, left: 1, right: 0}.
+        All values must be non-negative integers.
       tags:
         - Power Ups
       security:
@@ -194,7 +198,7 @@ paths:
                     top: 1
                     bottom: 0
                     left: 0
-                    right: 1
+                    right: 0
       responses:
         "200":
           description: Power up applied successfully
@@ -247,6 +251,13 @@ paths:
                     error:
                       message: "Invalid power up values"
                     details: "All power up values must be non-negative. Power ups can only add to existing values, not reduce them."
+                invalid_total:
+                  summary: Power up total not equal to 1
+                  value:
+                    success: false
+                    error:
+                      message: "Invalid power up distribution"
+                    details: "Each power up must add exactly 1 point total across all sides. Received 3."
         "401":
           description: Unauthorized - user not authenticated
           content:

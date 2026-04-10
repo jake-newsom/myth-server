@@ -39,6 +39,9 @@ function formatUserCardInstanceResponse(
     ...(baseCard.attack_animation && {
       attack_animation: baseCard.attack_animation,
     }),
+    ...(baseCard.is_exclusive !== undefined && {
+      is_exclusive: baseCard.is_exclusive,
+    }),
   };
 }
 
@@ -95,7 +98,7 @@ const CardModel = {
         ch.base_power->>'bottom' as base_power_bottom, 
         ch.base_power->>'left' as base_power_left,
         ch.special_ability_id, ch.set_id, ch.tags,
-        cv.rarity, cv.image_url, cv.attack_animation,
+        cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
@@ -132,6 +135,7 @@ const CardModel = {
         set_id: row.set_id,
         tags: row.tags,
         ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      is_exclusive: row.is_exclusive ?? false,
       };
 
       // Get power up data for this instance
@@ -175,7 +179,7 @@ const CardModel = {
   async findById(cardVariantId: string): Promise<BaseCard | null> {
     const query = `
       SELECT
-        cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+        cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
         ch.name, ch.description, ch.type,
         ch.base_power->>'top' as base_power_top, 
         ch.base_power->>'right' as base_power_right,
@@ -206,6 +210,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      is_exclusive: row.is_exclusive ?? false,
     };
   },
 
@@ -232,7 +237,7 @@ const CardModel = {
         ch.base_power->>'bottom' as base_power_bottom, 
         ch.base_power->>'left' as base_power_left, 
         ch.special_ability_id, ch.set_id, ch.tags,
-        cv.rarity, cv.image_url, cv.attack_animation,
+        cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
@@ -283,6 +288,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      is_exclusive: row.is_exclusive ?? false,
     };
 
     const ability: SpecialAbility | null = row.special_ability_id
@@ -380,7 +386,7 @@ const CardModel = {
       }
 
       const dataQuery = `
-        SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+        SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
               ch.name, ch.description, ch.type,
               ch.base_power->>'top' as base_power_top, 
               ch.base_power->>'right' as base_power_right, 
@@ -419,7 +425,7 @@ const CardModel = {
           }
 
           const fallbackQuery = `
-            SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+            SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
                   ch.name, ch.description, ch.type,
                   ch.base_power->>'top' as base_power_top, 
                   ch.base_power->>'right' as base_power_right, 
@@ -472,6 +478,7 @@ const CardModel = {
                 ...(row.attack_animation && {
                   attack_animation: row.attack_animation,
                 }),
+                is_exclusive: row.is_exclusive ?? false,
                 special_ability: row.sa_ability_id
                   ? {
                       ability_id: row.sa_ability_id,
@@ -511,6 +518,7 @@ const CardModel = {
           ...(row.attack_animation && {
             attack_animation: row.attack_animation,
           }),
+          is_exclusive: row.is_exclusive ?? false,
           base_power: {
             top: parseInt(row.base_power_top, 10),
             right: parseInt(row.base_power_right, 10),
@@ -556,7 +564,7 @@ const CardModel = {
   > | null> {
     const query = `
       SELECT
-        cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+        cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
         ch.name, ch.description, ch.type,
         ch.base_power->>'top' as base_power_top, 
         ch.base_power->>'right' as base_power_right,
@@ -595,6 +603,7 @@ const CardModel = {
         left: parseInt(row.base_power_left, 10),
       },
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      is_exclusive: row.is_exclusive ?? false,
       special_ability_id: row.special_ability_id,
       set_id: row.set_id,
       tags: row.tags,
@@ -626,7 +635,7 @@ const CardModel = {
         ch.base_power->>'bottom' as base_power_bottom, 
         ch.base_power->>'left' as base_power_left,
         ch.special_ability_id, ch.set_id, ch.tags,
-        cv.rarity, cv.image_url, cv.attack_animation,
+        cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
         sa.id as ability_id_string
@@ -662,6 +671,7 @@ const CardModel = {
         set_id: row.set_id,
         tags: row.tags,
         ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      is_exclusive: row.is_exclusive ?? false,
       };
 
       // Get power up data for this instance
@@ -704,7 +714,7 @@ const CardModel = {
    */
   async findByName(name: string): Promise<BaseCard | null> {
     const query = `
-      SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+      SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
              ch.name, ch.description,
              ch.base_power->>'top' as base_power_top, 
              ch.base_power->>'right' as base_power_right, 
@@ -735,6 +745,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      is_exclusive: row.is_exclusive ?? false,
     };
   },
 
@@ -747,7 +758,7 @@ const CardModel = {
     }
     const query = `
       SELECT DISTINCT ON (ch.name) 
-             cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+             cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
              ch.name, ch.description,
              ch.base_power->>'top' as base_power_top, 
              ch.base_power->>'right' as base_power_right, 
@@ -776,6 +787,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      is_exclusive: row.is_exclusive ?? false,
     }));
   },
 
@@ -838,7 +850,7 @@ const CardModel = {
           ch.base_power->>'bottom' as base_power_bottom, 
           ch.base_power->>'left' as base_power_left,
           ch.special_ability_id, ch.set_id, ch.tags,
-          cv.rarity, cv.image_url, cv.attack_animation,
+          cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
           sa.name as ability_name, sa.description as ability_description, 
           sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
           sa.id as ability_id_string 
@@ -886,6 +898,7 @@ const CardModel = {
           special_ability_id: row.special_ability_id,
           set_id: row.set_id,
           tags: row.tags,
+          is_exclusive: row.is_exclusive ?? false,
         };
 
         // Get power up data for this instance
@@ -1077,7 +1090,7 @@ const CardModel = {
    */
   async findVariantsByCharacterId(characterId: string): Promise<BaseCard[]> {
     const query = `
-      SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+      SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
              ch.name, ch.description,
              ch.base_power->>'top' as base_power_top, 
              ch.base_power->>'right' as base_power_right, 
@@ -1106,6 +1119,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      is_exclusive: row.is_exclusive ?? false,
     }));
   },
 
@@ -1116,7 +1130,7 @@ const CardModel = {
     characterName: string
   ): Promise<BaseCard[]> {
     const query = `
-      SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+      SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
              ch.name, ch.description,
              ch.base_power->>'top' as base_power_top, 
              ch.base_power->>'right' as base_power_right, 
@@ -1145,6 +1159,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      is_exclusive: row.is_exclusive ?? false,
     }));
   },
 };

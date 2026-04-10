@@ -133,7 +133,8 @@ export interface Card {
   special_ability_id: string | null;
   set_id?: string | null;
   tags: string[];
-  attack_animation?: string; // Custom attack animation for card flips
+  attack_animation?: string;
+  is_exclusive?: boolean;
 }
 
 export interface UserCardInstance {
@@ -231,6 +232,50 @@ export interface UserRankingWithUser extends UserRanking {
   username: string;
   total_games: number;
   win_rate: number;
+}
+
+export interface SeasonDefinition {
+  season_id: string;
+  name: string;
+  start_at: Date;
+  end_at: Date;
+  status: "scheduled" | "active" | "finalizing" | "finalized" | "cancelled";
+  generated_by: string;
+  generation_rule_version: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface SeasonMythologyChoice {
+  user_id: string;
+  season_id: string;
+  set_id: string;
+  locked_at: Date;
+}
+
+export interface SeasonSoulContribution {
+  season_id: string;
+  user_id: string;
+  set_id: string;
+  souls_total: number;
+  updated_at: Date;
+}
+
+export interface SeasonMythologyTotal {
+  season_id: string;
+  set_id: string;
+  souls_total: number;
+  updated_at: Date;
+}
+
+export interface SeasonRewardPayout {
+  season_id: string;
+  user_id: string;
+  status: "pending" | "sent" | "claimed" | "failed";
+  bundle_json: Record<string, any>;
+  payout_hash?: string;
+  mail_id?: string | null;
+  updated_at: Date;
 }
 
 export interface GameResult {

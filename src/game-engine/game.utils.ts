@@ -23,6 +23,7 @@ import {
   COMBAT_TYPES,
 } from "../types/game-engine.types";
 import DailyTaskService from "../services/dailyTask.service";
+import SeasonSoulsService from "../services/seasonSouls.service";
 
 // Helper function to safely check if an ability has a specific trigger
 function hasTrigger(ability: any, trigger: TriggerMoment): boolean {
@@ -388,6 +389,7 @@ export function flipCard(
         defeatingPlayerId,
         setId!
       ).catch(() => { });
+      SeasonSoulsService.trackDefeat(defeatingPlayerId);
     });
   } catch { }
 

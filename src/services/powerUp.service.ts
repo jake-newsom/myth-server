@@ -130,6 +130,30 @@ class PowerUpService {
         };
       }
 
+      // Validate that all values are integers
+      if (
+        !Number.isInteger(top) ||
+        !Number.isInteger(bottom) ||
+        !Number.isInteger(left) ||
+        !Number.isInteger(right)
+      ) {
+        return {
+          success: false,
+          message: "Invalid power up values",
+          error: "All power up values must be whole numbers.",
+        };
+      }
+
+      // Each power-up application must distribute exactly 1 point total
+      const totalPoints = top + bottom + left + right;
+      if (totalPoints !== 1) {
+        return {
+          success: false,
+          message: "Invalid power up distribution",
+          error: `Each power up must add exactly 1 point total across all sides. Received ${totalPoints}.`,
+        };
+      }
+
       // Check if power up record exists
       const existingPowerUpQuery = `
         SELECT id, power_up_count, power_up_data

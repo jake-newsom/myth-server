@@ -204,6 +204,9 @@ components:
           format: uuid
           description: Identifier for the set this card belongs to
           nullable: true
+        is_exclusive:
+          type: boolean
+          description: Whether this card is exclusive (only obtainable via mail, not from packs, shop, or rewards)
         special_ability:
           $ref: "#/components/schemas/SpecialAbilityInfo"
           nullable: true
@@ -291,6 +294,9 @@ components:
           format: uuid
           description: Identifier for the set this card belongs to
           nullable: true
+        is_exclusive:
+          type: boolean
+          description: Whether this card is exclusive (only obtainable via mail, not from packs, shop, or rewards)
         special_ability:
           type: object
           nullable: true

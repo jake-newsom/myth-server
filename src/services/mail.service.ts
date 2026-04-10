@@ -1,5 +1,6 @@
 import MailModel from "../models/mail.model";
 import UserModel from "../models/user.model";
+import CardModel from "../models/card.model";
 import { Mail, MailWithSender, MailStats } from "../types/database.types";
 
 interface MailFilters {
@@ -25,6 +26,7 @@ interface ClaimRewardsResult {
     packs: number;
     fate_coins: number;
     card_ids: string[];
+    cards_awarded?: { user_card_instance_id: string; card_variant_id: string }[];
   };
   updated_currencies?: {
     gems: number;
@@ -38,10 +40,12 @@ interface ClaimMultipleRewardsResult {
   success: boolean;
   claimed_mail: Mail[];
   total_rewards: {
+    gold: number;
     gems: number;
     packs: number;
     fate_coins: number;
     card_ids: string[];
+    cards_awarded?: { user_card_instance_id: string; card_variant_id: string }[];
   };
   updated_currencies?: {
     gems: number;
@@ -335,8 +339,26 @@ const MailService = {
         updatedUser = await UserModel.addPacks(userId, rewardsToApply.packs);
       }
 
-      // TODO: Handle card rewards (would need card creation logic)
-      // For now, card rewards are logged but not actually granted
+      // Apply gold (stored on mail as reward_gold)
+      if (claimedMail.reward_gold > 0) {
+        updatedUser = await UserModel.updateGold(userId, claimedMail.reward_gold);
+      }
+
+      // Apply card rewards
+      const cardsAwarded: { user_card_instance_id: string; card_variant_id: string }[] = [];
+      if (rewardsToApply.card_ids.length > 0) {
+        for (const cardVariantId of rewardsToApply.card_ids) {
+          try {
+            const instance = await CardModel.addCardToUser(userId, cardVariantId);
+            cardsAwarded.push({
+              user_card_instance_id: instance.user_card_instance_id,
+              card_variant_id: cardVariantId,
+            });
+          } catch (err) {
+            console.error(`Failed to grant card ${cardVariantId} to user ${userId}:`, err);
+          }
+        }
+      }
 
       if (!updatedUser) {
         return {
@@ -348,7 +370,10 @@ const MailService = {
       return {
         success: true,
         mail: claimedMail,
-        rewards_claimed: rewardsToApply,
+        rewards_claimed: {
+          ...rewardsToApply,
+          cards_awarded: cardsAwarded.length > 0 ? cardsAwarded : undefined,
+        },
         updated_currencies: {
           gems: updatedUser.gems,
           fate_coins: updatedUser.fate_coins,
@@ -376,6 +401,7 @@ const MailService = {
           success: true,
           claimed_mail: [],
           total_rewards: {
+            gold: 0,
             gems: 0,
             packs: 0,
             fate_coins: 0,
@@ -388,6 +414,7 @@ const MailService = {
       const claimedMail: Mail[] = [];
       const failedClaims: string[] = [];
       const totalRewards = {
+        gold: 0,
         gems: 0,
         packs: 0,
         fate_coins: 0,
@@ -400,6 +427,7 @@ const MailService = {
           const claimedSingle = await MailModel.claimRewards(mail.id, userId);
           if (claimedSingle) {
             claimedMail.push(claimedSingle);
+            totalRewards.gold += claimedSingle.reward_gold;
             totalRewards.gems += claimedSingle.reward_gems;
             totalRewards.packs += claimedSingle.reward_packs;
             totalRewards.fate_coins += claimedSingle.reward_fate_coins;
@@ -415,6 +443,8 @@ const MailService = {
 
       // Apply all rewards to user if any were claimed
       let updatedUser = await UserModel.findById(userId);
+      const allCardsAwarded: { user_card_instance_id: string; card_variant_id: string }[] = [];
+
       if (claimedMail.length > 0 && updatedUser) {
         // Apply gems
         if (totalRewards.gems > 0) {
@@ -433,12 +463,35 @@ const MailService = {
         if (totalRewards.packs > 0) {
           updatedUser = await UserModel.addPacks(userId, totalRewards.packs);
         }
+
+        // Apply gold
+        if (totalRewards.gold > 0) {
+          updatedUser = await UserModel.updateGold(userId, totalRewards.gold);
+        }
+
+        // Apply card rewards
+        if (totalRewards.card_ids.length > 0) {
+          for (const cardVariantId of totalRewards.card_ids) {
+            try {
+              const instance = await CardModel.addCardToUser(userId, cardVariantId);
+              allCardsAwarded.push({
+                user_card_instance_id: instance.user_card_instance_id,
+                card_variant_id: cardVariantId,
+              });
+            } catch (err) {
+              console.error(`Failed to grant card ${cardVariantId} to user ${userId}:`, err);
+            }
+          }
+        }
       }
 
       return {
         success: true,
         claimed_mail: claimedMail,
-        total_rewards: totalRewards,
+        total_rewards: {
+          ...totalRewards,
+          cards_awarded: allCardsAwarded.length > 0 ? allCardsAwarded : undefined,
+        },
         updated_currencies: updatedUser
           ? {
               gems: updatedUser.gems,
@@ -454,6 +507,7 @@ const MailService = {
         success: false,
         claimed_mail: [],
         total_rewards: {
+          gold: 0,
           gems: 0,
           packs: 0,
           fate_coins: 0,

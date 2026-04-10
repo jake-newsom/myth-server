@@ -55,6 +55,12 @@ tags:
     description: Daily tasks with rotating objectives and rewards
   - name: Tower
     description: Infinite Tower game mode with scaling difficulty and rewards
+  - name: Seasons
+    description: Seasonal mythology soul competition
+  - name: Seasons Admin
+    description: Administrative endpoints for seasonal lifecycle
+  - name: Asset Patches
+    description: Client asset patch manifest and static ZIP hosting
 
 paths:
   # Static Pages (Root-level, no /api prefix)
@@ -223,6 +229,34 @@ paths:
 
   /api/leaderboard/me/initialize:
     $ref: "./leaderboard.openapi.yaml#/paths/~1api~1leaderboard~1me~1initialize"
+
+  # Seasons Endpoints
+  /api/seasons/current:
+    $ref: "./season.openapi.yaml#/paths/~1api~1seasons~1current"
+
+  /api/seasons/current/choice:
+    $ref: "./season.openapi.yaml#/paths/~1api~1seasons~1current~1choice"
+
+  /api/seasons/current/standings:
+    $ref: "./season.openapi.yaml#/paths/~1api~1seasons~1current~1standings"
+
+  /api/seasons/current/leaderboard:
+    $ref: "./season.openapi.yaml#/paths/~1api~1seasons~1current~1leaderboard"
+
+  /api/seasons/current/me:
+    $ref: "./season.openapi.yaml#/paths/~1api~1seasons~1current~1me"
+
+  /api/seasons/current/rewards/status:
+    $ref: "./season.openapi.yaml#/paths/~1api~1seasons~1current~1rewards~1status"
+
+  /api/seasons:
+    $ref: "./season.openapi.yaml#/paths/~1api~1seasons"
+
+  /api/seasons/ensure-buffer:
+    $ref: "./season.openapi.yaml#/paths/~1api~1seasons~1ensure-buffer"
+
+  /api/seasons/{seasonId}/dates:
+    $ref: "./season.openapi.yaml#/paths/~1api~1seasons~1{seasonId}~1dates"
 
   # Achievements System Endpoints
   /api/achievements:
@@ -424,6 +458,10 @@ paths:
 
   /api/users/me/reset-account:
     $ref: "./user.openapi.yaml#/paths/~1api~1users~1me~1reset-account"
+
+  # Asset Patch Endpoints
+  /api/asset-patches/manifest:
+    $ref: "./assetPatch.openapi.yaml#/paths/~1api~1asset-patches~1manifest"
 
   # System Endpoints - Health Monitoring
   /api/health:
