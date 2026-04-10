@@ -104,24 +104,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Swagger documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Static patch ZIPs — served with long-lived immutable cache so Cloudflare
-// caches them aggressively. Must be registered before the broad /assets handler.
-// Use versioned filenames (e.g. audio-sfx-v2.zip) when updating a patch; never
-// overwrite an existing ZIP.
-app.use(
-  "/assets/patches",
-  express.static(path.join(__dirname, "../content/assets/patches"), {
-    setHeaders(res) {
-      res.setHeader(
-        "Cache-Control",
-        "public, max-age=31536000, immutable"
-      );
-    },
-  })
-);
-
-// Static assets (images, etc.)
-app.use("/assets", express.static(path.join(__dirname, "../content/assets")));
+// Assets (card images, patch ZIPs) are now stored in Cloudflare R2 and served
+// via the worker at assets.cardsofmyth.com with signed URLs.
+// The manifest endpoint (/api/asset-patches/manifest) returns signed download
+// URLs so clients never hit this server for binary assets.
 
 // API Routes
 app.use("/api", apiRoutes);

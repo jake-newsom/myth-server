@@ -38,6 +38,8 @@ import {
 import {
   resolveRawAssetPath,
   adminAssetRootExists,
+  normalizeImageRef,
+  getAdminAssetRootAbs,
 } from "./admin-assets";
 import {
   addPatchFromImageRef,
@@ -47,6 +49,11 @@ import {
   buildPatchZipBuffer,
   listPatchZipFiles,
 } from "./admin-patch-buffer";
+import {
+  r2Upload,
+  r2Download,
+  r2Configured,
+} from "./admin-r2";
 
 dotenv.config({ path: path.join(__dirname, "../.env") });
 
@@ -65,6 +72,7 @@ if (profiles.length === 0) {
 type QueryFn = (text: string, params?: unknown[]) => ReturnType<typeof queryForProfile>;
 
 const app = express();
+app.use("/api/admin/upload-asset", express.raw({ type: "*/*", limit: "50mb" }));
 app.use(express.json({ limit: "2mb" }));
 
 function isUuid(s: string): boolean {
@@ -470,12 +478,36 @@ app.patch("/api/variants/:variantId", withBrowseDb, async (req: Request, res: Re
       return;
     }
     let patchAsset: ReturnType<typeof addPatchFromImageRef> | undefined;
+    let r2Result: { uploaded: boolean; r2Key?: string; error?: string } | undefined;
     if (b.image_url !== undefined) {
-      patchAsset = addPatchFromImageRef(String(b.image_url).trim(), {
-        cardVariantId: variantId,
-      });
+      const imgStr = String(b.image_url).trim();
+      patchAsset = addPatchFromImageRef(imgStr, { cardVariantId: variantId });
+
+      if (r2Configured()) {
+        const r2Key = normalizeImageRef(imgStr);
+        if (r2Key) {
+          const resolved = resolveRawAssetPath(imgStr);
+          if (resolved && !("error" in resolved) && fs.existsSync(resolved.abs)) {
+            try {
+              await r2Upload(r2Key, fs.readFileSync(resolved.abs));
+              r2Result = { uploaded: true, r2Key };
+            } catch (uploadErr) {
+              r2Result = {
+                uploaded: false,
+                r2Key,
+                error: uploadErr instanceof Error ? uploadErr.message : "Upload failed",
+              };
+              console.error("R2 upload (edit variant):", uploadErr);
+            }
+          }
+        }
+      }
     }
-    res.json({ ok: true, ...(patchAsset !== undefined ? { patchAsset } : {}) });
+    res.json({
+      ok: true,
+      ...(patchAsset !== undefined ? { patchAsset } : {}),
+      ...(r2Result !== undefined ? { r2: r2Result } : {}),
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({
@@ -520,7 +552,29 @@ app.post("/api/variants", withBrowseDb, async (req: Request, res: Response) => {
     const patchAsset = addPatchFromImageRef(b.image_url.trim(), {
       cardVariantId: newId,
     });
-    res.status(201).json({ card_variant_id: newId, patchAsset });
+
+    let r2Result: { uploaded: boolean; r2Key?: string; error?: string } = { uploaded: false };
+    if (r2Configured()) {
+      const r2Key = normalizeImageRef(b.image_url.trim());
+      if (r2Key) {
+        const resolved = resolveRawAssetPath(b.image_url.trim());
+        if (resolved && !("error" in resolved) && fs.existsSync(resolved.abs)) {
+          try {
+            await r2Upload(r2Key, fs.readFileSync(resolved.abs));
+            r2Result = { uploaded: true, r2Key };
+          } catch (uploadErr) {
+            r2Result = {
+              uploaded: false,
+              r2Key,
+              error: uploadErr instanceof Error ? uploadErr.message : "Upload failed",
+            };
+            console.error("R2 upload (new variant):", uploadErr);
+          }
+        }
+      }
+    }
+
+    res.status(201).json({ card_variant_id: newId, patchAsset, r2: r2Result });
   } catch (e) {
     console.error(e);
     res.status(500).json({
@@ -562,14 +616,17 @@ app.get("/api/admin/asset-status", (_req: Request, res: Response) => {
     rootExists: adminAssetRootExists(),
     usingEnvOverride: Boolean(process.env.ADMIN_ASSET_ROOT?.trim()),
     defaultRelative: "content/assets/raw",
+    r2Configured: r2Configured(),
+    r2WorkerUrl: process.env.R2_WORKER_URL?.trim() || null,
   });
 });
 
 /**
  * Serve a single raw asset file for admin preview. Not for public web (admin binds localhost).
- * Query: ref = image_url from DB (e.g. cards/foo.png).
+ * Query: ref = image_url from DB (e.g. "japanese/rare/amaterasu-1.webp").
+ * Tries local disk first, then falls back to R2 via the worker if configured.
  */
-app.get("/api/admin/local-asset", (req: Request, res: Response) => {
+app.get("/api/admin/local-asset", async (req: Request, res: Response) => {
   const ref = String(req.query.ref ?? "");
   const resolved = resolveRawAssetPath(ref);
   if (resolved === null) {
@@ -582,15 +639,106 @@ app.get("/api/admin/local-asset", (req: Request, res: Response) => {
     res.status(400).json({ error: resolved.error });
     return;
   }
-  if (!fs.existsSync(resolved.abs)) {
-    res.status(404).end();
+
+  if (fs.existsSync(resolved.abs)) {
+    res.sendFile(resolved.abs, { dotfiles: "deny", maxAge: 0 }, (err) => {
+      if (err) {
+        console.error("admin local-asset:", err);
+        if (!res.headersSent) res.status(500).end();
+      }
+    });
     return;
   }
-  res.sendFile(resolved.abs, { dotfiles: "deny", maxAge: 0 }, (err) => {
-    if (err) {
-      console.error("admin local-asset:", err);
-      if (!res.headersSent) res.status(500).end();
+
+  if (r2Configured()) {
+    const r2Key = normalizeImageRef(ref);
+    if (r2Key) {
+      try {
+        const buf = await r2Download(r2Key);
+        const ext = path.extname(r2Key).toLowerCase();
+        const mimeMap: Record<string, string> = {
+          ".webp": "image/webp",
+          ".png": "image/png",
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".gif": "image/gif",
+          ".svg": "image/svg+xml",
+          ".aac": "audio/aac",
+          ".m4a": "audio/mp4",
+          ".mp3": "audio/mpeg",
+        };
+        res.setHeader("Content-Type", mimeMap[ext] || "application/octet-stream");
+        res.setHeader("Cache-Control", "no-store");
+        res.send(buf);
+        return;
+      } catch (e) {
+        console.error("admin local-asset R2 fallback:", e);
+      }
     }
+  }
+
+  res.status(404).end();
+});
+
+/**
+ * Upload a raw card image. Accepts the raw file bytes as the request body.
+ * Query: name = the image_url path (e.g. "japanese/rare/amaterasu-1.webp").
+ * Saves locally under ADMIN_ASSET_ROOT/cards/<name> and uploads to R2 at cards/<name>.
+ */
+app.put("/api/admin/upload-asset", async (req: Request, res: Response) => {
+  const name = String(req.query.name ?? "").trim();
+  if (!name) {
+    res.status(400).json({ error: "name query param is required" });
+    return;
+  }
+  const r2Key = normalizeImageRef(name);
+  if (!r2Key) {
+    res.status(400).json({ error: "Invalid asset name" });
+    return;
+  }
+
+  const buf = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body ?? "");
+  if (buf.length === 0) {
+    res.status(400).json({ error: "Empty file body" });
+    return;
+  }
+
+  const localRoot = getAdminAssetRootAbs();
+  const localPath = path.join(localRoot, r2Key);
+  let savedLocal = false;
+  try {
+    fs.mkdirSync(path.dirname(localPath), { recursive: true });
+    fs.writeFileSync(localPath, buf);
+    savedLocal = true;
+  } catch (e) {
+    console.error("upload-asset local save:", e);
+  }
+
+  let r2Result: { uploaded: boolean; r2Key: string; error?: string } = {
+    uploaded: false,
+    r2Key,
+  };
+  if (r2Configured()) {
+    try {
+      await r2Upload(r2Key, buf);
+      r2Result = { uploaded: true, r2Key };
+    } catch (e) {
+      r2Result = {
+        uploaded: false,
+        r2Key,
+        error: e instanceof Error ? e.message : "R2 upload failed",
+      };
+      console.error("upload-asset R2:", e);
+    }
+  }
+
+  res.json({
+    ok: true,
+    r2Key,
+    bytes: buf.length,
+    savedLocal,
+    localPath: savedLocal ? path.relative(path.join(__dirname, ".."), localPath) : null,
+    r2: r2Result,
   });
 });
 
@@ -624,11 +772,29 @@ app.post("/api/admin/patch-buffer/save", async (req: Request, res: Response) => 
     return;
   }
   try {
-    const out = await Promise.resolve(savePatchBufferToPatchesDir(name.trim()));
+    const out = savePatchBufferToPatchesDir(name.trim());
+
+    let r2Result: { uploaded: boolean; r2Key?: string; error?: string } = { uploaded: false };
+    if (r2Configured()) {
+      const r2Key = `patches/${name.trim()}`;
+      try {
+        await r2Upload(r2Key, fs.readFileSync(out.fullPath));
+        r2Result = { uploaded: true, r2Key };
+      } catch (uploadErr) {
+        r2Result = {
+          uploaded: false,
+          r2Key,
+          error: uploadErr instanceof Error ? uploadErr.message : "R2 upload failed",
+        };
+        console.error("R2 upload (patch zip):", uploadErr);
+      }
+    }
+
     res.json({
       ok: true,
       relativePath: path.relative(path.join(__dirname, ".."), out.fullPath),
       ...out,
+      r2: r2Result,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Save failed";

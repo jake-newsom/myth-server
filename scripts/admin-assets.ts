@@ -32,7 +32,7 @@ function isPathInsideRoot(rootAbs: string, candidateAbs: string): boolean {
  * Strips leading slashes, "assets/" prefixes, and prepends "cards/" when absent.
  * Returns null for http(s) URLs or empty/invalid paths.
  */
-function normalizeImageRef(ref: string): string | null {
+export function normalizeImageRef(ref: string): string | null {
   if (!ref || typeof ref !== "string") return null;
   let s = ref.trim();
   if (/^https?:\/\//i.test(s)) return null;

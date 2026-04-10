@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: Asset Patches API
   description: Manifest endpoint for client-side asset patch downloads.
-  version: 1.0.0
+  version: 2.0.0
 
 paths:
   /api/asset-patches/manifest:
@@ -17,10 +17,11 @@ paths:
         version, the client re-downloads that patch ZIP.
 
         **Cache policy:** `Cache-Control: no-store` is set on this response so it
-        is never cached by Cloudflare or the client. The ZIP files referenced in
-        `patches[].url` are served with `Cache-Control: public, max-age=31536000, immutable`
-        and should use versioned filenames (e.g. `audio-sfx-v2.zip`) so CDN cache
-        is never stale.
+        is never cached by Cloudflare or the client.
+
+        **ZIP hosting:** ZIPs are stored in Cloudflare R2 and served publicly
+        through a worker at `assets.cardsofmyth.com`. Each `url` is a direct
+        download link (e.g. `https://assets.cardsofmyth.com/patches/patch-1.zip`).
 
         **ZIP file structure:** Files inside the ZIP must use paths relative to
         `assets/`, without the leading `assets/` segment. For example:
@@ -45,13 +46,13 @@ paths:
               example:
                 version: 1
                 patches:
-                  - id: "audio-sfx-v1"
+                  - id: "patch-1"
                     version: 1
-                    type: "audio"
-                    url: "https://myth-server.onrender.com/assets/patches/audio-sfx-v1.zip"
+                    type: "mixed"
+                    url: "https://assets.cardsofmyth.com/patches/patch-1.zip"
                     checksum: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                     size: 5242880
-                    description: "New SFX batch"
+                    description: "Initial file patch"
 
 components:
   schemas:
@@ -93,14 +94,14 @@ components:
           description: >
             Stable unique identifier for this patch. Never change this value
             once the patch has been deployed.
-          example: "audio-sfx-v1"
+          example: "patch-1"
         version:
           type: integer
           description: >
             Monotonically increasing integer. The client re-downloads the ZIP
             when the server version is greater than the locally stored version.
-            Increment this whenever the ZIP content changes; also update `url`,
-            `checksum`, and `size` to match the new file.
+            Increment this whenever the ZIP content changes; also update the
+            R2 key, `checksum`, and `size` to match the new file.
           example: 1
         type:
           type: string
@@ -110,14 +111,14 @@ components:
             - mixed
           description: >
             Informational category for the patch. Not used in download logic.
-          example: "audio"
+          example: "mixed"
         url:
           type: string
           format: uri
           description: >
-            Full URL to the ZIP file. Must be served under `/assets/patches/`
-            with a versioned filename so CDN cache is never stale.
-          example: "https://myth-server.onrender.com/assets/patches/audio-sfx-v1.zip"
+            Direct download URL for the ZIP hosted on Cloudflare R2 via the
+            worker at `assets.cardsofmyth.com`.
+          example: "https://assets.cardsofmyth.com/patches/patch-1.zip"
         checksum:
           type: string
           description: >
@@ -137,8 +138,8 @@ components:
           type: string
           description: >
             Human-readable label shown on the loading screen during download.
-          example: "New SFX batch"
+          example: "Initial file patch"
 
 tags:
   - name: Asset Patches
-    description: Client asset patch manifest and static ZIP hosting
+    description: Client asset patch manifest and R2-backed ZIP hosting

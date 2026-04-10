@@ -331,8 +331,19 @@
           <select id="nv-rarity"></select>
         </div>
         <div class="field">
-          <label for="nv-img">Image URL</label>
-          <input id="nv-img" required />
+          <label>Card image</label>
+          <div id="nv-dropzone" class="dropzone" tabindex="0" role="button" aria-label="Upload image">
+            <img id="nv-preview" class="dropzone-preview" alt="" />
+            <div id="nv-drop-label" class="dropzone-label">
+              Drag &amp; drop an image here, or click to browse
+            </div>
+          </div>
+          <input type="file" id="nv-file" accept="image/*" style="display:none" />
+          <p id="nv-upload-status" class="muted" style="margin:0.35rem 0 0;font-size:0.82rem"></p>
+        </div>
+        <div class="field">
+          <label for="nv-img">Image name (path in storage, e.g. <code>japanese/rare/amaterasu-1.webp</code>)</label>
+          <input id="nv-img" required placeholder="mythology/rarity/name.webp" spellcheck="false" />
         </div>
         <div class="field">
           <label for="nv-atk">Attack animation</label>
@@ -343,7 +354,7 @@
         </div>
         <div class="dlg-actions">
           <button type="button" class="cancel">Cancel</button>
-          <button type="submit" class="primary">Create</button>
+          <button type="submit" class="primary" id="nv-submit">Create</button>
         </div>
       </form>
     </dialog>
@@ -426,7 +437,8 @@
           pathname === "/api/admin/patches-folder" ||
           pathname === "/api/admin/patch-buffer" ||
           pathname.startsWith("/api/admin/patch-buffer/");
-        if (!isProfiles && !isClone && !isAssetStatus && !isLocalAsset && !isPatchAdmin) {
+        const isUploadAsset = pathname === "/api/admin/upload-asset";
+        if (!isProfiles && !isClone && !isAssetStatus && !isLocalAsset && !isPatchAdmin && !isUploadAsset) {
           Object.assign(headers, browseHeaders());
         }
         if (
@@ -832,13 +844,23 @@
           const envLine = d.usingEnvOverride
             ? "Using ADMIN_ASSET_ROOT from the environment."
             : "Default folder (relative to repo): " + (d.defaultRelative || "content/assets/raw");
-          mount.className = "asset-card " + (ok ? "ok" : "warn");
+          const r2Line = d.r2Configured
+            ? "R2 connected — " + escapeHtml(d.r2WorkerUrl || "worker URL set")
+            : "R2 not configured (set R2_WORKER_URL + R2_DEV_KEY in .env)";
+          const allGood = ok || d.r2Configured;
+          mount.className = "asset-card " + (allGood ? "ok" : "warn");
           mount.innerHTML =
             "<p style=\"margin:0;font-weight:600\">" +
-            (ok ? "Raw asset root is reachable" : "Raw asset root not found") +
+            (ok ? "Local asset root is reachable" : "Local asset root not found") +
             "</p>" +
             '<p class="muted" style="margin:0.4rem 0 0;font-size:0.85rem">' +
             escapeHtml(envLine) +
+            "</p>" +
+            '<p style="margin:0.55rem 0 0;font-weight:600">' +
+            (d.r2Configured ? "Cloudflare R2 storage" : "R2 storage not configured") +
+            "</p>" +
+            '<p class="muted" style="margin:0.2rem 0 0;font-size:0.85rem">' +
+            r2Line +
             "</p>";
         } catch (e) {
           mount.className = "asset-card warn";
@@ -1144,13 +1166,77 @@
         $("dlg-var").showModal();
       }
 
+      let nvPendingFile = null;
+
       function openNewVar(characterId) {
         $("nv-char").value = characterId;
         fillRaritySelect($("nv-rarity"));
         $("nv-img").value = "";
         $("nv-atk").value = "";
         $("nv-exc").checked = false;
+        nvPendingFile = null;
+        $("nv-preview").classList.remove("visible");
+        $("nv-preview").src = "";
+        $("nv-drop-label").textContent = "Drag & drop an image here, or click to browse";
+        $("nv-upload-status").textContent = "";
+        $("nv-file").value = "";
         $("dlg-new-var").showModal();
+      }
+
+      function nvHandleFile(file) {
+        if (!file || !file.type.startsWith("image/")) return;
+        nvPendingFile = file;
+        const url = URL.createObjectURL(file);
+        $("nv-preview").src = url;
+        $("nv-preview").classList.add("visible");
+        $("nv-drop-label").textContent = file.name + " (" + formatBytes(file.size) + ") — drop another to replace";
+        $("nv-upload-status").textContent = "";
+
+        if (!$("nv-img").value.trim()) {
+          const ext = file.name.includes(".")
+            ? file.name.slice(file.name.lastIndexOf("."))
+            : ".webp";
+          const base = file.name.replace(/\.[^.]+$/, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]+/g, "-")
+            .replace(/-+/g, "-")
+            .replace(/^-|-$/g, "");
+          const rarity = $("nv-rarity").value || "common";
+          const charId = $("nv-char").value;
+          const ch = bootstrap?.characters?.find((c) => c.character_id === charId);
+          const setName = ch?.set_name?.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "misc";
+          $("nv-img").value = setName + "/" + rarity + "/" + base + ext;
+        }
+      }
+
+      function setupDropzone() {
+        const zone = $("nv-dropzone");
+        const fileInput = $("nv-file");
+
+        zone.addEventListener("click", () => fileInput.click());
+        zone.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            fileInput.click();
+          }
+        });
+        fileInput.addEventListener("change", () => {
+          if (fileInput.files && fileInput.files[0]) nvHandleFile(fileInput.files[0]);
+        });
+
+        zone.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          zone.classList.add("drag-over");
+        });
+        zone.addEventListener("dragleave", () => {
+          zone.classList.remove("drag-over");
+        });
+        zone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          zone.classList.remove("drag-over");
+          const f = e.dataTransfer?.files?.[0];
+          if (f) nvHandleFile(f);
+        });
       }
 
       async function deleteVar(variantId) {
@@ -1295,20 +1381,59 @@
 
       $("form-new-var").addEventListener("submit", async (e) => {
         e.preventDefault();
-        const body = {
-          character_id: $("nv-char").value,
-          rarity: $("nv-rarity").value,
-          image_url: $("nv-img").value.trim(),
-          attack_animation: $("nv-atk").value.trim() || null,
-          is_exclusive: $("nv-exc").checked,
-        };
-        clearBanner();
+        const imgName = $("nv-img").value.trim();
+        if (!imgName) {
+          $("nv-upload-status").textContent = "Image name is required.";
+          return;
+        }
+
+        const submitBtn = $("nv-submit");
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Uploading…";
+        $("nv-upload-status").textContent = "";
+
         try {
+          if (nvPendingFile) {
+            $("nv-upload-status").textContent = "Uploading image…";
+            const buf = await nvPendingFile.arrayBuffer();
+            const uploadResp = await fetch(
+              "/api/admin/upload-asset?" + new URLSearchParams({ name: imgName }),
+              {
+                method: "PUT",
+                headers: { "Content-Type": nvPendingFile.type || "application/octet-stream" },
+                body: buf,
+              }
+            );
+            const uploadData = await uploadResp.json().catch(() => null);
+            if (!uploadResp.ok) {
+              throw new Error(uploadData?.error || "Upload failed (" + uploadResp.status + ")");
+            }
+            const parts = [];
+            if (uploadData?.savedLocal) parts.push("saved locally");
+            if (uploadData?.r2?.uploaded) parts.push("uploaded to R2");
+            else if (uploadData?.r2?.error) parts.push("R2: " + uploadData.r2.error);
+            $("nv-upload-status").textContent = parts.join(", ") || "Uploaded";
+          }
+
+          submitBtn.textContent = "Creating variant…";
+          const body = {
+            character_id: $("nv-char").value,
+            rarity: $("nv-rarity").value,
+            image_url: imgName,
+            attack_animation: $("nv-atk").value.trim() || null,
+            is_exclusive: $("nv-exc").checked,
+          };
+          clearBanner();
           await api("/api/variants", { method: "POST", body: JSON.stringify(body) });
           $("dlg-new-var").close();
+          nvPendingFile = null;
           await load();
         } catch (err) {
+          $("nv-upload-status").textContent = "Error: " + err.message;
           showErr(err.message);
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Create";
         }
       });
 
@@ -1390,13 +1515,19 @@
               method: "POST",
               body: JSON.stringify({ filename: name }),
             });
-            $("patch-save-result").textContent =
-              "Saved " +
-              out.bytes +
-              " bytes — " +
+            let msg =
+              "Saved locally: " +
+              formatBytes(out.bytes) +
+              " — " +
               (out.sha256 || "") +
               " — " +
               (out.relativePath || "");
+            if (out.r2?.uploaded) {
+              msg += "\nUploaded to R2: " + (out.r2.r2Key || "ok");
+            } else if (out.r2?.error) {
+              msg += "\nR2 upload failed: " + out.r2.error;
+            }
+            $("patch-save-result").textContent = msg;
             await refreshPatchBuffer();
           } catch (e) {
             $("patch-save-result").textContent = "Error: " + e.message;
@@ -1436,6 +1567,7 @@
         setupNav();
         setupMailSection();
         setupPatchBuffer();
+        setupDropzone();
         try {
           await loadProfiles();
         } catch (e) {
