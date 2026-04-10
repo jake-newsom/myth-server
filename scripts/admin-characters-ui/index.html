@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Myth admin</title>
     <link rel="stylesheet" href="admin.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   </head>
   <body>
     <div class="app-shell">
@@ -101,44 +102,6 @@
                   class="muted"
                   style="margin: 0.5rem 0 0; white-space: pre-wrap; font-size: 0.8rem"
                 ></pre>
-              </div>
-            </section>
-            <section>
-              <h2>Patch ZIP (new variants)</h2>
-              <p class="muted" style="margin: 0 0 0.75rem">
-                Creating or editing a variant with a local <code>image_url</code> queues that file for
-                the next graphics patch. Paths inside the ZIP match the client layout (e.g.
-                <code>cards/…</code>). Then register the file in
-                <code>src/api/routes/assetPatch.routes.ts</code> so clients download it.
-              </p>
-              <div class="patch-panel clone-panel">
-                <div id="patch-buffer-mount" class="muted">Loading queue…</div>
-                <div class="patch-toolbar">
-                  <label class="patch-filename-wrap"
-                    >Save as
-                    <input
-                      type="text"
-                      id="patch-filename"
-                      class="patch-filename-input"
-                      placeholder="card-graphics-v2.zip"
-                      spellcheck="false"
-                  /></label>
-                  <button type="button" class="primary" id="patch-save">Save to patches folder</button>
-                  <button type="button" id="patch-download">Download ZIP</button>
-                  <button type="button" class="danger" id="patch-clear">Clear queue</button>
-                </div>
-                <p id="patch-save-result" class="muted patch-save-result"></p>
-                <div class="patch-manual field">
-                  <label for="patch-add-ref">Add file by image path (same as DB <code>image_url</code>)</label>
-                  <div class="patch-manual-row">
-                    <input type="text" id="patch-add-ref" placeholder="cards/foo.webp" spellcheck="false" />
-                    <button type="button" id="patch-add-btn">Add to queue</button>
-                  </div>
-                </div>
-                <p class="muted patch-existing-wrap">
-                  Existing zips in <code>content/assets/patches</code>:
-                  <span id="patch-existing">—</span>
-                </p>
               </div>
             </section>
             <section id="stats-section">
@@ -249,6 +212,41 @@
           </div>
         </main>
       </div>
+
+      <aside id="patch-drawer" class="patch-drawer" aria-label="Patch ZIP queue">
+        <div class="patch-drawer-head">
+          <h3>Patch ZIP queue</h3>
+          <button type="button" id="patch-drawer-close" class="patch-drawer-close" title="Close">&times;</button>
+        </div>
+        <div class="patch-drawer-body">
+          <div id="patch-buffer-mount" class="muted">No files queued yet.</div>
+          <div class="patch-toolbar">
+            <label class="patch-filename-wrap"
+              >Save as
+              <input
+                type="text"
+                id="patch-filename"
+                class="patch-filename-input"
+                placeholder="card-graphics-v2.zip"
+                spellcheck="false"
+            /></label>
+            <button type="button" class="primary" id="patch-save">Save to patches</button>
+            <button type="button" id="patch-download">Download</button>
+            <button type="button" class="danger" id="patch-clear">Clear</button>
+          </div>
+          <p id="patch-save-result" class="muted patch-save-result"></p>
+          <div class="patch-manual field">
+            <label for="patch-add-ref">Add file by image path</label>
+            <div class="patch-manual-row">
+              <input type="text" id="patch-add-ref" placeholder="cards/foo.webp" spellcheck="false" />
+              <button type="button" id="patch-add-btn">Add</button>
+            </div>
+          </div>
+          <p class="muted patch-existing-wrap">
+            Existing: <span id="patch-existing">—</span>
+          </p>
+        </div>
+      </aside>
     </div>
 
     <dialog id="dlg-char">
@@ -877,7 +875,26 @@
         return row?.set_name || key;
       }
 
+      let statsChartInstances = [];
+
+      function destroyStatsCharts() {
+        statsChartInstances.forEach((c) => c.destroy());
+        statsChartInstances = [];
+      }
+
+      const RARITY_COLORS = {
+        common:    "rgba(140,160,180,0.85)",
+        uncommon:  "rgba(63,185,80,0.85)",
+        rare:      "rgba(61,139,253,0.85)",
+        epic:      "rgba(163,113,247,0.85)",
+        legendary: "rgba(245,166,35,0.85)",
+      };
+      function rarityColor(r) {
+        return RARITY_COLORS[r.toLowerCase()] || "rgba(200,200,200,0.7)";
+      }
+
       function renderStats() {
+        destroyStatsCharts();
         const st = bootstrap.stats;
         const totals = st.totals;
         const vm = st.variantMatrix || {};
@@ -889,41 +906,128 @@
         }
         const rarities = Array.from(raritySet).sort();
 
-        let tableHtml =
+        const keys = Object.keys(vm).sort((a, b) =>
+          setKeyLabel(a).localeCompare(setKeyLabel(b))
+        );
+
+        const totalsHtml =
           '<div class="totals"><span>Characters: <strong>' +
           totals.characters +
           '</strong></span><span>Variants: <strong>' +
           totals.variants +
           "</strong></span></div>";
 
-        tableHtml += '<h2 style="margin-top:1rem;font-size:0.85rem">Variants by rarity &amp; set</h2><div class="matrix-wrap"><table><thead><tr><th>Set</th><th>Characters in set</th>';
+        const chartsHtml =
+          '<div class="stats-charts">' +
+          '<div class="chart-wrap"><h3>Variants by rarity</h3><canvas id="chart-rarity"></canvas></div>' +
+          '<div class="chart-wrap"><h3>Variants by set</h3><canvas id="chart-sets"></canvas></div>' +
+          '<div class="chart-wrap"><h3>Characters per set</h3><canvas id="chart-chars-set"></canvas></div>' +
+          '<div class="chart-wrap"><h3>Rarity breakdown per set</h3><canvas id="chart-stacked"></canvas></div>' +
+          "</div>";
+
+        $("stats-mount").innerHTML = totalsHtml + chartsHtml;
+
+        const chartDefaults = {
+          color: "#8b9cb3",
+          borderColor: "rgba(45,58,77,0.6)",
+        };
+
+        const rarityTotals = {};
         for (const r of rarities) {
-          tableHtml += "<th>" + escapeHtml(r) + "</th>";
-        }
-        tableHtml += "<th>Σ variants</th></tr></thead><tbody>";
-
-        const keys = Object.keys(vm).sort((a, b) =>
-          setKeyLabel(a).localeCompare(setKeyLabel(b))
-        );
-        for (const key of keys) {
-          const entry = vm[key];
-          const byR = entry.byRarity || {};
-          let rowSum = 0;
-          for (const r of rarities) {
-            rowSum += byR[r] || 0;
+          rarityTotals[r] = 0;
+          for (const key of keys) {
+            rarityTotals[r] += (vm[key].byRarity || {})[r] || 0;
           }
-          tableHtml += "<tr><td>" + escapeHtml(entry.set_name || key) + "</td><td>";
-          tableHtml += cs[key] != null ? cs[key] : "—";
-          tableHtml += "</td>";
-          for (const r of rarities) {
-            const v = byR[r];
-            tableHtml += "<td>" + (v != null ? v : "—") + "</td>";
-          }
-          tableHtml += "<td><strong>" + rowSum + "</strong></td></tr>";
         }
-        tableHtml += "</tbody></table></div>";
+        statsChartInstances.push(new Chart($("chart-rarity"), {
+          type: "doughnut",
+          data: {
+            labels: rarities,
+            datasets: [{
+              data: rarities.map((r) => rarityTotals[r]),
+              backgroundColor: rarities.map(rarityColor),
+              borderWidth: 0,
+            }],
+          },
+          options: {
+            plugins: { legend: { position: "bottom", labels: chartDefaults } },
+            responsive: true,
+            maintainAspectRatio: false,
+          },
+        }));
 
-        $("stats-mount").innerHTML = tableHtml;
+        const setLabels = keys.map((k) => setKeyLabel(k));
+        const setTotals = keys.map((k) => {
+          let s = 0;
+          for (const r of rarities) s += (vm[k].byRarity || {})[r] || 0;
+          return s;
+        });
+        statsChartInstances.push(new Chart($("chart-sets"), {
+          type: "bar",
+          data: {
+            labels: setLabels,
+            datasets: [{
+              label: "Variants",
+              data: setTotals,
+              backgroundColor: "rgba(61,139,253,0.65)",
+              borderRadius: 4,
+            }],
+          },
+          options: {
+            indexAxis: "y",
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: chartDefaults, grid: { color: chartDefaults.borderColor } },
+              y: { ticks: { ...chartDefaults, font: { size: 11 } }, grid: { display: false } },
+            },
+            responsive: true,
+            maintainAspectRatio: false,
+          },
+        }));
+
+        const charCounts = keys.map((k) => cs[k] ?? 0);
+        statsChartInstances.push(new Chart($("chart-chars-set"), {
+          type: "bar",
+          data: {
+            labels: setLabels,
+            datasets: [{
+              label: "Characters",
+              data: charCounts,
+              backgroundColor: "rgba(63,185,80,0.6)",
+              borderRadius: 4,
+            }],
+          },
+          options: {
+            indexAxis: "y",
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: chartDefaults, grid: { color: chartDefaults.borderColor } },
+              y: { ticks: { ...chartDefaults, font: { size: 11 } }, grid: { display: false } },
+            },
+            responsive: true,
+            maintainAspectRatio: false,
+          },
+        }));
+
+        const stackedDatasets = rarities.map((r) => ({
+          label: r,
+          data: keys.map((k) => (vm[k].byRarity || {})[r] || 0),
+          backgroundColor: rarityColor(r),
+          borderRadius: 2,
+        }));
+        statsChartInstances.push(new Chart($("chart-stacked"), {
+          type: "bar",
+          data: { labels: setLabels, datasets: stackedDatasets },
+          options: {
+            plugins: { legend: { position: "bottom", labels: chartDefaults } },
+            scales: {
+              x: { stacked: true, ticks: { ...chartDefaults, font: { size: 11 } }, grid: { display: false } },
+              y: { stacked: true, ticks: chartDefaults, grid: { color: chartDefaults.borderColor } },
+            },
+            responsive: true,
+            maintainAspectRatio: false,
+          },
+        }));
       }
 
       function charMatchesFilter(c, q, setId) {
@@ -956,12 +1060,19 @@
             const sub = [
               c.type,
               c.set_name || "(no set)",
-              c.variants.length + " variant(s)",
+              c.variants.length + " var",
             ].join(" · ");
+            const firstImg = c.variants.length > 0
+              ? cardImageSrc(c.variants[0].image_url)
+              : "";
+            const thumbHtml = firstImg
+              ? '<img class="char-thumb" src="' + escapeHtml(firstImg) + '" alt="" loading="lazy" />'
+              : '<div class="char-thumb empty">No image</div>';
             return (
               '<div class="char-card" data-id="' +
               escapeHtml(c.character_id) +
               '">' +
+              thumbHtml +
               '<div class="char-head" role="button" tabindex="0" aria-expanded="false" data-target="' +
               vid +
               '">' +
@@ -973,7 +1084,7 @@
               "</div></div>" +
               '<button type="button" class="edit-char" data-cid="' +
               escapeHtml(c.character_id) +
-              '">Edit</button>' +
+              '" style="font-size:0.75rem;padding:0.25rem 0.5rem">Edit</button>' +
               "</div>" +
               '<div class="char-body" id="' +
               vid +
@@ -1372,6 +1483,7 @@
             method: "PATCH",
             body: JSON.stringify(body),
           });
+          patchDrawerEnabled = true;
           $("dlg-var").close();
           await load();
         } catch (err) {
@@ -1425,6 +1537,7 @@
           };
           clearBanner();
           await api("/api/variants", { method: "POST", body: JSON.stringify(body) });
+          patchDrawerEnabled = true;
           $("dlg-new-var").close();
           nvPendingFile = null;
           await load();
@@ -1485,6 +1598,15 @@
           "</tbody></table></div>";
       }
 
+      let patchDrawerEnabled = false;
+
+      function showPatchDrawer() {
+        $("patch-drawer").classList.add("open");
+      }
+      function hidePatchDrawer() {
+        $("patch-drawer").classList.remove("open");
+      }
+
       async function refreshPatchBuffer() {
         const mount = $("patch-buffer-mount");
         if (!mount) return;
@@ -1496,6 +1618,9 @@
           renderPatchBufferTable(st);
           const files = folder.files || [];
           $("patch-existing").textContent = files.length ? files.join(", ") : "(none)";
+          if (patchDrawerEnabled && (st.entries || []).length > 0) {
+            showPatchDrawer();
+          }
         } catch (e) {
           mount.innerHTML =
             '<p class="muted">Could not load patch queue: ' + escapeHtml(e.message) + "</p>";
@@ -1503,6 +1628,7 @@
       }
 
       function setupPatchBuffer() {
+        $("patch-drawer-close").addEventListener("click", hidePatchDrawer);
         $("patch-save").addEventListener("click", async () => {
           $("patch-save-result").textContent = "";
           const name = ($("patch-filename").value || "").trim();
@@ -1541,6 +1667,7 @@
           $("patch-save-result").textContent = "";
           try {
             await api("/api/admin/patch-buffer", { method: "DELETE" });
+            hidePatchDrawer();
             await refreshPatchBuffer();
           } catch (e) {
             $("patch-save-result").textContent = "Error: " + e.message;
@@ -1576,7 +1703,6 @@
           return;
         }
         refreshAssetStatus();
-        refreshPatchBuffer();
         await load();
         refreshMailUserCount();
       }

@@ -42,6 +42,7 @@ initializeSocketManager(io); // Pass the 'io' instance to your socket manager
 // Store the automation scheduler interval IDs
 let automationSchedulerInterval = null;
 let dailyRewardsSchedulerInterval = null;
+let seasonMaintenanceScheduler = null;
 
 httpServer.listen(PORT, async () => {
   console.log(`Server is running on port ${PORT}`);
@@ -54,6 +55,20 @@ httpServer.listen(PORT, async () => {
     await StartupService.initialize();
   } catch (error) {
     console.error("❌ Startup initialization failed:", error);
+  }
+
+  // Initialize season system and ensure season buffer on startup
+  try {
+    const SeasonService = require("./dist/services/season.service").default;
+    const SeasonSoulsService =
+      require("./dist/services/seasonSouls.service").default;
+
+    await SeasonService.initialize();
+    seasonMaintenanceScheduler = SeasonService.startMaintenanceScheduler();
+    SeasonSoulsService.start();
+    console.log("🏁 Season Services started successfully");
+  } catch (error) {
+    console.error("❌ Failed to start Season Services:", error);
   }
   
   // Start the automated fate pick scheduler
@@ -86,6 +101,18 @@ process.on('SIGTERM', () => {
     const DailyRewardsService = require("./dist/services/dailyRewards.service").default;
     DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerInterval);
   }
+  if (seasonMaintenanceScheduler) {
+    const SeasonService = require("./dist/services/season.service").default;
+    SeasonService.stopMaintenanceScheduler(seasonMaintenanceScheduler);
+  }
+  try {
+    const SeasonSoulsService =
+      require("./dist/services/seasonSouls.service").default;
+    SeasonSoulsService.flushNow().catch(() => {});
+    SeasonSoulsService.stop();
+  } catch (error) {
+    console.error("⚠️ Failed to stop Season Souls Service:", error);
+  }
   process.exit(0);
 });
 
@@ -98,6 +125,18 @@ process.on('SIGINT', () => {
   if (dailyRewardsSchedulerInterval) {
     const DailyRewardsService = require("./dist/services/dailyRewards.service").default;
     DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerInterval);
+  }
+  if (seasonMaintenanceScheduler) {
+    const SeasonService = require("./dist/services/season.service").default;
+    SeasonService.stopMaintenanceScheduler(seasonMaintenanceScheduler);
+  }
+  try {
+    const SeasonSoulsService =
+      require("./dist/services/seasonSouls.service").default;
+    SeasonSoulsService.flushNow().catch(() => {});
+    SeasonSoulsService.stop();
+  } catch (error) {
+    console.error("⚠️ Failed to stop Season Souls Service:", error);
   }
   process.exit(0);
 });
