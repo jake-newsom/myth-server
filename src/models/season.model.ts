@@ -18,6 +18,16 @@ interface SeasonDateUpdateInput {
 }
 
 const SeasonModel = {
+  async getNextSeasonId(): Promise<string> {
+    const query = `
+      SELECT COALESCE(MAX(season_id::bigint), 0) + 1 AS next_id
+      FROM season_definitions
+      WHERE season_id ~ '^[0-9]+$';
+    `;
+    const { rows } = await db.query(query);
+    return String(rows[0]?.next_id || 1);
+  },
+
   async upsertSeasonDefinition(input: {
     seasonId: string;
     name: string;

@@ -32,7 +32,6 @@ function addQuarter(quarterStart: Date, offset: number): Date {
 }
 
 function buildSeasonWindow(quarterStart: Date): {
-  seasonId: string;
   name: string;
   startAt: Date;
   endAt: Date;
@@ -40,14 +39,12 @@ function buildSeasonWindow(quarterStart: Date): {
   const month = quarterStart.getUTCMonth();
   const quarter = Math.floor(month / 3) + 1;
   const year = quarterStart.getUTCFullYear();
-  const seasonId = `${year}-Q${quarter}`;
   const startAt = new Date(
     Date.UTC(year, month, 1 + OFF_PERIOD_DAYS, 0, 0, 0, 0)
   );
   const endAt = addQuarter(quarterStart, 1);
 
   return {
-    seasonId,
     name: `Season ${year} Q${quarter}`,
     startAt,
     endAt,
@@ -121,15 +118,16 @@ const SeasonService = {
     for (const window of windows) {
       const hasOverlap = await SeasonModel.hasOverlappingWindow(
         window.startAt,
-        window.endAt,
-        window.seasonId
+        window.endAt
       );
       if (hasOverlap) {
         continue;
       }
 
+      const seasonId = await SeasonModel.getNextSeasonId();
+
       await SeasonModel.upsertSeasonDefinition({
-        seasonId: window.seasonId,
+        seasonId,
         name: window.name,
         startAt: window.startAt,
         endAt: window.endAt,
