@@ -109,6 +109,9 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // The manifest endpoint (/api/asset-patches/manifest) returns signed download
 // URLs so clients never hit this server for binary assets.
 
+// Static assets for content pages (e.g. /assets/logo.png → content/assets/logo.png)
+app.use("/assets", express.static(path.join(__dirname, "../content/assets")));
+
 // API Routes
 app.use("/api", apiRoutes);
 

@@ -14,47 +14,47 @@ router.get(
   "/current",
   authMiddleware.protect,
   moderateRateLimit,
-  seasonController.getCurrentSeason
+  seasonController.getCurrentSeason,
 );
 
 router.get(
   "/current/standings",
   lenientRateLimit,
-  seasonController.getCurrentStandings
+  seasonController.getCurrentStandings,
 );
 
 router.get(
   "/current/leaderboard",
   lenientRateLimit,
-  seasonController.getSetLeaderboard
+  seasonController.getSetLeaderboard,
 );
 
 router.get(
   "/current/choice",
   authMiddleware.protect,
   moderateRateLimit,
-  seasonController.getMyChoice
+  seasonController.getMyChoice,
 );
 
 router.post(
   "/current/choice",
   authMiddleware.protect,
-  strictRateLimit,
-  seasonController.chooseMythology
+  moderateRateLimit,
+  seasonController.chooseMythology,
 );
 
 router.get(
   "/current/me",
   authMiddleware.protect,
   moderateRateLimit,
-  seasonController.getMyProgress
+  seasonController.getMyProgress,
 );
 
 router.get(
   "/current/rewards/status",
   authMiddleware.protect,
   moderateRateLimit,
-  seasonController.getMyRewardStatus
+  seasonController.getMyRewardStatus,
 );
 
 router.post(
@@ -62,7 +62,7 @@ router.post(
   authMiddleware.protect,
   requireAdmin,
   strictRateLimit,
-  seasonController.ensureSeasonBuffer
+  seasonController.ensureSeasonBuffer,
 );
 
 router.get(
@@ -70,7 +70,7 @@ router.get(
   authMiddleware.protect,
   requireAdmin,
   moderateRateLimit,
-  seasonController.listSeasons
+  seasonController.listSeasons,
 );
 
 router.patch(
@@ -78,7 +78,7 @@ router.patch(
   authMiddleware.protect,
   requireAdmin,
   strictRateLimit,
-  seasonController.updateSeasonDates
+  seasonController.updateSeasonDates,
 );
 
 export default router;
