@@ -12,6 +12,7 @@ interface RateLimitRecord {
 interface RateLimitConfig {
   windowMs: number; // Time window in milliseconds
   maxRequests: number; // Maximum requests per window
+  scope: string; // Namespaces the counter so different limiters don't share buckets
   message?: string;
   skipSuccessfulRequests?: boolean; // Don't count successful requests
   skipFailedRequests?: boolean; // Don't count failed requests
@@ -79,10 +80,11 @@ process.on("SIGINT", () => {
 // Rate limiting middleware factory
 export const createRateLimit = (config: RateLimitConfig) => {
   return (req: Request, res: Response, next: NextFunction): void => {
-    // Generate key based on user ID and IP
+    // Generate key scoped to this limiter tier so buckets don't bleed into each other
     const userId = req.user?.user_id;
     const ip = req.ip || req.connection.remoteAddress || "unknown";
-    const key = userId ? `user:${userId}` : `ip:${ip}`;
+    const identity = userId ? `user:${userId}` : `ip:${ip}`;
+    const key = `${config.scope}:${identity}`;
 
     // Check rate limit
     const record = globalStore.hit(key, config.windowMs);
@@ -117,6 +119,7 @@ export const createRateLimit = (config: RateLimitConfig) => {
 
 // Strict rate limiting for sensitive operations (XP transfers, pack purchases)
 export const strictRateLimit = createRateLimit({
+  scope: "strict",
   windowMs: RATE_LIMIT_CONFIG.STRICT.WINDOW_MS,
   maxRequests: RATE_LIMIT_CONFIG.STRICT.MAX_REQUESTS,
   message: "Too many sensitive operations. Please wait before trying again.",
@@ -124,6 +127,7 @@ export const strictRateLimit = createRateLimit({
 
 // Moderate rate limiting for API calls
 export const moderateRateLimit = createRateLimit({
+  scope: "moderate",
   windowMs: RATE_LIMIT_CONFIG.MODERATE.WINDOW_MS,
   maxRequests: RATE_LIMIT_CONFIG.MODERATE.MAX_REQUESTS,
   message: "Too many API requests. Please slow down.",
@@ -131,6 +135,7 @@ export const moderateRateLimit = createRateLimit({
 
 // Lenient rate limiting for general endpoints
 export const lenientRateLimit = createRateLimit({
+  scope: "lenient",
   windowMs: RATE_LIMIT_CONFIG.LENIENT.WINDOW_MS,
   maxRequests: RATE_LIMIT_CONFIG.LENIENT.MAX_REQUESTS,
   message: "Too many requests. Please try again later.",
@@ -138,6 +143,7 @@ export const lenientRateLimit = createRateLimit({
 
 // Authentication rate limiting (prevent brute force)
 export const authRateLimit = createRateLimit({
+  scope: "auth",
   windowMs: RATE_LIMIT_CONFIG.AUTH.WINDOW_MS,
   maxRequests: RATE_LIMIT_CONFIG.AUTH.MAX_REQUESTS,
   message:
@@ -146,6 +152,7 @@ export const authRateLimit = createRateLimit({
 
 // Pack opening rate limiting (prevent rapid pack opening)
 export const packOpeningRateLimit = createRateLimit({
+  scope: "pack-opening",
   windowMs: RATE_LIMIT_CONFIG.PACK_OPENING.WINDOW_MS,
   maxRequests: RATE_LIMIT_CONFIG.PACK_OPENING.MAX_REQUESTS,
   message:
@@ -154,6 +161,7 @@ export const packOpeningRateLimit = createRateLimit({
 
 // Game action rate limiting (prevent rapid game actions)
 export const gameActionRateLimit = createRateLimit({
+  scope: "game-action",
   windowMs: RATE_LIMIT_CONFIG.GAME_ACTION.WINDOW_MS,
   maxRequests: RATE_LIMIT_CONFIG.GAME_ACTION.MAX_REQUESTS,
   message: "Game actions too rapid. Please wait between actions.",
@@ -161,6 +169,7 @@ export const gameActionRateLimit = createRateLimit({
 
 // AI action rate limiting (more lenient for automated AI moves)
 export const aiActionRateLimit = createRateLimit({
+  scope: "ai-action",
   windowMs: RATE_LIMIT_CONFIG.AI_ACTION.WINDOW_MS,
   maxRequests: RATE_LIMIT_CONFIG.AI_ACTION.MAX_REQUESTS,
   message: "AI actions too rapid. Please wait between AI moves.",
