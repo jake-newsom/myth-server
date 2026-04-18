@@ -49,6 +49,16 @@ const PATCHES: AssetPatch[] = [
     size: 106179534,
     description: "Initial file patch",
   },
+  {
+    id: "gc-patch-1",
+    version: 1,
+    type: "graphics",
+    r2Key: "patches/gold-cards-2.zip",
+    checksum:
+      "sha256:4bb8736ca3c652f766afa63c2b2a6e2b5ec2126a429073b49a688d6f2c82a935",
+    size: 0,
+    description: "initial gold cards patch",
+  },
 ];
 
 function assetUrl(r2Key: string): string {
