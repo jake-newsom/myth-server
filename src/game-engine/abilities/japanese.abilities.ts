@@ -1,4 +1,4 @@
-import { PowerValues, TileStatus } from "../../types";
+import { BoardPosition, InGameCard, PowerValues, TileStatus } from "../../types";
 import { AbilityMap, CombatResolverMap } from "../../types/game-engine.types";
 import {
   addTempBuff,
@@ -24,6 +24,7 @@ import {
   createOrUpdateBuff,
   removeBuffsByCondition,
   createOrUpdateDebuff,
+  updateCurrentPower,
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { flipCard } from "../game.utils";
@@ -39,24 +40,22 @@ import { getPositionOfCardById } from "../ability.utils";
 export const japaneseCombatResolvers: CombatResolverMap = {};
 
 export const japaneseAbilities: AbilityMap = {
-  // Moon's Balance: Each round drain the strongest enemy for -1 and grant +1 to the weakest ally
+  // Moon's Balance: Each round reduce the strongest enemy's power by 1 on each side,
+  // and add +1 to each side of the weakest card in the owner's hand.
   "Moon's Balance": (context) => {
     const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
 
     const enemies = getCardsByCondition(
       state.board,
       (card) => card.owner !== triggerCard.owner
     );
-    if (enemies.length === 0) return [];
 
-    const strongestEnemy = enemies.reduce((strongest, current) => {
-      return getCardTotalPower(current) > getCardTotalPower(strongest)
-        ? current
-        : strongest;
-    });
-
-    if (strongestEnemy) {
+    if (enemies.length > 0) {
+      const strongestEnemy = enemies.reduce((strongest, current) =>
+        getCardTotalPower(current) > getCardTotalPower(strongest) ? current : strongest
+      );
       const enemyPosition = getPositionOfCardById(strongestEnemy.user_card_instance_id, state.board);
       if (enemyPosition) {
         gameEvents.push(debuff(strongestEnemy, -1, {
@@ -66,23 +65,22 @@ export const japaneseAbilities: AbilityMap = {
       }
     }
 
-    const allies = getCardsByCondition(
-      state.board,
-      (card) => card.owner === triggerCard.owner
-    );
-    const weakestAlly = allies.reduce((weakest, current) => {
-      return getCardTotalPower(current) < getCardTotalPower(weakest)
-        ? current
-        : weakest;
-    });
+    const owner = state.player1.user_id === triggerCard.owner ? state.player1 : state.player2;
+    const handCards = owner.hand
+      .map((id) => state.hydrated_card_data_cache?.[id])
+      .filter((card): card is InGameCard => !!card);
 
-    if (weakestAlly) {
-      const allyPosition = getPositionOfCardById(weakestAlly.user_card_instance_id, state.board);
-      if (allyPosition) {
-        gameEvents.push(addTempBuff(weakestAlly, 1000, 1, {
-          name: "Moon's Balance",
-          position: allyPosition,
-        }));
+    if (handCards.length > 0) {
+      const weakestHandCard = handCards.reduce((weakest, current) =>
+        getCardTotalPower(current) < getCardTotalPower(weakest) ? current : weakest
+      );
+      gameEvents.push(addTempBuff(weakestHandCard, 1000, 1, {
+        name: "Moon's Balance",
+        position: HAND_POSITION,
+      }));
+      weakestHandCard.current_power = updateCurrentPower(weakestHandCard);
+      if (state.hydrated_card_data_cache?.[weakestHandCard.user_card_instance_id]) {
+        state.hydrated_card_data_cache[weakestHandCard.user_card_instance_id] = weakestHandCard;
       }
     }
 
