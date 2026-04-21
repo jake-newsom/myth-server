@@ -1,4 +1,4 @@
-import db from "../config/db.config";
+import db, { QueryExecutor } from "../config/db.config";
 import {
   MonthlyLoginConfig,
   UserMonthlyLoginProgress,
@@ -144,32 +144,25 @@ const MonthlyLoginRewardsModel = {
     userId: string,
     monthYear: string,
     day: number,
-    claimDate?: Date | string
+    claimDate?: Date | string,
+    client?: QueryExecutor
   ): Promise<UserMonthlyLoginProgress | null> {
-    // Get current progress
-    const progress = await this.getUserProgress(userId, monthYear);
-    if (!progress) {
-      return null;
-    }
-
-    // Add day to claimed_days if not already claimed
-    const claimedDays = progress.claimed_days.includes(day)
-      ? progress.claimed_days
-      : [...progress.claimed_days, day].sort((a, b) => a - b);
-
-    // Update current_day if this day is higher
-    const currentDay = Math.max(progress.current_day, day);
-
-    // Use provided claimDate or current UTC date
     const lastClaimDate = claimDate || new Date().toISOString().split('T')[0];
-
-    return await this.updateUserProgress(
-      userId,
-      monthYear,
-      currentDay,
-      claimedDays,
-      lastClaimDate
-    );
+    // Single atomic UPDATE: append the day to claimed_days and advance current_day
+    // in one round-trip, eliminating the read-then-write race condition.
+    const query = `
+      UPDATE user_monthly_login_progress
+      SET
+        claimed_days   = array(SELECT DISTINCT unnest(claimed_days || ARRAY[$3::int]) ORDER BY 1),
+        current_day    = GREATEST(current_day, $3),
+        last_claim_date = $4,
+        updated_at     = current_timestamp
+      WHERE user_id = $1 AND month_year = $2
+      RETURNING progress_id, user_id, month_year, current_day, claimed_days, last_claim_date, created_at, updated_at;
+    `;
+    const executor: QueryExecutor = client ?? db;
+    const { rows } = await executor.query(query, [userId, monthYear, day, lastClaimDate]);
+    return rows[0] || null;
   },
 
   // Batch operations for monthly reset

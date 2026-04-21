@@ -121,14 +121,15 @@ const UserModel = {
     return rows[0] || null;
   },
 
-  async updateGems(userId: string, amount: number): Promise<User | null> {
+  async updateGems(userId: string, amount: number, client?: import('../config/db.config').QueryExecutor): Promise<User | null> {
     const query = `
       UPDATE "users" 
       SET gems = gems + $2 
       WHERE user_id = $1 AND gems + $2 >= 0
       RETURNING user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login as last_login_at;
     `;
-    const { rows } = await db.query(query, [userId, amount]);
+    const executor = client ?? db;
+    const { rows } = await executor.query(query, [userId, amount]);
     return rows[0] || null;
   },
 
@@ -164,7 +165,7 @@ const UserModel = {
     return rows[0]?.pack_count || 0;
   },
 
-  async addPacks(userId: string, quantity: number): Promise<User | null> {
+  async addPacks(userId: string, quantity: number, client?: import('../config/db.config').QueryExecutor): Promise<User | null> {
     // Add the specified number of packs to user's current pack count
     const query = `
       UPDATE "users" 
@@ -172,7 +173,8 @@ const UserModel = {
       WHERE user_id = $1
       RETURNING user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login as last_login_at;
     `;
-    const { rows } = await db.query(query, [userId, quantity]);
+    const executor = client ?? db;
+    const { rows } = await executor.query(query, [userId, quantity]);
     return rows[0] || null;
   },
 
@@ -230,14 +232,15 @@ const UserModel = {
   },
 
   // Wonder coins methods
-  async updateFateCoins(userId: string, amount: number): Promise<User | null> {
+  async updateFateCoins(userId: string, amount: number, client?: import('../config/db.config').QueryExecutor): Promise<User | null> {
     const query = `
       UPDATE "users" 
       SET fate_coins = fate_coins + $2 
       WHERE user_id = $1 AND fate_coins + $2 >= 0
       RETURNING user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login as last_login_at;
     `;
-    const { rows } = await db.query(query, [userId, amount]);
+    const executor = client ?? db;
+    const { rows } = await executor.query(query, [userId, amount]);
     return rows[0] || null;
   },
 
@@ -261,7 +264,8 @@ const UserModel = {
   // Card fragments methods
   async updateCardFragments(
     userId: string,
-    amount: number
+    amount: number,
+    client?: import('../config/db.config').QueryExecutor
   ): Promise<User | null> {
     const query = `
       UPDATE "users" 
@@ -269,7 +273,8 @@ const UserModel = {
       WHERE user_id = $1 AND card_fragments + $2 >= 0
       RETURNING user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login as last_login_at;
     `;
-    const { rows } = await db.query(query, [userId, amount]);
+    const executor = client ?? db;
+    const { rows } = await executor.query(query, [userId, amount]);
     return rows[0] || null;
   },
 

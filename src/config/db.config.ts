@@ -1,4 +1,4 @@
-import { Pool, QueryResult } from "pg";
+import { Pool, QueryResult, PoolClient } from "pg";
 import config from "./index";
 
 const pool = new Pool({
@@ -16,9 +16,16 @@ pool.on("error", (err: Error) => {
   process.exit(-1);
 });
 
+/** Minimal interface satisfied by both the db wrapper and a raw PoolClient. */
+export type QueryExecutor = {
+  query: (text: string, params?: any[]) => Promise<QueryResult>;
+};
+
+export { PoolClient };
+
 export default {
   query: (text: string, params?: any[]): Promise<QueryResult> =>
     pool.query(text, params),
-  getClient: () => pool.connect(), // For transactions
+  getClient: (): Promise<PoolClient> => pool.connect(), // For transactions
   pool, // Export pool if needed directly elsewhere
 };
