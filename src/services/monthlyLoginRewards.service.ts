@@ -11,7 +11,7 @@ import {
   ClaimMonthlyRewardResponse,
 } from "../types/api.types";
 import logger from "../utils/logger";
-import db from "../config/db.config";
+import db, { QueryExecutor, PoolClient } from "../config/db.config";
 
 const MonthlyLoginRewardsService = {
   /**
@@ -99,6 +99,15 @@ const MonthlyLoginRewardsService = {
     const configs = await this.getMonthlyRewardConfig();
     const configMap = new Map(configs.map((c) => [c.day, c]));
 
+    // Check if the user has already claimed a reward today
+    const today = this.getCurrentDateString();
+    const claimedToday = progress.last_claim_date
+      ? (typeof progress.last_claim_date === "string"
+          ? progress.last_claim_date.split("T")[0]
+          : (progress.last_claim_date as Date).toISOString().split("T")[0]) ===
+        today
+      : false;
+
     // Build rewards array
     const rewards = [];
     for (let day = 1; day <= 24; day++) {
@@ -106,8 +115,8 @@ const MonthlyLoginRewardsService = {
       if (!config) continue;
 
       const isClaimed = progress.claimed_days.includes(day);
-      const canClaim =
-        !isClaimed && day <= maxDay && day <= progress.current_day + 1;
+      const isNext = !isClaimed && day === progress.current_day + 1 && day <= maxDay;
+      const canClaim = isNext && !claimedToday;
 
       rewards.push({
         day,
@@ -115,6 +124,7 @@ const MonthlyLoginRewardsService = {
         amount: config.amount,
         is_claimed: isClaimed,
         can_claim: canClaim,
+        is_next: isNext,
       });
     }
 
@@ -125,7 +135,11 @@ const MonthlyLoginRewardsService = {
 
     return {
       month_year: monthYear,
+      // `current_day` is retained for backward compatibility with older clients.
+      // New clients should prefer `current_claimed_day`.
       current_day: progress.current_day,
+      current_claimed_day: progress.current_day,
+      server_day_of_month: maxDay,
       claimed_days: progress.claimed_days,
       available_days: availableDays,
       rewards,
@@ -238,20 +252,36 @@ const MonthlyLoginRewardsService = {
       throw new Error(`No reward configuration found for day ${day}`);
     }
 
-    // Distribute the reward and get the user_card_instance_id if it's an enhanced_card
-    const distributedCardInstanceId = await this.distributeReward(userId, config);
+    // Run reward distribution and progress update inside a transaction so that
+    // a failed progress write rolls back the reward rather than leaving them out
+    // of sync (e.g. gems credited but claimed_days not updated).
+    const client: PoolClient = await db.getClient();
+    let distributedCardInstanceId: string | undefined;
+    let updatedProgress: import("../types/database.types").UserMonthlyLoginProgress | null;
+    try {
+      await client.query("BEGIN");
 
-    // Update user progress with today's date
-    const today = this.getCurrentDateString();
-    const updatedProgress = await MonthlyLoginRewardsModel.addClaimedDay(
-      userId,
-      monthYear,
-      day,
-      today
-    );
+      distributedCardInstanceId = await this.distributeReward(userId, config, client);
 
-    if (!updatedProgress) {
-      throw new Error("Failed to update user progress");
+      const today = this.getCurrentDateString();
+      updatedProgress = await MonthlyLoginRewardsModel.addClaimedDay(
+        userId,
+        monthYear,
+        day,
+        today,
+        client
+      );
+
+      if (!updatedProgress) {
+        throw new Error("Failed to update user progress");
+      }
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
     }
 
     return {
@@ -276,35 +306,37 @@ const MonthlyLoginRewardsService = {
    */
   async distributeReward(
     userId: string,
-    config: MonthlyLoginConfig
+    config: MonthlyLoginConfig,
+    client?: QueryExecutor
   ): Promise<string | undefined> {
+    const executor: QueryExecutor = client ?? db;
     switch (config.reward_type) {
       case "gems":
-        await UserModel.updateGems(userId, config.amount);
+        await UserModel.updateGems(userId, config.amount, executor);
         logger.info(`Distributed ${config.amount} gems to user ${userId}`);
         return undefined;
 
       case "fate_coins":
-        await UserModel.updateFateCoins(userId, config.amount);
+        await UserModel.updateFateCoins(userId, config.amount, executor);
         logger.info(
           `Distributed ${config.amount} fate coins to user ${userId}`
         );
         return undefined;
 
       case "card_fragments":
-        await UserModel.updateCardFragments(userId, config.amount);
+        await UserModel.updateCardFragments(userId, config.amount, executor);
         logger.info(
           `Distributed ${config.amount} card fragments to user ${userId}`
         );
         return undefined;
 
       case "card_pack":
-        await UserModel.addPacks(userId, config.amount);
+        await UserModel.addPacks(userId, config.amount, executor);
         logger.info(`Distributed ${config.amount} pack(s) to user ${userId}`);
         return undefined;
 
       case "enhanced_card":
-        const userCardInstanceId = await this.distributeEnhancedCard(userId, config);
+        const userCardInstanceId = await this.distributeEnhancedCard(userId, config, executor);
         return userCardInstanceId;
 
       default:
@@ -318,7 +350,8 @@ const MonthlyLoginRewardsService = {
    */
   async distributeEnhancedCard(
     userId: string,
-    config: MonthlyLoginConfig
+    config: MonthlyLoginConfig,
+    client?: QueryExecutor
   ): Promise<string> {
     let cardId: string | null = null;
 
@@ -333,13 +366,13 @@ const MonthlyLoginRewardsService = {
       throw new Error("No enhanced card available to distribute");
     }
 
-    // Add card to user's collection and return the instance ID
+    const executor = client ?? db;
     const query = `
       INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
       VALUES ($1, $2, 1, 0, NOW())
       RETURNING user_card_instance_id;
     `;
-    const { rows } = await db.query(query, [userId, cardId]);
+    const { rows } = await executor.query(query, [userId, cardId]);
     const userCardInstanceId = rows[0].user_card_instance_id;
 
     logger.info(`Distributed enhanced card ${cardId} (instance: ${userCardInstanceId}) to user ${userId}`);
