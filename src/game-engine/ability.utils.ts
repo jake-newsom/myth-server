@@ -420,10 +420,11 @@ export const getDiagonallyAdjacentPositions = (
 };
 
 export const getTileAtPosition = (
-  position: BoardPosition,
+  position: BoardPosition | null | undefined,
   board: GameBoard
 ): BoardCell | null => {
-  return board[position.y][position.x];
+  if (!position) return null;
+  return board[position.y]?.[position.x] || null;
 };
 
 export const cardAtPosition = (

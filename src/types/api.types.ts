@@ -65,11 +65,13 @@ export interface CardResponse {
   base_card_id: string;
   name: string;
   description?: string | null; // Mythological character description (HTML content) - only included for static cards
+  variant_description?: string | null; // Variant-specific art/lore description
   rarity: Rarity;
   image_url: string;
   base_power: PowerValues;
   level?: number;
   xp?: number;
+  is_locked?: boolean;
   tags: string[];
   set_id: string | null;
   special_ability: {
@@ -122,7 +124,9 @@ export interface UpdateDeckRequest {
 // Monthly Login Rewards API Types
 export interface MonthlyLoginStatusResponse {
   month_year: string; // Format: YYYY-MM
-  current_day: number; // Current highest day reached (0-24)
+  current_day: number; // Deprecated alias of current_claimed_day
+  current_claimed_day: number; // Current highest claimed day (0-24)
+  server_day_of_month: number; // Current UTC calendar day capped at 24
   claimed_days: number[]; // Array of claimed day numbers
   available_days: number[]; // Array of days that can be claimed (up to current_day)
   rewards: Array<{
@@ -136,6 +140,7 @@ export interface MonthlyLoginStatusResponse {
     amount: number;
     is_claimed: boolean;
     can_claim: boolean;
+    is_next: boolean; // True when this is the next reward in sequence (may be can_claim:false if already claimed today)
   }>;
 }
 

@@ -27,6 +27,7 @@ const formatDeckCardInstanceResponse = (
     base_power: baseCard.base_power,
     level: instance.level,
     xp: instance.xp,
+    is_locked: instance.is_locked,
     power_enhancements: instance.power_enhancements,
     tags: baseCard.tags,
     set_id: baseCard.set_id || null,
@@ -121,7 +122,7 @@ const DeckModel = {
     const cardsQuery = `
       SELECT
         dc.user_card_instance_id,
-        uci.level, uci.xp, uci.card_variant_id AS base_card_id,
+        uci.level, uci.xp, uci.is_locked, uci.card_variant_id AS base_card_id,
         ch.name, cv.rarity, cv.image_url, cv.attack_animation,
         ch.base_power->>'top' as base_power_top,
         ch.base_power->>'right' as base_power_right, 
@@ -183,6 +184,7 @@ const DeckModel = {
         card_variant_id: row.base_card_id,
         level: row.level,
         xp: row.xp,
+        is_locked: row.is_locked,
         power_enhancements: powerEnhancements,
       };
       const ability: SpecialAbility | null = row.special_ability_id

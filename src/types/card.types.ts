@@ -150,6 +150,7 @@ export interface PlayerCardInstance {
   card_id: string; // Foreign key to BaseCardData
   level: number;
   xp: number;
+  is_locked: boolean;
   power_enhancements: PowerValues; // Player-driven permanent stat increases
   created_at?: Date;
 }
@@ -180,6 +181,7 @@ export type UserCard = {
 
   level: number;
   xp: number;
+  is_locked: boolean;
   power_enhancements: PowerValues;
 };
 

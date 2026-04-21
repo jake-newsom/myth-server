@@ -24,6 +24,7 @@ function formatUserCardInstanceResponse(
     base_power: baseCard.base_power,
     level: instance.level,
     xp: instance.xp,
+    is_locked: instance.is_locked,
     power_enhancements: instance.power_enhancements,
     tags: baseCard.tags,
     set_id: baseCard.set_id || null,
@@ -91,7 +92,7 @@ const CardModel = {
   async findInstancesByUserId(userId: string): Promise<CardResponse[]> {
     const query = `
       SELECT 
-        uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp,
+        uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp, uoc.is_locked,
         ch.name, ch.description, ch.type,
         ch.base_power->>'top' as base_power_top,
         ch.base_power->>'right' as base_power_right, 
@@ -155,6 +156,7 @@ const CardModel = {
         card_variant_id: row.card_variant_id,
         level: row.level,
         xp: row.xp,
+        is_locked: row.is_locked,
         power_enhancements: powerEnhancements,
       };
 
@@ -230,7 +232,7 @@ const CardModel = {
   ): Promise<CardResponse | null> {
     const query = `
       SELECT 
-        uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp,
+        uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp, uoc.is_locked,
         ch.name, ch.description, ch.type,
         ch.base_power->>'top' as base_power_top,
         ch.base_power->>'right' as base_power_right, 
@@ -269,6 +271,7 @@ const CardModel = {
       card_variant_id: row.card_variant_id,
       level: row.level,
       xp: row.xp,
+      is_locked: row.is_locked,
       power_enhancements: powerEnhancements,
     };
 
@@ -628,7 +631,7 @@ const CardModel = {
 
     const query = `
       SELECT 
-        uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp,
+        uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp, uoc.is_locked,
         ch.name, ch.description, ch.type,
         ch.base_power->>'top' as base_power_top,
         ch.base_power->>'right' as base_power_right, 
@@ -691,6 +694,7 @@ const CardModel = {
         card_variant_id: row.card_variant_id,
         level: row.level,
         xp: row.xp,
+        is_locked: row.is_locked,
         power_enhancements: powerEnhancements,
       };
 
@@ -843,7 +847,7 @@ const CardModel = {
 
       const dataQuery = `
         SELECT 
-          uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp,
+          uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp, uoc.is_locked,
           ch.name, ch.description, ch.type,
           ch.base_power->>'top' as base_power_top,
           ch.base_power->>'right' as base_power_right, 
@@ -918,6 +922,7 @@ const CardModel = {
           card_variant_id: row.card_variant_id,
           level: row.level,
           xp: row.xp,
+          is_locked: row.is_locked,
           power_enhancements: powerEnhancements,
         };
 
@@ -957,11 +962,29 @@ const CardModel = {
     const query = `
       INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp)
       VALUES ($1, $2, 1, 0)
-      RETURNING user_card_instance_id, user_id, card_variant_id, level, xp, created_at;
+      RETURNING user_card_instance_id, user_id, card_variant_id, level, xp, is_locked, created_at;
     `;
 
     const { rows } = await db.query(query, [userId, cardVariantId]);
     return rows[0];
+  },
+
+  /**
+   * Set lock state for a specific user-owned card instance.
+   */
+  async setCardLockState(
+    userId: string,
+    userCardInstanceId: string,
+    isLocked: boolean
+  ): Promise<{ user_card_instance_id: string; is_locked: boolean } | null> {
+    const query = `
+      UPDATE "user_owned_cards"
+      SET is_locked = $1
+      WHERE user_card_instance_id = $2 AND user_id = $3
+      RETURNING user_card_instance_id, is_locked;
+    `;
+    const { rows } = await db.query(query, [isLocked, userCardInstanceId, userId]);
+    return rows[0] || null;
   },
 
   /**

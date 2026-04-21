@@ -75,7 +75,7 @@ const XpService = {
 
       // Query user cards directly
       const query = `
-        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, ch.name
+        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, uoc.is_locked, ch.name
         FROM "user_owned_cards" uoc
         JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
         JOIN "characters" ch ON cv.character_id = ch.character_id
@@ -104,6 +104,10 @@ const XpService = {
 
       if (!sourceCard || !targetCard) {
         throw new Error("Source or target card not found");
+      }
+
+      if (sourceCard.is_locked) {
+        throw new Error("Cannot transfer XP from a locked card");
       }
 
       // Check source card has XP to transfer
@@ -244,7 +248,7 @@ const XpService = {
 
       // Get cards and validate ownership
       const query = `
-        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, ch.name, cv.rarity
+        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, uoc.is_locked, ch.name, cv.rarity
         FROM "user_owned_cards" uoc
         JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
         JOIN "characters" ch ON cv.character_id = ch.character_id
@@ -254,6 +258,11 @@ const XpService = {
 
       if (rows.length !== cardIds.length) {
         throw new Error("One or more cards don't belong to the user");
+      }
+
+      const hasLockedCard = rows.some((card) => card.is_locked);
+      if (hasLockedCard) {
+        throw new Error("Locked cards cannot be sacrificed");
       }
 
       // Check all cards have same name
@@ -369,7 +378,8 @@ const XpService = {
           uoc.user_card_instance_id, 
           uoc.card_variant_id as base_card_id,
           uoc.level, 
-          uoc.xp, 
+          uoc.xp,
+          uoc.is_locked,
           ch.name,
           cv.rarity
         FROM "user_owned_cards" uoc
@@ -394,7 +404,9 @@ const XpService = {
       for (const [baseCardId, cards] of Object.entries(cardsByBaseId)) {
         // Count cards with XP > 0
         const cardsWithXp = cards.filter((card) => card.xp > 0);
-        const cardsWithZeroXp = cards.filter((card) => card.xp === 0);
+        const cardsWithZeroXp = cards.filter(
+          (card) => card.xp === 0 && !card.is_locked
+        );
 
         // Calculate how many cards we should keep total (at least 2, or all cards with XP if more than 2)
         const minKeep = Math.max(2, cardsWithXp.length);
@@ -415,7 +427,7 @@ const XpService = {
         await client.query("ROLLBACK");
         return {
           success: true,
-          message: "No 0 XP card copies found to sacrifice",
+          message: "No unlocked 0 XP card copies found to sacrifice",
           sacrificed_cards: [],
           total_xp_gained: 0,
           total_card_fragments_gained: 0,

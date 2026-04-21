@@ -2,6 +2,7 @@ import { Response } from "express";
 import CardModel from "../../models/card.model";
 import { AuthenticatedRequest } from "../../types";
 import { redisCache } from "../../services/redis.cache.service";
+import { cacheInvalidation } from "../../services/cache.invalidation.service";
 
 export const getAllUserCards = async (
   req: AuthenticatedRequest,
@@ -55,5 +56,52 @@ export const getAllUserCards = async (
   } catch (error) {
     console.error("Error fetching user cards:", error);
     res.status(500).json({ message: "Failed to fetch user cards" });
+  }
+};
+
+export const setUserCardLockState = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const userId = req.user?.user_id;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { userCardInstanceId } = req.params;
+    const { is_locked } = req.body;
+
+    if (!userCardInstanceId) {
+      return res.status(400).json({ message: "userCardInstanceId is required" });
+    }
+
+    if (typeof is_locked !== "boolean") {
+      return res.status(400).json({
+        message: "is_locked is required and must be a boolean",
+      });
+    }
+
+    const updatedCard = await CardModel.setCardLockState(
+      userId,
+      userCardInstanceId,
+      is_locked
+    );
+
+    if (!updatedCard) {
+      return res.status(404).json({
+        message: "Card not found or does not belong to user",
+      });
+    }
+
+    await cacheInvalidation.invalidateUserCards(userId);
+
+    return res.status(200).json({
+      user_card_instance_id: updatedCard.user_card_instance_id,
+      is_locked: updatedCard.is_locked,
+    });
+  } catch (error) {
+    console.error("Error updating user card lock state:", error);
+    return res.status(500).json({ message: "Failed to update card lock state" });
   }
 };

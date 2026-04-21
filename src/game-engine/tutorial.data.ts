@@ -101,6 +101,7 @@ function buildInGameCard(
     },
     level: 1,
     xp: 0,
+    is_locked: false,
     power_enhancements: { top: 0, right: 0, bottom: 0, left: 0 },
     card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
     card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },

@@ -470,14 +470,17 @@ export const norseAbilities: AbilityMap = {
     );
 
     for (const enemy of enemiesInColumn) {
+      const enemyPosition = getPositionOfCardById(
+        enemy.user_card_instance_id,
+        state.board,
+      );
+      if (!enemyPosition) continue;
+
       gameEvents.push(
         addTempDebuff(enemy, 3, -3, {
           name: "Winter's Grasp",
           animation: "winter-grasp",
-          position: getPositionOfCardById(
-            enemy.user_card_instance_id,
-            state.board,
-          )!,
+          position: enemyPosition,
         }),
       );
     }
@@ -506,13 +509,16 @@ export const norseAbilities: AbilityMap = {
     for (const selectedCard of selectedCards) {
       const tryToFlip = Math.floor(Math.random() * 100) < 50;
       if (tryToFlip) {
+        const selectedCardPosition = getPositionOfCardById(
+          selectedCard.user_card_instance_id,
+          state.board,
+        );
+        if (!selectedCardPosition) continue;
+
         gameEvents.push(
           ...flipCard(
             state,
-            getPositionOfCardById(
-              selectedCard.user_card_instance_id,
-              state.board,
-            )!,
+            selectedCardPosition,
             selectedCard,
             triggerCard,
             "trickster-gambit",
@@ -583,14 +589,20 @@ export const norseAbilities: AbilityMap = {
     );
 
     if (strongestEnemy) {
-      const destroyedEvent = destroyCardAtPosition(
-        getPositionOfCardById(strongestEnemy.user_card_instance_id, board)!,
+      const strongestEnemyPosition = getPositionOfCardById(
+        strongestEnemy.user_card_instance_id,
         board,
-        "flames-pillar",
-        triggerCard.owner,
       );
-      if (destroyedEvent) {
-        gameEvents.push(destroyedEvent);
+      if (strongestEnemyPosition) {
+        const destroyedEvent = destroyCardAtPosition(
+          strongestEnemyPosition,
+          board,
+          "flames-pillar",
+          triggerCard.owner,
+        );
+        if (destroyedEvent) {
+          gameEvents.push(destroyedEvent);
+        }
       }
     }
 
@@ -928,27 +940,33 @@ export const norseAbilities: AbilityMap = {
     if (adjacentEnemies.length > 0) {
       const randomEnemy =
         adjacentEnemies[Math.floor(Math.random() * adjacentEnemies.length)];
-      const destroyEvent = destroyCardAtPosition(
-        getPositionOfCardById(randomEnemy.user_card_instance_id, board)!,
+      const randomEnemyPosition = getPositionOfCardById(
+        randomEnemy.user_card_instance_id,
         board,
-        "claw",
-        triggerCard.owner,
       );
-      if (destroyEvent) {
-        gameEvents.push(destroyEvent);
-        const side = getRandomSide();
-        gameEvents.push(
-          addTempBuff(
-            triggerCard,
-            1000,
-            { [side]: 1 },
-            {
-              name: "Devourer's Surge",
-              animation: "magic-up",
-              position,
-            },
-          ),
+      if (randomEnemyPosition) {
+        const destroyEvent = destroyCardAtPosition(
+          randomEnemyPosition,
+          board,
+          "claw",
+          triggerCard.owner,
         );
+        if (destroyEvent) {
+          gameEvents.push(destroyEvent);
+          const side = getRandomSide();
+          gameEvents.push(
+            addTempBuff(
+              triggerCard,
+              1000,
+              { [side]: 1 },
+              {
+                name: "Devourer's Surge",
+                animation: "magic-up",
+                position,
+              },
+            ),
+          );
+        }
       }
     }
     return gameEvents;

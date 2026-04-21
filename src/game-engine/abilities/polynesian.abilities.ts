@@ -223,21 +223,22 @@ export const polynesianAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const originalTriggerCard = context.originalTriggerCard;
 
     if (
       triggerMoment === TriggerMoment.HandOnPlace &&
-      context.originalTriggerCard!.owner === triggerCard.owner &&
-      context.originalTriggerCard!.user_card_instance_id !==
-        triggerCard.user_card_instance_id
+      originalTriggerCard &&
+      originalTriggerCard.owner === triggerCard.owner &&
+      originalTriggerCard.user_card_instance_id !== triggerCard.user_card_instance_id
     ) {
       const originalCardPosition = getPositionOfCardById(
-        context.originalTriggerCard!.user_card_instance_id,
+        originalTriggerCard.user_card_instance_id,
         board,
       );
       if (originalCardPosition) {
         gameEvents.push(
           createOrUpdateBuff(
-            context.originalTriggerCard!,
+            originalTriggerCard,
             1000,
             1,
             "Tide Ward",
@@ -309,13 +310,19 @@ export const polynesianAbilities: AbilityMap = {
       triggerCard.temporary_effects.find((effect) => effect.name === label)
         ?.power.top === 5
     ) {
-      //resolve combat?
-      const combatResult = resolveCombat(
-        state,
-        getPositionOfCardById(triggerCard.user_card_instance_id, state.board)!,
-        triggerCard.owner,
+      const triggerPosition = getPositionOfCardById(
+        triggerCard.user_card_instance_id,
+        state.board,
       );
-      gameEvents.push(...combatResult.events);
+      if (triggerPosition) {
+        // resolve combat only if the card is still on board
+        const combatResult = resolveCombat(
+          state,
+          triggerPosition,
+          triggerCard.owner,
+        );
+        gameEvents.push(...combatResult.events);
+      }
     }
 
     return gameEvents;
@@ -440,29 +447,38 @@ export const polynesianAbilities: AbilityMap = {
     const {
       triggerCard,
       originalTriggerCard,
+      flippedCard,
+      flippedBy,
       state: { board },
     } = context;
 
-    if (!originalTriggerCard) return [];
+    const defeatedCard = flippedCard ?? originalTriggerCard;
+    const defeatingCard = flippedBy ?? originalTriggerCard;
 
-    if (originalTriggerCard.owner !== triggerCard.owner) {
-      const position = getPositionOfCardById(
-        originalTriggerCard.user_card_instance_id,
-        board,
-      );
-      return [
-        setTileStatus(getTileAtPosition(position!, board)!, position!, {
-          status: TileStatus.Normal,
-          turns_left: 1000,
-          animation_label: "water",
-          terrain: TileTerrain.Ocean,
-          effect_duration: 1000,
-          applies_to_user: triggerCard.owner,
-        }),
-      ];
-    }
+    if (!defeatedCard || !defeatingCard) return [];
 
-    return [];
+    // Trigger only when an opponent defeats one of this card owner's allies.
+    if (defeatingCard.owner === triggerCard.owner) return [];
+
+    const defeatedPosition = getPositionOfCardById(
+      defeatedCard.user_card_instance_id,
+      board,
+    );
+    if (!defeatedPosition) return [];
+
+    const defeatedTile = getTileAtPosition(defeatedPosition, board);
+    if (!defeatedTile) return [];
+
+    return [
+      setTileStatus(defeatedTile, defeatedPosition, {
+        status: TileStatus.Normal,
+        turns_left: 1000,
+        animation_label: "water",
+        terrain: TileTerrain.Ocean,
+        effect_duration: 1000,
+        applies_to_user: triggerCard.owner,
+      }),
+    ];
   },
 
   // Sacred Spring: If in water, grant +1 to a random card in your hand at the end of each round
@@ -665,21 +681,24 @@ export const polynesianAbilities: AbilityMap = {
         ),
       );
       //curse previous tile
-      gameEvents.push(
-        setTileStatus(
-          getTileAtPosition(position, state.board)!,
-          position,
-          {
-            status: TileStatus.Cursed,
-            turns_left: 1000,
-            animation_label: "cursed",
-            power: { top: -1, bottom: -1, left: -1, right: -1 },
-            effect_duration: 1000,
-            applies_to_user: getOpponentId(triggerCard.owner, state),
-          },
-          triggerCard.owner,
-        ),
-      );
+      const previousTile = getTileAtPosition(position, state.board);
+      if (previousTile) {
+        gameEvents.push(
+          setTileStatus(
+            previousTile,
+            position,
+            {
+              status: TileStatus.Cursed,
+              turns_left: 1000,
+              animation_label: "cursed",
+              power: { top: -1, bottom: -1, left: -1, right: -1 },
+              effect_duration: 1000,
+              applies_to_user: getOpponentId(triggerCard.owner, state),
+            },
+            triggerCard.owner,
+          ),
+        );
+      }
     }
 
     return gameEvents;

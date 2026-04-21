@@ -115,6 +115,13 @@ const DailyShopModel = {
       LEFT JOIN characters ch ON cv.character_id = ch.character_id
       LEFT JOIN special_abilities sa ON ch.special_ability_id = sa.ability_id
       WHERE dso.shop_date = $1
+        AND (
+          dso.card_id IS NULL
+          OR (
+            COALESCE(cv.is_exclusive, false) = false
+            AND cv.rarity::text <> 'legendary+++'
+          )
+        )
       ORDER BY dso.item_type, dso.slot_number;
     `;
 
@@ -303,7 +310,8 @@ const DailyShopModel = {
       JOIN characters ch ON cv.character_id = ch.character_id
       INNER JOIN sets s ON ch.set_id = s.set_id
       WHERE s.name = $1 AND cv.rarity::text = $2
-        AND cv.is_exclusive = false
+        AND COALESCE(cv.is_exclusive, false) = false
+        AND cv.rarity::text <> 'legendary+++'
       ORDER BY ch.name;
     `;
 
@@ -320,7 +328,8 @@ const DailyShopModel = {
       JOIN characters ch ON cv.character_id = ch.character_id
       INNER JOIN sets s ON ch.set_id = s.set_id
       WHERE cv.rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
-        AND cv.is_exclusive = false
+        AND COALESCE(cv.is_exclusive, false) = false
+        AND cv.rarity::text <> 'legendary+++'
       ORDER BY RANDOM()
       LIMIT $1;
     `;

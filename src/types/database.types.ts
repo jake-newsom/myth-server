@@ -101,8 +101,11 @@ export interface CardVariant {
   character_id: string;
   rarity: Rarity;
   image_url: string;
+  description?: string | null; // Variant-specific lore/art description
   attack_animation?: string;
+  is_exclusive?: boolean;
   created_at?: Date;
+  updated_at?: Date;
 }
 
 /**
@@ -143,6 +146,7 @@ export interface UserCardInstance {
   card_variant_id: string; // References card_variants table
   level: number;
   xp: number;
+  is_locked: boolean;
   power_enhancements: PowerValues;
   created_at?: Date;
 }

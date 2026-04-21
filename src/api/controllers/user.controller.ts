@@ -42,6 +42,7 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
   },
   level: card.level!,
   xp: card.xp!,
+  is_locked: card.is_locked ?? false,
   power_enhancements: card.power_enhancements || {
     top: 0,
     right: 0,

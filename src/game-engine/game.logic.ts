@@ -46,7 +46,7 @@ export class GameLogic {
         .join(",");
       const query = `
         SELECT 
-          uci.user_card_instance_id, uci.level, uci.xp, uci.user_id,
+          uci.user_card_instance_id, uci.level, uci.xp, uci.is_locked, uci.user_id,
           cv.card_variant_id as base_card_id, ch.name, cv.rarity, cv.image_url, 
           ch.base_power->>'top' as base_power_top, ch.base_power->>'right' as base_power_right, 
           ch.base_power->>'bottom' as base_power_bottom, ch.base_power->>'left' as base_power_left, 
@@ -126,6 +126,7 @@ export class GameLogic {
           },
           level: row.level,
           xp: row.xp,
+          is_locked: row.is_locked,
           power_enhancements: powerEnhancements,
           current_power: currentPower,
           owner: row.user_id,
