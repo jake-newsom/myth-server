@@ -155,6 +155,58 @@ const MailService = {
   },
 
   /**
+   * Delete specific mail by ID
+   */
+  async deleteMail(
+    mailId: string,
+    userId: string
+  ): Promise<{
+    success: boolean;
+    deleted_mail_id?: string;
+    message?: string;
+    error?: string;
+  }> {
+    try {
+      const mail = await MailModel.findById(mailId);
+
+      if (!mail) {
+        return {
+          success: false,
+          error: "Mail not found",
+        };
+      }
+
+      if (mail.user_id !== userId) {
+        return {
+          success: false,
+          error: "Access denied",
+        };
+      }
+
+      const deletedMail = await MailModel.deleteForUser(mailId, userId);
+
+      if (!deletedMail) {
+        return {
+          success: false,
+          error: "Failed to delete mail",
+        };
+      }
+
+      return {
+        success: true,
+        deleted_mail_id: deletedMail.id,
+        message: "Mail deleted successfully",
+      };
+    } catch (error) {
+      console.error("Error deleting mail:", error);
+      return {
+        success: false,
+        error: "Failed to delete mail",
+      };
+    }
+  },
+
+  /**
    * Mark mail as read
    */
   async markAsRead(

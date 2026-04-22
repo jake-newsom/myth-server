@@ -309,12 +309,25 @@ const MailModel = {
   },
 
   /**
-   * Delete mail (only for system cleanup)
+   * Delete mail by ID
    */
   async delete(mailId: string): Promise<boolean> {
     const query = `DELETE FROM mail WHERE id = $1 RETURNING id;`;
     const { rows } = await db.query(query, [mailId]);
     return rows.length > 0;
+  },
+
+  /**
+   * Delete mail scoped to a specific user
+   */
+  async deleteForUser(mailId: string, userId: string): Promise<Mail | null> {
+    const query = `
+      DELETE FROM mail
+      WHERE id = $1 AND user_id = $2
+      RETURNING *;
+    `;
+    const { rows } = await db.query(query, [mailId, userId]);
+    return rows[0] || null;
   },
 
   /**

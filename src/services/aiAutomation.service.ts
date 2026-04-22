@@ -53,12 +53,12 @@ const AIAutomationService = {
       const randomSetIndex = Math.floor(Math.random() * availableSets.length);
       const selectedSet = availableSets[randomSetIndex];
       console.log(
-        `🎲 Selected set: ${selectedSet.name} (${selectedSet.set_id})`
+        `🎲 Selected set: ${selectedSet.name} (${selectedSet.set_id})`,
       );
 
       // 4. Check if the set has cards available
       const setCardsCount = await PackService.getSetCardCount(
-        selectedSet.set_id
+        selectedSet.set_id,
       );
       if (setCardsCount === 0) {
         console.error(`❌ Set ${selectedSet.name} has no cards available`);
@@ -72,7 +72,7 @@ const AIAutomationService = {
       const setCards = await PackService.getCardsFromSet(selectedSet.set_id);
       if (setCards.length === 0) {
         console.error(
-          `❌ Could not retrieve cards from set ${selectedSet.name}`
+          `❌ Could not retrieve cards from set ${selectedSet.name}`,
         );
         return {
           success: false,
@@ -90,7 +90,7 @@ const AIAutomationService = {
       // 8. Log the pack opening for the AI user
       const packOpeningId = await this.logAIPackOpening(
         selectedSet.set_id,
-        selectedCards
+        selectedCards,
       );
 
       // 9. Create fate pick from the pack opening
@@ -100,7 +100,7 @@ const AIAutomationService = {
           AI_PLAYER_ID,
           selectedCards,
           selectedSet.set_id,
-          1 // Cost in fate coins
+          1, // Cost in fate coins
         );
 
       if (!fatePickResult.success) {
@@ -117,7 +117,7 @@ const AIAutomationService = {
       await this.removeCardsFromAICollection(selectedCards);
 
       console.log(
-        `✅ Successfully created automated fate pick: ${fatePickResult.fatePick?.id}`
+        `✅ Successfully created automated fate pick: ${fatePickResult.fatePick?.id}`,
       );
       return {
         success: true,
@@ -200,7 +200,7 @@ const AIAutomationService = {
 
     // Set up cron job for every 30 minutes
     const task = cron.schedule(
-      "*/30 * * * *",
+      "0 */2 * * *",
       async () => {
         console.log("⏰ Running scheduled automated fate pick generation...");
         const result = await this.generateAutomatedFatePick();
@@ -213,7 +213,7 @@ const AIAutomationService = {
       },
       {
         timezone: "UTC",
-      }
+      },
     );
 
     return task;

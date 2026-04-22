@@ -79,6 +79,19 @@ router.get(
 );
 
 /**
+ * DELETE /api/mail/:mailId
+ * Delete specific mail by ID
+ * Params:
+ * - mailId: string - mail ID
+ */
+router.delete(
+  "/:mailId",
+  authMiddleware.protect, // Requires authentication
+  moderateRateLimit, // Moderate rate limiting for deleting individual mail
+  mailController.deleteMail
+);
+
+/**
  * PUT /api/mail/:mailId/read
  * Mark specific mail as read
  * Params:

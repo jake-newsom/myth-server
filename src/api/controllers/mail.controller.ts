@@ -168,6 +168,69 @@ export const getMailById = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 /**
+ * Delete specific mail by ID
+ */
+export const deleteMail = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user?.user_id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          type: "AUTH_ERROR",
+          message: "Authentication required",
+          suggestion: "Please log in to delete mail",
+        },
+      });
+    }
+
+    const { mailId } = req.params;
+
+    if (!mailId) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          type: "VALIDATION_ERROR",
+          message: "Mail ID is required",
+          suggestion: "Provide a valid mail ID",
+        },
+      });
+    }
+
+    const result = await MailService.deleteMail(mailId, userId);
+
+    if (!result.success) {
+      const statusCode =
+        result.error === "Mail not found"
+          ? 404
+          : result.error === "Access denied"
+          ? 403
+          : 400;
+      return res.status(statusCode).json({
+        success: false,
+        error: {
+          type: "MAIL_ERROR",
+          message: result.error,
+          suggestion: "Please check the mail ID and try again",
+        },
+      });
+    }
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error deleting mail:", error);
+    res.status(500).json({
+      success: false,
+      error: {
+        type: "MAIL_ERROR",
+        message: "Failed to delete mail",
+        suggestion: "Please try again later",
+      },
+    });
+  }
+};
+
+/**
  * Mark mail as read
  */
 export const markAsRead = async (req: AuthenticatedRequest, res: Response) => {
