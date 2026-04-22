@@ -787,39 +787,18 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  //Gain +2 for each Dragon on the board
+  // Gain +2 when a dragon card is placed.
   sigurd_slayer: (context) => {
-    const {
-      triggerCard,
-      state: { board },
-    } = context;
+    const { triggerCard, originalTriggerCard } = context;
     const HAND_POSITION = { x: -1, y: -1 };
 
-    const dragonsOnBoard = getCardsByCondition(board, (card) =>
-      card.base_card_data.tags.includes("dragon"),
-    );
+    if (!originalTriggerCard?.base_card_data.tags.includes("dragon")) return [];
 
-    if (dragonsOnBoard.length > 0) {
-      const currentBuff = triggerCard.temporary_effects.find(
-        (effect) => effect.name === "Dragon Slayer",
-      );
-      const diff = dragonsOnBoard.length * 2 - (currentBuff?.power.top ?? 0);
-      if (diff > 0) {
-        return [
-          createOrUpdateBuff(
-            triggerCard,
-            1000,
-            diff,
-            "Dragon Slayer",
-            HAND_POSITION,
-            {
-              animation: "dragon-slayer",
-            },
-          ),
-        ];
-      }
-    }
-    return [];
+    return [
+      createOrUpdateBuff(triggerCard, 1000, 2, "Dragon Slayer", HAND_POSITION, {
+        animation: "dragon-slayer",
+      }),
+    ];
   },
 
   fafnir_venom: (context) => {
