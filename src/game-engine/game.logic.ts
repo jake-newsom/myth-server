@@ -51,7 +51,7 @@ export class GameLogic {
           ch.base_power->>'top' as base_power_top, ch.base_power->>'right' as base_power_right, 
           ch.base_power->>'bottom' as base_power_bottom, ch.base_power->>'left' as base_power_left, 
           ch.tags, ch.special_ability_id, ch.set_id, cv.attack_animation,
-          sa.name as ability_name, sa.description as ability_description, 
+          sa.id as ability_key, sa.name as ability_name, sa.description as ability_description, 
           sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters
         FROM "user_owned_cards" uci
         JOIN "card_variants" cv ON uci.card_variant_id = cv.card_variant_id
@@ -112,7 +112,7 @@ export class GameLogic {
             special_ability: row.ability_name
               ? {
                 ability_id: row.special_ability_id,
-                id: row.special_ability_id,
+                id: row.ability_key ?? row.special_ability_id,
                 name: row.ability_name,
                 description: row.ability_description,
                 triggerMoments:

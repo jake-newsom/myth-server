@@ -47,7 +47,7 @@ export const japaneseCombatResolvers: CombatResolverMap = {};
 export const japaneseAbilities: AbilityMap = {
   // Moon's Balance: Each round reduce the strongest enemy's power by 1 on each side,
   // and add +1 to each side of the weakest card in the owner's hand.
-  "Moon's Balance": (context) => {
+  tsukuyomi_moons_balance: (context) => {
     const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
     const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
@@ -110,7 +110,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Frost Row: Enemies in the same row lose 1 power this turn.
-  "Frost Row": (context) => {
+  yuki_onna_frost_row: (context) => {
     const {
       position,
       triggerCard,
@@ -142,7 +142,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Web Curse: Adjacent tiles are cursed for 1 turn; new enemies have 0 power on the next turn.
-  "Web Curse": (context) => {
+  jorogumo_web_curse: (context) => {
     const { position, state, triggerCard } = context;
     const gameEvents: BaseGameEvent[] = [];
 
@@ -177,7 +177,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Slipstream: Each round steals a blessing from a random enemy
-  Slipstream: (context) => {
+  nurarihyon_slipstream: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -251,8 +251,8 @@ export const japaneseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Hunter's Mark: When an ally is defeted, grant -1 to the attacker
-  "Hunter's Mark": (context) => {
+  // Hunter's Mark: When an ally is defeated, drain -1 from the attacker.
+  okuriinu_hunters_mark: (context) => {
     const {
       flippedCard,
       triggerCard,
@@ -262,8 +262,11 @@ export const japaneseAbilities: AbilityMap = {
 
     if (
       flippedCard &&
-      flippedCard.owner !== triggerCard.owner &&
-      originalTriggerCard?.user_card_instance_id
+      // AnyOnFlip fires before ownership is switched, so the flipped card owner
+      // still represents the defeated card's original owner.
+      flippedCard.owner === triggerCard.owner &&
+      originalTriggerCard?.user_card_instance_id &&
+      originalTriggerCard.owner !== triggerCard.owner
     ) {
       const position = getPositionOfCardById(
         originalTriggerCard.user_card_instance_id,
@@ -284,7 +287,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Vengeful Bite: -1 to all adjacent enemies at the end of each round
-  "Vengeful Bite": (context) => {
+  futakuchi_onna_vengeful_bite: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -321,7 +324,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Shore Fury: Gains +2 power if placed on an edge.
-  "Shore Fury": (context) => {
+  ushi_oni_shore_fury: (context) => {
     const {
       position,
       triggerCard,
@@ -343,7 +346,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Echo Power: Matches the highest adjacent card's power this turn.
-  "Echo Power": (context) => {
+  yamabiko_echo_power: (context) => {
     const {
       position,
       triggerCard,
@@ -389,7 +392,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Erase Face: Remove all buffs from adjacent enemies.
-  "Erase Face": (context) => {
+  nopperabo_erase_face: (context) => {
     const {
       position,
       triggerCard,
@@ -421,7 +424,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Allies Rally: Adjacent allies gain +1 power this turn.
-  "Allies Rally": (context) => {
+  momotaro_allies_rally: (context) => {
     const {
       position,
       triggerCard,
@@ -458,7 +461,7 @@ export const japaneseAbilities: AbilityMap = {
 
   // Benkei
   // Steadfast Guard: Gain +1 for each adjacent enemy
-  "Steadfast Guard": (context) => {
+  benkei_steadfast_guard: (context) => {
     const {
       triggerCard,
       position,
@@ -483,7 +486,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Demon Bane: Gains +1 power when any demon is defeated
-  "Demon Bane": (context) => {
+  minamoto_demon_bane: (context) => {
     const {
       triggerCard,
       flippedCard,
@@ -514,7 +517,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // When played, gain +2 for each adjacent card stronger than himself
-  "Beast Friend": (context) => {
+  kintaro_beast_friend: (context) => {
     const {
       triggerCard,
       position,
@@ -550,7 +553,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Time Shift: Remove all temporary buffs from a random enemy in the same column.
-  "Time Shift": (context) => {
+  urashima_time_shift: (context) => {
     const {
       position,
       triggerCard,
@@ -596,7 +599,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Piercing Shot: Enemies in the same column permanently lose 1 power.
-  "Piercing Shot": (context) => {
+  tawara_piercing_shot: (context) => {
     const {
       position,
       triggerCard,
@@ -632,7 +635,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Radiant Blessing: Grant +1 to a random ally when an ally is defeated
-  "Radiant Blessing": (context) => {
+  amaterasu_radiant_blessing: (context) => {
     const { originalTriggerCard, triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
 
@@ -661,7 +664,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Storm Breaker: Destroy the strongest enemy BEAST or DRAGON, gain +2 after.
-  "Storm Breaker": (context) => {
+  susanoo_storm_breaker: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -721,7 +724,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Warrior's Aura: Allies in the same row gain +1 every turn
-  "Warrior's Aura": (context) => {
+  hachiman_warriors_aura: (context) => {
     const { position, triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
 
@@ -753,7 +756,7 @@ export const japaneseAbilities: AbilityMap = {
 
   // Many Heads: Gains +1 power for each adjacent enemy.
   // -1 power to enemies in the same row and column
-  "Many Heads": (context) => {
+  yamata_many_heads: (context) => {
     const {
       position,
       triggerCard,
@@ -797,7 +800,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Tidal Sweep: Defeats enemies diagonally if they have lower total power
-  "Tidal Sweep": (context) => {
+  ryujin_tidal_sweep: (context) => {
     const {
       position,
       triggerCard,
@@ -835,7 +838,7 @@ export const japaneseAbilities: AbilityMap = {
   },
 
   // Bone Chill: All adjacent enemies lose 2 power.
-  "Bone Chill": (context) => {
+  gashadokuro_bone_chill: (context) => {
     const {
       position,
       triggerCard,

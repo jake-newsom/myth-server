@@ -19,7 +19,7 @@ export class StrategicEvaluator {
     gameState: GameState,
     card: InGameCard,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
   ): number {
     let score = 0;
 
@@ -28,7 +28,12 @@ export class StrategicEvaluator {
     score += this.evaluateDefensiveValue(gameState, card, position, aiPlayerId);
     score += this.evaluateOffensiveValue(gameState, card, position, aiPlayerId);
     score += this.evaluateTerritoryControl(gameState, position, aiPlayerId);
-    score += this.evaluateAbilityPositionRequirements(gameState, card, position, aiPlayerId);
+    score += this.evaluateAbilityPositionRequirements(
+      gameState,
+      card,
+      position,
+      aiPlayerId,
+    );
 
     return score;
   }
@@ -41,13 +46,18 @@ export class StrategicEvaluator {
     gameState: GameState,
     card: InGameCard,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
   ): number {
     if (!card.base_card_data.special_ability) {
       return 0;
     }
 
-    const abilityName = card.base_card_data.special_ability.name;
+    const abilityId =
+      card.base_card_data.special_ability.id ??
+      card.base_card_data.special_ability.ability_id;
+    if (!abilityId) {
+      return 0;
+    }
     const board = gameState.board;
     let score = 0;
 
@@ -62,7 +72,7 @@ export class StrategicEvaluator {
     const adjacentEnemies = getEnemiesAdjacentTo(position, board, aiPlayerId);
 
     // === EDGE REQUIREMENTS ===
-    if (abilityName === "Shore Fury") {
+    if (abilityId === "ushi_oni_shore_fury") {
       // MUST be on edge for +2 bonus
       if (isEdge) {
         score += 200; // Huge bonus - requirement met
@@ -72,7 +82,7 @@ export class StrategicEvaluator {
     }
 
     // === ISOLATION REQUIREMENTS ===
-    else if (abilityName === "Primordial Force") {
+    else if (abilityId === "ymir_isolation") {
       // +2 to all if NO adjacent cards
       if (adjacentCards.length === 0) {
         score += 180; // Huge bonus
@@ -80,7 +90,7 @@ export class StrategicEvaluator {
         score -= 100; // Penalty for each adjacent card
         score -= adjacentCards.length * 50;
       }
-    } else if (abilityName === "Peaceful Strength") {
+    } else if (abilityId === "freyr_peace") {
       // +2 if no adjacent enemies
       if (adjacentEnemies.length === 0) {
         score += 120;
@@ -90,33 +100,41 @@ export class StrategicEvaluator {
     }
 
     // === ADJACENCY REQUIREMENTS (Tribal/Synergy) ===
-    else if (abilityName === "Sea's Protection") {
+    else if (abilityId === "njord_sea") {
       // +3 if adjacent to Sea card
-      const hasSeaAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Sea"));
+      const hasSeaAdjacent = adjacentAllies.some((c) =>
+        c.base_card_data.tags.includes("Sea"),
+      );
       if (hasSeaAdjacent) {
         score += 150; // Strong bonus
       } else {
         score -= 60; // Penalty if condition not met
       }
-    } else if (abilityName === "Valkyrie Sisterhood") {
+    } else if (abilityId === "brynhildr_valk") {
       // +2 if adjacent to Valkyrie
-      const hasValkyrieAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Valkyrie"));
+      const hasValkyrieAdjacent = adjacentAllies.some((c) =>
+        c.base_card_data.tags.includes("Valkyrie"),
+      );
       if (hasValkyrieAdjacent) {
         score += 130;
       } else {
         score -= 50;
       }
-    } else if (abilityName === "Worthy Opponent") {
+    } else if (abilityId === "hrungnir_worthy") {
       // +1 to all if adjacent to Thor
-      const hasThorAdjacent = adjacentAllies.some((c) => c.base_card_data.name === "Thor");
+      const hasThorAdjacent = adjacentAllies.some(
+        (c) => c.base_card_data.name === "Thor",
+      );
       if (hasThorAdjacent) {
         score += 120;
       } else {
         score -= 40;
       }
-    } else if (abilityName === "Bride Demand") {
+    } else if (abilityId === "thrym_demand") {
       // +3 Right if adjacent to Goddess (should be to the LEFT of Goddess)
-      const hasGoddessAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Goddess"));
+      const hasGoddessAdjacent = adjacentAllies.some((c) =>
+        c.base_card_data.tags.includes("Goddess"),
+      );
       if (hasGoddessAdjacent) {
         score += 140;
       } else {
@@ -125,7 +143,7 @@ export class StrategicEvaluator {
     }
 
     // === TERRAIN REQUIREMENTS ===
-    else if (abilityName === "Sacred Spring") {
+    else if (abilityId === "mooinanea_sacred_spring") {
       // MUST be on water/ocean tile
       const tile = board[y][x];
       const isWaterTile = tile?.tile_effect?.terrain === TileTerrain.Ocean;
@@ -138,10 +156,10 @@ export class StrategicEvaluator {
 
     // === CENTRAL POSITIONING FOR RECURRING EFFECTS ===
     else if (
-      abilityName === "Warrior's Aura" ||
-      abilityName === "Vengeful Bite" ||
-      abilityName === "Devourer's Surge" ||
-      abilityName === "Moon's Balance"
+      abilityId === "hachiman_warriors_aura" ||
+      abilityId === "futakuchi_onna_vengeful_bite" ||
+      abilityId === "fenrir_devourer_surge" ||
+      abilityId === "tsukuyomi_moons_balance"
     ) {
       // Recurring effects benefit from central, protected positions
       if (isCenter) {
@@ -157,11 +175,11 @@ export class StrategicEvaluator {
 
     // === MULTI-TARGET POSITIONING ===
     else if (
-      abilityName === "Flames of Muspelheim" ||
-      abilityName === "Bone Chill" ||
-      abilityName === "Icy Presence" ||
-      abilityName === "Web Curse" ||
-      abilityName === "Hex Field"
+      abilityId === "surtr_flames" ||
+      abilityId === "gashadokuro_bone_chill" ||
+      abilityId === "poliahu_icy_presence" ||
+      abilityId === "jorogumo_web_curse" ||
+      abilityId === "kapo_hex_field"
     ) {
       // These abilities affect adjacent cards/tiles - maximize adjacency
       if (isCenter) {
@@ -170,18 +188,22 @@ export class StrategicEvaluator {
         score += 50; // Edge: 3 adjacents
       }
       // Bonus for each enemy adjacent (for offensive abilities)
-      if (abilityName === "Flames of Muspelheim" || abilityName === "Bone Chill" || abilityName === "Icy Presence") {
+      if (
+        abilityId === "surtr_flames" ||
+        abilityId === "gashadokuro_bone_chill" ||
+        abilityId === "poliahu_icy_presence"
+      ) {
         score += adjacentEnemies.length * 40;
       }
     }
 
     // === ALLY-BUFF POSITIONING ===
     else if (
-      abilityName === "Mother's Blessing" ||
-      abilityName === "Battle Cry" ||
-      abilityName === "Poet's Rhythm" ||
-      abilityName === "Warrior's Blessing" ||
-      abilityName === "Allies Rally"
+      abilityId === "frigg_bless" ||
+      abilityId === "gunnr_war" ||
+      abilityId === "bragi_inspire" ||
+      abilityId === "freyja_bless" ||
+      abilityId === "momotaro_allies_rally"
     ) {
       // These buff adjacent allies - place next to many allies
       if (adjacentAllies.length >= 3) {
@@ -196,7 +218,10 @@ export class StrategicEvaluator {
     }
 
     // === ENEMY-ADJACENT POSITIONING ===
-    else if (abilityName === "Steadfast Guard" || abilityName === "Beast Friend") {
+    else if (
+      abilityId === "benkei_steadfast_guard" ||
+      abilityId === "kintaro_beast_friend"
+    ) {
       // These get stronger with adjacent enemies
       if (adjacentEnemies.length >= 3) {
         score += 140;
@@ -211,9 +236,9 @@ export class StrategicEvaluator {
 
     // === DEFENSIVE ANCHOR POSITIONING (Invincibility) ===
     else if (
-      abilityName === "Titan Shell" ||
-      abilityName === "Light Undimmed" ||
-      abilityName === "Ocean's Shield"
+      abilityId === "jormungandr_shell" ||
+      abilityId === "baldr_immune" ||
+      abilityId === "kamohoalii_oceans_shield"
     ) {
       // These are defensive anchors - center or strategic points
       if (isCenter) {
@@ -224,16 +249,24 @@ export class StrategicEvaluator {
     }
 
     // === ROW/COLUMN EFFECT POSITIONING ===
-    else if (abilityName === "Frost Row" || abilityName === "Piercing Shot" || abilityName === "Many Heads") {
+    else if (
+      abilityId === "yuki_onna_frost_row" ||
+      abilityId === "tawara_piercing_shot" ||
+      abilityId === "yamata_many_heads"
+    ) {
       // These affect entire rows/columns - position where most enemies are
       const enemiesInRow = this.countEnemiesInRow(gameState, y, aiPlayerId);
-      const enemiesInColumn = this.countEnemiesInColumn(gameState, x, aiPlayerId);
-      
-      if (abilityName === "Frost Row") {
+      const enemiesInColumn = this.countEnemiesInColumn(
+        gameState,
+        x,
+        aiPlayerId,
+      );
+
+      if (abilityId === "yuki_onna_frost_row") {
         score += enemiesInRow * 50;
-      } else if (abilityName === "Piercing Shot") {
+      } else if (abilityId === "tawara_piercing_shot") {
         score += enemiesInColumn * 50;
-      } else if (abilityName === "Many Heads") {
+      } else if (abilityId === "yamata_many_heads") {
         score += (enemiesInRow + enemiesInColumn) * 30;
       }
     }
@@ -244,7 +277,11 @@ export class StrategicEvaluator {
   /**
    * Counts enemies in a specific row
    */
-  private countEnemiesInRow(gameState: GameState, row: number, aiPlayerId: string): number {
+  private countEnemiesInRow(
+    gameState: GameState,
+    row: number,
+    aiPlayerId: string,
+  ): number {
     let count = 0;
     for (let x = 0; x < GAME_CONFIG.BOARD_SIZE; x++) {
       const cell = gameState.board[row][x];
@@ -258,7 +295,11 @@ export class StrategicEvaluator {
   /**
    * Counts enemies in a specific column
    */
-  private countEnemiesInColumn(gameState: GameState, column: number, aiPlayerId: string): number {
+  private countEnemiesInColumn(
+    gameState: GameState,
+    column: number,
+    aiPlayerId: string,
+  ): number {
     let count = 0;
     for (let y = 0; y < GAME_CONFIG.BOARD_SIZE; y++) {
       const cell = gameState.board[y][column];
@@ -304,7 +345,7 @@ export class StrategicEvaluator {
   private evaluateBoardControl(
     gameState: GameState,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
   ): number {
     let score = 0;
     const board = gameState.board;
@@ -338,7 +379,7 @@ export class StrategicEvaluator {
     gameState: GameState,
     card: InGameCard,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
   ): number {
     let score = 0;
     const board = gameState.board;
@@ -384,7 +425,7 @@ export class StrategicEvaluator {
     gameState: GameState,
     card: InGameCard,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
   ): number {
     let score = 0;
     const board = gameState.board;
@@ -422,7 +463,7 @@ export class StrategicEvaluator {
   private evaluateTerritoryControl(
     gameState: GameState,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
   ): number {
     let score = 0;
     const board = gameState.board;
@@ -432,7 +473,7 @@ export class StrategicEvaluator {
     const controlInQuadrant = this.calculateQuadrantControl(
       gameState,
       quadrant,
-      aiPlayerId
+      aiPlayerId,
     );
 
     // Reward expanding into contested or enemy quadrants
@@ -470,7 +511,7 @@ export class StrategicEvaluator {
   private calculateQuadrantControl(
     gameState: GameState,
     quadrant: number,
-    aiPlayerId: string
+    aiPlayerId: string,
   ): number {
     const board = gameState.board;
     let friendlyCards = 0;
@@ -504,7 +545,7 @@ export class StrategicEvaluator {
    */
   private countEmptyAdjacentSpaces(
     position: BoardPosition,
-    board: GameState["board"]
+    board: GameState["board"],
   ): number {
     let count = 0;
     const directions = [
@@ -546,7 +587,7 @@ export class StrategicEvaluator {
   evaluateBlockingValue(
     gameState: GameState,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
   ): number {
     let score = 0;
     const board = gameState.board;
@@ -568,7 +609,7 @@ export class StrategicEvaluator {
   evaluateFuturePotential(
     gameState: GameState,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
   ): number {
     let score = 0;
     const board = gameState.board;

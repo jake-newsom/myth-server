@@ -53,6 +53,30 @@ function hasTrigger(ability: any, trigger: TriggerMoment): boolean {
 
   return triggerMoments.includes(trigger);
 }
+
+function getAbilityId(ability?: { id?: string; ability_id?: string }): string | null {
+  if (!ability) return null;
+  if (typeof ability.id === "string" && ability.id.trim().length > 0) {
+    return ability.id.trim();
+  }
+  if (
+    typeof ability.ability_id === "string" &&
+    ability.ability_id.trim().length > 0
+  ) {
+    return ability.ability_id.trim();
+  }
+  return null;
+}
+
+function getAbilityHandler(ability?: { id?: string; ability_id?: string }) {
+  const abilityId = getAbilityId(ability);
+  return abilityId ? abilities[abilityId] : undefined;
+}
+
+function getCombatResolver(ability?: { id?: string; ability_id?: string }) {
+  const abilityId = getAbilityId(ability);
+  return abilityId ? combatResolvers[abilityId] : undefined;
+}
 import { v4 as uuidv4 } from "uuid";
 import {
   getPositionOfCardById,
@@ -193,11 +217,9 @@ export function resolveCombat(
               TriggerMoment.OnCombat
             )
           ) {
-            const abilityName =
-              adjacentCell.card.base_card_data.special_ability?.name;
-            const abilityFunction = abilityName
-              ? combatResolvers[abilityName]
-              : undefined;
+            const abilityFunction = getCombatResolver(
+              adjacentCell.card.base_card_data.special_ability ?? undefined
+            );
             if (abilityFunction) {
               const result = abilityFunction(combatContext);
 
@@ -221,8 +243,9 @@ export function resolveCombat(
                   return false;
                 const sameOwner = card.owner === adjacentCell?.card?.owner;
                 const hasCombatResolver =
-                  card.base_card_data.special_ability &&
-                  combatResolvers[card.base_card_data.special_ability.name];
+                  !!getCombatResolver(
+                    card.base_card_data.special_ability ?? undefined
+                  );
                 return sameOwner && hasCombatResolver ? true : false;
               }
             );
@@ -234,11 +257,12 @@ export function resolveCombat(
                 flippedCard: adjacentCell.card,
                 flippedBy: placedCell.card,
               };
+              const protectionResolver = getCombatResolver(
+                ally.base_card_data.special_ability ?? undefined
+              );
+              if (!protectionResolver) continue;
 
-              const protectionResult =
-                combatResolvers[ally.base_card_data.special_ability!.name](
-                  protectionContext
-                );
+              const protectionResult = protectionResolver(protectionContext);
 
               if (protectionResult.preventDefeat) {
                 abilityPreventedDefeat = true;
@@ -408,14 +432,15 @@ export function triggerAbilities(
     const triggerCard = context.triggerCard;
     if (triggerCard.base_card_data.special_ability) {
       const ability = triggerCard.base_card_data.special_ability;
-      if (hasTrigger(ability, trigger) && abilities[ability.name]) {
+      const abilityFunction = getAbilityHandler(ability);
+      if (hasTrigger(ability, trigger) && abilityFunction) {
         // Create a properly typed context with required triggerCard
         const contextWithTrigger: TriggerContext = {
           ...context,
           triggerCard,
           triggerMoment: trigger,
         };
-        events.push(...abilities[ability.name]?.(contextWithTrigger));
+        events.push(...abilityFunction(contextWithTrigger));
         updateAllBoardCards(state);
       }
     }
@@ -447,6 +472,8 @@ export function triggerIndirectAbilities(
       if (card && card.base_card_data.special_ability) {
         const ability = card.base_card_data.special_ability;
         if (hasTrigger(ability, `Hand${trigger}` as TriggerMoment)) {
+          const abilityFunction = getAbilityHandler(ability);
+          if (!abilityFunction) continue;
           const contextWithTrigger: TriggerContext = {
             ...context,
             triggerCard: card,
@@ -455,7 +482,7 @@ export function triggerIndirectAbilities(
           if (triggerCard) {
             contextWithTrigger.originalTriggerCard = triggerCard;
           }
-          events.push(...abilities[ability.name]?.(contextWithTrigger));
+          events.push(...abilityFunction(contextWithTrigger));
         }
       }
     }
@@ -519,7 +546,7 @@ export function triggerIndirectAbilities(
       anyContext.originalTriggerCard = triggerCard;
     }
 
-    const abilityEvents = abilities[ability.name]?.(anyContext);
+    const abilityEvents = getAbilityHandler(ability)?.(anyContext);
     if (abilityEvents) {
       events.push(...abilityEvents);
     }

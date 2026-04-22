@@ -41,13 +41,15 @@ import { TileStatus } from "../../types/game.types";
 
 export const norseCombatResolvers: CombatResolverMap = {
   // Titan Shell: Can only be defeated by Thor.
-  "Titan Shell": (context) => {
+  jormungandr_shell: (context) => {
     const { triggerCard, flippedCard } = context;
 
     // Only protect the card that actually has Titan Shell (self-protection only)
     if (
       !flippedCard ||
-      flippedCard.base_card_data.special_ability?.name !== "Titan Shell"
+      (flippedCard.base_card_data.special_ability?.id ??
+        flippedCard.base_card_data.special_ability?.ability_id) !==
+        "jormungandr_shell"
     ) {
       return { preventDefeat: false };
     }
@@ -63,7 +65,7 @@ export const norseCombatResolvers: CombatResolverMap = {
 
 export const norseAbilities: AbilityMap = {
   // Returns to your hand when defeated
-  "Light Undimmed": (context) => {
+  baldr_immune: (context) => {
     const {
       triggerCard,
       state: { board, player1, player2 },
@@ -104,7 +106,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Foresight: Grant +1 to all allies on the board.
-  Foresight: (context) => {
+  odin_foresight: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -130,7 +132,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Thunderous Push: Strike all enemies with lightning granting -2 to their top power
-  "Thunderous Push": (context) => {
+  thor_push: (context) => {
     const {
       triggerCard,
       position,
@@ -170,7 +172,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Mother's Blessing: Grant +1 to all adjacent allies.
-  "Mother's Blessing": (context) => {
+  frigg_bless: (context) => {
     const {
       triggerCard,
       position,
@@ -202,7 +204,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   //After 3 rounds all played cards lose -1 and grant cards in your hand +1
-  "Watchman's Gate": (context) => {
+  heimdall_block: (context) => {
     const {
       triggerCard,
       position,
@@ -282,7 +284,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // When played, bless all surrounding tiles with +1 through your next turn.
-  "Poet's Rhythm": (context) => {
+  bragi_inspire: (context) => {
     const {
       triggerCard,
       position,
@@ -314,7 +316,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Silent Vengeance: If Odin has been defeated, gain +3 to all stats.
-  "Silent Vengeance": (context) => {
+  vidar_vengeance: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -357,7 +359,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Avenge Baldr: Gain +1 to all stats for each ally defeated this game.
-  "Avenge Baldr": (context) => {
+  vali_revenge: (context) => {
     const {
       triggerCard,
       // state: { board },
@@ -376,7 +378,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Sea's Protection: Gain +3 if adjacent to a Sea card.
-  "Sea's Protection": (context) => {
+  njord_sea: (context) => {
     const {
       triggerCard,
       position,
@@ -401,7 +403,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Warrior's Blessing: Grant +2 to adjacent allies for a turn.
-  "Warrior's Blessing": (context) => {
+  freyja_bless: (context) => {
     const {
       triggerCard,
       position,
@@ -432,7 +434,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Peaceful Strength: Gain +2 if no adjacent enemies.
-  "Peaceful Strength": (context) => {
+  freyr_peace: (context) => {
     const {
       triggerCard,
       position,
@@ -458,7 +460,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Winter's Grasp: Enemies in the same column lose 3 power through your next turn
-  "Winter's Grasp": (context) => {
+  skadi_freeze: (context) => {
     const { position, state, triggerCard } = context;
     const gameEvents: BaseGameEvent[] = [];
     if (!position) return [];
@@ -487,7 +489,7 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  "Trickster's Gambit": (context) => {
+  loki_flip: (context) => {
     const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
 
@@ -530,7 +532,7 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  "Soul Lock": (context) => {
+  hel_soul: (context) => {
     const { flippedCard } = context;
 
     if (flippedCard) {
@@ -543,7 +545,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Primordial Force: Gain +2 to all stats if no adjacent cards.
-  "Primordial Force": (context) => {
+  ymir_isolation: (context) => {
     const {
       triggerCard,
       position,
@@ -564,7 +566,7 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  "Flames of Muspelheim": (context) => {
+  surtr_flames: (context) => {
     const {
       triggerCard,
       position,
@@ -633,7 +635,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Bride Demand: Gain +3 Right if adjacent to a Goddess card.
-  "Bride Demand": (context) => {
+  thrym_demand: (context) => {
     const {
       triggerCard,
       position,
@@ -656,7 +658,7 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  "Worthy Opponent": (context) => {
+  hrungnir_worthy: (context) => {
     const {
       triggerCard,
       position,
@@ -681,7 +683,7 @@ export const norseAbilities: AbilityMap = {
 
   // Drowning Net: Pull enemy cards one tile closer before combat.
 
-  "Drowning Net": (context) => {
+  ran_pull: (context) => {
     simulationContext.debugLog("Drowning Net!");
     const {
       triggerCard,
@@ -697,7 +699,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Valkyrie Sisterhood: Gain +2 if adjacent to another Valkyrie.
-  "Valkyrie Sisterhood": (context) => {
+  brynhildr_valk: (context) => {
     const {
       triggerCard,
       position,
@@ -721,7 +723,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Healing Touch: Cleanse adjacent allies of negative effects.
-  "Healing Touch": (context) => {
+  eir_heal: (context) => {
     const {
       triggerCard,
       position,
@@ -747,7 +749,7 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  "Battle Cry": (context) => {
+  gunnr_war: (context) => {
     const {
       triggerCard,
       position,
@@ -778,7 +780,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Fated Draw: Draw 1 card.
-  "Fated Draw": (context) => {
+  verdandi_present: (context) => {
     const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
     gameEvents.push(...drawCardSync(state, triggerCard.owner));
@@ -786,7 +788,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   //Gain +2 for each Dragon on the board
-  "Dragon Slayer": (context) => {
+  sigurd_slayer: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -820,7 +822,7 @@ export const norseAbilities: AbilityMap = {
     return [];
   },
 
-  "Venomous Presence": (context) => {
+  fafnir_venom: (context) => {
     const {
       triggerCard,
       position,
@@ -850,7 +852,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   //Equalize all cards highest power
-  "Binding Justice": (context) => {
+  tyr_binding_justice: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -910,7 +912,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   //Destroys a weaker adjacent enemy each round, afterwards gains +1 to one side
-  "Devourer's Surge": (context) => {
+  fenrir_devourer_surge: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -969,7 +971,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Swift Messenger: Draw 2 cards.
-  "Swift Messenger": (context) => {
+  sleipnir_swift_messenger: (context) => {
     const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
 
@@ -981,7 +983,7 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Past Weaves: Gain +1 to all stats for each destroyed ally.
-  "Past Weaves": (context) => {
+  urd_past_weaves: (context) => {
     const {
       triggerCard,
       position,

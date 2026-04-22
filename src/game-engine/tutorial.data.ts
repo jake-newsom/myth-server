@@ -39,6 +39,7 @@ interface DbCardRow {
   set_id: string;
   tags: string[];
   special_ability_id: string | null;
+  ability_key: string | null;
   ability_name: string | null;
   ability_description: string | null;
   ability_triggers: TriggerMoment[] | null;
@@ -52,7 +53,7 @@ async function fetchCardsByName(names: string[]): Promise<Map<string, DbCardRow>
     `SELECT
        cv.card_variant_id, ch.name, cv.rarity, cv.image_url,
        ch.set_id, ch.tags, ch.special_ability_id, cv.attack_animation,
-       sa.name as ability_name, sa.description as ability_description,
+       sa.id as ability_key, sa.name as ability_name, sa.description as ability_description,
        sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters
      FROM "card_variants" cv
      JOIN "characters" ch ON cv.character_id = ch.character_id
@@ -77,7 +78,7 @@ function buildInGameCard(
   const ability: SpecialAbility | null = dbRow.ability_name
     ? {
       ability_id: dbRow.special_ability_id!,
-      id: dbRow.special_ability_id!,
+      id: dbRow.ability_key ?? dbRow.special_ability_id!,
       name: dbRow.ability_name,
       description: dbRow.ability_description ?? "",
       triggerMoments: dbRow.ability_triggers ?? [],

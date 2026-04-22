@@ -22,6 +22,7 @@ import {
   getEmptyAdjacentTiles,
   cleanseDebuffs,
   getAllAlliesOnBoard,
+  getAlliesAdjacentTo,
   pushCardAway,
   getPositionOfCardById,
   getOpponentId,
@@ -35,6 +36,7 @@ import {
   chooseRandomCard,
   moveCardToPosition,
   isSameCard,
+  protectFromDefeat,
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { resolveCombat } from "../game.utils";
@@ -63,13 +65,15 @@ const fillRandomEmptyTileWithWater = (
 
 export const polynesianCombatResolvers: CombatResolverMap = {
   // Ocean's Shield: Cannot be defeated by enemies with lower total power.
-  "Ocean's Shield": (context) => {
+  kamohoalii_oceans_shield: (context) => {
     const { triggerCard, flippedCard } = context;
 
     // Only protect the card that actually has Ocean's Shield (self-protection only)
     if (
       !flippedCard ||
-      flippedCard.base_card_data.special_ability?.name !== "Ocean's Shield"
+      (flippedCard.base_card_data.special_ability?.id ??
+        flippedCard.base_card_data.special_ability?.ability_id) !==
+        "kamohoalii_oceans_shield"
     )
       return { preventDefeat: false };
 
@@ -82,7 +86,7 @@ export const polynesianCombatResolvers: CombatResolverMap = {
   },
 
   // Harbor Guardian: Sacrifices 3 power to protect allies from defeat
-  "Harbor Guardian": (context) => {
+  kaahupahau_harbor_guardian: (context) => {
     const { triggerCard, flippedCard, flippedBy, position } = context;
 
     // Only protect allies, not self
@@ -133,7 +137,7 @@ export const polynesianCombatResolvers: CombatResolverMap = {
 
 export const polynesianAbilities: AbilityMap = {
   // Lava Field: Gains +1 for every card played on a lava tile.
-  "Lava Field": (context) => {
+  pele_lava_field: (context) => {
     const { position, triggerCard, state } = context;
 
     if (!position) return [];
@@ -159,7 +163,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Cleansing Hula: At the start of each round, cleanse a random ally of all curses
-  "Cleansing Hula": (context) => {
+  hiaka_cleansing_hula: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -181,8 +185,8 @@ export const polynesianAbilities: AbilityMap = {
     return [];
   },
 
-  // Pure Waters: Fill an empty tile with water. Cleanse all allies when played.
-  "Pure Waters": (context) => {
+  // Pure Waters: Protect adjacent allies from defeat through your next turn.
+  kane_pure_waters: (context) => {
     const {
       triggerCard,
       position,
@@ -192,30 +196,20 @@ export const polynesianAbilities: AbilityMap = {
 
     if (!position) return [];
 
-    // Fill one empty adjacent tile with water
-    const waterTileEvent = fillRandomEmptyTileWithWater(
+    const adjacentAllies = getAlliesAdjacentTo(
       position,
       board,
       triggerCard.owner,
     );
-    if (waterTileEvent) gameEvents.push(waterTileEvent);
-
-    const allAllies = getAllAlliesOnBoard(board, triggerCard.owner);
-    for (const ally of allAllies) {
-      const allyPosition = getPositionOfCardById(
-        ally.user_card_instance_id,
-        board,
-      );
-      if (allyPosition) {
-        gameEvents.push(cleanseDebuffs(ally, 1000, allyPosition, "rain"));
-      }
+    for (const ally of adjacentAllies) {
+      gameEvents.push(protectFromDefeat(ally, 3, position));
     }
 
     return gameEvents;
   },
 
   // Tide Ward: While in hand, grant +1 to each card you play. When played, steal his blessings back.
-  "Tide Ward": (context) => {
+  kanaloa_tide_ward: (context) => {
     const {
       triggerCard,
       triggerMoment,
@@ -295,7 +289,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // War Stance: Gain +1 whenever an ally is defeated up to 5. At max, attack adjacent enemies again.
-  "War Stance": (context) => {
+  ku_war_stance: (context) => {
     const { triggerCard, originalTriggerCard, state, position } = context;
     const label = "War Stance";
     const gameEvents: BaseGameEvent[] = [];
@@ -343,7 +337,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Fertile Ground: Each round grant +1 for one turn to allies with existing blessings
-  "Fertile Ground": (context) => {
+  lono_fertile_ground: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -381,7 +375,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Sun Trick: Gain +1 every round in hand, resets after combat
-  "Sun Trick": (context) => {
+  maui_sun_trick: (context) => {
     const { triggerCard, position, state } = context;
     const label = "Sun Trick";
 
@@ -429,7 +423,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Wild Shift: Create lava in a random tile every round
-  "Wild Shift": (context) => {
+  kamapuaa_wild_shift: (context) => {
     const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
 
@@ -457,7 +451,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Feast or Famine: When an ally is defeated, fill their tile with water.
-  "Feast or Famine": (context) => {
+  ukupanipo_feast_or_famine: (context) => {
     const {
       triggerCard,
       originalTriggerCard,
@@ -496,7 +490,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Sacred Spring: If in water, grant +1 to a random card in your hand at the end of each round
-  "Sacred Spring": (context) => {
+  mooinanea_sacred_spring: (context) => {
     const {
       triggerCard,
       position,
@@ -535,7 +529,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Icy Presence: Adjacent enemies lose 1 power.
-  "Icy Presence": (context) => {
+  poliahu_icy_presence: (context) => {
     const {
       triggerCard,
       position,
@@ -570,7 +564,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Gale Aura: Push adjacent enemies away 1 tile.
-  "Gale Aura": (context) => {
+  laamaomao_gale_aura: (context) => {
     const {
       triggerCard,
       position,
@@ -594,7 +588,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Rain's Blessing: Fill an empty tile with water. Allies placed after her gain +1 to a random side.
-  "Rain's Blessing": (context) => {
+  hauwahine_rains_blessing: (context) => {
     const {
       triggerCard,
       position,
@@ -642,7 +636,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Spirit Bind: Any card that flips Milu loses 2 power permanently.
-  "Spirit Bind": (context) => {
+  milu_spirit_bind: (context) => {
     const {
       flippedBy,
       state: { board },
@@ -668,7 +662,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Dread Aura: At the end of every round move to an adjacent empty tile and curse the previous tile.
-  "Dread Aura": (context) => {
+  nightmarchers_dread_aura: (context) => {
     const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
 
@@ -719,7 +713,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Hex Field: At end of your turn, curse all empty adjacent tiles for 1 turn.
-  "Hex Field": (context) => {
+  kapo_hex_field: (context) => {
     const { position, state, triggerCard } = context;
     const gameEvents: BaseGameEvent[] = [];
 
@@ -747,7 +741,7 @@ export const polynesianAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  "Thunderous Omen": (context) => {
+  kanehekili_thunderous_omen: (context) => {
     const {
       triggerCard,
       state: { board },
@@ -786,7 +780,7 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Dual Aspect: Grant -1 to a random enemy for each water tile on the board
-  "Dual Aspect": (context) => {
+  kupua_dual_aspect: (context) => {
     const {
       triggerCard,
       state: { board },

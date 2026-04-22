@@ -55,7 +55,7 @@ export class AbilityAnalyzer {
     }
 
     const ability = card.base_card_data.special_ability;
-    const abilityName = ability.name;
+    const abilityName = ability.id ?? ability.ability_id ?? "";
     
     // Safely get trigger moments array
     let triggerMoments: any = ability.triggerMoments || [];
@@ -125,7 +125,10 @@ export class AbilityAnalyzer {
       return 1.0;
     }
 
-    const abilityName = card.base_card_data.special_ability.name;
+    const abilityName =
+      card.base_card_data.special_ability.id ??
+      card.base_card_data.special_ability.ability_id ??
+      "";
     const gamePhase = this.detectGamePhase(gameState);
     const boardPosition = this.detectBoardPosition(gameState, aiPlayerId);
 
@@ -134,21 +137,33 @@ export class AbilityAnalyzer {
     // === EARLY GAME (0-4 cards on board) ===
     if (gamePhase === 'early') {
       // Card draw is extremely valuable early
-      if (abilityName === "Swift Messenger" || abilityName === "Fated Draw") {
+      if (
+        abilityName === "sleipnir_swift_messenger" ||
+        abilityName === "verdandi_present"
+      ) {
         multiplier *= 1.5;
       }
       // Terrain setup is valuable early
-      else if (abilityName === "Wild Shift" || abilityName === "Rain's Blessing" || 
-               abilityName === "Lava Field") {
+      else if (
+        abilityName === "kamapuaa_wild_shift" ||
+        abilityName === "hauwahine_rains_blessing" ||
+        abilityName === "pele_lava_field"
+      ) {
         multiplier *= 1.4;
       }
       // Scaling abilities should be played early
-      else if (abilityName === "Lava Field" || abilityName === "Warrior's Aura") {
+      else if (
+        abilityName === "pele_lava_field" ||
+        abilityName === "hachiman_warriors_aura"
+      ) {
         multiplier *= 1.3;
       }
       // Comeback mechanics are less valuable early
-      else if (abilityName === "Avenge Baldr" || abilityName === "War Stance" || 
-               abilityName === "Past Weaves") {
+      else if (
+        abilityName === "vali_revenge" ||
+        abilityName === "ku_war_stance" ||
+        abilityName === "urd_past_weaves"
+      ) {
         multiplier *= 0.5;
       }
     }
@@ -156,12 +171,18 @@ export class AbilityAnalyzer {
     // === MID GAME (5-10 cards on board) ===
     else if (gamePhase === 'mid') {
       // Board control and positioning abilities shine
-      if (abilityName === "Foresight" || abilityName === "Thunderous Push" || 
-          abilityName === "Binding Justice") {
+      if (
+        abilityName === "odin_foresight" ||
+        abilityName === "thor_push" ||
+        abilityName === "tyr_binding_justice"
+      ) {
         multiplier *= 1.3;
       }
       // Buff abilities are valuable
-      else if (abilityName === "Mother's Blessing" || abilityName === "Poet's Rhythm") {
+      else if (
+        abilityName === "frigg_bless" ||
+        abilityName === "bragi_inspire"
+      ) {
         multiplier *= 1.2;
       }
     }
@@ -169,20 +190,32 @@ export class AbilityAnalyzer {
     // === LATE GAME (11+ cards on board) ===
     else if (gamePhase === 'late') {
       // Finisher abilities are most valuable
-      if (abilityName === "War Stance" || abilityName === "Devourer's Surge" || 
-          abilityName === "Trickster's Gambit") {
+      if (
+        abilityName === "ku_war_stance" ||
+        abilityName === "fenrir_devourer_surge" ||
+        abilityName === "loki_flip"
+      ) {
         multiplier *= 1.4;
       }
       // Invincibility cards to lock down positions
-      else if (abilityName === "Titan Shell" || abilityName === "Ocean's Shield") {
+      else if (
+        abilityName === "jormungandr_shell" ||
+        abilityName === "kamohoalii_oceans_shield"
+      ) {
         multiplier *= 1.3;
       }
       // Comeback mechanics reach full power
-      else if (abilityName === "Avenge Baldr" || abilityName === "Past Weaves") {
+      else if (
+        abilityName === "vali_revenge" ||
+        abilityName === "urd_past_weaves"
+      ) {
         multiplier *= 1.4;
       }
       // Card draw less valuable late
-      else if (abilityName === "Swift Messenger" || abilityName === "Fated Draw") {
+      else if (
+        abilityName === "sleipnir_swift_messenger" ||
+        abilityName === "verdandi_present"
+      ) {
         multiplier *= 0.7;
       }
     }
@@ -190,21 +223,34 @@ export class AbilityAnalyzer {
     // === LOSING POSITION ===
     if (boardPosition === 'losing') {
       // Comeback mechanics are critical
-      if (abilityName === "Avenge Baldr" || abilityName === "War Stance" || 
-          abilityName === "Past Weaves" || abilityName === "Binding Justice") {
+      if (
+        abilityName === "vali_revenge" ||
+        abilityName === "ku_war_stance" ||
+        abilityName === "urd_past_weaves" ||
+        abilityName === "tyr_binding_justice"
+      ) {
         multiplier *= 1.8;
       }
       // Global debuffs to equalize
-      else if (abilityName === "Thunderous Push" || abilityName === "Many Heads") {
+      else if (
+        abilityName === "thor_push" ||
+        abilityName === "yamata_many_heads"
+      ) {
         multiplier *= 1.4;
       }
       // Destruction abilities to remove threats
-      else if (abilityName === "Storm Breaker" || abilityName === "Flames of Muspelheim" || 
-               abilityName === "Tidal Sweep") {
+      else if (
+        abilityName === "susanoo_storm_breaker" ||
+        abilityName === "surtr_flames" ||
+        abilityName === "ryujin_tidal_sweep"
+      ) {
         multiplier *= 1.5;
       }
       // Protection to stabilize
-      else if (abilityName === "Titan Shell" || abilityName === "Light Undimmed") {
+      else if (
+        abilityName === "jormungandr_shell" ||
+        abilityName === "baldr_immune"
+      ) {
         multiplier *= 1.3;
       }
     }
@@ -212,21 +258,33 @@ export class AbilityAnalyzer {
     // === WINNING POSITION ===
     else if (boardPosition === 'winning') {
       // Consolidation and protection
-      if (abilityName === "Titan Shell" || abilityName === "Ocean's Shield" || 
-          abilityName === "Light Undimmed") {
+      if (
+        abilityName === "jormungandr_shell" ||
+        abilityName === "kamohoalii_oceans_shield" ||
+        abilityName === "baldr_immune"
+      ) {
         multiplier *= 1.4;
       }
       // Buff allies to maintain advantage
-      else if (abilityName === "Foresight" || abilityName === "Mother's Blessing") {
+      else if (
+        abilityName === "odin_foresight" ||
+        abilityName === "frigg_bless"
+      ) {
         multiplier *= 1.3;
       }
       // Recurring effects to build momentum
-      else if (abilityName === "Warrior's Aura" || abilityName === "Vengeful Bite" || 
-               abilityName === "Moon's Balance") {
+      else if (
+        abilityName === "hachiman_warriors_aura" ||
+        abilityName === "futakuchi_onna_vengeful_bite" ||
+        abilityName === "tsukuyomi_moons_balance"
+      ) {
         multiplier *= 1.3;
       }
       // Comeback mechanics are less valuable
-      else if (abilityName === "Avenge Baldr" || abilityName === "War Stance") {
+      else if (
+        abilityName === "vali_revenge" ||
+        abilityName === "ku_war_stance"
+      ) {
         multiplier *= 0.6;
       }
     }
@@ -234,8 +292,11 @@ export class AbilityAnalyzer {
     // === EVEN POSITION ===
     else if (boardPosition === 'even') {
       // Everything at standard value, but slight boost to versatile abilities
-      if (abilityName === "Swift Messenger" || abilityName === "Storm Breaker" || 
-          abilityName === "Foresight") {
+      if (
+        abilityName === "sleipnir_swift_messenger" ||
+        abilityName === "susanoo_storm_breaker" ||
+        abilityName === "odin_foresight"
+      ) {
         multiplier *= 1.1;
       }
     }
@@ -380,39 +441,39 @@ export class AbilityAnalyzer {
     const defeatedAlliesCount = aiPlayer.discard_pile?.length || 0;
 
     // === CARD DRAW ABILITIES (Very High Value) ===
-    if (abilityName === "Swift Messenger") {
+    if (abilityName === "sleipnir_swift_messenger") {
       score += AI_CONFIG.MOVE_EVALUATION.DRAW_CARD_VALUE * 2;
-    } else if (abilityName === "Fated Draw") {
+    } else if (abilityName === "verdandi_present") {
       score += AI_CONFIG.MOVE_EVALUATION.DRAW_CARD_VALUE;
     }
 
     // === INVINCIBILITY/PROTECTION ABILITIES (Extremely High Defensive Value) ===
-    else if (abilityName === "Titan Shell") {
+    else if (abilityName === "jormungandr_shell") {
       // Can only be defeated by Thor - nearly invincible
       score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * 2.5;
-    } else if (abilityName === "Light Undimmed") {
+    } else if (abilityName === "baldr_immune") {
       // Cannot be defeated by special abilities
       score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * 1.8;
-    } else if (abilityName === "Ocean's Shield") {
+    } else if (abilityName === "kamohoalii_oceans_shield") {
       // Cannot be defeated by enemies with lower total power
       score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * 1.5;
-    } else if (abilityName === "Harbor Guardian") {
+    } else if (abilityName === "kaahupahau_harbor_guardian") {
       // Sacrifices power to protect allies - high utility
       score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * (allAllies.length > 2 ? 1.5 : 0.8);
     }
 
     // === GLOBAL BUFF/DEBUFF ABILITIES ===
-    else if (abilityName === "Foresight") {
+    else if (abilityName === "odin_foresight") {
       // Permanent +1 to all allies
       score += allAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2; // Permanent buff
-    } else if (abilityName === "Thunderous Push") {
+    } else if (abilityName === "thor_push") {
       // Debuff all enemies
       score += allEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
-    } else if (abilityName === "Binding Justice") {
+    } else if (abilityName === "tyr_binding_justice") {
       // Equalizes power - great when opponent has strong cards
       const hasStrongEnemies = allEnemies.some((e) => getCardTotalPower(e) > 20);
       score += hasStrongEnemies ? AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 2 : 50;
-    } else if (abilityName === "Watchman's Gate") {
+    } else if (abilityName === "heimdall_block") {
       // After 3 rounds: -1 to played cards, +1 to hand cards
       // Value depends on having more disposable cards on board than opponent
       const boardAdvantage = allEnemies.length > allAllies.length;
@@ -420,248 +481,248 @@ export class AbilityAnalyzer {
     }
 
     // === DESTRUCTION/REMOVAL ABILITIES ===
-    else if (abilityName === "Storm Breaker") {
+    else if (abilityName === "susanoo_storm_breaker") {
       // Destroys strongest enemy Beast/Dragon, gains +2
       const hasTargetTag = allEnemies.some((e) => 
         e.base_card_data.tags.includes("Beast") || e.base_card_data.tags.includes("Dragon")
       );
       score += hasTargetTag ? AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 2 : 30;
-    } else if (abilityName === "Flames of Muspelheim") {
+    } else if (abilityName === "surtr_flames") {
       // Destroys strongest adjacent enemy, -1 to others
       score += adjacentEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 1.5 : 0;
-    } else if (abilityName === "Tidal Sweep") {
+    } else if (abilityName === "ryujin_tidal_sweep") {
       // Defeats enemies diagonally if lower total power
       score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 0.8;
-    } else if (abilityName === "Devourer's Surge") {
+    } else if (abilityName === "fenrir_devourer_surge") {
       // Destroys weaker adjacent enemy each round, gains +1
       score += adjacentEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 2 : 60;
     }
 
     // === COMEBACK/SCALING ABILITIES ===
-    else if (abilityName === "Avenge Baldr") {
+    else if (abilityName === "vali_revenge") {
       // +1 to all stats per ally defeated
       score += defeatedAlliesCount * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2;
-    } else if (abilityName === "War Stance") {
+    } else if (abilityName === "ku_war_stance") {
       // Gains +1 per ally defeated (max 5), then attacks again
       score += defeatedAlliesCount * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
       if (defeatedAlliesCount >= 3) score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE; // Double attack value
-    } else if (abilityName === "Past Weaves") {
+    } else if (abilityName === "urd_past_weaves") {
       // +1 to all stats per destroyed ally
       score += defeatedAlliesCount * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
-    } else if (abilityName === "Silent Vengeance") {
+    } else if (abilityName === "vidar_vengeance") {
       // +3 to all stats if Odin defeated - conditional powerhouse
       // TODO: Check if Odin is defeated
       score += 50; // Base value, would be much higher if condition met
     }
 
     // === ADJACENCY-BASED BUFFS (Permanent) ===
-    else if (abilityName === "Mother's Blessing") {
+    else if (abilityName === "frigg_bless") {
       // Permanent +1 to adjacent allies
       score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2;
-    } else if (abilityName === "Battle Cry") {
+    } else if (abilityName === "gunnr_war") {
       // Temporary +1 to adjacent allies
       score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE;
-    } else if (abilityName === "Poet's Rhythm") {
+    } else if (abilityName === "bragi_inspire") {
       // Temporary +1 to adjacent allies for a round
       score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE;
-    } else if (abilityName === "Warrior's Blessing") {
+    } else if (abilityName === "freyja_bless") {
       // Temporary +2 to adjacent allies
       score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
-    } else if (abilityName === "Allies Rally") {
+    } else if (abilityName === "momotaro_allies_rally") {
       // Temporary +1 to adjacent allies
       score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE;
     }
 
     // === CONDITIONAL POWER BOOSTS ===
-    else if (abilityName === "Sea's Protection") {
+    else if (abilityName === "njord_sea") {
       // +3 if adjacent to Sea card
       const hasSeaAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Sea"));
       score += hasSeaAdjacent ? AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 2 : 20;
-    } else if (abilityName === "Valkyrie Sisterhood") {
+    } else if (abilityName === "brynhildr_valk") {
       // +2 if adjacent to Valkyrie
       const hasValkyrieAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Valkyrie"));
       score += hasValkyrieAdjacent ? AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 1.5 : 15;
-    } else if (abilityName === "Worthy Opponent") {
+    } else if (abilityName === "hrungnir_worthy") {
       // +1 to all if adjacent to Thor
       const hasThorAdjacent = adjacentAllies.some((c) => c.base_card_data.name === "Thor");
       score += hasThorAdjacent ? AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS : 15;
-    } else if (abilityName === "Bride Demand") {
+    } else if (abilityName === "thrym_demand") {
       // +3 Right if adjacent to Goddess
       const hasGoddessAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Goddess"));
       score += hasGoddessAdjacent ? AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 1.5 : 10;
-    } else if (abilityName === "Peaceful Strength") {
+    } else if (abilityName === "freyr_peace") {
       // +2 if no adjacent enemies
       score += adjacentEnemies.length === 0 ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5 : 0;
-    } else if (abilityName === "Primordial Force") {
+    } else if (abilityName === "ymir_isolation") {
       // +2 to all if no adjacent cards
       score += adjacentCards.length === 0 ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2 : 0;
-    } else if (abilityName === "Shore Fury") {
+    } else if (abilityName === "ushi_oni_shore_fury") {
       // +2 if on edge
       const isEdge = position.x === 0 || position.x === 3 || position.y === 0 || position.y === 3;
       score += isEdge ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5 : 0;
-    } else if (abilityName === "Steadfast Guard") {
+    } else if (abilityName === "benkei_steadfast_guard") {
       // +1 per adjacent enemy
       score += adjacentEnemies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE;
-    } else if (abilityName === "Beast Friend") {
+    } else if (abilityName === "kintaro_beast_friend") {
       // Gains +1 per adjacent enemy stronger than self
       const strongerEnemies = adjacentEnemies.filter((e) => getCardTotalPower(e) > getCardTotalPower(card));
       score += strongerEnemies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
     }
 
     // === TRIBAL/TAG-BASED ABILITIES ===
-    else if (abilityName === "Dragon Slayer") {
+    else if (abilityName === "sigurd_slayer") {
       // +1 per Dragon on board
       const dragonCount = [...allAllies, ...allEnemies].filter((c) => c.base_card_data.tags.includes("Dragon")).length;
       score += dragonCount * AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS;
-    } else if (abilityName === "Demon Bane") {
+    } else if (abilityName === "minamoto_demon_bane") {
       // Gains +1 when any demon defeated
       const hasDemon = allEnemies.some((c) => c.base_card_data.tags.includes("Demon"));
       score += hasDemon ? AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS : 20;
     }
 
     // === DEBUFF ABILITIES ===
-    else if (abilityName === "Frost Row") {
+    else if (abilityName === "yuki_onna_frost_row") {
       // Enemies in row lose 1 temporarily
       score += cardsInRow.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
-    } else if (abilityName === "Piercing Shot") {
+    } else if (abilityName === "tawara_piercing_shot") {
       // Enemies in column permanently lose 1
       score += cardsInColumn.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 2;
-    } else if (abilityName === "Many Heads") {
+    } else if (abilityName === "yamata_many_heads") {
       // -1 to enemies in row or column
       score += (cardsInRow.length + cardsInColumn.length) * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.5;
-    } else if (abilityName === "Bone Chill") {
+    } else if (abilityName === "gashadokuro_bone_chill") {
       // Adjacent enemies lose 1
       score += adjacentEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
-    } else if (abilityName === "Icy Presence") {
+    } else if (abilityName === "poliahu_icy_presence") {
       // Adjacent enemies permanently lose 1
       score += adjacentEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 2;
-    } else if (abilityName === "Venomous Presence") {
+    } else if (abilityName === "fafnir_venom") {
       // Strongest adjacent enemy loses 2
       score += adjacentEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 2 : 0;
-    } else if (abilityName === "Vengeful Bite") {
+    } else if (abilityName === "futakuchi_onna_vengeful_bite") {
       // -1 to adjacent enemies each round
       score += adjacentEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5;
     }
 
     // === TERRAIN/TILE MANIPULATION ===
-    else if (abilityName === "Winter's Grasp") {
+    else if (abilityName === "skadi_freeze") {
       // Freeze adjacent tile for 1 turn
       score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * emptyAdjacent;
-    } else if (abilityName === "Web Curse") {
+    } else if (abilityName === "jorogumo_web_curse") {
       // Curse adjacent tiles, drain power for 1 round
       score += emptyAdjacent * AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 2;
-    } else if (abilityName === "Hex Field") {
+    } else if (abilityName === "kapo_hex_field") {
       // Curse empty adjacent tiles
       score += emptyAdjacent * AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE;
-    } else if (abilityName === "Wild Shift") {
+    } else if (abilityName === "kamapuaa_wild_shift") {
       // Create lava every round
       score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 2; // Recurring effect
-    } else if (abilityName === "Lava Field") {
+    } else if (abilityName === "pele_lava_field") {
       // Gains +1 per card played on lava
       score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 1.5; // Scaling value
-    } else if (abilityName === "Rain's Blessing") {
+    } else if (abilityName === "hauwahine_rains_blessing") {
       // Fill tile with water, allies placed after gain +1
       score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 2;
-    } else if (abilityName === "Pure Waters") {
+    } else if (abilityName === "kane_pure_waters") {
       // Fill tile with water, cleanse all allies
       score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE + (allAllies.length * 20);
-    } else if (abilityName === "Sacred Spring") {
+    } else if (abilityName === "mooinanea_sacred_spring") {
       // On water: bless ally and cleanse adjacent allies each round
       score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 2;
-    } else if (abilityName === "Feast or Famine") {
+    } else if (abilityName === "ukupanipo_feast_or_famine") {
       // When ally defeated, fill tile with water
       score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE;
     }
 
     // === UTILITY/CLEANSING ===
-    else if (abilityName === "Cleansing Hula") {
+    else if (abilityName === "hiaka_cleansing_hula") {
       // Cleanse random ally each round
       score += allAllies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.8 : 20;
-    } else if (abilityName === "Healing Touch") {
+    } else if (abilityName === "eir_heal") {
       // Cleanse adjacent allies
       score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.5;
-    } else if (abilityName === "Erase Face") {
+    } else if (abilityName === "nopperabo_erase_face") {
       // Remove all buffs from adjacent enemies
       score += adjacentEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.8;
-    } else if (abilityName === "Time Shift") {
+    } else if (abilityName === "urashima_time_shift") {
       // Remove temporary buffs from enemy in column
       score += cardsInColumn.length > 0 ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE : 20;
     }
 
     // === POSITIONAL MANIPULATION ===
-    else if (abilityName === "Gale Aura") {
+    else if (abilityName === "laamaomao_gale_aura") {
       // Push adjacent enemies away
       score += adjacentEnemies.length * AI_CONFIG.MOVE_EVALUATION.BOARD_CONTROL_VALUE;
-    } else if (abilityName === "Drowning Net") {
+    } else if (abilityName === "ran_pull") {
       // Pull enemy cards closer before combat
       score += AI_CONFIG.MOVE_EVALUATION.BOARD_CONTROL_VALUE * 1.5;
     }
 
     // === REACTIVE/TRIGGER ABILITIES ===
-    else if (abilityName === "Hunter's Mark") {
+    else if (abilityName === "okuriinu_hunters_mark") {
       // When ally defeated, drain -1 from attacker
       score += allAllies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.5;
-    } else if (abilityName === "Spirit Bind") {
+    } else if (abilityName === "milu_spirit_bind") {
       // If defeated, attacker loses 1 permanently
       score += AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5;
-    } else if (abilityName === "Radiant Blessing") {
+    } else if (abilityName === "amaterasu_radiant_blessing") {
       // When ally defeated, +1 to random ally
       score += AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.8;
-    } else if (abilityName === "Soul Lock") {
+    } else if (abilityName === "hel_soul") {
       // Enemies Hel defeats become permanent allies
       score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 3; // Very powerful
     }
 
     // === RECURRING EFFECTS ===
-    else if (abilityName === "Warrior's Aura") {
+    else if (abilityName === "hachiman_warriors_aura") {
       // +1 to allies in same row each round
       const alliesInRow = getAlliesAdjacentTo(position, board, aiPlayerId).filter(a => 
         getCardsInSameRow(position, board, aiPlayerId).includes(a)
       );
       score += alliesInRow.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
-    } else if (abilityName === "Moon's Balance") {
+    } else if (abilityName === "tsukuyomi_moons_balance") {
       // Each round: -1 to strongest enemy, +1 to weakest ally
       score += allEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5 : 40;
-    } else if (abilityName === "Fertile Ground") {
+    } else if (abilityName === "lono_fertile_ground") {
       // Each round grant +1 to allies with blessings
       score += allAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.5;
-    } else if (abilityName === "Slipstream") {
+    } else if (abilityName === "nurarihyon_slipstream") {
       // Each round steal blessing from random enemy
       score += allEnemies.length > 0 ? 60 : 20;
     }
 
     // === SPECIAL MECHANICS ===
-    else if (abilityName === "Trickster's Gambit") {
+    else if (abilityName === "loki_flip") {
       // 50% chance to flip 4 random cards
       score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 0.8; // High risk/reward
-    } else if (abilityName === "Echo Power") {
+    } else if (abilityName === "yamabiko_echo_power") {
       // Matches highest adjacent card power this turn
       score += adjacentCards.length > 0 ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5 : 20;
-    } else if (abilityName === "Dread Aura") {
+    } else if (abilityName === "nightmarchers_dread_aura") {
       // Enemy abilities disabled next turn
       score += allEnemies.length * 30;
-    } else if (abilityName === "Thunderous Omen") {
+    } else if (abilityName === "kanehekili_thunderous_omen") {
       // Random enemy loses random power
       score += allEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.5 : 20;
     }
 
     // === HAND-SCALING ABILITIES (These should often be HELD, not played immediately) ===
     // Note: These get special treatment in hand-hold evaluation
-    else if (abilityName === "Sun Trick") {
+    else if (abilityName === "maui_sun_trick") {
       // Gains +1 in hand each round, resets after combat
       // Base score is low - should be evaluated for holding
       score += 40;
-    } else if (abilityName === "Tide Ward") {
+    } else if (abilityName === "kanaloa_tide_ward") {
       // While in hand: +1 to each played card. When played: steal blessings
       // Should usually be held
       score += 50;
-    } else if (abilityName === "Pure Waters") {
+    } else if (abilityName === "kane_pure_waters") {
       // Gains +1 in hand per blessed tile (max 5)
       score += 45;
     }
 
     // === DUAL ASPECT & SYNERGY ABILITIES ===
-    else if (abilityName === "Dual Aspect") {
+    else if (abilityName === "kupua_dual_aspect") {
       // -1 to random enemy per water tile
       score += AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
     }
@@ -803,16 +864,18 @@ export class AbilityAnalyzer {
     }
 
     const highImpactAbilities = [
-      "Swift Messenger", // Draw 2
-      "Storm Breaker", // Auto defeat
-      "Flames of Muspelheim", // Destroy strongest
-      "Foresight", // Buff all allies
-      "Titan Shell", // Nearly invincible
-      "Light Undimmed", // Ability immune
+      "sleipnir_swift_messenger", // Draw 2
+      "susanoo_storm_breaker", // Auto defeat
+      "surtr_flames", // Destroy strongest
+      "odin_foresight", // Buff all allies
+      "jormungandr_shell", // Nearly invincible
+      "baldr_immune", // Ability immune
     ];
 
     return highImpactAbilities.includes(
-      card.base_card_data.special_ability.name
+      card.base_card_data.special_ability.id ??
+        card.base_card_data.special_ability.ability_id ??
+        ""
     );
   }
 
@@ -829,7 +892,10 @@ export class AbilityAnalyzer {
       return -100; // No ability, should play normally
     }
 
-    const abilityName = card.base_card_data.special_ability.name;
+    const abilityName =
+      card.base_card_data.special_ability.id ??
+      card.base_card_data.special_ability.ability_id ??
+      "";
     const ability = card.base_card_data.special_ability;
     let holdValue = 0;
 
@@ -858,7 +924,7 @@ export class AbilityAnalyzer {
     }
 
     // === CARDS THAT SCALE IN HAND (Should be held) ===
-    if (abilityName === "Sun Trick") {
+    if (abilityName === "maui_sun_trick") {
       // Gains +1 every round in hand, resets after combat
       // Calculate how many rounds it's been held
       const currentPower = getCardTotalPower(card);
@@ -874,7 +940,7 @@ export class AbilityAnalyzer {
       } else {
         holdValue -= 50; // It's powerful now, time to play it
       }
-    } else if (abilityName === "Pure Waters") {
+    } else if (abilityName === "kane_pure_waters") {
       // Gains +1 in hand whenever a tile is blessed (max 5)
       const currentPower = getCardTotalPower(card);
       const basePower = card.base_card_data.base_power.top + 
@@ -889,7 +955,7 @@ export class AbilityAnalyzer {
       } else {
         holdValue -= 40; // Near max power, play it
       }
-    } else if (abilityName === "Tide Ward") {
+    } else if (abilityName === "kanaloa_tide_ward") {
       // While in hand: grants +1 to each card played
       // When played: steals all the blessings back
       // This is a HIGH VALUE hold card
@@ -910,14 +976,18 @@ export class AbilityAnalyzer {
     const aiPlayer = gameState.player1.user_id === aiPlayerId ? gameState.player1 : gameState.player2;
     const defeatedAlliesCount = aiPlayer.discard_pile?.length || 0;
 
-    if (abilityName === "Avenge Baldr" || abilityName === "War Stance" || abilityName === "Past Weaves") {
+    if (
+      abilityName === "vali_revenge" ||
+      abilityName === "ku_war_stance" ||
+      abilityName === "urd_past_weaves"
+    ) {
       // These get stronger as allies are defeated
       if (defeatedAlliesCount < 3) {
         holdValue += 100 - (defeatedAlliesCount * 25); // Hold until more allies defeated
       } else {
         holdValue -= 80; // Powerful now, play it!
       }
-    } else if (abilityName === "Silent Vengeance") {
+    } else if (abilityName === "vidar_vengeance") {
       // Only powerful if Odin is defeated
       // TODO: Check if Odin is defeated
       // For now, hold it until late game
@@ -928,7 +998,7 @@ export class AbilityAnalyzer {
     }
 
     // === CONDITIONAL POWERHOUSES (Hold until condition met) ===
-    if (abilityName === "Storm Breaker") {
+    if (abilityName === "susanoo_storm_breaker") {
       // Only useful if enemy has Beast or Dragon
       const allEnemies = getCardsByCondition(gameState.board, (c) => c.owner !== aiPlayerId);
       const hasTargetTag = allEnemies.some((e) => 
@@ -939,7 +1009,7 @@ export class AbilityAnalyzer {
       } else {
         holdValue -= 70; // Target available, play it!
       }
-    } else if (abilityName === "Binding Justice") {
+    } else if (abilityName === "tyr_binding_justice") {
       // Equalizes power - best when opponent has very strong cards
       const allEnemies = getCardsByCondition(gameState.board, (c) => c.owner !== aiPlayerId);
       const hasStrongEnemies = allEnemies.some((e) => getCardTotalPower(e) > 24);
@@ -951,7 +1021,10 @@ export class AbilityAnalyzer {
     }
 
     // === DRAW CARDS (Play immediately for card advantage) ===
-    if (abilityName === "Swift Messenger" || abilityName === "Fated Draw") {
+    if (
+      abilityName === "sleipnir_swift_messenger" ||
+      abilityName === "verdandi_present"
+    ) {
       const cardsInHand = aiPlayer.hand.length;
       if (cardsInHand <= 2) {
         holdValue -= 120; // Low hand, play immediately for draw
@@ -961,8 +1034,11 @@ export class AbilityAnalyzer {
     }
 
     // === TERRAIN SETUP CARDS (Play early) ===
-    if (abilityName === "Wild Shift" || abilityName === "Rain's Blessing" || 
-        abilityName === "Feast or Famine") {
+    if (
+      abilityName === "kamapuaa_wild_shift" ||
+      abilityName === "hauwahine_rains_blessing" ||
+      abilityName === "ukupanipo_feast_or_famine"
+    ) {
       const totalCardsPlayed = [...gameState.board.flat()].filter(cell => cell?.card).length;
       if (totalCardsPlayed > 8) {
         holdValue += 50; // Late game, hold for better timing
@@ -972,8 +1048,11 @@ export class AbilityAnalyzer {
     }
 
     // === INVINCIBILITY CARDS (Play when you need to lock down position) ===
-    if (abilityName === "Titan Shell" || abilityName === "Ocean's Shield" || 
-        abilityName === "Light Undimmed") {
+    if (
+      abilityName === "jormungandr_shell" ||
+      abilityName === "kamohoalii_oceans_shield" ||
+      abilityName === "baldr_immune"
+    ) {
       const allAllies = getAllAlliesOnBoard(gameState.board, aiPlayerId);
       const allEnemies = getCardsByCondition(gameState.board, (c) => c.owner !== aiPlayerId);
       
