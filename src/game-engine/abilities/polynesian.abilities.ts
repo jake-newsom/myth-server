@@ -229,7 +229,8 @@ export const polynesianAbilities: AbilityMap = {
       triggerMoment === TriggerMoment.HandOnPlace &&
       originalTriggerCard &&
       originalTriggerCard.owner === triggerCard.owner &&
-      originalTriggerCard.user_card_instance_id !== triggerCard.user_card_instance_id
+      originalTriggerCard.user_card_instance_id !==
+        triggerCard.user_card_instance_id
     ) {
       const originalCardPosition = getPositionOfCardById(
         originalTriggerCard.user_card_instance_id,
@@ -299,17 +300,25 @@ export const polynesianAbilities: AbilityMap = {
     const label = "War Stance";
     const gameEvents: BaseGameEvent[] = [];
 
-    if (originalTriggerCard?.owner !== triggerCard.owner && position) {
+    const warStanceBuff = triggerCard.temporary_effects.find(
+      (effect) => effect.name === label,
+    );
+    const belowMaxPower = (warStanceBuff?.power.top ?? 0) < 5;
+    const atMaxPower = (warStanceBuff?.power.top ?? 0) >= 5;
+    const usedAttack = warStanceBuff?.data?.usedAttack || false;
+
+    if (
+      originalTriggerCard?.owner !== triggerCard.owner &&
+      position &&
+      belowMaxPower
+    ) {
       gameEvents.push(
         createOrUpdateBuff(triggerCard, 1000, 1, label, position),
       );
     }
 
-    //check buff for max value
-    if (
-      triggerCard.temporary_effects.find((effect) => effect.name === label)
-        ?.power.top === 5
-    ) {
+    //check buff for max value & unused attack
+    if (warStanceBuff && atMaxPower && !usedAttack) {
       const triggerPosition = getPositionOfCardById(
         triggerCard.user_card_instance_id,
         state.board,
@@ -322,6 +331,11 @@ export const polynesianAbilities: AbilityMap = {
           triggerCard.owner,
         );
         gameEvents.push(...combatResult.events);
+        gameEvents.push(
+          createOrUpdateBuff(triggerCard, 1000, 0, label, triggerPosition, {
+            usedAttack: true,
+          }),
+        );
       }
     }
 

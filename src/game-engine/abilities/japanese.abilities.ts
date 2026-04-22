@@ -1,4 +1,9 @@
-import { BoardPosition, InGameCard, PowerValues, TileStatus } from "../../types";
+import {
+  BoardPosition,
+  InGameCard,
+  PowerValues,
+  TileStatus,
+} from "../../types";
 import { AbilityMap, CombatResolverMap } from "../../types/game-engine.types";
 import {
   addTempBuff,
@@ -49,38 +54,55 @@ export const japaneseAbilities: AbilityMap = {
 
     const enemies = getCardsByCondition(
       state.board,
-      (card) => card.owner !== triggerCard.owner
+      (card) => card.owner !== triggerCard.owner,
     );
 
     if (enemies.length > 0) {
       const strongestEnemy = enemies.reduce((strongest, current) =>
-        getCardTotalPower(current) > getCardTotalPower(strongest) ? current : strongest
+        getCardTotalPower(current) > getCardTotalPower(strongest)
+          ? current
+          : strongest,
       );
-      const enemyPosition = getPositionOfCardById(strongestEnemy.user_card_instance_id, state.board);
+      const enemyPosition = getPositionOfCardById(
+        strongestEnemy.user_card_instance_id,
+        state.board,
+      );
       if (enemyPosition) {
-        gameEvents.push(debuff(strongestEnemy, -1, {
-          name: "Moon's Balance",
-          position: enemyPosition,
-        }));
+        gameEvents.push(
+          debuff(strongestEnemy, -1, {
+            name: "Moon's Balance",
+            position: enemyPosition,
+          }),
+        );
       }
     }
 
-    const owner = state.player1.user_id === triggerCard.owner ? state.player1 : state.player2;
+    const owner =
+      state.player1.user_id === triggerCard.owner
+        ? state.player1
+        : state.player2;
     const handCards = owner.hand
       .map((id) => state.hydrated_card_data_cache?.[id])
       .filter((card): card is InGameCard => !!card);
 
     if (handCards.length > 0) {
       const weakestHandCard = handCards.reduce((weakest, current) =>
-        getCardTotalPower(current) < getCardTotalPower(weakest) ? current : weakest
+        getCardTotalPower(current) < getCardTotalPower(weakest)
+          ? current
+          : weakest,
       );
-      gameEvents.push(addTempBuff(weakestHandCard, 1000, 1, {
-        name: "Moon's Balance",
-        position: HAND_POSITION,
-      }));
+      gameEvents.push(
+        addTempBuff(weakestHandCard, 1000, 1, {
+          name: "Moon's Balance",
+          position: HAND_POSITION,
+        }),
+      );
       weakestHandCard.current_power = updateCurrentPower(weakestHandCard);
-      if (state.hydrated_card_data_cache?.[weakestHandCard.user_card_instance_id]) {
-        state.hydrated_card_data_cache[weakestHandCard.user_card_instance_id] = weakestHandCard;
+      if (
+        state.hydrated_card_data_cache?.[weakestHandCard.user_card_instance_id]
+      ) {
+        state.hydrated_card_data_cache[weakestHandCard.user_card_instance_id] =
+          weakestHandCard;
       }
     }
 
@@ -101,13 +123,18 @@ export const japaneseAbilities: AbilityMap = {
     const enemiesInRow = getCardsInSameRow(position, board, triggerCard.owner);
 
     for (const enemy of enemiesInRow) {
-      const enemyPosition = getPositionOfCardById(enemy.user_card_instance_id, board);
+      const enemyPosition = getPositionOfCardById(
+        enemy.user_card_instance_id,
+        board,
+      );
       if (enemyPosition) {
-        gameEvents.push(addTempDebuff(enemy, 3, -1, {
-          name: "Frost Row",
-          animation: "snow-swirl",
-          position: enemyPosition,
-        }));
+        gameEvents.push(
+          addTempDebuff(enemy, 3, -1, {
+            name: "Frost Row",
+            animation: "snow-swirl",
+            position: enemyPosition,
+          }),
+        );
       }
     }
 
@@ -123,7 +150,7 @@ export const japaneseAbilities: AbilityMap = {
 
     const adjacentPositions = getAdjacentPositions(
       position,
-      state.board.length
+      state.board.length,
     );
     for (const pos of adjacentPositions) {
       const tile = getTileAtPosition(pos, state.board);
@@ -140,8 +167,8 @@ export const japaneseAbilities: AbilityMap = {
               effect_duration: 3,
               applies_to_user: getOpponentId(triggerCard.owner, state),
             },
-            triggerCard.owner
-          )
+            triggerCard.owner,
+          ),
         );
       }
     }
@@ -160,29 +187,37 @@ export const japaneseAbilities: AbilityMap = {
 
     const enemies = getCardsByCondition(
       board,
-      (card) => card.owner !== triggerCard.owner
+      (card) => card.owner !== triggerCard.owner,
     ).filter((card) => {
-      card.temporary_effects.length > 0 &&
+      return (
+        card.temporary_effects.length > 0 &&
         card.temporary_effects.some((effect) => {
           const totalPower = Object.values(effect.power).reduce(
             (sum, val) => sum + val,
-            0
+            0,
           );
           return totalPower > 0;
-        });
+        })
+      );
     });
     if (enemies.length === 0) return [];
 
     const randomEnemy = enemies[Math.floor(Math.random() * enemies.length)];
     if (randomEnemy) {
-      const enemyPosition = getPositionOfCardById(randomEnemy.user_card_instance_id, board);
-      const triggerPosition = getPositionOfCardById(triggerCard.user_card_instance_id, board);
+      const enemyPosition = getPositionOfCardById(
+        randomEnemy.user_card_instance_id,
+        board,
+      );
+      const triggerPosition = getPositionOfCardById(
+        triggerCard.user_card_instance_id,
+        board,
+      );
 
       //select a random buff from the enemy
       const buffs = randomEnemy.temporary_effects.filter((effect) => {
         const totalPower = Object.values(effect.power).reduce(
           (sum, val) => sum + val,
-          0
+          0,
         );
         return totalPower > 0;
       });
@@ -194,8 +229,8 @@ export const japaneseAbilities: AbilityMap = {
             randomEnemy,
             (effect) => effect.name === randomBuff.name,
             enemyPosition,
-            "smoke-shrink"
-          )
+            "smoke-shrink",
+          ),
         );
       }
       // add the buff to trigger card
@@ -207,8 +242,8 @@ export const japaneseAbilities: AbilityMap = {
             randomBuff.power,
             randomBuff.name ?? "Slipstream",
             triggerPosition,
-            { ...randomBuff.data, animation: "smoke-shrink" }
-          )
+            { ...randomBuff.data, animation: "smoke-shrink" },
+          ),
         );
       }
     }
@@ -218,16 +253,28 @@ export const japaneseAbilities: AbilityMap = {
 
   // Hunter's Mark: When an ally is defeted, grant -1 to the attacker
   "Hunter's Mark": (context) => {
-    const { flippedCard, triggerCard, state: { board } } = context;
+    const {
+      flippedCard,
+      triggerCard,
+      originalTriggerCard,
+      state: { board },
+    } = context;
 
-    if (flippedCard && flippedCard.owner !== triggerCard.owner) {
-      const flippedPosition = getPositionOfCardById(flippedCard.user_card_instance_id, board);
-      if (flippedPosition) {
+    if (
+      flippedCard &&
+      flippedCard.owner !== triggerCard.owner &&
+      originalTriggerCard?.user_card_instance_id
+    ) {
+      const position = getPositionOfCardById(
+        originalTriggerCard.user_card_instance_id,
+        board,
+      );
+      if (position) {
         return [
-          addTempDebuff(flippedCard, 1000, -1, {
+          addTempDebuff(originalTriggerCard, 1000, -1, {
             name: "Hunter's Mark",
             animation: "red-strike-grow",
-            position: flippedPosition,
+            position,
           }),
         ];
       }
@@ -246,23 +293,26 @@ export const japaneseAbilities: AbilityMap = {
 
     const position = getPositionOfCardById(
       triggerCard.user_card_instance_id,
-      board
+      board,
     );
     if (!position) return [];
 
     const adjacentEnemies = getEnemiesAdjacentTo(
       position,
       board,
-      triggerCard.owner
+      triggerCard.owner,
     );
 
     for (const enemy of adjacentEnemies) {
-      const enemyPosition = getPositionOfCardById(enemy.user_card_instance_id, board);
+      const enemyPosition = getPositionOfCardById(
+        enemy.user_card_instance_id,
+        board,
+      );
       if (enemyPosition) {
         gameEvents.push(
           createOrUpdateDebuff(enemy, 1000, 1, "Vengeful Bite", enemyPosition, {
             animation: "blue-purple-spurt",
-          })
+          }),
         );
       }
     }
@@ -281,10 +331,12 @@ export const japaneseAbilities: AbilityMap = {
     if (!position) return [];
 
     if (isEdge(position, board.length)) {
-      return [buff(triggerCard, 2, {
-        name: "Shore Fury",
-        position,
-      })];
+      return [
+        buff(triggerCard, 2, {
+          name: "Shore Fury",
+          position,
+        }),
+      ];
     }
 
     return [];
@@ -350,13 +402,18 @@ export const japaneseAbilities: AbilityMap = {
     const adjacentEnemies = getEnemiesAdjacentTo(
       position,
       board,
-      triggerCard.owner
+      triggerCard.owner,
     );
 
     for (const enemy of adjacentEnemies) {
-      const enemyPosition = getPositionOfCardById(enemy.user_card_instance_id, board);
+      const enemyPosition = getPositionOfCardById(
+        enemy.user_card_instance_id,
+        board,
+      );
       if (enemyPosition) {
-        gameEvents.push(removeTemporaryBuffs(enemy, enemyPosition, "smoke-swirl"));
+        gameEvents.push(
+          removeTemporaryBuffs(enemy, enemyPosition, "smoke-swirl"),
+        );
       }
     }
 
@@ -377,18 +434,21 @@ export const japaneseAbilities: AbilityMap = {
     const adjacentAllies = getAlliesAdjacentTo(
       position,
       board,
-      triggerCard.owner
+      triggerCard.owner,
     );
 
     for (const ally of adjacentAllies) {
-      const allyPosition = getPositionOfCardById(ally.user_card_instance_id, board);
+      const allyPosition = getPositionOfCardById(
+        ally.user_card_instance_id,
+        board,
+      );
       if (allyPosition) {
         gameEvents.push(
           addTempBuff(ally, 3, 1, {
             name: "Allies Rally",
             animation: "purple-grow",
             position: allyPosition,
-          })
+          }),
         );
       }
     }
@@ -410,34 +470,43 @@ export const japaneseAbilities: AbilityMap = {
     const adjacentEnemies = getEnemiesAdjacentTo(
       position,
       board,
-      triggerCard.owner
+      triggerCard.owner,
     );
 
     return [
-      addTempBuff(
-        triggerCard,
-        1000,
-        adjacentEnemies.length,
-        {
-          name: "Steadfast Guard",
-          animation: "plasm-sphere",
-          position,
-        }
-      ),
+      addTempBuff(triggerCard, 1000, adjacentEnemies.length, {
+        name: "Steadfast Guard",
+        animation: "plasm-sphere",
+        position,
+      }),
     ];
   },
 
   // Demon Bane: Gains +1 power when any demon is defeated
   "Demon Bane": (context) => {
-    const { triggerCard, flippedCard, position, state: { board } } = context;
+    const {
+      triggerCard,
+      flippedCard,
+      position,
+      state: { board },
+    } = context;
 
     if (flippedCard?.base_card_data.tags?.includes("demon")) {
-      const triggerPosition = position || getPositionOfCardById(triggerCard.user_card_instance_id, board);
+      const triggerPosition =
+        position ||
+        getPositionOfCardById(triggerCard.user_card_instance_id, board);
       if (triggerPosition) {
         return [
-          createOrUpdateBuff(triggerCard, 1000, 1, "Demon Bane", triggerPosition, {
-            animation: "red-lightning",
-          }),
+          createOrUpdateBuff(
+            triggerCard,
+            1000,
+            1,
+            "Demon Bane",
+            triggerPosition,
+            {
+              animation: "red-lightning",
+            },
+          ),
         ];
       }
     }
@@ -459,14 +528,21 @@ export const japaneseAbilities: AbilityMap = {
 
     const buffAmount =
       adjacentCards.filter(
-        (enemy) => getCardTotalPower(enemy) > getCardTotalPower(triggerCard)
+        (enemy) => getCardTotalPower(enemy) > getCardTotalPower(triggerCard),
       ).length * 2;
 
     if (buffAmount > 0) {
       gameEvents.push(
-        createOrUpdateBuff(triggerCard, 1000, buffAmount, "Beast Friend", position, {
-          animation: "phoenix-right",
-        })
+        createOrUpdateBuff(
+          triggerCard,
+          1000,
+          buffAmount,
+          "Beast Friend",
+          position,
+          {
+            animation: "phoenix-right",
+          },
+        ),
       );
     }
 
@@ -486,7 +562,7 @@ export const japaneseAbilities: AbilityMap = {
     const enemiesInColumn = getCardsInSameColumn(
       position,
       board,
-      triggerCard.owner
+      triggerCard.owner,
     ).filter((enemy) => {
       return enemy.temporary_effects.some((effect) => {
         return (
@@ -501,9 +577,18 @@ export const japaneseAbilities: AbilityMap = {
     if (enemiesInColumn.length > 0) {
       const randomEnemy =
         enemiesInColumn[Math.floor(Math.random() * enemiesInColumn.length)];
-      const enemyPosition = getPositionOfCardById(randomEnemy.user_card_instance_id, board);
+      const enemyPosition = getPositionOfCardById(
+        randomEnemy.user_card_instance_id,
+        board,
+      );
       if (enemyPosition) {
-        return [removeTemporaryBuffs(randomEnemy, enemyPosition, "lightning-explode-small")];
+        return [
+          removeTemporaryBuffs(
+            randomEnemy,
+            enemyPosition,
+            "lightning-explode-small",
+          ),
+        ];
       }
     }
 
@@ -524,18 +609,21 @@ export const japaneseAbilities: AbilityMap = {
     const enemiesInColumn = getCardsInSameColumn(
       position,
       board,
-      triggerCard.owner
+      triggerCard.owner,
     );
 
     for (const enemy of enemiesInColumn) {
-      const enemyPosition = getPositionOfCardById(enemy.user_card_instance_id, board);
+      const enemyPosition = getPositionOfCardById(
+        enemy.user_card_instance_id,
+        board,
+      );
       if (enemyPosition) {
         gameEvents.push(
           debuff(enemy, -1, {
             name: "Piercing Shot",
             animation: "flame-drop-3",
             position: enemyPosition,
-          })
+          }),
         );
       }
     }
@@ -553,14 +641,17 @@ export const japaneseAbilities: AbilityMap = {
         ownerId: triggerCard.owner,
       });
       if (randomAlly) {
-        const allyPosition = getPositionOfCardById(randomAlly.user_card_instance_id, state.board);
+        const allyPosition = getPositionOfCardById(
+          randomAlly.user_card_instance_id,
+          state.board,
+        );
         if (allyPosition) {
           gameEvents.push(
             addTempBuff(randomAlly, 1000, 1, {
               name: "Radiant Blessing",
               animation: "light-cross-spin",
               position: allyPosition,
-            })
+            }),
           );
         }
       }
@@ -583,7 +674,7 @@ export const japaneseAbilities: AbilityMap = {
       (card) =>
         (card.base_card_data.tags?.includes("beast") ||
           card.base_card_data.tags?.includes("dragon")) &&
-        card.owner !== triggerCard.owner
+        card.owner !== triggerCard.owner,
     );
 
     if (enemyBeastsAndDragons.length > 0) {
@@ -592,22 +683,25 @@ export const japaneseAbilities: AbilityMap = {
           return getCardTotalPower(current) > getCardTotalPower(strongest)
             ? current
             : strongest;
-        }
+        },
       );
       if (strongestEnemy) {
         const enemyPosition = getPositionOfCardById(
           strongestEnemy.user_card_instance_id,
-          board
+          board,
         );
         if (enemyPosition) {
           const destroyEvent = destroyCardAtPosition(
             enemyPosition,
             board,
             "blast-up",
-            triggerCard.owner
+            triggerCard.owner,
           );
           if (destroyEvent) {
-            const triggerPosition = getPositionOfCardById(triggerCard.user_card_instance_id, board);
+            const triggerPosition = getPositionOfCardById(
+              triggerCard.user_card_instance_id,
+              board,
+            );
             gameEvents.push(destroyEvent);
             if (triggerPosition) {
               gameEvents.push(
@@ -615,7 +709,7 @@ export const japaneseAbilities: AbilityMap = {
                   name: "Storm Breaker",
                   animation: "lightning-cloud",
                   position: triggerPosition,
-                })
+                }),
               );
             }
           }
@@ -636,11 +730,14 @@ export const japaneseAbilities: AbilityMap = {
     const alliesInRow = getCardsInSameRow(
       position,
       state.board,
-      getOpponentId(triggerCard.owner, state)
+      getOpponentId(triggerCard.owner, state),
     );
 
     for (const ally of alliesInRow) {
-      const allyPosition = getPositionOfCardById(ally.user_card_instance_id, state.board);
+      const allyPosition = getPositionOfCardById(
+        ally.user_card_instance_id,
+        state.board,
+      );
       if (allyPosition) {
         const event = addTempBuff(ally, 1000, 1, {
           name: "Warrior's Aura",
@@ -668,12 +765,12 @@ export const japaneseAbilities: AbilityMap = {
     const adjacentEnemiesInRow = getCardsInSameRow(
       position,
       board,
-      triggerCard.owner
+      triggerCard.owner,
     );
     const adjacentEnemiesInColumn = getCardsInSameColumn(
       position,
       board,
-      triggerCard.owner
+      triggerCard.owner,
     );
 
     const adjacentEnemies = [
@@ -681,14 +778,17 @@ export const japaneseAbilities: AbilityMap = {
       ...adjacentEnemiesInColumn,
     ];
     for (const enemy of adjacentEnemies) {
-      const enemyPosition = getPositionOfCardById(enemy.user_card_instance_id, board);
+      const enemyPosition = getPositionOfCardById(
+        enemy.user_card_instance_id,
+        board,
+      );
       if (enemyPosition) {
         gameEvents.push(
           debuff(enemy, -1, {
             name: "Many Heads",
             animation: "purple-slashes",
             position: enemyPosition,
-          })
+          }),
         );
       }
     }
@@ -715,7 +815,7 @@ export const japaneseAbilities: AbilityMap = {
       if (getCardTotalPower(enemy) < getCardTotalPower(triggerCard)) {
         const enemyPosition = getPositionOfCardById(
           enemy.user_card_instance_id,
-          board
+          board,
         );
         if (!enemyPosition) continue;
 
@@ -725,8 +825,8 @@ export const japaneseAbilities: AbilityMap = {
             enemyPosition,
             enemy,
             triggerCard,
-            "water-burst-2"
-          )
+            "water-burst-2",
+          ),
         );
       }
     }
@@ -734,7 +834,7 @@ export const japaneseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Bone Chill: All adjacent enemies lose 1 power.
+  // Bone Chill: All adjacent enemies lose 2 power.
   "Bone Chill": (context) => {
     const {
       position,
@@ -748,18 +848,21 @@ export const japaneseAbilities: AbilityMap = {
     const adjacentEnemies = getEnemiesAdjacentTo(
       position,
       board,
-      triggerCard.owner
+      triggerCard.owner,
     );
 
     for (const enemy of adjacentEnemies) {
-      const enemyPosition = getPositionOfCardById(enemy.user_card_instance_id, board);
+      const enemyPosition = getPositionOfCardById(
+        enemy.user_card_instance_id,
+        board,
+      );
       if (enemyPosition) {
         gameEvents.push(
           debuff(enemy, -2, {
             name: "Bone Chill",
             animation: "red-lightning",
             position: enemyPosition,
-          })
+          }),
         );
       }
     }

@@ -791,6 +791,7 @@ export const norseAbilities: AbilityMap = {
       triggerCard,
       state: { board },
     } = context;
+    const HAND_POSITION = { x: -1, y: -1 };
 
     const dragonsOnBoard = getCardsByCondition(board, (card) =>
       card.base_card_data.tags.includes("dragon"),
@@ -801,19 +802,14 @@ export const norseAbilities: AbilityMap = {
         (effect) => effect.name === "Dragon Slayer",
       );
       const diff = dragonsOnBoard.length * 2 - (currentBuff?.power.top ?? 0);
-      const triggerPosition = getPositionOfCardById(
-        triggerCard.user_card_instance_id,
-        board,
-      );
-
-      if (triggerPosition) {
+      if (diff > 0) {
         return [
           createOrUpdateBuff(
             triggerCard,
             1000,
             diff,
             "Dragon Slayer",
-            triggerPosition,
+            HAND_POSITION,
             {
               animation: "dragon-slayer",
             },
