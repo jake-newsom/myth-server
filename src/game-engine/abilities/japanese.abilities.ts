@@ -494,7 +494,10 @@ export const japaneseAbilities: AbilityMap = {
       state: { board },
     } = context;
 
-    if (flippedCard?.base_card_data.tags?.includes("demon")) {
+    if (
+      flippedCard?.base_card_data.tags?.includes("demon") ||
+      flippedCard?.base_card_data.tags?.includes("yokai")
+    ) {
       const triggerPosition =
         position ||
         getPositionOfCardById(triggerCard.user_card_instance_id, board);
