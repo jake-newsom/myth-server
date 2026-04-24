@@ -1,0 +1,140 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance - Character API
+  description: API endpoints for retrieving characters with nested card variants.
+  version: 1.0.0
+
+paths:
+  /api/characters:
+    get:
+      summary: Get all characters with nested variants
+      description: |
+        Retrieve all characters and include their card art variants in a nested `variants` array.
+        Character `description` stores the general mythological context, while each variant can
+        include its own `description` for art/story-specific lore.
+      tags:
+        - Characters
+      responses:
+        "200":
+          description: Successfully retrieved characters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CharacterWithVariants"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    PowerValues:
+      type: object
+      properties:
+        top:
+          type: integer
+        right:
+          type: integer
+        bottom:
+          type: integer
+        left:
+          type: integer
+      required:
+        - top
+        - right
+        - bottom
+        - left
+
+    CharacterVariant:
+      type: object
+      properties:
+        card_variant_id:
+          type: string
+          format: uuid
+        rarity:
+          type: string
+        image_url:
+          type: string
+        description:
+          type: string
+          nullable: true
+          description: Variant-specific lore for this particular card art.
+        attack_animation:
+          type: string
+          nullable: true
+        is_exclusive:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - card_variant_id
+        - rarity
+        - image_url
+        - is_exclusive
+
+    CharacterWithVariants:
+      type: object
+      properties:
+        character_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+          description: General mythological description shared by all variants.
+        type:
+          type: string
+        base_power:
+          $ref: "#/components/schemas/PowerValues"
+        special_ability_id:
+          type: string
+          format: uuid
+          nullable: true
+        set_id:
+          type: string
+          format: uuid
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/CharacterVariant"
+      required:
+        - character_id
+        - name
+        - type
+        - base_power
+        - special_ability_id
+        - tags
+        - variants
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        message:
+          type: string
+      required:
+        - status
+        - message

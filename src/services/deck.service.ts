@@ -218,34 +218,45 @@ class DeckService {
    * (This is the logic moved from game.controller.ts)
    */
   async createAICardCopies(playerCardInstanceIds: string[]): Promise<string[]> {
-    const aiCardInstanceIds: string[] = [];
-    for (const playerInstanceId of playerCardInstanceIds) {
-      const cardQuery = `
-        SELECT card_variant_id, level FROM "user_owned_cards"
-        WHERE user_card_instance_id = $1;
-      `;
-      const { rows: cardDetails } = await db.query(cardQuery, [
-        playerInstanceId,
-      ]);
-
-      if (cardDetails.length > 0) {
-        const { card_variant_id, level } = cardDetails[0];
-        const insertQuery = `
-          INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
-          VALUES ($1, $2, $3, 0, NOW())
-          RETURNING user_card_instance_id;
-        `;
-        const { rows: insertRows } = await db.query(insertQuery, [
-          AI_PLAYER_ID,
-          card_variant_id,
-          level,
-        ]);
-        if (insertRows.length > 0) {
-          aiCardInstanceIds.push(insertRows[0].user_card_instance_id);
-        }
-      }
+    if (playerCardInstanceIds.length === 0) {
+      return [];
     }
-    return aiCardInstanceIds;
+
+    const sourceCardsQuery = `
+      SELECT
+        req.ord,
+        uoc.card_variant_id,
+        uoc.level
+      FROM UNNEST($1::uuid[]) WITH ORDINALITY AS req(user_card_instance_id, ord)
+      JOIN "user_owned_cards" uoc
+        ON uoc.user_card_instance_id = req.user_card_instance_id
+      ORDER BY req.ord;
+    `;
+    const { rows: sourceCards } = await db.query(sourceCardsQuery, [
+      playerCardInstanceIds,
+    ]);
+    if (sourceCards.length === 0) {
+      return [];
+    }
+
+    const insertQuery = `
+      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
+      SELECT
+        $1::uuid,
+        data.card_variant_id,
+        data.level,
+        0,
+        NOW()
+      FROM UNNEST($2::uuid[], $3::int[]) AS data(card_variant_id, level)
+      RETURNING user_card_instance_id;
+    `;
+    const { rows: insertedRows } = await db.query(insertQuery, [
+      AI_PLAYER_ID,
+      sourceCards.map((card) => card.card_variant_id),
+      sourceCards.map((card) => card.level),
+    ]);
+
+    return insertedRows.map((row) => row.user_card_instance_id);
   }
 
   /**

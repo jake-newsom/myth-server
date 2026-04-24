@@ -13,6 +13,7 @@ import {
   TileStatus,
 } from "../types/game.types";
 import { simulationContext } from "./simulation.context";
+import { randomInt } from "./simulation.rng";
 import {
   BaseGameEvent,
   CardEvent,
@@ -677,7 +678,7 @@ export const rerollHighestStat = (card: InGameCard): void => {
 
   if (highestStat) {
     // Assuming a reroll means setting it to a new random value, e.g., between 1 and 10
-    card.current_power[highestStat] = Math.floor(Math.random() * 10) + 1;
+    card.current_power[highestStat] = randomInt(10) + 1;
   }
 };
 
@@ -696,7 +697,7 @@ export const destroyCardAtPosition = (
   tile.card = null;
 
   // Track daily task progress for card destruction (fire-and-forget)
-  if (actingPlayerId) {
+  if (actingPlayerId && !simulationContext.isInSimulation()) {
     try {
       DailyTaskService.trackDestroy(actingPlayerId).catch(() => { });
     } catch (error) {
@@ -742,7 +743,11 @@ export const setTileStatus = (
   const { tile_effect } = tile;
 
   // Track daily task progress for curses (fire-and-forget)
-  if (actingPlayerId && effect.status === TileStatus.Cursed) {
+  if (
+    actingPlayerId &&
+    effect.status === TileStatus.Cursed &&
+    !simulationContext.isInSimulation()
+  ) {
     try {
       DailyTaskService.trackCurse(actingPlayerId).catch(() => { });
     } catch (error) {
@@ -751,7 +756,11 @@ export const setTileStatus = (
   }
 
   // Track daily task progress for blessings (fire-and-forget)
-  if (actingPlayerId && effect.status === TileStatus.Boosted) {
+  if (
+    actingPlayerId &&
+    effect.status === TileStatus.Boosted &&
+    !simulationContext.isInSimulation()
+  ) {
     try {
       DailyTaskService.trackBless(actingPlayerId).catch(() => { });
     } catch (error) {
@@ -790,7 +799,7 @@ export const getRandomEmptyTile = (
   }
 
   // Return a random empty tile with its position
-  const randomIndex = Math.floor(Math.random() * emptyTiles.length);
+  const randomIndex = randomInt(emptyTiles.length);
   return emptyTiles[randomIndex];
 };
 
@@ -1285,7 +1294,7 @@ export function addTileBlessing(
   actingPlayerId?: string
 ): BaseGameEvent {
   // Track daily task progress for blessings (fire-and-forget)
-  if (actingPlayerId) {
+  if (actingPlayerId && !simulationContext.isInSimulation()) {
     try {
       DailyTaskService.trackBless(actingPlayerId).catch(() => { });
     } catch (error) {
@@ -1407,17 +1416,17 @@ export function getRandomCard(
   }
 
   // Return a random card from the filtered results
-  const randomIndex = Math.floor(Math.random() * cards.length);
+  const randomIndex = randomInt(cards.length);
   return cards[randomIndex];
 }
 
 export function getRandomSide(): "top" | "bottom" | "left" | "right" {
   const sides = ["top", "bottom", "left", "right"] as const;
-  return sides[Math.floor(Math.random() * sides.length)];
+  return sides[randomInt(sides.length)];
 }
 
 export function chooseRandomCard(cards: InGameCard[]): InGameCard {
-  return cards[Math.floor(Math.random() * cards.length)];
+  return cards[randomInt(cards.length)];
 }
 
 export function isSameCard(

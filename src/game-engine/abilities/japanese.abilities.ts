@@ -34,6 +34,7 @@ import {
 import { BaseGameEvent } from "../game-events";
 import { flipCard } from "../game.utils";
 import { getPositionOfCardById } from "../ability.utils";
+import { randomInt } from "../simulation.rng";
 
 /**
  * All japanese cards:
@@ -202,7 +203,7 @@ export const japaneseAbilities: AbilityMap = {
     });
     if (enemies.length === 0) return [];
 
-    const randomEnemy = enemies[Math.floor(Math.random() * enemies.length)];
+    const randomEnemy = enemies[randomInt(enemies.length)];
     if (randomEnemy) {
       const enemyPosition = getPositionOfCardById(
         randomEnemy.user_card_instance_id,
@@ -221,7 +222,7 @@ export const japaneseAbilities: AbilityMap = {
         );
         return totalPower > 0;
       });
-      const randomBuff = buffs[Math.floor(Math.random() * buffs.length)];
+      const randomBuff = buffs[randomInt(buffs.length)];
       //remove the buff from the enemy
       if (enemyPosition) {
         gameEvents.push(
@@ -582,7 +583,7 @@ export const japaneseAbilities: AbilityMap = {
 
     if (enemiesInColumn.length > 0) {
       const randomEnemy =
-        enemiesInColumn[Math.floor(Math.random() * enemiesInColumn.length)];
+        enemiesInColumn[randomInt(enemiesInColumn.length)];
       const enemyPosition = getPositionOfCardById(
         randomEnemy.user_card_instance_id,
         board,
@@ -740,6 +741,8 @@ export const japaneseAbilities: AbilityMap = {
     );
 
     for (const ally of alliesInRow) {
+      if (ally.user_card_instance_id === triggerCard.user_card_instance_id)
+        continue;
       const allyPosition = getPositionOfCardById(
         ally.user_card_instance_id,
         state.board,

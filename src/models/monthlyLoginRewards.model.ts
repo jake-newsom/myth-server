@@ -176,15 +176,28 @@ const MonthlyLoginRewardsModel = {
 
   // Enhanced card selection (for day 24 reward)
   async getRandomEnhancedCard(): Promise<string | null> {
+    const countQuery = `
+      SELECT COUNT(*)::int as total
+      FROM card_variants
+      WHERE rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
+        AND is_exclusive = false;
+    `;
+    const { rows: countRows } = await db.query(countQuery);
+    const total = Number(countRows[0]?.total || 0);
+    if (total === 0) {
+      return null;
+    }
+
+    const randomOffset = Math.floor(Math.random() * total);
     const query = `
       SELECT card_variant_id as card_id
       FROM card_variants
       WHERE rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
         AND is_exclusive = false
-      ORDER BY RANDOM()
-      LIMIT 1;
+      ORDER BY card_variant_id
+      LIMIT 1 OFFSET $1;
     `;
-    const { rows } = await db.query(query);
+    const { rows } = await db.query(query, [randomOffset]);
     return rows[0]?.card_id || null;
   },
 };

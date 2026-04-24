@@ -812,20 +812,35 @@ FLOOR NAMING REQUIREMENTS (CRITICAL):
       // Create card instances and add to deck
       let cardsAdded = 0;
       let cardsSkipped = 0;
+      const normalizedCardNames = Array.from(
+        new Set(floor.cards.map((card) => card.card_name.toLowerCase()))
+      );
+      const variantsResult = await client.query(
+        `SELECT DISTINCT ON (LOWER(ch.name))
+            LOWER(ch.name) as normalized_name,
+            cv.card_variant_id as card_id
+         FROM card_variants cv
+         JOIN characters ch ON cv.character_id = ch.character_id
+         WHERE LOWER(ch.name) = ANY($1::text[])
+           AND cv.rarity::text NOT LIKE '%+'
+         ORDER BY LOWER(ch.name), cv.card_variant_id`,
+        [normalizedCardNames]
+      );
+
+      const variantByName = new Map<string, string>();
+      variantsResult.rows.forEach((row) => {
+        variantByName.set(row.normalized_name, row.card_id);
+      });
+
+      const preparedCards: Array<{
+        cardVariantId: string;
+        level: number;
+        powerUps?: { top: number; right: number; bottom: number; left: number };
+      }> = [];
 
       for (const card of floor.cards) {
-        // Find the card variant ID by character name
-        const cardResult = await client.query(
-          `SELECT cv.card_variant_id as card_id, ch.base_power as power 
-           FROM card_variants cv
-           JOIN characters ch ON cv.character_id = ch.character_id
-           WHERE LOWER(ch.name) = LOWER($1) 
-           AND cv.rarity::text NOT LIKE '%+'
-           LIMIT 1`,
-          [card.card_name]
-        );
-
-        if (cardResult.rows.length === 0) {
+        const cardVariantId = variantByName.get(card.card_name.toLowerCase());
+        if (!cardVariantId) {
           console.warn(
             `[TowerGen]   ⚠️  Card not found: "${card.card_name}", skipping`
           );
@@ -833,48 +848,76 @@ FLOOR NAMING REQUIREMENTS (CRITICAL):
           continue;
         }
 
-        const cardVariantId = cardResult.rows[0].card_id;
+        preparedCards.push({
+          cardVariantId,
+          level: card.level,
+          powerUps: card.power_ups
+            ? {
+                top: card.power_ups.top || 0,
+                right: card.power_ups.right || 0,
+                bottom: card.power_ups.bottom || 0,
+                left: card.power_ups.left || 0,
+              }
+            : undefined,
+        });
+      }
 
-        // Create card instance for AI
-        const instanceResult = await client.query(
+      if (preparedCards.length > 0) {
+        const instanceInsertResult = await client.query(
           `INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp, created_at)
-           VALUES ($1, $2, $3, 0, NOW())
+           SELECT $1::uuid, data.card_variant_id, data.level, 0, NOW()
+           FROM UNNEST($2::uuid[], $3::int[]) AS data(card_variant_id, level)
            RETURNING user_card_instance_id`,
-          [AI_PLAYER_ID, cardVariantId, card.level]
+          [
+            AI_PLAYER_ID,
+            preparedCards.map((card) => card.cardVariantId),
+            preparedCards.map((card) => card.level),
+          ]
         );
-        const instanceId = instanceResult.rows[0].user_card_instance_id;
 
-        // Create powerup record if powerups exist
-        if (card.power_ups) {
-          const powerUpData = {
-            top: card.power_ups.top || 0,
-            right: card.power_ups.right || 0,
-            bottom: card.power_ups.bottom || 0,
-            left: card.power_ups.left || 0,
-          };
+        const insertedInstanceIds = instanceInsertResult.rows.map(
+          (row) => row.user_card_instance_id as string
+        );
+        cardsAdded = insertedInstanceIds.length;
 
-          // Only create powerup record if at least one value is non-zero
-          const hasPowerUps = Object.values(powerUpData).some((val) => val > 0);
-          if (hasPowerUps) {
-            const powerUpCount = Object.values(powerUpData).reduce(
-              (sum, val) => sum + val,
-              0
-            );
-            await client.query(
-              `INSERT INTO user_card_power_ups (user_card_instance_id, power_up_count, power_up_data)
-               VALUES ($1, $2, $3)`,
-              [instanceId, powerUpCount, JSON.stringify(powerUpData)]
-            );
+        const powerUpInstanceIds: string[] = [];
+        const powerUpCounts: number[] = [];
+        const powerUpData: Record<string, number>[] = [];
+
+        insertedInstanceIds.forEach((instanceId, index) => {
+          const powerUps = preparedCards[index]?.powerUps;
+          if (!powerUps) {
+            return;
           }
+          const hasPowerUps = Object.values(powerUps).some((value) => value > 0);
+          if (!hasPowerUps) {
+            return;
+          }
+          powerUpInstanceIds.push(instanceId);
+          powerUpCounts.push(
+            powerUps.top + powerUps.right + powerUps.bottom + powerUps.left
+          );
+          powerUpData.push(powerUps);
+        });
+
+        if (powerUpInstanceIds.length > 0) {
+          await client.query(
+            `INSERT INTO user_card_power_ups (user_card_instance_id, power_up_count, power_up_data)
+             SELECT data.user_card_instance_id, data.power_up_count, data.power_up_data_json::jsonb
+             FROM UNNEST($1::uuid[], $2::int[], $3::text[]) AS data(user_card_instance_id, power_up_count, power_up_data_json)`,
+            [
+              powerUpInstanceIds,
+              powerUpCounts,
+              powerUpData.map((payload) => JSON.stringify(payload)),
+            ]
+          );
         }
 
-        // Add to deck
         await client.query(
           `INSERT INTO deck_cards (deck_id, user_card_instance_id)
-           VALUES ($1, $2)`,
-          [deckId, instanceId]
+           SELECT $1::uuid, unnest($2::uuid[])`,
+          [deckId, insertedInstanceIds]
         );
-        cardsAdded++;
       }
 
       console.log(

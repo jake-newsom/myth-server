@@ -15,6 +15,7 @@ import {
 import { GameStatus, GameLogic } from "./game.logic";
 import * as _ from "lodash";
 import { abilities, combatResolvers } from "./abilities";
+import { simulationContext } from "./simulation.context";
 import {
   BaseGameEvent,
   CardEvent,
@@ -403,19 +404,21 @@ export function flipCard(
   );
 
   // Track daily progress, fail silently
-  try {
-    const defeatingPlayerId = state.current_player_id;
-    const setId = source.base_card_data?.set_id;
+  if (!simulationContext.isInSimulation()) {
+    try {
+      const defeatingPlayerId = state.current_player_id;
+      const setId = source.base_card_data?.set_id;
 
-    setImmediate(() => {
-      DailyTaskService.trackDefeat(defeatingPlayerId).catch(() => { });
-      DailyTaskService.trackDefeatWithMythology(
-        defeatingPlayerId,
-        setId!
-      ).catch(() => { });
-      SeasonSoulsService.trackDefeat(defeatingPlayerId);
-    });
-  } catch { }
+      setImmediate(() => {
+        DailyTaskService.trackDefeat(defeatingPlayerId).catch(() => { });
+        DailyTaskService.trackDefeatWithMythology(
+          defeatingPlayerId,
+          setId!
+        ).catch(() => { });
+        SeasonSoulsService.trackDefeat(defeatingPlayerId);
+      });
+    } catch { }
+  }
 
   return events;
 }

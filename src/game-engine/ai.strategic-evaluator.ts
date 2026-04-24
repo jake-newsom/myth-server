@@ -6,6 +6,7 @@ import {
   getAlliesAdjacentTo,
   getEnemiesAdjacentTo,
   getAllAlliesOnBoard,
+  getPositionOfCardById,
 } from "./ability.utils";
 
 /**
@@ -625,9 +626,14 @@ export class StrategicEvaluator {
 
       // Find if this extends our reach
       for (const ally of allAllies) {
+        const allyPosition = getPositionOfCardById(
+          ally.user_card_instance_id,
+          board
+        );
+        if (!allyPosition) continue;
         const distance =
-          Math.abs(position.x - (ally.user_card_instance_id.length % 4)) +
-          Math.abs(position.y - (ally.user_card_instance_id.length % 4));
+          Math.abs(position.x - allyPosition.x) +
+          Math.abs(position.y - allyPosition.y);
         minDistance = Math.min(minDistance, distance);
       }
 

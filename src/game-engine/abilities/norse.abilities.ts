@@ -29,6 +29,7 @@ import { drawCardSync, flipCard } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
 import { v4 as uuidv4 } from "uuid";
 import { TileStatus } from "../../types/game.types";
+import { randomChance, randomInt } from "../simulation.rng";
 
 /**
  * All norse cards:
@@ -504,12 +505,12 @@ export const norseAbilities: AbilityMap = {
 
     for (let i = 0; i < 4; i++) {
       if (availableCards.length === 0) break;
-      const randomIndex = Math.floor(Math.random() * availableCards.length);
+      const randomIndex = randomInt(availableCards.length);
       selectedCards.push(availableCards.splice(randomIndex, 1)[0]);
     }
 
     for (const selectedCard of selectedCards) {
-      const tryToFlip = Math.floor(Math.random() * 100) < 50;
+      const tryToFlip = randomChance(50);
       if (tryToFlip) {
         const selectedCardPosition = getPositionOfCardById(
           selectedCard.user_card_instance_id,
@@ -915,8 +916,7 @@ export const norseAbilities: AbilityMap = {
     });
 
     if (adjacentEnemies.length > 0) {
-      const randomEnemy =
-        adjacentEnemies[Math.floor(Math.random() * adjacentEnemies.length)];
+      const randomEnemy = adjacentEnemies[randomInt(adjacentEnemies.length)];
       const randomEnemyPosition = getPositionOfCardById(
         randomEnemy.user_card_instance_id,
         board,

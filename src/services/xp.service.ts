@@ -730,52 +730,119 @@ const XpService = {
     userId: string,
     cardRewards: { card_id: string; card_name: string; xp_gained: number }[]
   ): Promise<XpReward[]> {
+    if (cardRewards.length === 0) {
+      return [];
+    }
+
     const client = await db.getClient();
-    const results: XpReward[] = [];
 
     try {
       await client.query("BEGIN");
 
+      // Aggregate pool rewards by card name to avoid per-reward upserts.
+      const rewardsByCardName = new Map<string, number>();
       for (const reward of cardRewards) {
-        // Add XP to pool
-        await XpPoolModel.addXpToPool(
-          userId,
+        rewardsByCardName.set(
           reward.card_name,
-          reward.xp_gained
+          (rewardsByCardName.get(reward.card_name) || 0) + reward.xp_gained
         );
-
-        // Log the reward
-        await XpPoolModel.logXpTransfer({
-          user_id: userId,
-          transfer_type: "game_reward_to_pool",
-          card_name: reward.card_name,
-          xp_transferred: reward.xp_gained,
-        });
-
-        // Get current card stats for response
-        const query = `
-          SELECT uoc.level, uoc.xp
-          FROM "user_owned_cards" uoc
-          WHERE uoc.user_card_instance_id = $1 AND uoc.user_id = $2
-        `;
-        const { rows } = await client.query(query, [reward.card_id, userId]);
-        const card = rows[0];
-
-        results.push({
-          card_id: reward.card_id,
-          card_name: reward.card_name,
-          xp_gained: reward.xp_gained,
-          new_xp: card?.xp || 0,
-          new_level: card?.level || 1,
-        });
       }
+
+      const poolEntries = Array.from(rewardsByCardName.entries());
+      if (poolEntries.length > 0) {
+        const upsertPoolQuery = `
+          INSERT INTO "user_card_xp_pools" (
+            user_id, card_name, available_xp, total_earned_xp, created_at, updated_at
+          )
+          SELECT
+            $1::uuid,
+            data.card_name,
+            data.xp_amount,
+            data.xp_amount,
+            NOW(),
+            NOW()
+          FROM UNNEST($2::text[], $3::int[]) AS data(card_name, xp_amount)
+          ON CONFLICT (user_id, card_name)
+          DO UPDATE SET
+            available_xp = user_card_xp_pools.available_xp + EXCLUDED.available_xp,
+            total_earned_xp = user_card_xp_pools.total_earned_xp + EXCLUDED.total_earned_xp,
+            updated_at = NOW();
+        `;
+        await client.query(upsertPoolQuery, [
+          userId,
+          poolEntries.map(([cardName]) => cardName),
+          poolEntries.map(([, xpAmount]) => xpAmount),
+        ]);
+      }
+
+      // Log each reward event in one statement (preserves per-reward log semantics).
+      const logTransfersQuery = `
+        INSERT INTO "xp_transfers" (
+          user_id, transfer_type, source_card_ids, target_card_id,
+          card_name, xp_transferred, efficiency_rate, created_at
+        )
+        SELECT
+          $1::uuid,
+          'game_reward_to_pool',
+          NULL,
+          NULL,
+          data.card_name,
+          data.xp_gained,
+          NULL,
+          NOW()
+        FROM UNNEST($2::text[], $3::int[]) AS data(card_name, xp_gained);
+      `;
+      await client.query(logTransfersQuery, [
+        userId,
+        cardRewards.map((reward) => reward.card_name),
+        cardRewards.map((reward) => reward.xp_gained),
+      ]);
+
+      // Fetch card stats once for response shaping.
+      const cardIds = Array.from(new Set(cardRewards.map((reward) => reward.card_id)));
+      const cardStatsQuery = `
+        SELECT uoc.user_card_instance_id, uoc.level, uoc.xp
+        FROM "user_owned_cards" uoc
+        WHERE uoc.user_card_instance_id = ANY($1::uuid[]) AND uoc.user_id = $2;
+      `;
+      const { rows: cardStatRows } = await client.query(cardStatsQuery, [
+        cardIds,
+        userId,
+      ]);
+      const cardStatsById = new Map<
+        string,
+        { level: number; xp: number }
+      >(
+        cardStatRows.map((row) => [
+          row.user_card_instance_id,
+          { level: row.level, xp: row.xp },
+        ])
+      );
 
       // Update user's total XP
       const totalXpGained = cardRewards.reduce(
         (sum, r) => sum + r.xp_gained,
         0
       );
-      await UserModel.updateTotalXp(userId, totalXpGained);
+      await client.query(
+        `
+          UPDATE "users"
+          SET total_xp = total_xp + $2
+          WHERE user_id = $1;
+        `,
+        [userId, totalXpGained]
+      );
+
+      const results: XpReward[] = cardRewards.map((reward) => {
+        const stats = cardStatsById.get(reward.card_id);
+        return {
+          card_id: reward.card_id,
+          card_name: reward.card_name,
+          xp_gained: reward.xp_gained,
+          new_xp: stats?.xp || 0,
+          new_level: stats?.level || 1,
+        };
+      });
 
       await client.query("COMMIT");
       return results;

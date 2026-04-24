@@ -648,33 +648,58 @@ class TowerService {
     userId: string,
     minRarity: "rare" | "epic" | "legendary"
   ): Promise<AwardedCard | null> {
-    const validRarities =
+    const rarityCandidates =
       minRarity === "legendary"
-        ? ["legendary"]
+        ? ["legendary+", "legendary++", "legendary+++"]
         : minRarity === "epic"
-          ? ["epic", "legendary"]
-          : ["rare", "epic", "legendary"];
+          ? [
+              "epic+",
+              "epic++",
+              "epic+++",
+              "legendary+",
+              "legendary++",
+              "legendary+++",
+            ]
+          : [
+              "rare+",
+              "rare++",
+              "rare+++",
+              "epic+",
+              "epic++",
+              "epic+++",
+              "legendary+",
+              "legendary++",
+              "legendary+++",
+            ];
 
-    // Build rarity filter for variants
-    const rarityConditions = validRarities
-      .map((r) => `cv.rarity::text LIKE '${r}%'`)
-      .join(" OR ");
+    const countQuery = `
+      SELECT COUNT(*)::int as total
+      FROM card_variants cv
+      WHERE cv.rarity::text = ANY($1::text[])
+        AND cv.is_exclusive = false;
+    `;
+    const { rows: countRows } = await db.query(countQuery, [rarityCandidates]);
+    const total = Number(countRows[0]?.total || 0);
 
+    if (total === 0) {
+      // Fallback to base rarity if no variants exist
+      return this.awardRandomCardByRarity(userId, minRarity);
+    }
+
+    const randomOffset = Math.floor(Math.random() * total);
     const query = `
       SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url
       FROM card_variants cv
       JOIN characters ch ON cv.character_id = ch.character_id
-      WHERE (${rarityConditions})
-        AND cv.rarity::text LIKE '%+'
+      WHERE cv.rarity::text = ANY($1::text[])
         AND cv.is_exclusive = false
-      ORDER BY RANDOM()
-      LIMIT 1;
+      ORDER BY cv.card_variant_id
+      LIMIT 1 OFFSET $2;
     `;
 
-    const { rows } = await db.query(query);
+    const { rows } = await db.query(query, [rarityCandidates, randomOffset]);
 
     if (rows.length === 0) {
-      // Fallback to base rarity if no variants exist
       return this.awardRandomCardByRarity(userId, minRarity);
     }
 
@@ -707,17 +732,30 @@ class TowerService {
     userId: string,
     rarity: "rare" | "epic" | "legendary"
   ): Promise<AwardedCard | null> {
+    const countQuery = `
+      SELECT COUNT(*)::int as total
+      FROM card_variants cv
+      WHERE cv.rarity::text = $1
+        AND cv.is_exclusive = false;
+    `;
+    const { rows: countRows } = await db.query(countQuery, [rarity]);
+    const total = Number(countRows[0]?.total || 0);
+    if (total === 0) {
+      return null;
+    }
+
+    const randomOffset = Math.floor(Math.random() * total);
     const query = `
       SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url
       FROM card_variants cv
       JOIN characters ch ON cv.character_id = ch.character_id
       WHERE cv.rarity::text = $1
         AND cv.is_exclusive = false
-      ORDER BY RANDOM()
-      LIMIT 1;
+      ORDER BY cv.card_variant_id
+      LIMIT 1 OFFSET $2;
     `;
 
-    const { rows } = await db.query(query, [rarity]);
+    const { rows } = await db.query(query, [rarity, randomOffset]);
 
     if (rows.length === 0) {
       return null;

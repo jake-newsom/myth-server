@@ -5,7 +5,7 @@ info:
   version: 1.0.0
 
 paths:
-  /api/users/me/cards:
+  /api/user-cards:
     get:
       summary: Get all cards owned by the authenticated user
       description: Retrieves a list of card instances owned by the currently authenticated user
@@ -66,6 +66,87 @@ paths:
                   $ref: "#/components/schemas/UserCard"
         "401":
           description: Unauthorized - User not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/user-cards/{userCardInstanceId}/lock:
+    patch:
+      summary: Lock or unlock a user card
+      description: |
+        Sets the `is_locked` flag for a specific user-owned card instance.
+        Locked cards cannot be sacrificed (single or bulk) and cannot be used as
+        a source card for XP transfer.
+      tags:
+        - User Cards
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userCardInstanceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User-owned card instance ID to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - is_locked
+              properties:
+                is_locked:
+                  type: boolean
+                  description: True to lock the card, false to unlock it
+            examples:
+              lockCard:
+                summary: Lock a card
+                value:
+                  is_locked: true
+              unlockCard:
+                summary: Unlock a card
+                value:
+                  is_locked: false
+      responses:
+        "200":
+          description: Card lock state updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - user_card_instance_id
+                  - is_locked
+                properties:
+                  user_card_instance_id:
+                    type: string
+                    format: uuid
+                  is_locked:
+                    type: boolean
+        "400":
+          description: Invalid request body or missing parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized - User not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Card not found or does not belong to user
           content:
             application/json:
               schema:
@@ -189,6 +270,9 @@ components:
           type: integer
           description: Current experience points of the card instance
           minimum: 0
+        is_locked:
+          type: boolean
+          description: Whether this card instance is locked from sacrifice and XP-source transfer actions
         power_enhancements:
           $ref: "#/components/schemas/PowerValues"
           description: Additional power values from level up boosts applied to the card (accumulated from all power ups)
@@ -198,6 +282,7 @@ components:
         - base_card_data
         - level
         - xp
+        - is_locked
         - power_enhancements
 
     ErrorResponse:

@@ -1,5 +1,6 @@
 import { Pool, QueryResult, PoolClient } from "pg";
 import config from "./index";
+import { recordQueryMetric } from "../utils/queryMetrics";
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
@@ -24,8 +25,28 @@ export type QueryExecutor = {
 export { PoolClient };
 
 export default {
-  query: (text: string, params?: any[]): Promise<QueryResult> =>
-    pool.query(text, params),
-  getClient: (): Promise<PoolClient> => pool.connect(), // For transactions
+  query: async (text: string, params?: any[]): Promise<QueryResult> => {
+    const started = process.hrtime.bigint();
+    try {
+      return await pool.query(text, params);
+    } finally {
+      const elapsedMs = Number(process.hrtime.bigint() - started) / 1_000_000;
+      recordQueryMetric(elapsedMs);
+    }
+  },
+  getClient: async (): Promise<PoolClient> => {
+    const client = await pool.connect();
+    const originalQuery: any = client.query.bind(client);
+    client.query = (async (...args: any[]) => {
+      const started = process.hrtime.bigint();
+      try {
+        return await originalQuery(...args);
+      } finally {
+        const elapsedMs = Number(process.hrtime.bigint() - started) / 1_000_000;
+        recordQueryMetric(elapsedMs);
+      }
+    }) as typeof client.query;
+    return client;
+  }, // For transactions
   pool, // Export pool if needed directly elsewhere
 };

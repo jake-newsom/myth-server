@@ -30,6 +30,7 @@ import StartupService from "./services/startup.service";
 import { redisCache } from "./services/redis.cache.service";
 import SeasonService from "./services/season.service";
 import SeasonSoulsService from "./services/seasonSouls.service";
+import { queryMetricsMiddleware } from "./utils/queryMetrics";
 
 // Setup Swagger
 const swaggerOptions = {
@@ -94,6 +95,7 @@ app.use(
 );
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
+app.use(queryMetricsMiddleware);
 
 // Add server version to all responses
 app.use((req: Request, res: Response, next: NextFunction) => {

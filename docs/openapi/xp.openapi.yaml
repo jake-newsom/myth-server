@@ -109,7 +109,7 @@ paths:
   /api/xp/transfer:
     post:
       summary: Transfer XP between cards
-      description: Transfer 100% of XP from one card to another with 80% efficiency
+      description: Transfer 100% of XP from one card to another with 80% efficiency. Locked cards cannot be used as the source card.
       tags:
         - XP
       security:
@@ -169,7 +169,7 @@ paths:
   /api/xp/sacrifice:
     post:
       summary: Sacrifice cards for XP pools
-      description: Sacrifice cards to add XP to pools
+      description: Sacrifice cards to add XP to pools. Locked cards cannot be sacrificed.
       tags:
         - XP
       security:
@@ -222,7 +222,7 @@ paths:
   /api/xp/sacrifice-extras:
     post:
       summary: Sacrifice 0 XP card copies automatically
-      description: Automatically sacrifice cards with 0 XP while maintaining a minimum of 2 copies of each base card type
+      description: Automatically sacrifice unlocked cards with 0 XP while maintaining a minimum of 2 copies of each base card type. Locked cards are always excluded.
       tags:
         - XP
       security:

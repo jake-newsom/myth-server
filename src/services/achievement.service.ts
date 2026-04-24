@@ -17,6 +17,12 @@ interface AchievementCompletionResult {
   updatedProgress: UserAchievementWithDetails[];
 }
 
+interface BatchedAchievementUpdate {
+  achievement_key: string;
+  mode: "increment" | "set";
+  value: number;
+}
+
 interface ClaimRewardsResult {
   success: boolean;
   claimedAchievements: UserAchievementWithDetails[];
@@ -228,6 +234,35 @@ const AchievementService = {
     return result;
   },
 
+  async applyBatchedUpdatesAndCollectDetails(
+    userId: string,
+    updates: BatchedAchievementUpdate[],
+    keysToFetch: string[],
+    result: AchievementCompletionResult
+  ): Promise<void> {
+    if (updates.length > 0) {
+      await AchievementModel.applyProgressUpdatesBatch(userId, updates);
+    }
+
+    if (keysToFetch.length === 0) {
+      return;
+    }
+
+    const uniqueKeys = Array.from(new Set(keysToFetch));
+    const achievementDetailsMap = await AchievementModel.getUserAchievementsByKeys(
+      userId,
+      uniqueKeys
+    );
+
+    achievementDetailsMap.forEach((details) => {
+      if (details.is_completed) {
+        result.newlyCompleted.push(details);
+      } else {
+        result.updatedProgress.push(details);
+      }
+    });
+  },
+
   /**
    * Handle game victory events
    * Optimized to batch tier lookups for better performance
@@ -241,7 +276,7 @@ const AchievementService = {
       eventData;
 
     const keysToFetch: string[] = [];
-    const updatePromises: Promise<any>[] = [];
+    const updates: BatchedAchievementUpdate[] = [];
 
     // Determine which tiered achievements we need to look up
     const tieredKeysToFetch: string[] = [];
@@ -259,9 +294,11 @@ const AchievementService = {
       await AchievementModel.getTieredAchievementsByBaseKeys(tieredKeysToFetch);
 
     // First Victory
-    updatePromises.push(
-      AchievementModel.updateUserAchievementProgress(userId, "first_victory", 1)
-    );
+    updates.push({
+      achievement_key: "first_victory",
+      mode: "increment",
+      value: 1,
+    });
     keysToFetch.push("first_victory");
 
     // Game mode specific victories - tiered achievements
@@ -269,32 +306,30 @@ const AchievementService = {
       // Track solo_wins tiered achievements
       const soloWinsTiers = tieredAchievements.get("solo_wins") || [];
       for (const tier of soloWinsTiers) {
-        updatePromises.push(
-          AchievementModel.updateUserAchievementProgress(
-            userId,
-            tier.achievement_key,
-            1
-          )
-        );
+        updates.push({
+          achievement_key: tier.achievement_key,
+          mode: "increment",
+          value: 1,
+        });
         keysToFetch.push(tier.achievement_key);
       }
 
       // Keep legacy solo_master for backward compatibility
-      updatePromises.push(
-        AchievementModel.updateUserAchievementProgress(userId, "solo_master", 1)
-      );
+      updates.push({
+        achievement_key: "solo_master",
+        mode: "increment",
+        value: 1,
+      });
       keysToFetch.push("solo_master");
     } else if (gameMode === "pvp") {
       // Track pvp_wins tiered achievements
       const pvpWinsTiers = tieredAchievements.get("pvp_wins") || [];
       for (const tier of pvpWinsTiers) {
-        updatePromises.push(
-          AchievementModel.updateUserAchievementProgress(
-            userId,
-            tier.achievement_key,
-            1
-          )
-        );
+        updates.push({
+          achievement_key: tier.achievement_key,
+          mode: "increment",
+          value: 1,
+        });
         keysToFetch.push(tier.achievement_key);
       }
 
@@ -303,42 +338,42 @@ const AchievementService = {
         const streakTiers = tieredAchievements.get("pvp_win_streak") || [];
         for (const tier of streakTiers) {
           if (winStreakCount >= tier.target_value) {
-            updatePromises.push(
-              AchievementModel.setUserAchievementProgress(
-                userId,
-                tier.achievement_key,
-                1
-              )
-            );
+            updates.push({
+              achievement_key: tier.achievement_key,
+              mode: "set",
+              value: 1,
+            });
             keysToFetch.push(tier.achievement_key);
           }
         }
       }
 
       // Keep legacy pvp_warrior for backward compatibility
-      updatePromises.push(
-        AchievementModel.updateUserAchievementProgress(userId, "pvp_warrior", 1)
-      );
+      updates.push({
+        achievement_key: "pvp_warrior",
+        mode: "increment",
+        value: 1,
+      });
       keysToFetch.push("pvp_warrior");
 
       // Keep legacy win_streak_5 for backward compatibility
       if (isWinStreak && winStreakCount >= 5) {
-        updatePromises.push(
-          AchievementModel.setUserAchievementProgress(userId, "win_streak_5", 1)
-        );
+        updates.push({
+          achievement_key: "win_streak_5",
+          mode: "set",
+          value: 1,
+        });
         keysToFetch.push("win_streak_5");
       }
     }
 
     // Perfect game (won 16-0, meaning opponent has no cards on the board)
     if (winnerScore === 16 && loserScore === 0) {
-      updatePromises.push(
-        AchievementModel.updateUserAchievementProgress(
-          userId,
-          "perfect_game",
-          1
-        )
-      );
+      updates.push({
+        achievement_key: "perfect_game",
+        mode: "increment",
+        value: 1,
+      });
       keysToFetch.push("perfect_game");
     }
 
@@ -348,50 +383,39 @@ const AchievementService = {
 
       // Dominant victory (win by 10+ points)
       if (scoreMargin >= 10) {
-        updatePromises.push(
-          AchievementModel.updateUserAchievementProgress(
-            userId,
-            "dominant_victory",
-            1
-          )
-        );
+        updates.push({
+          achievement_key: "dominant_victory",
+          mode: "increment",
+          value: 1,
+        });
         keysToFetch.push("dominant_victory");
       }
 
       // Close victory (win by 1-2 points)
       if (scoreMargin >= 1 && scoreMargin <= 2) {
-        updatePromises.push(
-          AchievementModel.updateUserAchievementProgress(
-            userId,
-            "close_victory",
-            1
-          )
-        );
+        updates.push({
+          achievement_key: "close_victory",
+          mode: "increment",
+          value: 1,
+        });
         keysToFetch.push("close_victory");
       }
     }
 
     // Beta tester (play games during beta)
-    updatePromises.push(
-      AchievementModel.updateUserAchievementProgress(userId, "beta_tester", 1)
-    );
+    updates.push({
+      achievement_key: "beta_tester",
+      mode: "increment",
+      value: 1,
+    });
     keysToFetch.push("beta_tester");
 
-    // Execute all updates in parallel
-    await Promise.all(updatePromises);
-
-    // Batch fetch all achievement details in a single query
-    const achievementDetailsMap =
-      await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
-
-    // Process results
-    achievementDetailsMap.forEach((details) => {
-      if (details.is_completed) {
-        result.newlyCompleted.push(details);
-      } else {
-        result.updatedProgress.push(details);
-      }
-    });
+    await this.applyBatchedUpdatesAndCollectDetails(
+      userId,
+      updates,
+      keysToFetch,
+      result
+    );
   },
 
   /**
@@ -404,7 +428,7 @@ const AchievementService = {
     result: AchievementCompletionResult
   ): Promise<void> {
     const keysToFetch: string[] = [];
-    const updatePromises: Promise<any>[] = [];
+    const updates: BatchedAchievementUpdate[] = [];
 
     // Batch fetch all tiered achievements in a single query
     const tieredAchievements =
@@ -413,37 +437,28 @@ const AchievementService = {
     // Track total_matches tiered achievements (solo + multiplayer combined)
     const totalMatchesTiers = tieredAchievements.get("total_matches") || [];
     for (const tier of totalMatchesTiers) {
-      updatePromises.push(
-        AchievementModel.updateUserAchievementProgress(
-          userId,
-          tier.achievement_key,
-          1
-        )
-      );
+      updates.push({
+        achievement_key: tier.achievement_key,
+        mode: "increment",
+        value: 1,
+      });
       keysToFetch.push(tier.achievement_key);
     }
 
     // Beta tester achievement for any game completion
-    updatePromises.push(
-      AchievementModel.updateUserAchievementProgress(userId, "beta_tester", 1)
-    );
+    updates.push({
+      achievement_key: "beta_tester",
+      mode: "increment",
+      value: 1,
+    });
     keysToFetch.push("beta_tester");
 
-    // Execute all updates in parallel
-    await Promise.all(updatePromises);
-
-    // Batch fetch all achievement details in a single query
-    const achievementDetailsMap =
-      await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
-
-    // Process results
-    achievementDetailsMap.forEach((details) => {
-      if (details.is_completed) {
-        result.newlyCompleted.push(details);
-      } else {
-        result.updatedProgress.push(details);
-      }
-    });
+    await this.applyBatchedUpdatesAndCollectDetails(
+      userId,
+      updates,
+      keysToFetch,
+      result
+    );
   },
 
   /**
@@ -456,57 +471,42 @@ const AchievementService = {
   ): Promise<void> {
     const { packsOpened = 1 } = eventData;
     const keysToFetch: string[] = [];
-    const updatePromises: Promise<any>[] = [];
+    const updates: BatchedAchievementUpdate[] = [];
 
     // Track pack_opening tiered achievements - INCREMENT by number of packs opened
     const packOpeningTiers =
       await AchievementModel.getTieredAchievementsByBaseKey("pack_opening");
     for (const tier of packOpeningTiers) {
-      updatePromises.push(
-        AchievementModel.updateUserAchievementProgress(
-          userId,
-          tier.achievement_key,
-          packsOpened
-        )
-      );
+      updates.push({
+        achievement_key: tier.achievement_key,
+        mode: "increment",
+        value: packsOpened,
+      });
       keysToFetch.push(tier.achievement_key);
     }
 
     // First pack (legacy) - INCREMENT by number of packs opened
-    updatePromises.push(
-      AchievementModel.updateUserAchievementProgress(
-        userId,
-        "first_pack",
-        packsOpened
-      )
-    );
+    updates.push({
+      achievement_key: "first_pack",
+      mode: "increment",
+      value: packsOpened,
+    });
     keysToFetch.push("first_pack");
 
     // Pack addict (legacy) - INCREMENT by number of packs opened
-    updatePromises.push(
-      AchievementModel.updateUserAchievementProgress(
-        userId,
-        "pack_addict",
-        packsOpened
-      )
-    );
+    updates.push({
+      achievement_key: "pack_addict",
+      mode: "increment",
+      value: packsOpened,
+    });
     keysToFetch.push("pack_addict");
 
-    // Execute all updates in parallel
-    await Promise.all(updatePromises);
-
-    // Batch fetch all achievement details in a single query
-    const achievementDetailsMap =
-      await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
-
-    // Process results
-    achievementDetailsMap.forEach((details) => {
-      if (details.is_completed) {
-        result.newlyCompleted.push(details);
-      } else {
-        result.updatedProgress.push(details);
-      }
-    });
+    await this.applyBatchedUpdatesAndCollectDetails(
+      userId,
+      updates,
+      keysToFetch,
+      result
+    );
   },
 
   /**
@@ -519,7 +519,7 @@ const AchievementService = {
   ): Promise<void> {
     const { rarityCounts, totalUniqueCards, totalMythicCards } = eventData;
     const keysToFetch: string[] = [];
-    const updatePromises: Promise<any>[] = [];
+    const updates: BatchedAchievementUpdate[] = [];
 
     // Track card_collection tiered achievements (SET - only needs to be called once)
     if (totalUniqueCards !== undefined) {
@@ -528,13 +528,11 @@ const AchievementService = {
           "card_collection"
         );
       for (const tier of cardCollectionTiers) {
-        updatePromises.push(
-          AchievementModel.setUserAchievementProgress(
-            userId,
-            tier.achievement_key,
-            totalUniqueCards
-          )
-        );
+        updates.push({
+          achievement_key: tier.achievement_key,
+          mode: "set",
+          value: totalUniqueCards,
+        });
         keysToFetch.push(tier.achievement_key);
       }
     }
@@ -546,13 +544,11 @@ const AchievementService = {
           "mythic_collection"
         );
       for (const tier of mythicCollectionTiers) {
-        updatePromises.push(
-          AchievementModel.setUserAchievementProgress(
-            userId,
-            tier.achievement_key,
-            totalMythicCards
-          )
-        );
+        updates.push({
+          achievement_key: tier.achievement_key,
+          mode: "set",
+          value: totalMythicCards,
+        });
         keysToFetch.push(tier.achievement_key);
       }
     }
@@ -562,57 +558,42 @@ const AchievementService = {
       // Rare collector (legacy) - INCREMENT by count
       const rareCount = rarityCounts.rare || 0;
       if (rareCount > 0) {
-        updatePromises.push(
-          AchievementModel.updateUserAchievementProgress(
-            userId,
-            "rare_collector",
-            rareCount
-          )
-        );
+        updates.push({
+          achievement_key: "rare_collector",
+          mode: "increment",
+          value: rareCount,
+        });
         keysToFetch.push("rare_collector");
       }
 
       // Legendary hunter (legacy) - INCREMENT by count
       const legendaryCount = rarityCounts.legendary || 0;
       if (legendaryCount > 0) {
-        updatePromises.push(
-          AchievementModel.updateUserAchievementProgress(
-            userId,
-            "legendary_hunter",
-            legendaryCount
-          )
-        );
+        updates.push({
+          achievement_key: "legendary_hunter",
+          mode: "increment",
+          value: legendaryCount,
+        });
         keysToFetch.push("legendary_hunter");
       }
     }
 
     // Card master (legacy) - SET
     if (totalUniqueCards) {
-      updatePromises.push(
-        AchievementModel.setUserAchievementProgress(
-          userId,
-          "card_master",
-          totalUniqueCards
-        )
-      );
+      updates.push({
+        achievement_key: "card_master",
+        mode: "set",
+        value: totalUniqueCards,
+      });
       keysToFetch.push("card_master");
     }
 
-    // Execute all updates in parallel
-    await Promise.all(updatePromises);
-
-    // Batch fetch all achievement details in a single query
-    const achievementDetailsMap =
-      await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
-
-    // Process results
-    achievementDetailsMap.forEach((details) => {
-      if (details.is_completed) {
-        result.newlyCompleted.push(details);
-      } else {
-        result.updatedProgress.push(details);
-      }
-    });
+    await this.applyBatchedUpdatesAndCollectDetails(
+      userId,
+      updates,
+      keysToFetch,
+      result
+    );
   },
 
   /**
@@ -625,7 +606,7 @@ const AchievementService = {
   ): Promise<void> {
     const { newLevel, isFirstLevelUp, cardsAtLevelByRarity } = eventData;
     const keysToFetch: string[] = [];
-    const updatePromises: Promise<any>[] = [];
+    const updates: BatchedAchievementUpdate[] = [];
 
     // Track card leveling by rarity achievements
     if (cardsAtLevelByRarity) {
@@ -646,13 +627,11 @@ const AchievementService = {
             (levels as Record<number, number>)[targetLevel] || 0;
 
           if (countAtLevel >= 20) {
-            updatePromises.push(
-              AchievementModel.setUserAchievementProgress(
-                userId,
-                tier.achievement_key,
-                1
-              )
-            );
+            updates.push({
+              achievement_key: tier.achievement_key,
+              mode: "set",
+              value: 1,
+            });
             keysToFetch.push(tier.achievement_key);
           }
         }
@@ -661,37 +640,30 @@ const AchievementService = {
 
     // Level up (first time leveling any card) - legacy
     if (isFirstLevelUp) {
-      updatePromises.push(
-        AchievementModel.updateUserAchievementProgress(userId, "level_up", 1)
-      );
+      updates.push({
+        achievement_key: "level_up",
+        mode: "increment",
+        value: 1,
+      });
       keysToFetch.push("level_up");
     }
 
     // Max level (level 10) - legacy
     if (newLevel >= 10) {
-      updatePromises.push(
-        AchievementModel.updateUserAchievementProgress(userId, "max_level", 1)
-      );
+      updates.push({
+        achievement_key: "max_level",
+        mode: "increment",
+        value: 1,
+      });
       keysToFetch.push("max_level");
     }
 
-    // Execute all updates in parallel
-    await Promise.all(updatePromises);
-
-    // Batch fetch all achievement details in a single query
-    if (keysToFetch.length > 0) {
-      const achievementDetailsMap =
-        await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
-
-      // Process results
-      achievementDetailsMap.forEach((details) => {
-        if (details.is_completed) {
-          result.newlyCompleted.push(details);
-        } else {
-          result.updatedProgress.push(details);
-        }
-      });
-    }
+    await this.applyBatchedUpdatesAndCollectDetails(
+      userId,
+      updates,
+      keysToFetch,
+      result
+    );
   },
 
   /**
@@ -702,25 +674,12 @@ const AchievementService = {
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
-    // XP Master
-    await AchievementModel.updateUserAchievementProgress(
+    await this.applyBatchedUpdatesAndCollectDetails(
       userId,
-      "xp_master",
-      1
+      [{ achievement_key: "xp_master", mode: "increment", value: 1 }],
+      ["xp_master"],
+      result
     );
-
-    // Batch fetch achievement details
-    const achievementDetailsMap =
-      await AchievementModel.getUserAchievementsByKeys(userId, ["xp_master"]);
-
-    // Process results
-    achievementDetailsMap.forEach((details) => {
-      if (details.is_completed) {
-        result.newlyCompleted.push(details);
-      } else {
-        result.updatedProgress.push(details);
-      }
-    });
   },
 
   /**
@@ -733,7 +692,7 @@ const AchievementService = {
   ): Promise<void> {
     const { cardCount, totalSacrificed } = eventData;
     const keysToFetch: string[] = [];
-    const updatePromises: Promise<any>[] = [];
+    const updates: BatchedAchievementUpdate[] = [];
 
     // Track card_sacrifice tiered achievements
     const sacrificeTiers =
@@ -741,54 +700,39 @@ const AchievementService = {
 
     if (totalSacrificed !== undefined) {
       for (const tier of sacrificeTiers) {
-        updatePromises.push(
-          AchievementModel.setUserAchievementProgress(
-            userId,
-            tier.achievement_key,
-            totalSacrificed
-          )
-        );
+        updates.push({
+          achievement_key: tier.achievement_key,
+          mode: "set",
+          value: totalSacrificed,
+        });
         keysToFetch.push(tier.achievement_key);
       }
     } else {
       // Fallback to increment if totalSacrificed not provided
       for (const tier of sacrificeTiers) {
-        updatePromises.push(
-          AchievementModel.updateUserAchievementProgress(
-            userId,
-            tier.achievement_key,
-            cardCount || 1
-          )
-        );
+        updates.push({
+          achievement_key: tier.achievement_key,
+          mode: "increment",
+          value: cardCount || 1,
+        });
         keysToFetch.push(tier.achievement_key);
       }
     }
 
     // Sacrifice Master (legacy)
-    updatePromises.push(
-      AchievementModel.updateUserAchievementProgress(
-        userId,
-        "sacrifice_master",
-        cardCount || 1
-      )
-    );
+    updates.push({
+      achievement_key: "sacrifice_master",
+      mode: "increment",
+      value: cardCount || 1,
+    });
     keysToFetch.push("sacrifice_master");
 
-    // Execute all updates in parallel
-    await Promise.all(updatePromises);
-
-    // Batch fetch all achievement details in a single query
-    const achievementDetailsMap =
-      await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
-
-    // Process results
-    achievementDetailsMap.forEach((details) => {
-      if (details.is_completed) {
-        result.newlyCompleted.push(details);
-      } else {
-        result.updatedProgress.push(details);
-      }
-    });
+    await this.applyBatchedUpdatesAndCollectDetails(
+      userId,
+      updates,
+      keysToFetch,
+      result
+    );
   },
 
   /**
@@ -801,49 +745,34 @@ const AchievementService = {
   ): Promise<void> {
     const { totalFriends, isFirstFriend } = eventData;
     const keysToFetch: string[] = [];
-    const updatePromises: Promise<any>[] = [];
+    const updates: BatchedAchievementUpdate[] = [];
 
     // Social butterfly (first friend)
     if (isFirstFriend) {
-      updatePromises.push(
-        AchievementModel.updateUserAchievementProgress(
-          userId,
-          "social_butterfly",
-          1
-        )
-      );
+      updates.push({
+        achievement_key: "social_butterfly",
+        mode: "increment",
+        value: 1,
+      });
       keysToFetch.push("social_butterfly");
     }
 
     // Friend collector (total friends)
     if (totalFriends) {
-      updatePromises.push(
-        AchievementModel.setUserAchievementProgress(
-          userId,
-          "friend_collector",
-          totalFriends
-        )
-      );
+      updates.push({
+        achievement_key: "friend_collector",
+        mode: "set",
+        value: totalFriends,
+      });
       keysToFetch.push("friend_collector");
     }
 
-    // Execute all updates in parallel
-    await Promise.all(updatePromises);
-
-    // Batch fetch all achievement details in a single query
-    if (keysToFetch.length > 0) {
-      const achievementDetailsMap =
-        await AchievementModel.getUserAchievementsByKeys(userId, keysToFetch);
-
-      // Process results
-      achievementDetailsMap.forEach((details) => {
-        if (details.is_completed) {
-          result.newlyCompleted.push(details);
-        } else {
-          result.updatedProgress.push(details);
-        }
-      });
-    }
+    await this.applyBatchedUpdatesAndCollectDetails(
+      userId,
+      updates,
+      keysToFetch,
+      result
+    );
   },
 
   /**
@@ -854,25 +783,12 @@ const AchievementService = {
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
-    // Challenger
-    await AchievementModel.updateUserAchievementProgress(
+    await this.applyBatchedUpdatesAndCollectDetails(
       userId,
-      "challenger",
-      1
+      [{ achievement_key: "challenger", mode: "increment", value: 1 }],
+      ["challenger"],
+      result
     );
-
-    // Batch fetch achievement details
-    const achievementDetailsMap =
-      await AchievementModel.getUserAchievementsByKeys(userId, ["challenger"]);
-
-    // Process results
-    achievementDetailsMap.forEach((details) => {
-      if (details.is_completed) {
-        result.newlyCompleted.push(details);
-      } else {
-        result.updatedProgress.push(details);
-      }
-    });
   },
 
   /**
@@ -883,27 +799,12 @@ const AchievementService = {
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
-    // Early adopter (beta period registration)
-    await AchievementModel.updateUserAchievementProgress(
+    await this.applyBatchedUpdatesAndCollectDetails(
       userId,
-      "early_adopter",
-      1
+      [{ achievement_key: "early_adopter", mode: "increment", value: 1 }],
+      ["early_adopter"],
+      result
     );
-
-    // Batch fetch achievement details
-    const achievementDetailsMap =
-      await AchievementModel.getUserAchievementsByKeys(userId, [
-        "early_adopter",
-      ]);
-
-    // Process results
-    achievementDetailsMap.forEach((details) => {
-      if (details.is_completed) {
-        result.newlyCompleted.push(details);
-      } else {
-        result.updatedProgress.push(details);
-      }
-    });
   },
 
   /**

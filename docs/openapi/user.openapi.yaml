@@ -800,7 +800,17 @@ components:
           type: integer
           minimum: 0
           maximum: 24
-          description: Current highest day reached (0-24)
+          description: Deprecated alias of current_claimed_day (kept for backward compatibility)
+        current_claimed_day:
+          type: integer
+          minimum: 0
+          maximum: 24
+          description: Highest day the user has already claimed (progression day)
+        server_day_of_month:
+          type: integer
+          minimum: 1
+          maximum: 24
+          description: Current UTC calendar day capped at 24
         claimed_days:
           type: array
           items:
@@ -823,6 +833,8 @@ components:
       required:
         - month_year
         - current_day
+        - current_claimed_day
+        - server_day_of_month
         - claimed_days
         - available_days
         - rewards
@@ -852,13 +864,17 @@ components:
           description: Whether this day's reward has been claimed
         can_claim:
           type: boolean
-          description: Whether this day's reward can be claimed now
+          description: Whether this day's reward can be claimed right now
+        is_next:
+          type: boolean
+          description: Whether this is the next reward in sequence. True when this day is up next but the user has already claimed today (can_claim will be false until tomorrow).
       required:
         - day
         - reward_type
         - amount
         - is_claimed
         - can_claim
+        - is_next
 
     ClaimMonthlyRewardResponse:
       type: object

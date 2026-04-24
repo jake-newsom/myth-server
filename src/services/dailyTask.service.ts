@@ -164,17 +164,29 @@ const DailyTaskService = {
    */
   async awardRandomCard(userId: string): Promise<any> {
     try {
-      // Get a random common/uncommon card
+      const countQuery = `
+        SELECT COUNT(*)::int as total
+        FROM card_variants cv
+        WHERE cv.rarity IN ('common', 'uncommon', 'rare')
+          AND cv.is_exclusive = false;
+      `;
+      const { rows: countRows } = await db.query(countQuery);
+      const total = Number(countRows[0]?.total || 0);
+      if (total === 0) {
+        return null;
+      }
+
+      const randomOffset = Math.floor(Math.random() * total);
       const query = `
         SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url
         FROM card_variants cv
         JOIN characters ch ON cv.character_id = ch.character_id
         WHERE cv.rarity IN ('common', 'uncommon', 'rare')
           AND cv.is_exclusive = false
-        ORDER BY RANDOM()
-        LIMIT 1;
+        ORDER BY cv.card_variant_id
+        LIMIT 1 OFFSET $1;
       `;
-      const { rows } = await db.query(query);
+      const { rows } = await db.query(query, [randomOffset]);
       if (rows.length === 0) {
         return null;
       }

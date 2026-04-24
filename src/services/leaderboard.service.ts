@@ -166,13 +166,15 @@ const LeaderboardService = {
     let userInfo: UserRankingWithUser | undefined;
 
     if (userId) {
-      const [rankResult, infoResult] = await Promise.all([
-        LeaderboardModel.getUserRank(userId, currentSeason),
-        LeaderboardModel.getUserRankingInfo(userId, currentSeason),
-      ]);
-
-      userRank = rankResult || undefined;
+      const infoResult = await LeaderboardModel.getUserRankingInfo(
+        userId,
+        currentSeason
+      );
       userInfo = infoResult || undefined;
+      userRank =
+        infoResult?.current_rank !== undefined
+          ? Number(infoResult.current_rank)
+          : undefined;
     }
 
     // Get season dates
@@ -227,9 +229,8 @@ const LeaderboardService = {
   ): Promise<UserRankingResponse> {
     const currentSeason = season || LeaderboardModel.getCurrentSeason();
 
-    const [userRanking, rankPosition, recentGames] = await Promise.all([
+    const [userRanking, recentGames] = await Promise.all([
       LeaderboardModel.getUserRankingInfo(userId, currentSeason),
-      LeaderboardModel.getUserRank(userId, currentSeason),
       LeaderboardModel.getUserGameHistory(userId, 10, 0),
     ]);
 
@@ -245,7 +246,7 @@ const LeaderboardService = {
     return {
       success: true,
       user_ranking: userRanking,
-      rank_position: rankPosition || 0,
+      rank_position: Number(userRanking.current_rank || 0),
       rank_progress: rankProgress,
       recent_games: recentGames,
       season: currentSeason,
@@ -371,8 +372,14 @@ const LeaderboardService = {
   }> {
     const currentSeason = season || LeaderboardModel.getCurrentSeason();
 
-    // Get user's current rank
-    const userRank = await LeaderboardModel.getUserRank(userId, currentSeason);
+    // Get user's current rank from ranking info query (single rank computation path)
+    const userInfo = await LeaderboardModel.getUserRankingInfo(
+      userId,
+      currentSeason
+    );
+    const userRank = userInfo?.current_rank
+      ? Number(userInfo.current_rank)
+      : null;
 
     if (!userRank) {
       throw new Error("User not found in leaderboard");

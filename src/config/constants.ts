@@ -43,6 +43,19 @@ export const RARITY_MULTIPLIERS = {
 // AI Configuration
 export const AI_CONFIG = {
   PLAYER_ID: "00000000-0000-0000-0000-000000000000",
+  FEATURE_FLAGS: {
+    ENGINE_V2_ENABLED: process.env.AI_ENGINE_V2_ENABLED !== "false",
+    ENGINE_V2_SHADOW_MODE: process.env.AI_ENGINE_V2_SHADOW_MODE === "true",
+  },
+  TELEMETRY: {
+    ENABLED: process.env.AI_TELEMETRY_ENABLED === "true",
+    LOG_TOP_CANDIDATES: 3,
+  },
+  ROLLOUT: {
+    TOWER_ONLY: process.env.AI_ENGINE_V2_TOWER_ONLY === "true",
+    SHADOW_SAMPLE_RATE: Number(process.env.AI_ENGINE_V2_SHADOW_SAMPLE_RATE ?? "1"),
+    MIN_EXPECTED_ELO_DELTA: 75,
+  },
   DIFFICULTY_LEVELS: {
     EASY: "easy",
     MEDIUM: "medium",
@@ -90,6 +103,15 @@ export const AI_CONFIG = {
     ADJACENCY_SYNERGY_BONUS: 150, // Strong synergy when adjacent requirement met
     ISOLATION_REQUIREMENT_BONUS: 180, // Isolation requirements met
     TERRAIN_REQUIREMENT_BONUS: 250, // Essential terrain requirements
+    FORMULA_COMPONENT_WEIGHTS: {
+      immediate_flips: 1.0,
+      expected_future_flips: 0.8,
+      permanent_power_gain: 0.9,
+      denial_value: 0.9,
+      board_control: 0.75,
+      combo_value: 0.85,
+      risk: 1.0,
+    },
   },
   MOVE_SELECTION: {
     EASY_TOP_MOVES: 5,
@@ -98,9 +120,20 @@ export const AI_CONFIG = {
   },
   LOOKAHEAD: {
     EASY_DEPTH: 0, // No lookahead, immediate evaluation only
-    MEDIUM_DEPTH: 1, // 1 move lookahead
-    HARD_DEPTH: 2, // 2 moves lookahead
-    MAX_TIME_MS: 3000, // Maximum time for move calculation
+    MEDIUM_DEPTH: 2, // 2-ply search
+    HARD_DEPTH: 3, // 3-ply search (iterative deepening)
+    MAX_TIME_MS: 1000, // Hard cap to maintain server responsiveness
+    TARGET_P95_MS: 1000, // Target latency for production AI moves
+    BUDGET_MS: {
+      EASY: 350,
+      MEDIUM: 700,
+      HARD: 1000,
+    },
+    STOCHASTIC_SAMPLES: {
+      EASY: 1,
+      MEDIUM: 2,
+      HARD: 3,
+    },
   },
   DIFFICULTY_WEIGHTS: {
     EASY: {
@@ -125,7 +158,7 @@ export const AI_CONFIG = {
       ABILITY_IMPACT: 1.0,
       POSITIONAL: 1.0,
       FUTURE_POTENTIAL: 0.9,
-      RANDOMNESS: 0.05, // 5% random factor
+      RANDOMNESS: 0, // Hard mode is fully deterministic
     },
   },
 } as const;

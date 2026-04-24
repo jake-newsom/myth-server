@@ -167,7 +167,7 @@ components:
 
     CardResponse:
       type: object
-      description: Represents a card. For base card definitions, user-specific fields (user_card_instance_id, level, xp, power_enhancements) will be null or omitted. For user card instances, these fields will be populated.
+      description: Represents a card. For base card definitions, user-specific fields (user_card_instance_id, level, xp, is_locked, power_enhancements) will be null or omitted. For user card instances, these fields will be populated.
       properties:
         user_card_instance_id:
           type: string
@@ -222,6 +222,10 @@ components:
           type: integer
           description: Experience points for the current level (if applicable).
           example: 120
+          nullable: true
+        is_locked:
+          type: boolean
+          description: Whether this user-owned card is locked from sacrifice and XP-source transfer actions.
           nullable: true
         power_enhancements:
           $ref: "#/components/schemas/PowerValues"

@@ -23,6 +23,8 @@ tags:
     description: User profile and card collection management
   - name: Cards
     description: Static card data
+  - name: Characters
+    description: Mythological characters with nested card variants
   - name: Decks
     description: Deck creation and management
   - name: Packs
@@ -134,6 +136,9 @@ paths:
   /api/cards/{cardId}:
     $ref: "./card.openapi.yaml#/paths/~1api~1cards~1{cardId}"
 
+  /api/characters:
+    $ref: "./character.openapi.yaml#/paths/~1api~1characters"
+
   # Deck Endpoints
   /api/decks:
     $ref: "./deck.openapi.yaml#/paths/~1api~1decks"
@@ -144,6 +149,9 @@ paths:
   # User Card Endpoints
   /api/user-cards:
     $ref: "./userCard.openapi.yaml#/paths/~1api~1user-cards"
+
+  /api/user-cards/{userCardInstanceId}/lock:
+    $ref: "./userCard.openapi.yaml#/paths/~1api~1user-cards~1{userCardInstanceId}~1lock"
 
   # XP System Endpoints
   /api/xp/level-config:
@@ -160,6 +168,9 @@ paths:
 
   /api/xp/sacrifice:
     $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1sacrifice"
+
+  /api/xp/sacrifice-extras:
+    $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1sacrifice-extras"
 
   /api/xp/apply:
     $ref: "./xp.openapi.yaml#/paths/~1api~1xp~1apply"
@@ -494,6 +505,8 @@ components:
       $ref: "./card.openapi.yaml#/components/schemas/BaseCardResponse"
     StaticCardCollectionResponse:
       $ref: "./card.openapi.yaml#/components/schemas/StaticCardCollectionResponse"
+    CharacterWithVariants:
+      $ref: "./character.openapi.yaml#/components/schemas/CharacterWithVariants"
     UserCard:
       $ref: "./userCard.openapi.yaml#/components/schemas/UserCard"
 
@@ -552,10 +565,6 @@ components:
       $ref: "./mail.openapi.yaml#/components/schemas/MailWithSender"
     MailStats:
       $ref: "./mail.openapi.yaml#/components/schemas/MailStats"
-
-    # Power Up schemas
-    PowerValues:
-      $ref: "./powerUp.openapi.yaml#/components/schemas/PowerValues"
 
     # Active Game schemas
     ActiveGameDetails:

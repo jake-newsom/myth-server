@@ -40,6 +40,7 @@ import {
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { resolveCombat } from "../game.utils";
+import { randomInt } from "../simulation.rng";
 
 import { v4 as uuidv4 } from "uuid";
 
@@ -511,7 +512,7 @@ export const polynesianAbilities: AbilityMap = {
     const player = triggerCard.owner === player1.user_id ? player1 : player2;
 
     if (player.hand.length > 0) {
-      const randomIndex = Math.floor(Math.random() * player.hand.length);
+      const randomIndex = randomInt(player.hand.length);
       const randomCard = hydrated_card_data_cache?.[player.hand[randomIndex]];
       if (randomCard) {
         // Card is in hand, use sentinel position
@@ -677,7 +678,7 @@ export const polynesianAbilities: AbilityMap = {
       //pick random adjacent empty tile
       const randomAdjacentEmptyTile =
         adjacentEmptyTiles[
-          Math.floor(Math.random() * adjacentEmptyTiles.length)
+          randomInt(adjacentEmptyTiles.length)
         ];
       //move to random adjacent empty tile
       gameEvents.push(
@@ -754,7 +755,7 @@ export const polynesianAbilities: AbilityMap = {
     if (allEnemies.length === 0) return [];
 
     const randomEnemy =
-      allEnemies[Math.floor(Math.random() * allEnemies.length)];
+      allEnemies[randomInt(allEnemies.length)];
 
     const enemyPosition = getPositionOfCardById(
       randomEnemy.user_card_instance_id,

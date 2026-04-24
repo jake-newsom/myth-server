@@ -13,6 +13,7 @@ import {
 import { TurnManager } from "./turn.manager";
 import { GameLogic, GameStatus } from "../game-engine/game.logic";
 import { AILogic } from "../game-engine/ai.logic";
+import { resolveAIDifficulty } from "../game-engine/ai.difficulty";
 import {
   clearActiveMatch,
   matchmakingQueue,
@@ -278,9 +279,12 @@ export function setupGameNamespace(io: Server): void {
                 let aiMoveUsed = false;
 
                 // Pass the timed-out player's ID so AI uses their hand, not the opponent's
+                const aiDifficulty = resolveAIDifficulty({
+                  isTimeoutFallback: true,
+                });
                 const aiMove = await ai.makeAIMove(
                   currentState,
-                  "medium",
+                  aiDifficulty,
                   timedOutPlayerId
                 );
 

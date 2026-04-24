@@ -112,21 +112,33 @@ const DailyTaskModel = {
       return existing;
     }
 
-    // Select 5 random active tasks
+    const activeTasksQuery = `
+      SELECT task_key
+      FROM daily_task_definitions
+      WHERE is_active = true
+      ORDER BY task_key;
+    `;
+    const { rows: activeTaskRows } = await db.query(activeTasksQuery);
+    const allTaskKeys = activeTaskRows.map((row) => row.task_key as string);
+
+    // In-place Fisher-Yates shuffle (avoids DB-level ORDER BY RANDOM() sort)
+    for (let i = allTaskKeys.length - 1; i > 0; i--) {
+      const swapIndex = Math.floor(Math.random() * (i + 1));
+      [allTaskKeys[i], allTaskKeys[swapIndex]] = [
+        allTaskKeys[swapIndex],
+        allTaskKeys[i],
+      ];
+    }
+    const selectedTaskKeys = allTaskKeys.slice(0, Math.min(5, allTaskKeys.length));
+
     const query = `
       INSERT INTO daily_task_selections (selection_date, selected_task_keys)
-      SELECT $1::date, ARRAY(
-        SELECT task_key 
-        FROM daily_task_definitions 
-        WHERE is_active = true 
-        ORDER BY RANDOM() 
-        LIMIT 5
-      )
-      ON CONFLICT (selection_date) DO UPDATE SET 
+      VALUES ($1::date, $2::text[])
+      ON CONFLICT (selection_date) DO UPDATE SET
         selected_task_keys = EXCLUDED.selected_task_keys
       RETURNING selection_date::text, selected_task_keys, created_at;
     `;
-    const { rows } = await db.query(query, [targetDate]);
+    const { rows } = await db.query(query, [targetDate, selectedTaskKeys]);
     return rows[0];
   },
 

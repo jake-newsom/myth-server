@@ -330,12 +330,21 @@ const DailyShopModel = {
       WHERE cv.rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
         AND COALESCE(cv.is_exclusive, false) = false
         AND cv.rarity::text <> 'legendary+++'
-      ORDER BY RANDOM()
-      LIMIT $1;
+      ORDER BY cv.card_variant_id;
     `;
 
-    const { rows } = await db.query(query, [limit]);
-    return rows;
+    const { rows } = await db.query(query);
+    if (rows.length <= limit) {
+      return rows;
+    }
+
+    // Fisher-Yates shuffle in memory to avoid ORDER BY RANDOM() on large sets
+    const shuffled = [...rows];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled.slice(0, limit);
   },
 
   // Admin Methods

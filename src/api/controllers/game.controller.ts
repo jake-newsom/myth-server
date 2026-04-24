@@ -31,6 +31,7 @@ import {
   buildTutorialGameState,
   getTutorialAIMove,
 } from "../../game-engine/tutorial.data";
+import { resolveAIDifficulty } from "../../game-engine/ai.difficulty";
 
 // Initialize ability registry
 // AbilityRegistry.initialize();
@@ -571,7 +572,14 @@ class GameController {
       } else {
         // Normal AI move calculation
         const ai = new AILogic();
-        const aiMove = await ai.makeAIMove(_.cloneDeep(currentGameState));
+        const aiDifficulty = resolveAIDifficulty({
+          isTowerGame: gameRecord.floor_number != null,
+          floorNumber: gameRecord.floor_number ?? null,
+        });
+        const aiMove = await ai.makeAIMove(
+          _.cloneDeep(currentGameState),
+          aiDifficulty
+        );
 
         if (aiMove) {
           const placeCardResult = await GameLogic.placeCard(

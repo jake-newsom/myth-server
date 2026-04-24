@@ -34,11 +34,14 @@ import {
   getCardsByCondition,
   getCardTotalPower,
 } from "./ability.utils";
+import { AbilityRuleEngine } from "./ai.rules.engine";
 
 /**
  * Analyzes and scores the impact of card abilities for AI decision making
  */
 export class AbilityAnalyzer {
+  private ruleEngine = new AbilityRuleEngine();
+
   /**
    * Evaluates the potential value of a card's ability at a given position
    */
@@ -91,6 +94,14 @@ export class AbilityAnalyzer {
       card,
       aiPlayerId
     );
+
+    // Apply data-driven ability rules for explicit prefer/avoid behavior.
+    score += this.ruleEngine.evaluate({
+      gameState,
+      card,
+      position,
+      aiPlayerId,
+    }).totalScore;
 
     // Evaluate synergies with board state
     score += this.evaluateAbilitySynergy(
@@ -827,7 +838,7 @@ export class AbilityAnalyzer {
         adjacentCard.owner === aiPlayerId &&
         hasTrigger(
           adjacentCard.base_card_data.special_ability,
-          TriggerMoment.AnyOnFlip
+          TriggerMoment.AnyOnPlace
         )
       ) {
         score += AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 0.8;

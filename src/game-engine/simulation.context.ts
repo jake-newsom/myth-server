@@ -1,3 +1,5 @@
+import { withSimulationSeed } from "./simulation.rng";
+
 /**
  * Simulation Context Utility
  * 
@@ -42,10 +44,13 @@ class SimulationContext {
   /**
    * Executes a function within simulation context
    */
-  async withSimulation<T>(fn: () => Promise<T>): Promise<T> {
+  async withSimulation<T>(fn: () => Promise<T>, seed?: number): Promise<T> {
     this.enterSimulation();
     try {
-      return await fn();
+      if (seed === undefined) {
+        return await fn();
+      }
+      return await withSimulationSeed(seed, fn);
     } finally {
       this.exitSimulation();
     }

@@ -6,6 +6,39 @@ import {
 } from "../types/database.types";
 import { cache } from "../utils/cache";
 
+const ACHIEVEMENT_DEFINITION_CACHE_TTL_MS = 5 * 60 * 1000;
+const achievementDefinitionCache = new Map<
+  string,
+  { achievement: Achievement; expiresAt: number }
+>();
+
+type AchievementProgressUpdate = {
+  achievement_key: string;
+  mode: "increment" | "set";
+  value: number;
+};
+
+function getCachedAchievementDefinition(
+  achievementKey: string
+): Achievement | null {
+  const cached = achievementDefinitionCache.get(achievementKey);
+  if (!cached) {
+    return null;
+  }
+  if (cached.expiresAt <= Date.now()) {
+    achievementDefinitionCache.delete(achievementKey);
+    return null;
+  }
+  return cached.achievement;
+}
+
+function cacheAchievementDefinition(achievement: Achievement): void {
+  achievementDefinitionCache.set(achievement.achievement_key, {
+    achievement,
+    expiresAt: Date.now() + ACHIEVEMENT_DEFINITION_CACHE_TTL_MS,
+  });
+}
+
 const AchievementModel = {
   /**
    * Get all achievements
@@ -46,13 +79,22 @@ const AchievementModel = {
   async getAchievementByKey(
     achievementKey: string
   ): Promise<Achievement | null> {
+    const cached = getCachedAchievementDefinition(achievementKey);
+    if (cached) {
+      return cached;
+    }
+
     const query = `
       SELECT * FROM achievements
       WHERE achievement_key = $1;
     `;
 
     const { rows } = await db.query(query, [achievementKey]);
-    return rows.length > 0 ? rows[0] : null;
+    if (rows.length > 0) {
+      cacheAchievementDefinition(rows[0]);
+      return rows[0];
+    }
+    return null;
   },
 
   /**
@@ -65,7 +107,49 @@ const AchievementModel = {
     `;
 
     const { rows } = await db.query(query, [achievementId]);
+    if (rows.length > 0) {
+      cacheAchievementDefinition(rows[0]);
+    }
     return rows.length > 0 ? rows[0] : null;
+  },
+
+  /**
+   * Batch fetch achievement definitions by keys.
+   * Uses a short in-memory cache to avoid repetitive metadata lookups.
+   */
+  async getAchievementsByKeys(
+    achievementKeys: string[]
+  ): Promise<Map<string, Achievement>> {
+    const result = new Map<string, Achievement>();
+    if (achievementKeys.length === 0) {
+      return result;
+    }
+
+    const uniqueKeys = Array.from(new Set(achievementKeys));
+    const missingKeys: string[] = [];
+
+    uniqueKeys.forEach((key) => {
+      const cached = getCachedAchievementDefinition(key);
+      if (cached) {
+        result.set(key, cached);
+      } else {
+        missingKeys.push(key);
+      }
+    });
+
+    if (missingKeys.length > 0) {
+      const query = `
+        SELECT * FROM achievements
+        WHERE achievement_key = ANY($1::text[]);
+      `;
+      const { rows } = await db.query(query, [missingKeys]);
+      rows.forEach((row) => {
+        cacheAchievementDefinition(row);
+        result.set(row.achievement_key, row);
+      });
+    }
+
+    return result;
   },
 
   /**
@@ -481,13 +565,140 @@ const AchievementModel = {
   /**
    * Create or update user achievement progress
    */
+  async applyProgressUpdatesBatch(
+    userId: string,
+    updates: AchievementProgressUpdate[]
+  ): Promise<void> {
+    if (!userId || updates.length === 0) {
+      return;
+    }
+
+    const achievementMap = await this.getAchievementsByKeys(
+      updates.map((update) => update.achievement_key)
+    );
+
+    const incrementByAchievementId = new Map<
+      string,
+      { achievementId: string; targetValue: number; incrementValue: number }
+    >();
+    const setByAchievementId = new Map<
+      string,
+      { achievementId: string; targetValue: number; setValue: number }
+    >();
+
+    for (const update of updates) {
+      const achievement = achievementMap.get(update.achievement_key);
+      if (!achievement) {
+        continue;
+      }
+
+      if (update.mode === "increment") {
+        const existing = incrementByAchievementId.get(achievement.id);
+        incrementByAchievementId.set(achievement.id, {
+          achievementId: achievement.id,
+          targetValue: achievement.target_value,
+          incrementValue: (existing?.incrementValue || 0) + update.value,
+        });
+      } else {
+        const existing = setByAchievementId.get(achievement.id);
+        setByAchievementId.set(achievement.id, {
+          achievementId: achievement.id,
+          targetValue: achievement.target_value,
+          setValue: Math.max(existing?.setValue || 0, update.value),
+        });
+      }
+    }
+
+    if (incrementByAchievementId.size > 0) {
+      const incrementEntries = Array.from(incrementByAchievementId.values());
+      const incrementQuery = `
+        INSERT INTO user_achievements (user_id, achievement_id, current_progress, is_completed)
+        SELECT
+          $1::uuid,
+          data.achievement_id,
+          data.increment_value,
+          data.increment_value >= data.target_value
+        FROM UNNEST($2::uuid[], $3::int[], $4::int[]) AS data(achievement_id, increment_value, target_value)
+        ON CONFLICT (user_id, achievement_id)
+        DO UPDATE
+        SET
+          current_progress = LEAST(
+            user_achievements.current_progress + EXCLUDED.current_progress,
+            COALESCE(
+              (SELECT target_value FROM achievements WHERE id = user_achievements.achievement_id),
+              user_achievements.current_progress + EXCLUDED.current_progress
+            )
+          ),
+          is_completed = LEAST(
+            user_achievements.current_progress + EXCLUDED.current_progress,
+            COALESCE(
+              (SELECT target_value FROM achievements WHERE id = user_achievements.achievement_id),
+              user_achievements.current_progress + EXCLUDED.current_progress
+            )
+          ) >= COALESCE(
+            (SELECT target_value FROM achievements WHERE id = user_achievements.achievement_id),
+            user_achievements.current_progress + EXCLUDED.current_progress
+          ),
+          updated_at = NOW();
+      `;
+
+      await db.query(incrementQuery, [
+        userId,
+        incrementEntries.map((entry) => entry.achievementId),
+        incrementEntries.map((entry) => entry.incrementValue),
+        incrementEntries.map((entry) => entry.targetValue),
+      ]);
+    }
+
+    if (setByAchievementId.size > 0) {
+      const setEntries = Array.from(setByAchievementId.values());
+      const setQuery = `
+        INSERT INTO user_achievements (user_id, achievement_id, current_progress, is_completed)
+        SELECT
+          $1::uuid,
+          data.achievement_id,
+          data.set_value,
+          data.set_value >= data.target_value
+        FROM UNNEST($2::uuid[], $3::int[], $4::int[]) AS data(achievement_id, set_value, target_value)
+        ON CONFLICT (user_id, achievement_id)
+        DO UPDATE
+        SET
+          current_progress = GREATEST(
+            user_achievements.current_progress,
+            EXCLUDED.current_progress
+          ),
+          is_completed = GREATEST(
+            user_achievements.current_progress,
+            EXCLUDED.current_progress
+          ) >= COALESCE(
+            (SELECT target_value FROM achievements WHERE id = user_achievements.achievement_id),
+            GREATEST(user_achievements.current_progress, EXCLUDED.current_progress)
+          ),
+          updated_at = NOW();
+      `;
+
+      await db.query(setQuery, [
+        userId,
+        setEntries.map((entry) => entry.achievementId),
+        setEntries.map((entry) => entry.setValue),
+        setEntries.map((entry) => entry.targetValue),
+      ]);
+    }
+
+    cache.delete(`achievement_stats:${userId}`);
+  },
+
+  /**
+   * Create or update user achievement progress
+   */
   async updateUserAchievementProgress(
     userId: string,
     achievementKey: string,
     progressIncrement: number = 1
   ): Promise<UserAchievement | null> {
-    // First get the achievement
-    const achievement = await this.getAchievementByKey(achievementKey);
+    // First get the achievement (cached metadata path)
+    const achievementMap = await this.getAchievementsByKeys([achievementKey]);
+    const achievement = achievementMap.get(achievementKey) || null;
     if (!achievement) {
       console.warn(`Achievement not found: ${achievementKey}`);
       return null;
@@ -553,8 +764,9 @@ const AchievementModel = {
     achievementKey: string,
     progressValue: number
   ): Promise<UserAchievement | null> {
-    // First get the achievement
-    const achievement = await this.getAchievementByKey(achievementKey);
+    // First get the achievement (cached metadata path)
+    const achievementMap = await this.getAchievementsByKeys([achievementKey]);
+    const achievement = achievementMap.get(achievementKey) || null;
     if (!achievement) {
       console.warn(`Achievement not found: ${achievementKey}`);
       return null;

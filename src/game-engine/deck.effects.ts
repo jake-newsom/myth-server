@@ -11,6 +11,7 @@ import { GameState, Player, BoardPosition } from "../types/game.types";
 import { InGameCard } from "../types/card.types";
 import { BaseGameEvent } from "../types/game-engine.types";
 import { addTempBuff, updateCurrentPower } from "./ability.utils";
+import { randomInt } from "./simulation.rng";
 
 // Sentinel position for cards in hand (not on board)
 const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
@@ -80,7 +81,7 @@ export function getRandomHandCard(
     return null;
   }
 
-  const randomIndex = Math.floor(Math.random() * player.hand.length);
+  const randomIndex = randomInt(player.hand.length);
   const cardId = player.hand[randomIndex];
 
   return gameState.hydrated_card_data_cache?.[cardId] || null;
