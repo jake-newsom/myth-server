@@ -67,14 +67,22 @@ const FatePickModel = {
   },
 
   /**
-   * Get available fate picks for a user (excluding their own)
+   * Get available fate picks for a user (excluding their own).
+   *
+   * Results are interleaved round-robin by player so that a burst of packs
+   * from a single player never dominates the feed.  Within each round the
+   * most recent pick is shown first; friends are always promoted to the front
+   * of each round.
+   *
+   * Ordering: (friend_priority ASC, player_rank ASC, created_at DESC)
+   *   player_rank = ROW_NUMBER() OVER (PARTITION BY original_owner_id ORDER BY created_at DESC)
    */
   async getAvailableFatePicks(
     userId: string,
     limit: number = 20,
     offset: number = 0
   ): Promise<FatePickWithDetails[]> {
-    // First, get user's friends
+    // Fetch the current user's accepted friends so we can promote their picks.
     const friendsQuery = `
       SELECT 
         CASE 
@@ -89,54 +97,79 @@ const FatePickModel = {
     const { rows: friendRows } = await db.query(friendsQuery, [userId]);
     const friendIds = friendRows.map((row) => row.friend_id);
 
-    // Build the main query - prioritize friends' packs, then random others
-    let whereConditions = `
-      wp.is_active = true 
-      AND wp.expires_at > NOW() 
-      AND wp.original_owner_id != $1
-      AND wp.current_participants < wp.max_participants
-    `;
-
-    let orderBy, queryParams;
+    let query: string;
+    let queryParams: any[];
 
     if (friendIds.length > 0) {
-      // If user has friends, prioritize friends' fate picks
-      orderBy = `
-        CASE 
-          WHEN wp.original_owner_id = ANY($2) THEN 0 
-          ELSE 1 
-        END,
-        wp.created_at DESC
+      // Round-robin interleave, friends promoted within each round.
+      query = `
+        WITH ranked AS (
+          SELECT
+            wp.*,
+            u.username AS original_owner_username,
+            s.name AS set_name,
+            NOT EXISTS (
+              SELECT 1 FROM fate_pick_participations wpp
+              WHERE wpp.fate_pick_id = wp.id AND wpp.participant_id = $1
+            ) AS can_participate,
+            EXISTS (
+              SELECT 1 FROM fate_pick_participations wpp
+              WHERE wpp.fate_pick_id = wp.id AND wpp.participant_id = $1
+            ) AS user_has_participated,
+            ROW_NUMBER() OVER (
+              PARTITION BY wp.original_owner_id
+              ORDER BY wp.created_at DESC
+            ) AS player_rank
+          FROM fate_picks wp
+          JOIN users u ON wp.original_owner_id = u.user_id
+          JOIN sets s ON wp.set_id = s.set_id
+          WHERE wp.is_active = true
+            AND wp.expires_at > NOW()
+            AND wp.original_owner_id != $1
+            AND wp.current_participants < wp.max_participants
+        )
+        SELECT * FROM ranked
+        ORDER BY
+          player_rank ASC,
+          CASE WHEN original_owner_id = ANY($2) THEN 0 ELSE 1 END ASC,
+          created_at DESC
+        LIMIT $3 OFFSET $4;
       `;
       queryParams = [userId, friendIds, limit, offset];
     } else {
-      // If user has no friends, just order by creation date
-      orderBy = `wp.created_at DESC`;
+      // No friends — still interleave by player, newest pick per round first.
+      query = `
+        WITH ranked AS (
+          SELECT
+            wp.*,
+            u.username AS original_owner_username,
+            s.name AS set_name,
+            NOT EXISTS (
+              SELECT 1 FROM fate_pick_participations wpp
+              WHERE wpp.fate_pick_id = wp.id AND wpp.participant_id = $1
+            ) AS can_participate,
+            EXISTS (
+              SELECT 1 FROM fate_pick_participations wpp
+              WHERE wpp.fate_pick_id = wp.id AND wpp.participant_id = $1
+            ) AS user_has_participated,
+            ROW_NUMBER() OVER (
+              PARTITION BY wp.original_owner_id
+              ORDER BY wp.created_at DESC
+            ) AS player_rank
+          FROM fate_picks wp
+          JOIN users u ON wp.original_owner_id = u.user_id
+          JOIN sets s ON wp.set_id = s.set_id
+          WHERE wp.is_active = true
+            AND wp.expires_at > NOW()
+            AND wp.original_owner_id != $1
+            AND wp.current_participants < wp.max_participants
+        )
+        SELECT * FROM ranked
+        ORDER BY player_rank ASC, created_at DESC
+        LIMIT $2 OFFSET $3;
+      `;
       queryParams = [userId, limit, offset];
     }
-
-    const query = `
-      SELECT 
-        wp.*,
-        u.username as original_owner_username,
-        s.name as set_name,
-        NOT EXISTS (
-          SELECT 1 FROM fate_pick_participations wpp 
-          WHERE wpp.fate_pick_id = wp.id AND wpp.participant_id = $1
-        ) as can_participate,
-        EXISTS (
-          SELECT 1 FROM fate_pick_participations wpp 
-          WHERE wpp.fate_pick_id = wp.id AND wpp.participant_id = $1
-        ) as user_has_participated
-      FROM fate_picks wp
-      JOIN users u ON wp.original_owner_id = u.user_id
-      JOIN sets s ON wp.set_id = s.set_id
-      WHERE ${whereConditions}
-      ORDER BY ${orderBy}
-      LIMIT $${friendIds.length > 0 ? 3 : 2} OFFSET $${
-      friendIds.length > 0 ? 4 : 3
-    };
-    `;
 
     const { rows } = await db.query(query, queryParams);
 

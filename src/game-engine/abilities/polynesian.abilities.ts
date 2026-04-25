@@ -110,29 +110,23 @@ export const polynesianCombatResolvers: CombatResolverMap = {
       return { preventDefeat: false };
     }
 
-    // Calculate power needed to save the ally
-    const attackingPower = getCardTotalPower(flippedBy);
-    const defendingPower = getCardTotalPower(flippedCard);
-
-    if (attackingPower > defendingPower) {
-      return {
-        preventDefeat: true,
-        events: [
-          createOrUpdateDebuff(
-            triggerCard,
-            1000,
-            3,
-            "Harbor Protection",
-            position,
-            {
-              animation: "harbor-protection",
-            },
-          ),
-        ],
-      };
-    }
-
-    return { preventDefeat: false };
+    // A defeat is already confirmed by the outer resolveCombat check before this
+    // resolver is invoked, so no further power comparison is needed here.
+    return {
+      preventDefeat: true,
+      events: [
+        createOrUpdateDebuff(
+          triggerCard,
+          1000,
+          3,
+          "Harbor Protection",
+          position,
+          {
+            animation: "harbor-protection",
+          },
+        ),
+      ],
+    };
   },
 };
 
