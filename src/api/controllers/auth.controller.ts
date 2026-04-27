@@ -9,6 +9,7 @@ import FacebookService from "../../services/facebook.service";
 import AppleService from "../../services/apple.service";
 import GoogleService from "../../services/google.service";
 import db from "../../config/db.config";
+import logger from "../../utils/logger";
 import { User } from "../../types/database.types";
 import { AuthenticatedRequest } from "../../types/middleware.types";
 import { USER_LIMITS } from "../../config/constants";
@@ -21,6 +22,71 @@ interface UserWithPassword extends User {
 // Type guard to check if user has password_hash
 function isUserWithPassword(user: any): user is UserWithPassword {
   return user !== null && typeof user === "object" && "password_hash" in user;
+}
+
+/**
+ * Verify a Facebook signed_request payload using HMAC-SHA256 with the app
+ * secret. Returns the decoded payload on success, or null on any failure
+ * (bad format, bad signature, JSON parse error, missing app secret).
+ *
+ * Reference: https://developers.facebook.com/docs/games/gamesonfacebook/login#parsingsr
+ */
+function verifyFacebookSignedRequest(
+  signedRequest: string,
+): Record<string, any> | null {
+  const appSecret = process.env.FACEBOOK_APP_SECRET;
+  if (!appSecret) {
+    logger.error(
+      "FACEBOOK_APP_SECRET not configured; cannot verify signed_request",
+    );
+    return null;
+  }
+
+  if (!signedRequest || typeof signedRequest !== "string") {
+    return null;
+  }
+
+  const [encodedSig, payload] = signedRequest.split(".");
+  if (!encodedSig || !payload) {
+    return null;
+  }
+
+  try {
+    // Base64url decode the signature.
+    const sig = Buffer.from(
+      encodedSig.replace(/-/g, "+").replace(/_/g, "/"),
+      "base64",
+    );
+
+    const expectedSig = crypto
+      .createHmac("sha256", appSecret)
+      .update(payload)
+      .digest();
+
+    if (
+      sig.length !== expectedSig.length ||
+      !crypto.timingSafeEqual(sig, expectedSig)
+    ) {
+      logger.warn("Facebook signed_request HMAC verification failed");
+      return null;
+    }
+
+    const decoded = Buffer.from(
+      payload.replace(/-/g, "+").replace(/_/g, "/"),
+      "base64",
+    ).toString("utf8");
+
+    const data = JSON.parse(decoded);
+    if (!data || typeof data !== "object") {
+      return null;
+    }
+    return data;
+  } catch (error) {
+    logger.warn("Failed to decode Facebook signed_request", {
+      error: (error as Error).message,
+    });
+    return null;
+  }
 }
 
 const AuthController = {
@@ -81,7 +147,7 @@ const AuthController = {
       const sessionId = await SessionService.createSession(
         newUser.user_id,
         tokens,
-        sessionMetadata
+        sessionMetadata,
       );
 
       res.status(201).json({
@@ -135,7 +201,7 @@ const AuthController = {
       // Check password
       const isPasswordValid = await bcrypt.compare(
         password,
-        user.password_hash
+        user.password_hash,
       );
       if (!isPasswordValid) {
         return res.status(401).json({
@@ -152,19 +218,19 @@ const AuthController = {
       const sessionId = await SessionService.createSession(
         user.user_id,
         tokens,
-        sessionMetadata
+        sessionMetadata,
       );
 
       // Invalidate all previous sessions (enforce single active session)
-      const invalidatedCount =
-        await SessionService.invalidateOtherUserSessions(
-          user.user_id,
-          sessionId
-        );
+      const invalidatedCount = await SessionService.invalidateOtherUserSessions(
+        user.user_id,
+        sessionId,
+      );
       if (invalidatedCount > 0) {
-        console.log(
-          `Invalidated ${invalidatedCount} previous session(s) for user ${user.user_id} on login`
-        );
+        logger.debug("Invalidated previous sessions on login", {
+          userId: user.user_id,
+          invalidatedCount,
+        });
       }
 
       res.status(200).json({
@@ -207,7 +273,7 @@ const AuthController = {
       // Rotate tokens
       const newTokens = await SessionService.rotateTokens(
         session.session_id,
-        session.user_id
+        session.user_id,
       );
 
       res.status(200).json({
@@ -223,7 +289,7 @@ const AuthController = {
   logout: async (
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       if (!req.user || !req.sessionId) {
@@ -246,7 +312,7 @@ const AuthController = {
   logoutAll: async (
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       if (!req.user) {
@@ -269,7 +335,7 @@ const AuthController = {
   getSessions: async (
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       if (!req.user) {
@@ -310,9 +376,8 @@ const AuthController = {
       }
 
       // Validate Facebook token and get user profile
-      const facebookProfile = await FacebookService.validateTokenAndGetProfile(
-        accessToken
-      );
+      const facebookProfile =
+        await FacebookService.validateTokenAndGetProfile(accessToken);
       if (!facebookProfile) {
         return res.status(401).json({
           error: { message: "Invalid Facebook access token." },
@@ -332,13 +397,13 @@ const AuthController = {
         const sessionId = await SessionService.createSession(
           user.user_id,
           tokens,
-          sessionMetadata
+          sessionMetadata,
         );
 
         // Invalidate all previous sessions (enforce single active session)
         await SessionService.invalidateOtherUserSessions(
           user.user_id,
-          sessionId
+          sessionId,
         );
 
         return res.status(200).json({
@@ -360,7 +425,7 @@ const AuthController = {
       // Check if user exists with same email (link accounts) - only if email provided
       if (facebookProfile.email) {
         const existingUserByEmail = await UserModel.findByEmail(
-          facebookProfile.email
+          facebookProfile.email,
         );
         if (
           existingUserByEmail &&
@@ -381,14 +446,14 @@ const AuthController = {
       // Create new user with Facebook authentication
       const baseUsername = FacebookService.generateUsername(
         facebookProfile.name,
-        facebookProfile.id
+        facebookProfile.id,
       );
       const uniqueUsername = await FacebookService.ensureUniqueUsername(
         baseUsername,
         async (username) => {
           const existingUser = await UserModel.findByUsername(username);
           return !!existingUser;
-        }
+        },
       );
 
       // Handle missing email from Facebook
@@ -413,7 +478,7 @@ const AuthController = {
       const sessionId = await SessionService.createSession(
         newUser.user_id,
         tokens,
-        sessionMetadata
+        sessionMetadata,
       );
 
       res.status(201).json({
@@ -441,8 +506,12 @@ const AuthController = {
   facebookDeauthorize: async (
     req: Request,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
+    const deauthorizedUrl = `${
+      process.env.CLIENT_URL || "http://localhost:3000"
+    }/account-deauthorized`;
+
     try {
       const { signed_request } = req.body;
 
@@ -452,58 +521,49 @@ const AuthController = {
         });
       }
 
-      // Parse the signed request from Facebook
-      const [encodedSig, payload] = signed_request.split(".");
-
-      if (!payload) {
-        return res.status(400).json({
-          error: { message: "Invalid signed_request format." },
-        });
+      // Verify the signed_request HMAC. Without this, anyone could POST a
+      // forged payload here and force-deauthorize an arbitrary FB user.
+      const data = verifyFacebookSignedRequest(signed_request);
+      if (!data) {
+        // Facebook expects a 200 to avoid retries, but we won't take action.
+        return res.status(200).json({ url: deauthorizedUrl });
       }
 
-      // Decode the payload
-      const decodedPayload = Buffer.from(payload, "base64").toString("utf8");
-      const data = JSON.parse(decodedPayload);
-
       if (data.user_id) {
-        // Find and deactivate user account or handle deauthorization
         const user = await UserModel.findByFacebookId(data.user_id);
 
         if (user) {
-          // Log the deauthorization event
-          console.log(
-            `Facebook deauthorization for user: ${user.user_id} (Facebook ID: ${data.user_id})`
-          );
+          logger.info("Facebook deauthorization processed", {
+            userId: user.user_id,
+          });
 
-          // Invalidate all sessions for this user
           await SessionService.invalidateAllUserSessions(user.user_id);
 
-          // Optionally: Mark account as deauthorized or delete Facebook connection
-          // You might want to add a deauthorized_at timestamp or remove facebook_id
-          // This depends on your data retention policy
+          // Note: we currently leave the facebook_id in place so the user can
+          // re-link via FB. Adjust here if/when retention policy changes.
         }
       }
 
-      // Facebook expects a 200 response with a confirmation URL
-      res.status(200).json({
-        url: `${process.env.CLIENT_URL || "http://localhost:3000"
-          }/account-deauthorized`,
-      });
+      res.status(200).json({ url: deauthorizedUrl });
     } catch (error) {
-      console.error("Facebook deauthorization error:", error);
-      // Still return 200 to Facebook to avoid retries
-      res.status(200).json({
-        url: `${process.env.CLIENT_URL || "http://localhost:3000"
-          }/account-deauthorized`,
-      });
+      logger.error(
+        "Facebook deauthorization error",
+        undefined,
+        error as Error,
+      );
+      res.status(200).json({ url: deauthorizedUrl });
     }
   },
 
   facebookDataDeletion: async (
     req: Request,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
+    const baseStatusUrl = `${
+      process.env.CLIENT_URL || "http://localhost:3000"
+    }/api/auth/facebook/data-deletion-status`;
+
     try {
       const { signed_request } = req.body;
 
@@ -513,103 +573,60 @@ const AuthController = {
         });
       }
 
-      // Parse and verify the signed request from Facebook
-      const appSecret = process.env.FACEBOOK_APP_SECRET;
-      if (!appSecret) {
-        console.error("FACEBOOK_APP_SECRET not configured");
-        return res.status(500).json({
-          error: { message: "Server configuration error." },
-        });
-      }
-
-      const [encodedSig, payload] = signed_request.split(".");
-
-      if (!payload || !encodedSig) {
-        return res.status(400).json({
-          error: { message: "Invalid signed_request format." },
-        });
-      }
-
-      // Base64 URL decode the signature
-      const sig = Buffer.from(
-        encodedSig.replace(/-/g, "+").replace(/_/g, "/"),
-        "base64"
-      );
-
-      // Verify HMAC-SHA256 signature
-      const expectedSig = crypto
-        .createHmac("sha256", appSecret)
-        .update(payload)
-        .digest();
-
-      if (sig.length !== expectedSig.length || !crypto.timingSafeEqual(sig, expectedSig)) {
-        console.error("Bad Signed JSON signature!");
-        // Still return 200 to Facebook to avoid retries, but log the error
+      const data = verifyFacebookSignedRequest(signed_request);
+      if (!data) {
+        // Still return 200 so Facebook doesn't retry, but mark it.
         return res.status(200).json({
-          url: `${process.env.CLIENT_URL || "http://localhost:3000"
-            }/api/auth/facebook/data-deletion-status`,
+          url: baseStatusUrl,
           confirmation_code: "invalid_signature",
         });
       }
-
-      // Decode the payload
-      const decodedPayload = Buffer.from(
-        payload.replace(/-/g, "+").replace(/_/g, "/"),
-        "base64"
-      ).toString("utf8");
-      const data = JSON.parse(decodedPayload);
 
       if (data.user_id) {
         const facebookUserId = data.user_id;
         const timestamp = Date.now();
         const confirmationCode = `${facebookUserId}_${timestamp}`;
 
-        // Find user with this Facebook ID
         const user = await UserModel.findByFacebookId(facebookUserId);
 
         if (user) {
-          console.log(
-            `Facebook data deletion request for user: ${user.user_id} (Facebook ID: ${facebookUserId})`
-          );
+          logger.info("Facebook data deletion request received", {
+            userId: user.user_id,
+          });
 
-          // Remove the facebook_id from the user record
           const client = await db.getClient();
           try {
             await client.query(
               `UPDATE "users" SET facebook_id = NULL WHERE facebook_id = $1`,
-              [facebookUserId]
+              [facebookUserId],
             );
           } finally {
             client.release();
           }
 
-          console.log(`Facebook ID ${facebookUserId} removed from user ${user.user_id}`);
+          logger.info("Facebook ID unlinked for data deletion", {
+            userId: user.user_id,
+          });
         } else {
-          console.log(
-            `Facebook data deletion request for unknown Facebook ID: ${facebookUserId}`
+          logger.debug(
+            "Facebook data deletion request for unknown Facebook ID",
           );
         }
 
-        // Return confirmation code and status URL
         return res.status(200).json({
-          url: `${process.env.CLIENT_URL || "http://localhost:3000"
-            }/api/auth/facebook/data-deletion-status?fb_id=${facebookUserId}&ts=${timestamp}`,
+          url: `${baseStatusUrl}?fb_id=${facebookUserId}&ts=${timestamp}`,
           confirmation_code: confirmationCode,
         });
       }
 
-      // Default response if no user_id in payload
       res.status(200).json({
-        url: `${process.env.CLIENT_URL || "http://localhost:3000"
-          }/api/auth/facebook/data-deletion-status`,
+        url: baseStatusUrl,
         confirmation_code: "no_user_id",
       });
     } catch (error) {
-      console.error("Facebook data deletion error:", error);
-      // Still return 200 to Facebook to avoid retries
+      logger.error("Facebook data deletion error", undefined, error as Error);
       res.status(200).json({
-        url: `${process.env.CLIENT_URL || "http://localhost:3000"
-          }/api/auth/facebook/data-deletion-status`,
+        url: baseStatusUrl,
         confirmation_code: "error",
       });
     }
@@ -618,7 +635,7 @@ const AuthController = {
   facebookDataDeletionStatus: async (
     req: Request,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       const { fb_id, ts } = req.query;
@@ -649,7 +666,11 @@ const AuthController = {
         message: "Data deletion complete.",
       });
     } catch (error) {
-      console.error("Facebook data deletion status error:", error);
+      logger.error(
+        "Facebook data deletion status error",
+        undefined,
+        error as Error,
+      );
       return res.status(500).json({
         error: { message: "Failed to check deletion status." },
       });
@@ -659,7 +680,7 @@ const AuthController = {
   facebookLink: async (
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       const { accessToken } = req.body;
@@ -678,9 +699,8 @@ const AuthController = {
       }
 
       // Validate Facebook token and get user profile
-      const facebookProfile = await FacebookService.validateTokenAndGetProfile(
-        accessToken
-      );
+      const facebookProfile =
+        await FacebookService.validateTokenAndGetProfile(accessToken);
       if (!facebookProfile) {
         return res.status(401).json({
           error: { message: "Invalid Facebook access token." },
@@ -689,7 +709,7 @@ const AuthController = {
 
       // Check if this Facebook account is already linked to another user
       const existingFacebookUser = await UserModel.findByFacebookId(
-        facebookProfile.id
+        facebookProfile.id,
       );
       if (
         existingFacebookUser &&
@@ -762,7 +782,7 @@ const AuthController = {
   facebookUnlink: async (
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       if (!req.user) {
@@ -846,9 +866,8 @@ const AuthController = {
       }
 
       // Validate Apple token and get user profile
-      const appleProfile = await AppleService.validateTokenAndGetProfile(
-        identityToken
-      );
+      const appleProfile =
+        await AppleService.validateTokenAndGetProfile(identityToken);
       if (!appleProfile) {
         return res.status(401).json({
           error: { message: "Invalid Apple identity token." },
@@ -868,13 +887,13 @@ const AuthController = {
         const sessionId = await SessionService.createSession(
           user.user_id,
           tokens,
-          sessionMetadata
+          sessionMetadata,
         );
 
         // Invalidate all previous sessions (enforce single active session)
         await SessionService.invalidateOtherUserSessions(
           user.user_id,
-          sessionId
+          sessionId,
         );
 
         return res.status(200).json({
@@ -898,20 +917,21 @@ const AuthController = {
       // Create new user with Apple authentication
       // Apple may provide user info on first sign-in only
       const userName = appleUser?.name
-        ? `${appleUser.name.firstName || ""} ${appleUser.name.lastName || ""
+        ? `${appleUser.name.firstName || ""} ${
+            appleUser.name.lastName || ""
           }`.trim()
         : undefined;
 
       const baseUsername = AppleService.generateUsername(
         appleProfile.sub,
-        appleProfile.email
+        appleProfile.email,
       );
       const uniqueUsername = await AppleService.ensureUniqueUsername(
         baseUsername,
         async (username) => {
           const existingUser = await UserModel.findByUsername(username);
           return !!existingUser;
-        }
+        },
       );
 
       // Handle missing email from Apple
@@ -936,7 +956,7 @@ const AuthController = {
       const sessionId = await SessionService.createSession(
         newUser.user_id,
         tokens,
-        sessionMetadata
+        sessionMetadata,
       );
 
       res.status(201).json({
@@ -964,7 +984,7 @@ const AuthController = {
   appleLink: async (
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       const { identityToken } = req.body;
@@ -983,9 +1003,8 @@ const AuthController = {
       }
 
       // Validate Apple token and get user profile
-      const appleProfile = await AppleService.validateTokenAndGetProfile(
-        identityToken
-      );
+      const appleProfile =
+        await AppleService.validateTokenAndGetProfile(identityToken);
       if (!appleProfile) {
         return res.status(401).json({
           error: { message: "Invalid Apple identity token." },
@@ -1062,7 +1081,7 @@ const AuthController = {
   appleUnlink: async (
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       if (!req.user) {
@@ -1146,9 +1165,8 @@ const AuthController = {
       }
 
       // Validate Google token and get user profile
-      const googleProfile = await GoogleService.validateTokenAndGetProfile(
-        idToken
-      );
+      const googleProfile =
+        await GoogleService.validateTokenAndGetProfile(idToken);
       if (!googleProfile) {
         return res.status(401).json({
           error: { message: "Invalid Google ID token." },
@@ -1168,13 +1186,13 @@ const AuthController = {
         const sessionId = await SessionService.createSession(
           user.user_id,
           tokens,
-          sessionMetadata
+          sessionMetadata,
         );
 
         // Invalidate all previous sessions (enforce single active session)
         await SessionService.invalidateOtherUserSessions(
           user.user_id,
-          sessionId
+          sessionId,
         );
 
         return res.status(200).json({
@@ -1198,14 +1216,14 @@ const AuthController = {
       // Create new user with Google authentication
       const baseUsername = GoogleService.generateUsername(
         googleProfile.name || googleProfile.email || "user",
-        googleProfile.sub
+        googleProfile.sub,
       );
       const uniqueUsername = await GoogleService.ensureUniqueUsername(
         baseUsername,
         async (username) => {
           const existingUser = await UserModel.findByUsername(username);
           return !!existingUser;
-        }
+        },
       );
 
       // Handle missing email from Google
@@ -1230,7 +1248,7 @@ const AuthController = {
       const sessionId = await SessionService.createSession(
         newUser.user_id,
         tokens,
-        sessionMetadata
+        sessionMetadata,
       );
 
       res.status(201).json({
@@ -1258,7 +1276,7 @@ const AuthController = {
   googleLink: async (
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       const { idToken } = req.body;
@@ -1277,9 +1295,8 @@ const AuthController = {
       }
 
       // Validate Google token and get user profile
-      const googleProfile = await GoogleService.validateTokenAndGetProfile(
-        idToken
-      );
+      const googleProfile =
+        await GoogleService.validateTokenAndGetProfile(idToken);
       if (!googleProfile) {
         return res.status(401).json({
           error: { message: "Invalid Google ID token." },
@@ -1288,7 +1305,7 @@ const AuthController = {
 
       // Check if this Google account is already linked to another user
       const existingGoogleUser = await UserModel.findByGoogleId(
-        googleProfile.sub
+        googleProfile.sub,
       );
       if (
         existingGoogleUser &&
@@ -1361,7 +1378,7 @@ const AuthController = {
   googleUnlink: async (
     req: AuthenticatedRequest,
     res: Response,
-    next: NextFunction
+    next: NextFunction,
   ) => {
     try {
       if (!req.user) {

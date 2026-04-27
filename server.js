@@ -9,28 +9,33 @@ const PORT = process.env.PORT || 3000;
 
 const httpServer = http.createServer(app);
 
-// CORS configuration supporting mobile apps (Capacitor/Cordova)
-const allowedOrigins = [
-  process.env.CLIENT_URL,
-  "http://localhost:8100", // Local dev
-  "https://localhost", // Capacitor Android
-  "capacitor://localhost", // Capacitor iOS
-  "ionic://localhost", // Ionic webview
-].filter(Boolean); // Remove undefined values
+// CORS configuration supporting mobile apps (Capacitor/Cordova).
+// Exact-match origins only — substring/prefix matching is unsafe.
+const allowedOrigins = new Set(
+  [
+    process.env.CLIENT_URL, // Production web client
+    "https://cardsofmyth.com",
+    "https://www.cardsofmyth.com",
+    "https://myth-server.onrender.com",
+    "http://localhost:8100", // Local dev
+    "http://localhost:3000", // Local dev (alt port)
+    "https://localhost", // Capacitor Android
+    "capacitor://localhost", // Capacitor iOS
+    "ionic://localhost", // Ionic webview
+  ].filter(Boolean),
+);
 
 // Initialize Socket.IO
 const io = new Server(httpServer, {
   cors: {
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, Postman, etc.)
+      // Allow requests with no origin (native mobile apps, Postman).
       if (!origin) return callback(null, true);
-      
-      // Check if origin is in allowed list
-      if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
+
+      if (allowedOrigins.has(origin)) {
+        return callback(null, true);
       }
+      return callback(new Error("Not allowed by CORS"));
     },
     methods: ["GET", "POST"],
     credentials: true,
@@ -48,7 +53,7 @@ httpServer.listen(PORT, async () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Socket.IO initialized and listening.`);
   console.log(`Access at http://localhost:${PORT}`);
-  
+
   // Run startup initialization
   try {
     const StartupService = require("./dist/services/startup.service").default;
@@ -70,11 +75,13 @@ httpServer.listen(PORT, async () => {
   } catch (error) {
     console.error("❌ Failed to start Season Services:", error);
   }
-  
+
   // Start the automated fate pick scheduler
   try {
-    const AIAutomationService = require("./dist/services/aiAutomation.service").default;
-    automationSchedulerInterval = AIAutomationService.startAutomatedFatePickScheduler();
+    const AIAutomationService =
+      require("./dist/services/aiAutomation.service").default;
+    automationSchedulerInterval =
+      AIAutomationService.startAutomatedFatePickScheduler();
     console.log("🤖 AI Automation Service started successfully");
   } catch (error) {
     console.error("❌ Failed to start AI Automation Service:", error);
@@ -82,8 +89,10 @@ httpServer.listen(PORT, async () => {
 
   // Start the daily rewards scheduler
   try {
-    const DailyRewardsService = require("./dist/services/dailyRewards.service").default;
-    dailyRewardsSchedulerInterval = DailyRewardsService.startDailyRewardsScheduler();
+    const DailyRewardsService =
+      require("./dist/services/dailyRewards.service").default;
+    dailyRewardsSchedulerInterval =
+      DailyRewardsService.startDailyRewardsScheduler();
     console.log("🎁 Daily Rewards Service started successfully");
   } catch (error) {
     console.error("❌ Failed to start Daily Rewards Service:", error);
@@ -91,15 +100,21 @@ httpServer.listen(PORT, async () => {
 });
 
 // Graceful shutdown handler
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully');
+process.on("SIGTERM", () => {
+  console.log("🛑 SIGTERM received, shutting down gracefully");
   if (automationSchedulerInterval) {
-    const AIAutomationService = require("./dist/services/aiAutomation.service").default;
-    AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerInterval);
+    const AIAutomationService =
+      require("./dist/services/aiAutomation.service").default;
+    AIAutomationService.stopAutomatedFatePickScheduler(
+      automationSchedulerInterval,
+    );
   }
   if (dailyRewardsSchedulerInterval) {
-    const DailyRewardsService = require("./dist/services/dailyRewards.service").default;
-    DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerInterval);
+    const DailyRewardsService =
+      require("./dist/services/dailyRewards.service").default;
+    DailyRewardsService.stopDailyRewardsScheduler(
+      dailyRewardsSchedulerInterval,
+    );
   }
   if (seasonMaintenanceScheduler) {
     const SeasonService = require("./dist/services/season.service").default;
@@ -116,15 +131,21 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT received, shutting down gracefully');
+process.on("SIGINT", () => {
+  console.log("🛑 SIGINT received, shutting down gracefully");
   if (automationSchedulerInterval) {
-    const AIAutomationService = require("./dist/services/aiAutomation.service").default;
-    AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerInterval);
+    const AIAutomationService =
+      require("./dist/services/aiAutomation.service").default;
+    AIAutomationService.stopAutomatedFatePickScheduler(
+      automationSchedulerInterval,
+    );
   }
   if (dailyRewardsSchedulerInterval) {
-    const DailyRewardsService = require("./dist/services/dailyRewards.service").default;
-    DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerInterval);
+    const DailyRewardsService =
+      require("./dist/services/dailyRewards.service").default;
+    DailyRewardsService.stopDailyRewardsScheduler(
+      dailyRewardsSchedulerInterval,
+    );
   }
   if (seasonMaintenanceScheduler) {
     const SeasonService = require("./dist/services/season.service").default;

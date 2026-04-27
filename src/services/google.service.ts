@@ -1,4 +1,5 @@
 import axios from "axios";
+import logger from "../utils/logger";
 
 interface GoogleUserProfile {
   sub: string; // Google user ID
@@ -32,30 +33,28 @@ const GoogleService = {
    * Validate Google ID token and get user profile
    */
   async validateTokenAndGetProfile(
-    idToken: string
+    idToken: string,
   ): Promise<GoogleUserProfile | null> {
     try {
-      // Use Google's tokeninfo endpoint to validate the token
-      const tokenInfoUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`;
+      const tokenInfoUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(
+        idToken,
+      )}`;
 
       const response = await axios.get<GoogleTokenInfoResponse>(tokenInfoUrl);
 
-      // Verify the token is for our application
       if (response.data.aud !== process.env.GOOGLE_CLIENT_ID) {
-        console.error("Google token audience mismatch");
+        logger.warn("Google token audience mismatch");
         return null;
       }
 
-      // Verify the token is from Google
       if (
         response.data.iss !== "https://accounts.google.com" &&
         response.data.iss !== "accounts.google.com"
       ) {
-        console.error("Google token issuer mismatch");
+        logger.warn("Google token issuer mismatch");
         return null;
       }
 
-      // Extract user profile
       const profile: GoogleUserProfile = {
         sub: response.data.sub,
         email: response.data.email,
@@ -69,17 +68,22 @@ const GoogleService = {
         family_name: response.data.family_name,
       };
 
-      console.log("Google Profile:", JSON.stringify(profile, null, 2));
+      logger.debug("Google profile validated", { sub: profile.sub });
 
       return profile;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error(
-          "Google token validation error:",
-          error.response?.data || error.message
+        logger.error(
+          "Google token validation error",
+          { detail: error.response?.data || error.message },
+          error,
         );
       } else {
-        console.error("Google token validation error:", error);
+        logger.error(
+          "Google token validation error",
+          undefined,
+          error as Error,
+        );
       }
       return null;
     }
@@ -104,7 +108,7 @@ const GoogleService = {
    */
   async ensureUniqueUsername(
     baseUsername: string,
-    checkFunction: (username: string) => Promise<boolean>
+    checkFunction: (username: string) => Promise<boolean>,
   ): Promise<string> {
     let username = baseUsername;
     let counter = 1;
@@ -119,5 +123,3 @@ const GoogleService = {
 };
 
 export default GoogleService;
-
-

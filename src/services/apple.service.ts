@@ -1,6 +1,7 @@
 import axios from "axios";
 import jwt from "jsonwebtoken";
 import jwksClient from "jwks-rsa";
+import logger from "../utils/logger";
 
 interface AppleUserProfile {
   sub: string; // Apple user ID
@@ -35,18 +36,21 @@ const AppleService = {
    */
   async getApplePublicKey(kid: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      this.jwksClientInstance.getSigningKey(kid, (err: Error | null, key?: jwksClient.SigningKey) => {
-        if (err) {
-          reject(err);
-        } else {
-          const signingKey = key?.getPublicKey();
-          if (signingKey) {
-            resolve(signingKey);
+      this.jwksClientInstance.getSigningKey(
+        kid,
+        (err: Error | null, key?: jwksClient.SigningKey) => {
+          if (err) {
+            reject(err);
           } else {
-            reject(new Error("Unable to get signing key"));
+            const signingKey = key?.getPublicKey();
+            if (signingKey) {
+              resolve(signingKey);
+            } else {
+              reject(new Error("Unable to get signing key"));
+            }
           }
-        }
-      });
+        },
+      );
     });
   },
 
@@ -54,19 +58,19 @@ const AppleService = {
    * Validate Apple identity token and extract user profile
    */
   async validateTokenAndGetProfile(
-    identityToken: string
+    identityToken: string,
   ): Promise<AppleUserProfile | null> {
     try {
       // Decode token header to get the key ID (kid)
       const decodedHeader = jwt.decode(identityToken, { complete: true });
       if (!decodedHeader || typeof decodedHeader === "string") {
-        console.error("Invalid Apple token format");
+        logger.warn("Invalid Apple token format");
         return null;
       }
 
       const kid = decodedHeader.header.kid;
       if (!kid) {
-        console.error("No kid found in Apple token header");
+        logger.warn("No kid found in Apple token header");
         return null;
       }
 
@@ -94,11 +98,11 @@ const AppleService = {
             : decoded.is_private_email,
       };
 
-      console.log("Apple Profile:", JSON.stringify(profile, null, 2));
+      logger.debug("Apple profile validated", { sub: profile.sub });
 
       return profile;
     } catch (error) {
-      console.error("Apple token validation error:", error);
+      logger.error("Apple token validation error", undefined, error as Error);
       return null;
     }
   },
@@ -125,7 +129,7 @@ const AppleService = {
    */
   async ensureUniqueUsername(
     baseUsername: string,
-    checkFunction: (username: string) => Promise<boolean>
+    checkFunction: (username: string) => Promise<boolean>,
   ): Promise<string> {
     let username = baseUsername;
     let counter = 1;
@@ -140,4 +144,3 @@ const AppleService = {
 };
 
 export default AppleService;
-

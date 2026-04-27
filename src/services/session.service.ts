@@ -35,8 +35,16 @@ export interface SessionMetadata {
 class SessionService {
   private readonly ACCESS_TOKEN_EXPIRY = 15 * 60 * 1000; // 15 minutes in milliseconds
   private readonly REFRESH_TOKEN_EXPIRY = 90 * 24 * 60 * 60 * 1000; // 90 days in milliseconds
-  private readonly JWT_SECRET =
-    config.jwtSecret || "fallback_dev_secret_do_not_use_in_production";
+  private readonly JWT_SECRET: string;
+
+  constructor() {
+    if (!config.jwtSecret || config.jwtSecret.length < 32) {
+      throw new Error(
+        "JWT_SECRET is missing or shorter than 32 characters. Refusing to start."
+      );
+    }
+    this.JWT_SECRET = config.jwtSecret;
+  }
 
   /**
    * Generate a cryptographically secure random token
@@ -63,7 +71,7 @@ class SessionService {
         type: "access",
       },
       this.JWT_SECRET,
-      { expiresIn: "15m" }
+      { expiresIn: "15m" },
     );
   }
 
@@ -81,7 +89,7 @@ class SessionService {
       refreshToken,
       accessTokenExpiresAt: new Date(now.getTime() + this.ACCESS_TOKEN_EXPIRY),
       refreshTokenExpiresAt: new Date(
-        now.getTime() + this.REFRESH_TOKEN_EXPIRY
+        now.getTime() + this.REFRESH_TOKEN_EXPIRY,
       ),
     };
   }
@@ -119,7 +127,7 @@ class SessionService {
   async createSession(
     userId: string,
     tokens: TokenPair,
-    metadata: SessionMetadata
+    metadata: SessionMetadata,
   ): Promise<string> {
     const client = await db.getClient();
     try {
@@ -271,7 +279,7 @@ class SessionService {
     try {
       await client.query(
         "UPDATE user_sessions SET last_used_at = NOW() WHERE session_id = $1",
-        [sessionId]
+        [sessionId],
       );
     } finally {
       client.release();
@@ -286,7 +294,7 @@ class SessionService {
     try {
       await client.query(
         "UPDATE user_sessions SET is_active = false WHERE session_id = $1",
-        [sessionId]
+        [sessionId],
       );
     } finally {
       client.release();
@@ -301,7 +309,7 @@ class SessionService {
     try {
       await client.query(
         "UPDATE user_sessions SET is_active = false WHERE user_id = $1",
-        [userId]
+        [userId],
       );
     } finally {
       client.release();
@@ -315,13 +323,13 @@ class SessionService {
    */
   async invalidateOtherUserSessions(
     userId: string,
-    currentSessionId: string
+    currentSessionId: string,
   ): Promise<number> {
     const client = await db.getClient();
     try {
       const result = await client.query(
         "UPDATE user_sessions SET is_active = false WHERE user_id = $1 AND session_id != $2 AND is_active = true",
-        [userId, currentSessionId]
+        [userId, currentSessionId],
       );
       return result.rowCount || 0;
     } finally {
@@ -361,7 +369,7 @@ class SessionService {
         WHERE user_id = $1 AND is_active = true
         ORDER BY last_used_at DESC
       `,
-        [userId]
+        [userId],
       );
 
       return result.rows as SessionData[];

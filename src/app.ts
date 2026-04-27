@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import compression from "compression";
+import helmet from "helmet";
 import swaggerJSDoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import fs from "fs";
@@ -15,7 +16,7 @@ dotenv.config();
 
 // Load version from package.json
 const packageJson = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../package.json"), "utf8")
+  fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"),
 );
 const SERVER_VERSION = packageJson.version;
 
@@ -62,36 +63,63 @@ let dailyRewardsSchedulerTasks: any[] = [];
 let dailyTaskScheduler: any = null;
 let seasonMaintenanceScheduler: any = null;
 
+// Trust the first proxy hop (Render's load balancer) so req.ip / X-Forwarded-*
+// reflect the real client. Required for accurate rate limiting and IP logging.
+app.set("trust proxy", 1);
+
 // Middleware
 app.use(compression()); // Enable gzip compression for all responses
 
-// CORS configuration supporting mobile apps (Capacitor/Cordova)
-const allowedOrigins: string[] = [
-  process.env.CLIENT_URL,
-  "http://localhost:8100", // Local dev
-  "https://localhost", // Capacitor Android
-  "capacitor://localhost", // Capacitor iOS
-  "ionic://localhost", // Ionic webview
-].filter((origin): origin is string => Boolean(origin)); // Remove undefined values
+// Security headers. CSP is intentionally disabled for now because the markdown
+// content pages render inline <style> blocks; we'll add a route-scoped CSP
+// later. Other helmet protections (HSTS, X-Frame-Options, X-Content-Type-Options,
+// Referrer-Policy, etc.) are still applied.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
+
+// CORS configuration supporting mobile apps (Capacitor/Cordova).
+// Exact-match origins only — substring/prefix matching is unsafe because
+// e.g. "https://localhost.evil.com" would have matched "https://localhost".
+const allowedOrigins = new Set<string>(
+  [
+    process.env.CLIENT_URL, // Production web client (e.g. https://cardsofmyth.com)
+    "https://cardsofmyth.com",
+    "https://www.cardsofmyth.com",
+    "https://myth-server.onrender.com",
+    "http://localhost:8100", // Local dev
+    "http://localhost:3000", // Local dev (alt port)
+    "https://localhost", // Capacitor Android
+    "capacitor://localhost", // Capacitor iOS
+    "ionic://localhost", // Ionic webview
+  ].filter((origin): origin is string => Boolean(origin)),
+);
+
+const corsOriginCheck = (
+  origin: string | undefined,
+  callback: (err: Error | null, allow?: boolean) => void,
+) => {
+  // Allow requests with no Origin header (native mobile apps, Postman, server-side calls).
+  if (!origin) return callback(null, true);
+
+  if (allowedOrigins.has(origin)) {
+    return callback(null, true);
+  }
+  return callback(new Error("Not allowed by CORS"));
+};
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, Postman, etc.)
-      if (!origin) return callback(null, true);
-
-      // Check if origin is in allowed list
-      if (allowedOrigins.some((allowed) => origin.startsWith(allowed))) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
+    origin: corsOriginCheck,
     credentials: true,
     exposedHeaders: ["X-Server-Version"], // Allow client to read custom headers
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  })
+  }),
 );
 app.use(express.json()); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
@@ -222,17 +250,7 @@ if (require.main === module) {
     const { Server } = require("socket.io");
     const io = new Server(httpServer, {
       cors: {
-        origin: (origin: string, callback: any) => {
-          // Allow requests with no origin (mobile apps)
-          if (!origin) return callback(null, true);
-
-          // Check if origin is in allowed list
-          if (allowedOrigins.some((allowed) => origin.startsWith(allowed))) {
-            callback(null, true);
-          } else {
-            callback(new Error("Not allowed by CORS"));
-          }
-        },
+        origin: corsOriginCheck,
         methods: ["GET", "POST"],
         credentials: true,
       },
@@ -250,7 +268,7 @@ if (require.main === module) {
     }
   } catch (error) {
     console.log(
-      "Socket.io not available, continuing without websocket support"
+      "Socket.io not available, continuing without websocket support",
     );
   }
 
@@ -271,7 +289,7 @@ if (require.main === module) {
     } catch (error) {
       console.error(
         "⚠️  Redis cache connection failed (continuing without cache):",
-        error
+        error,
       );
     }
 
@@ -311,7 +329,7 @@ if (require.main === module) {
     } catch (error) {
       console.error(
         "❌ Failed to start Daily Rewards and Shop Service:",
-        error
+        error,
       );
     }
 
@@ -329,7 +347,7 @@ if (require.main === module) {
         },
         {
           timezone: "UTC",
-        }
+        },
       );
       console.log("🎯 Daily Task Scheduler started successfully");
     } catch (error) {

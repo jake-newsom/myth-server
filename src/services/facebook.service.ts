@@ -1,4 +1,5 @@
 import axios from "axios";
+import logger from "../utils/logger";
 
 interface FacebookUserProfile {
   id: string;
@@ -29,35 +30,77 @@ const FacebookService = {
    * Validate Facebook access token and get user profile
    */
   async validateTokenAndGetProfile(
-    accessToken: string
+    accessToken: string,
   ): Promise<FacebookUserProfile | null> {
-    try {
-      // First, validate the token
-      const tokenValidationUrl = `https://graph.facebook.com/debug_token?input_token=${accessToken}&access_token=${process.env.FACEBOOK_APP_ID}|${process.env.FACEBOOK_APP_SECRET}`;
+    const appId = process.env.FACEBOOK_APP_ID;
+    const appSecret = process.env.FACEBOOK_APP_SECRET;
 
-      const tokenResponse = await axios.get<FacebookTokenValidation>(
-        tokenValidationUrl
+    if (!appId || !appSecret) {
+      logger.error(
+        "Facebook auth misconfigured: FACEBOOK_APP_ID or FACEBOOK_APP_SECRET missing",
       );
+      return null;
+    }
 
-      if (!tokenResponse.data.data.is_valid) {
-        console.error("Invalid Facebook token");
+    try {
+      // 1. Validate the token via debug_token (server-to-server with app token).
+      const tokenValidationUrl = `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(
+        accessToken,
+      )}&access_token=${encodeURIComponent(`${appId}|${appSecret}`)}`;
+
+      const tokenResponse =
+        await axios.get<FacebookTokenValidation>(tokenValidationUrl);
+      const tokenData = tokenResponse.data?.data;
+
+      if (!tokenData || !tokenData.is_valid) {
+        logger.warn("Invalid Facebook token", {
+          is_valid: tokenData?.is_valid,
+        });
         return null;
       }
 
-      // Get user profile
-      const profileUrl = `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${accessToken}`;
+      // 2. Confirm the token was issued for *our* Facebook app. Without this
+      // check, an attacker could use a token from any FB app to log in here.
+      if (tokenData.app_id !== appId) {
+        logger.warn("Facebook token issued for wrong app_id", {
+          expected: appId,
+          actual: tokenData.app_id,
+        });
+        return null;
+      }
 
+      // 3. Reject expired tokens. expires_at === 0 means "never expires"
+      // (long-lived page tokens etc.) which we still allow.
+      if (
+        typeof tokenData.expires_at === "number" &&
+        tokenData.expires_at !== 0 &&
+        tokenData.expires_at * 1000 < Date.now()
+      ) {
+        logger.warn("Facebook token is expired");
+        return null;
+      }
+
+      // 4. Fetch the user profile.
+      const profileUrl = `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${encodeURIComponent(
+        accessToken,
+      )}`;
       const profileResponse = await axios.get<FacebookUserProfile>(profileUrl);
+      const profile = profileResponse.data;
 
-      // Debug: Log what Facebook actually returns
-      console.log(
-        "Facebook Profile Response:",
-        JSON.stringify(profileResponse.data, null, 2)
-      );
+      // 5. Cross-check: the user_id from debug_token must match /me?id=...
+      if (!profile?.id || profile.id !== tokenData.user_id) {
+        logger.warn("Facebook profile id mismatch with debug_token user_id");
+        return null;
+      }
 
-      return profileResponse.data;
+      logger.debug("Facebook profile validated", { userId: profile.id });
+      return profile;
     } catch (error) {
-      console.error("Facebook token validation error:", error);
+      logger.error(
+        "Facebook token validation error",
+        undefined,
+        error as Error,
+      );
       return null;
     }
   },
@@ -81,7 +124,7 @@ const FacebookService = {
    */
   async ensureUniqueUsername(
     baseUsername: string,
-    checkFunction: (username: string) => Promise<boolean>
+    checkFunction: (username: string) => Promise<boolean>,
   ): Promise<string> {
     let username = baseUsername;
     let counter = 1;
