@@ -52,6 +52,72 @@ export const getUserAchievements = async (
 };
 
 /**
+ * Get character-specific achievements for the authenticated user
+ */
+export const getCharacterAchievementsForUser = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const userId = req.user?.user_id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          type: "AUTH_ERROR",
+          message: "Authentication required",
+          suggestion: "Please log in to view character achievements",
+        },
+      });
+    }
+
+    const { characterId } = req.params;
+    if (!characterId) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          type: "VALIDATION_ERROR",
+          message: "Character ID is required",
+          suggestion: "Provide a valid character ID",
+        },
+      });
+    }
+
+    const includeLocked = req.query.include_locked === "true";
+
+    const result = await AchievementService.getCharacterAchievementsForUser(
+      userId,
+      characterId,
+      includeLocked
+    );
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          type: "ACHIEVEMENTS_ERROR",
+          message: "Failed to fetch character achievements",
+          suggestion: "Please try again later",
+        },
+      });
+    }
+
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
+  } catch (error) {
+    console.error("Error fetching character achievements:", error);
+    res.status(500).json({
+      success: false,
+      error: {
+        type: "ACHIEVEMENTS_ERROR",
+        message: "Failed to fetch character achievements",
+        suggestion: "Please try again later",
+      },
+    });
+  }
+};
+
+/**
  * Get achievement categories with counts
  */
 export const getAchievementCategories = async (req: Request, res: Response) => {

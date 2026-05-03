@@ -24,12 +24,14 @@ import {
   getSurroundingTiles,
   getRandomSide,
   isSameCard,
+  getOpponentId,
 } from "../ability.utils";
 import { drawCardSync, flipCard } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
 import { v4 as uuidv4 } from "uuid";
 import { TileStatus } from "../../types/game.types";
 import { randomChance, randomInt } from "../simulation.rng";
+import AchievementService from "../../services/achievement.service";
 
 /**
  * All norse cards:
@@ -55,8 +57,21 @@ export const norseCombatResolvers: CombatResolverMap = {
       return { preventDefeat: false };
     }
 
-    if (triggerCard.base_card_data.name !== "Thor")
+    if (triggerCard.base_card_data.name !== "Thor") {
+      if (!simulationContext.isInSimulation()) {
+        AchievementService.triggerAchievementEvent({
+          userId: flippedCard.owner,
+          eventType: "power_buff_applied",
+          eventData: {
+            source_card_id: flippedCard.user_card_instance_id,
+            source_card_name: flippedCard.base_card_data?.name ?? null,
+            source_ability_id: "jormungandr_shell",
+            power_delta: 1,
+          },
+        }).catch(() => {});
+      }
       return { preventDefeat: true };
+    }
 
     return {
       preventDefeat: false,
@@ -103,6 +118,20 @@ export const norseAbilities: AbilityMap = {
       sourcePlayerId: triggerCard.original_owner,
     } as CardEvent);
 
+    if (!simulationContext.isInSimulation()) {
+      AchievementService.triggerAchievementEvent({
+        userId: triggerCard.original_owner,
+        eventType: "power_buff_applied",
+        eventData: {
+          source_card_id: triggerCard.user_card_instance_id,
+          source_card_name: triggerCard.base_card_data?.name ?? null,
+          source_ability_id: "baldr_immune",
+          turn_number: context.state.turn_number,
+          power_delta: 1,
+        },
+      }).catch(() => {});
+    }
+
     return gameEvents;
   },
 
@@ -140,6 +169,7 @@ export const norseAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = uuidv4();
 
     if (!position) return [];
     const enemyCards = getCardsByCondition(
@@ -163,6 +193,13 @@ export const norseAbilities: AbilityMap = {
               name: "Thunderous Push",
               animation: "lightning-6",
               position: enemyPosition,
+              data: {
+                actingPlayerId: triggerCard.owner,
+                sourceCard: triggerCard,
+                sourcePlayerId: triggerCard.owner,
+                batchId,
+                turnNumber: context.state.turn_number,
+              },
             },
           ),
         );
@@ -296,6 +333,7 @@ export const norseAbilities: AbilityMap = {
     const surroundingTiles = getSurroundingTiles(position, board);
 
     for (const tile of surroundingTiles) {
+      if (tile.tile.card) continue;
       gameEvents.push(
         setTileStatus(
           tile.tile,
@@ -340,20 +378,31 @@ export const norseAbilities: AbilityMap = {
       if (odinDefeated) break;
     }
     if (odinDefeated) {
-      for (const ally of getAllAlliesOnBoard(board, triggerCard.owner)) {
-        const allyPosition = getPositionOfCardById(
-          ally.user_card_instance_id,
-          board,
+      if (!simulationContext.isInSimulation()) {
+        AchievementService.triggerAchievementEvent({
+          userId: triggerCard.owner,
+          eventType: "power_buff_applied",
+          eventData: {
+            source_card_id: triggerCard.user_card_instance_id,
+            source_card_name: triggerCard.base_card_data?.name ?? null,
+            source_ability_id: "vidar_vengeance",
+            turn_number: context.state.turn_number,
+            power_delta: 1,
+          },
+        }).catch(() => {});
+      }
+      const triggerCardPosition = getPositionOfCardById(
+        triggerCard.user_card_instance_id,
+        board,
+      );
+      if (triggerCardPosition) {
+        gameEvents.push(
+          buff(triggerCard, 3, {
+            name: "Silent Vengeance",
+            animation: "triangle-shield",
+            position: triggerCardPosition,
+          }),
         );
-        if (allyPosition) {
-          gameEvents.push(
-            buff(ally, 3, {
-              name: "Silent Vengeance",
-              animation: "triangle-shield",
-              position: allyPosition,
-            }),
-          );
-        }
       }
     }
     return gameEvents;
@@ -464,6 +513,7 @@ export const norseAbilities: AbilityMap = {
   skadi_freeze: (context) => {
     const { position, state, triggerCard } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = uuidv4();
     if (!position) return [];
 
     const enemiesInColumn = getCardsInSameColumn(
@@ -484,6 +534,13 @@ export const norseAbilities: AbilityMap = {
           name: "Winter's Grasp",
           animation: "winter-grasp",
           position: enemyPosition,
+          data: {
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            batchId,
+            turnNumber: context.state.turn_number,
+          },
         }),
       );
     }
@@ -493,6 +550,7 @@ export const norseAbilities: AbilityMap = {
   loki_flip: (context) => {
     const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = uuidv4();
 
     const allBoardCards = getCardsByCondition(
       state.board,
@@ -525,6 +583,11 @@ export const norseAbilities: AbilityMap = {
             selectedCard,
             triggerCard,
             "trickster-gambit",
+            {
+              achievementBatchId: batchId,
+              // Loki flips should always invert card ownership, including allied cards.
+              forcedOwnerId: getOpponentId(selectedCard.owner, state),
+            },
           ),
         );
       }
@@ -534,10 +597,24 @@ export const norseAbilities: AbilityMap = {
   },
 
   hel_soul: (context) => {
-    const { flippedCard } = context;
+    const { flippedCard, triggerCard } = context;
 
     if (flippedCard) {
       flippedCard.lockedTurns = 1000;
+      if (!simulationContext.isInSimulation()) {
+        AchievementService.triggerAchievementEvent({
+          userId: triggerCard.owner,
+          eventType: "power_buff_applied",
+          eventData: {
+            source_card_id: triggerCard.user_card_instance_id,
+            source_card_name: triggerCard.base_card_data?.name ?? null,
+            source_ability_id: "hel_soul",
+            turn_number: context.state.turn_number,
+            target_card_id: flippedCard.user_card_instance_id,
+            power_delta: 1,
+          },
+        }).catch(() => {});
+      }
       // Don't create a CARD_FLIPPED event here - let flipCard handle it
       // The attack animation will be set via ability parameters
       return [];
@@ -602,6 +679,7 @@ export const norseAbilities: AbilityMap = {
           board,
           "flames-pillar",
           triggerCard.owner,
+          triggerCard,
         );
         if (destroyedEvent) {
           gameEvents.push(destroyedEvent);
@@ -798,6 +876,10 @@ export const norseAbilities: AbilityMap = {
     return [
       createOrUpdateBuff(triggerCard, 1000, 2, "Dragon Slayer", HAND_POSITION, {
         animation: "dragon-slayer",
+        actingPlayerId: triggerCard.owner,
+        sourceCard: triggerCard,
+        sourcePlayerId: triggerCard.owner,
+        turnNumber: context.state.turn_number,
       }),
     ];
   },
@@ -927,6 +1009,7 @@ export const norseAbilities: AbilityMap = {
           board,
           "claw",
           triggerCard.owner,
+          triggerCard,
         );
         if (destroyEvent) {
           gameEvents.push(destroyEvent);

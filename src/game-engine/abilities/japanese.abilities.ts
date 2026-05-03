@@ -35,6 +35,7 @@ import { BaseGameEvent } from "../game-events";
 import { flipCard } from "../game.utils";
 import { getPositionOfCardById } from "../ability.utils";
 import { randomInt } from "../simulation.rng";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * All japanese cards:
@@ -69,10 +70,24 @@ export const japaneseAbilities: AbilityMap = {
         state.board,
       );
       if (enemyPosition) {
+        const maxSidePower = Math.max(
+          strongestEnemy.current_power.top,
+          strongestEnemy.current_power.right,
+          strongestEnemy.current_power.bottom,
+          strongestEnemy.current_power.left,
+        );
         gameEvents.push(
           debuff(strongestEnemy, -1, {
             name: "Moon's Balance",
             position: enemyPosition,
+            data: {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              turnNumber: state.turn_number,
+              targetTotalPowerBefore: getCardTotalPower(strongestEnemy),
+              targetMaxSidePowerBefore: maxSidePower,
+            },
           }),
         );
       }
@@ -118,6 +133,7 @@ export const japaneseAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = `${triggerCard.user_card_instance_id}:${context.state.turn_number}:yukionna`;
 
     if (!position) return [];
 
@@ -134,6 +150,13 @@ export const japaneseAbilities: AbilityMap = {
             name: "Frost Row",
             animation: "snow-swirl",
             position: enemyPosition,
+            data: {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              batchId,
+              turnNumber: context.state.turn_number,
+            },
           }),
         );
       }
@@ -167,8 +190,13 @@ export const japaneseAbilities: AbilityMap = {
               power: { top: -2, bottom: -2, left: -2, right: -2 },
               effect_duration: 3,
               applies_to_user: getOpponentId(triggerCard.owner, state),
+              source_player_id: triggerCard.owner,
+              source_card_id: triggerCard.user_card_instance_id,
+              source_ability_id: "jorogumo_web_curse",
             },
             triggerCard.owner,
+            triggerCard,
+            { turnNumber: state.turn_number },
           ),
         );
       }
@@ -243,7 +271,14 @@ export const japaneseAbilities: AbilityMap = {
             randomBuff.power,
             randomBuff.name ?? "Slipstream",
             triggerPosition,
-            { ...randomBuff.data, animation: "smoke-shrink" },
+            {
+              ...randomBuff.data,
+              animation: "smoke-shrink",
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              turnNumber: context.state.turn_number,
+            },
           ),
         );
       }
@@ -294,6 +329,7 @@ export const japaneseAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = `${triggerCard.user_card_instance_id}:${context.state.turn_number}:futakuchi`;
 
     const position = getPositionOfCardById(
       triggerCard.user_card_instance_id,
@@ -316,6 +352,11 @@ export const japaneseAbilities: AbilityMap = {
         gameEvents.push(
           createOrUpdateDebuff(enemy, 1000, 1, "Vengeful Bite", enemyPosition, {
             animation: "blue-purple-spurt",
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            batchId,
+            turnNumber: context.state.turn_number,
           }),
         );
       }
@@ -358,6 +399,17 @@ export const japaneseAbilities: AbilityMap = {
 
     const adjacentCards = getAdjacentCards(position, board);
     if (adjacentCards.length === 0) return [];
+    const adjacentEnemies = adjacentCards.filter(
+      (card) => card.owner !== triggerCard.owner
+    );
+    const copiedEnemy =
+      adjacentEnemies.length > 0
+        ? adjacentEnemies.reduce((strongest, current) =>
+            getCardTotalPower(current) > getCardTotalPower(strongest)
+              ? current
+              : strongest
+          )
+        : null;
 
     const myPowers = triggerCard.current_power;
     const buffs: PowerValues = {
@@ -385,6 +437,13 @@ export const japaneseAbilities: AbilityMap = {
           name: "Echo Power",
           animation: "smoke-blue-flashes",
           position,
+          data: {
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            turnNumber: context.state.turn_number,
+            copied_target_card_id: copiedEnemy?.user_card_instance_id ?? null,
+          },
         }),
       ];
     }
@@ -482,6 +541,12 @@ export const japaneseAbilities: AbilityMap = {
         name: "Steadfast Guard",
         animation: "plasm-sphere",
         position,
+        data: {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          turnNumber: context.state.turn_number,
+        },
       }),
     ];
   },
@@ -512,6 +577,10 @@ export const japaneseAbilities: AbilityMap = {
             triggerPosition,
             {
               animation: "red-lightning",
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              turnNumber: context.state.turn_number,
             },
           ),
         ];
@@ -548,6 +617,10 @@ export const japaneseAbilities: AbilityMap = {
           position,
           {
             animation: "phoenix-right",
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            turnNumber: context.state.turn_number,
           },
         ),
       );
@@ -642,6 +715,7 @@ export const japaneseAbilities: AbilityMap = {
   amaterasu_radiant_blessing: (context) => {
     const { originalTriggerCard, triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = `${triggerCard.user_card_instance_id}:${state.turn_number}:amaterasu`;
 
     if (originalTriggerCard?.owner !== triggerCard.owner) {
       const randomAlly = getRandomCard(state.board, {
@@ -658,6 +732,13 @@ export const japaneseAbilities: AbilityMap = {
               name: "Radiant Blessing",
               animation: "light-cross-spin",
               position: allyPosition,
+              data: {
+                actingPlayerId: triggerCard.owner,
+                sourceCard: triggerCard,
+                sourcePlayerId: triggerCard.owner,
+                batchId,
+                turnNumber: state.turn_number,
+              },
             }),
           );
         }
@@ -678,10 +759,13 @@ export const japaneseAbilities: AbilityMap = {
 
     const enemyBeastsAndDragons = getCardsByCondition(
       board,
-      (card) =>
-        (card.base_card_data.tags?.includes("beast") ||
-          card.base_card_data.tags?.includes("dragon")) &&
-        card.owner !== triggerCard.owner,
+      (card) => {
+        if (card.owner === triggerCard.owner) return false;
+        const tags = (card.base_card_data.tags || []).map((tag) =>
+          tag.toUpperCase(),
+        );
+        return tags.includes("BEAST") || tags.includes("DRAGON");
+      },
     );
 
     if (enemyBeastsAndDragons.length > 0) {
@@ -703,6 +787,7 @@ export const japaneseAbilities: AbilityMap = {
             board,
             "blast-up",
             triggerCard.owner,
+            triggerCard,
           );
           if (destroyEvent) {
             const triggerPosition = getPositionOfCardById(
@@ -731,6 +816,7 @@ export const japaneseAbilities: AbilityMap = {
   hachiman_warriors_aura: (context) => {
     const { position, triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = `${triggerCard.user_card_instance_id}:${context.state.turn_number}:hachiman`;
 
     if (!position) return [];
 
@@ -752,6 +838,13 @@ export const japaneseAbilities: AbilityMap = {
           name: "Warrior's Aura",
           animation: "flame-spin-3",
           position: allyPosition,
+          data: {
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            batchId,
+            turnNumber: context.state.turn_number,
+          },
         });
         if (event) gameEvents.push(event);
       }
@@ -769,6 +862,7 @@ export const japaneseAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = `${triggerCard.user_card_instance_id}:${context.state.turn_number}:yamata`;
     if (!position) return [];
 
     const adjacentEnemiesInRow = getCardsInSameRow(
@@ -797,6 +891,13 @@ export const japaneseAbilities: AbilityMap = {
             name: "Many Heads",
             animation: "purple-slashes",
             position: enemyPosition,
+            data: {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              batchId,
+              turnNumber: context.state.turn_number,
+            },
           }),
         );
       }
@@ -813,6 +914,7 @@ export const japaneseAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = uuidv4();
 
     if (!position) return [];
 
@@ -835,6 +937,7 @@ export const japaneseAbilities: AbilityMap = {
             enemy,
             triggerCard,
             "water-burst-2",
+            { achievementBatchId: batchId }
           ),
         );
       }

@@ -3,6 +3,7 @@ import FatePickModel, {
   FatePickParticipation,
 } from "../models/fatePick.model";
 import UserModel from "../models/user.model";
+import MailModel from "../models/mail.model";
 import db from "../config/db.config";
 import DailyTaskService from "./dailyTask.service";
 
@@ -280,15 +281,25 @@ const FatePickService = {
 
       await client.query("COMMIT");
 
-      // Reward the fate pick creator with 20 gems for each new participant.
-      // Skipped for AI-generated picks (owner is the AI player).
+      // Reward the fate pick creator through claimable mail only (no direct
+      // currency grant). Skipped for AI-generated picks (owner is the AI
+      // player).
       const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
       if (fatePick.original_owner_id !== AI_PLAYER_ID) {
         try {
-          await UserModel.updateGems(fatePick.original_owner_id, 20);
+          await MailModel.create({
+            user_id: fatePick.original_owner_id,
+            mail_type: "reward",
+            subject: "A Fate Shared",
+            content: `For sharing your fate with ${user.username}`,
+            sender_name: `Gods of ${user.username}`,
+            has_rewards: true,
+            reward_gems: 20,
+            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          });
         } catch (rewardError) {
           console.error(
-            "Error awarding gems to fate pick creator:",
+            "Error sending fate pick creator reward mail:",
             rewardError
           );
         }

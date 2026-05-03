@@ -6,6 +6,7 @@ import {
   UserCardInstance,
   Card as BaseCard,
   SpecialAbility,
+  EquippedBorder,
 } from "../types/database.types";
 import { DeckDetailResponse, CardResponse } from "../types/api.types"; // For formatting output
 import CardModel from "./card.model"; // For fetching base card details for validation
@@ -16,11 +17,13 @@ import PowerUpService from "../services/powerUp.service";
 const formatDeckCardInstanceResponse = (
   baseCard: BaseCard,
   instance: UserCardInstance,
-  ability: SpecialAbility | null
+  ability: SpecialAbility | null,
+  equippedBorder: EquippedBorder | null = null
 ): CardResponse => {
   return {
     user_card_instance_id: instance.user_card_instance_id,
     base_card_id: baseCard.card_id,
+    character_id: baseCard.character_id ?? "",
     name: baseCard.name,
     rarity: baseCard.rarity,
     image_url: baseCard.image_url,
@@ -40,8 +43,19 @@ const formatDeckCardInstanceResponse = (
           parameters: ability.parameters,
         }
       : null,
+    equipped_border: equippedBorder,
   };
 };
+
+function rowToEquippedBorder(row: any): EquippedBorder | null {
+  if (!row.cb_border_id) return null;
+  return {
+    border_id: row.cb_border_id,
+    name: row.cb_name,
+    image_url: row.cb_image_url,
+    animation_key: row.cb_animation_key ?? null,
+  };
+}
 
 const DeckModel = {
   // Creates a deck and its cards within a transaction using a provided client
@@ -100,7 +114,7 @@ const DeckModel = {
         dc.deck_id,
         dc.user_card_instance_id,
         uci.level, uci.xp, uci.is_locked, uci.card_variant_id AS base_card_id,
-        ch.name, cv.rarity, cv.image_url, cv.attack_animation,
+        ch.character_id, ch.name, cv.rarity, cv.image_url, cv.attack_animation,
         ch.base_power->>'top' as base_power_top,
         ch.base_power->>'right' as base_power_right,
         ch.base_power->>'bottom' as base_power_bottom,
@@ -108,12 +122,15 @@ const DeckModel = {
         ch.special_ability_id, ch.set_id, ch.tags,
         sa.name as ability_name, sa.description as ability_description,
         sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
-        sa.id as ability_id_string
+        sa.id as ability_id_string,
+        cb.border_id as cb_border_id, cb.name as cb_name,
+        cb.image_url as cb_image_url, cb.animation_key as cb_animation_key
       FROM "deck_cards" dc
       JOIN "user_owned_cards" uci ON dc.user_card_instance_id = uci.user_card_instance_id
       JOIN "card_variants" cv ON uci.card_variant_id = cv.card_variant_id
       JOIN "characters" ch ON cv.character_id = ch.character_id
       LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
+      LEFT JOIN "card_borders" cb ON uci.equipped_border_id = cb.border_id
       WHERE dc.deck_id = ANY($1::uuid[]) AND uci.user_id = $2
       ORDER BY dc.deck_id, ch.name;
     `;
@@ -128,6 +145,7 @@ const DeckModel = {
     for (const row of cardsResult.rows) {
       const baseCard: BaseCard = {
         card_id: row.base_card_id,
+        character_id: row.character_id,
         name: row.name,
         rarity: row.rarity,
         image_url: row.image_url,
@@ -176,7 +194,8 @@ const DeckModel = {
       const formattedCard = formatDeckCardInstanceResponse(
         baseCard,
         instance,
-        ability
+        ability,
+        rowToEquippedBorder(row)
       );
       if (!cardsByDeckId.has(row.deck_id)) {
         cardsByDeckId.set(row.deck_id, []);
@@ -210,7 +229,7 @@ const DeckModel = {
       SELECT
         dc.user_card_instance_id,
         uci.level, uci.xp, uci.is_locked, uci.card_variant_id AS base_card_id,
-        ch.name, cv.rarity, cv.image_url, cv.attack_animation,
+        ch.character_id, ch.name, cv.rarity, cv.image_url, cv.attack_animation,
         ch.base_power->>'top' as base_power_top,
         ch.base_power->>'right' as base_power_right, 
         ch.base_power->>'bottom' as base_power_bottom, 
@@ -218,12 +237,15 @@ const DeckModel = {
         ch.special_ability_id, ch.set_id, ch.tags,
         sa.name as ability_name, sa.description as ability_description, 
         sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
-        sa.id as ability_id_string
+        sa.id as ability_id_string,
+        cb.border_id as cb_border_id, cb.name as cb_name,
+        cb.image_url as cb_image_url, cb.animation_key as cb_animation_key
       FROM "deck_cards" dc
       JOIN "user_owned_cards" uci ON dc.user_card_instance_id = uci.user_card_instance_id
       JOIN "card_variants" cv ON uci.card_variant_id = cv.card_variant_id
       JOIN "characters" ch ON cv.character_id = ch.character_id
       LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
+      LEFT JOIN "card_borders" cb ON uci.equipped_border_id = cb.border_id
       WHERE dc.deck_id = $1 AND uci.user_id = $2
       ORDER BY ch.name;
     `;
@@ -240,6 +262,7 @@ const DeckModel = {
     const cardDetails = cardsResult.rows.map((row) => {
       const baseCard: BaseCard = {
         card_id: row.base_card_id,
+        character_id: row.character_id,
         name: row.name,
         rarity: row.rarity,
         image_url: row.image_url,
@@ -284,7 +307,7 @@ const DeckModel = {
             parameters: row.ability_parameters,
           }
         : null;
-      return formatDeckCardInstanceResponse(baseCard, instance, ability);
+      return formatDeckCardInstanceResponse(baseCard, instance, ability, rowToEquippedBorder(row));
     });
 
     return { ...deckInfo, cards: cardDetails };

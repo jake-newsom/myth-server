@@ -18,7 +18,17 @@ export function sanitizeGameStateForPlayer(
     return gameState; // or throw an error
   }
 
-  const sanitizedState: GameState = JSON.parse(JSON.stringify(gameState));
+  // Strip `sourceCard` references during cloning to avoid circular structures.
+  // `sourceCard` is an InGameCard reference stored on temporary_effects.data for
+  // engine-side bookkeeping, but the same card is also reachable via the board /
+  // hydrated_card_data_cache, which causes JSON.stringify to fail. The id is
+  // already preserved separately on tile/effect metadata, so dropping the live
+  // reference is safe for the client-facing snapshot.
+  const sanitizedState: GameState = JSON.parse(
+    JSON.stringify(gameState, (key, value) =>
+      key === "sourceCard" ? undefined : value
+    )
+  );
 
   const isPlayer1 = sanitizedState.player1.user_id === viewerId;
   const isPlayer2 = sanitizedState.player2.user_id === viewerId;

@@ -24,6 +24,25 @@ import {
 
 import { v4 as uuidv4 } from "uuid";
 import DailyTaskService from "../services/dailyTask.service";
+import AchievementService from "../services/achievement.service";
+
+function getAbilityIdFromCard(card?: InGameCard): string | null {
+  if (!card?.base_card_data?.special_ability) return null;
+  const ability = card.base_card_data.special_ability as {
+    id?: string;
+    ability_id?: string;
+  };
+  if (typeof ability.id === "string" && ability.id.trim().length > 0) {
+    return ability.id.trim();
+  }
+  if (
+    typeof ability.ability_id === "string" &&
+    ability.ability_id.trim().length > 0
+  ) {
+    return ability.ability_id.trim();
+  }
+  return null;
+}
 
 /**
  * Helper function to get the tile effect that should be applied to a card at a specific position
@@ -61,6 +80,34 @@ export function transferTileEffectToCard(
   };
 
   card.temporary_effects.push(temporaryEffect);
+
+  // Progress character achievements only when a tile effect is actually applied
+  // to a card (not merely when a tile is set up).
+  if (
+    tileEffect.source_player_id &&
+    tileEffect.source_ability_id &&
+    !simulationContext.isInSimulation()
+  ) {
+    const totalPower = Object.values(tileEffect.power).reduce(
+      (sum, val) => sum + (val || 0),
+      0
+    );
+    const isDebuff = totalPower < 0;
+    if (isDebuff) {
+      AchievementService.triggerAchievementEvent({
+        userId: tileEffect.source_player_id,
+        eventType: "power_debuff_applied",
+        eventData: {
+          source_card_id: tileEffect.source_card_id ?? null,
+          source_card_name: null,
+          source_ability_id: tileEffect.source_ability_id,
+          target_card_name: card.base_card_data?.name ?? null,
+          target_card_id: card.user_card_instance_id,
+          power_delta: calculatePowerDelta(tileEffect.power, true),
+        },
+      }).catch(() => {});
+    }
+  }
 
   //TODO: Return a game event
   return true;
@@ -175,6 +222,29 @@ export function addTempBuff(
     type: EffectType.Buff,
   });
 
+  const actingPlayerId =
+    (options.data?.actingPlayerId as string | undefined) ||
+    (options.data?.sourcePlayerId as string | undefined);
+  const sourceCard = options.data?.sourceCard as InGameCard | undefined;
+  if (actingPlayerId && !simulationContext.isInSimulation()) {
+    AchievementService.triggerAchievementEvent({
+      userId: actingPlayerId,
+      eventType: "power_buff_applied",
+      eventData: {
+        source_card_id: sourceCard?.user_card_instance_id ?? null,
+        source_card_name: sourceCard?.base_card_data?.name ?? null,
+        source_ability_id: getAbilityIdFromCard(sourceCard),
+        batch_id: options.data?.batchId ?? null,
+        turn_number: options.data?.turnNumber ?? null,
+        target_card_name: card.base_card_data?.name ?? null,
+        target_card_id: card.user_card_instance_id,
+        copied_target_card_id:
+          (options.data?.copied_target_card_id as string | undefined) ?? null,
+        power_delta: calculatePowerDelta(power),
+      },
+    }).catch(() => {});
+  }
+
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
     animation: options.data?.animation || options.animation || "buff",
@@ -222,6 +292,30 @@ export function addTempDebuff(
     type: EffectType.Debuff,
   });
 
+  const actingPlayerId =
+    (options.data?.actingPlayerId as string | undefined) ||
+    (options.data?.sourcePlayerId as string | undefined);
+  const sourceCard = options.data?.sourceCard as InGameCard | undefined;
+  if (actingPlayerId && !simulationContext.isInSimulation()) {
+    AchievementService.triggerAchievementEvent({
+      userId: actingPlayerId,
+      eventType: "power_debuff_applied",
+      eventData: {
+        source_card_id: sourceCard?.user_card_instance_id ?? null,
+        source_card_name: sourceCard?.base_card_data?.name ?? null,
+        source_ability_id: getAbilityIdFromCard(sourceCard),
+        batch_id: options.data?.batchId ?? null,
+        turn_number: options.data?.turnNumber ?? null,
+        target_card_name: card.base_card_data?.name ?? null,
+        target_card_id: card.user_card_instance_id,
+        target_total_power_before: options.data?.targetTotalPowerBefore ?? null,
+        target_max_side_power_before:
+          options.data?.targetMaxSidePowerBefore ?? null,
+        power_delta: calculatePowerDelta(power, true),
+      },
+    }).catch(() => {});
+  }
+
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
     animation: options.animation || "debuff",
@@ -263,10 +357,40 @@ export function createOrUpdateBuff(
       existingBuff.power.left! += power.left || 0;
       existingBuff.power.right! += power.right || 0;
     }
+
+    // Preserve/refresh metadata on updates so state flags
+    // (e.g. usedAttack) are visible to nested trigger chains.
+    if (data) {
+      existingBuff.data = {
+        ...(existingBuff.data ?? {}),
+        ...data,
+      };
+    }
   }
 
   //sync to state?
   card.current_power = updateCurrentPower(card);
+
+  const actingPlayerId =
+    (data?.actingPlayerId as string | undefined) ||
+    (data?.sourcePlayerId as string | undefined);
+  const sourceCard = data?.sourceCard as InGameCard | undefined;
+  if (actingPlayerId && !simulationContext.isInSimulation()) {
+    AchievementService.triggerAchievementEvent({
+      userId: actingPlayerId,
+      eventType: "power_buff_applied",
+      eventData: {
+        source_card_id: sourceCard?.user_card_instance_id ?? null,
+        source_card_name: sourceCard?.base_card_data?.name ?? null,
+        source_ability_id: getAbilityIdFromCard(sourceCard),
+        batch_id: data?.batchId ?? null,
+        turn_number: data?.turnNumber ?? null,
+        target_card_name: card.base_card_data?.name ?? null,
+        target_card_id: card.user_card_instance_id,
+        power_delta: calculatePowerDelta(power),
+      },
+    }).catch(() => {});
+  }
 
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
@@ -323,6 +447,29 @@ export function createOrUpdateDebuff(
 
   //sync to state?
   card.current_power = updateCurrentPower(card);
+
+  const actingPlayerId =
+    (data?.actingPlayerId as string | undefined) ||
+    (data?.sourcePlayerId as string | undefined);
+  const sourceCard = data?.sourceCard as InGameCard | undefined;
+  if (actingPlayerId && !simulationContext.isInSimulation()) {
+    AchievementService.triggerAchievementEvent({
+      userId: actingPlayerId,
+      eventType: "power_debuff_applied",
+      eventData: {
+        source_card_id: sourceCard?.user_card_instance_id ?? null,
+        source_card_name: sourceCard?.base_card_data?.name ?? null,
+        source_ability_id: getAbilityIdFromCard(sourceCard),
+        batch_id: data?.batchId ?? null,
+        turn_number: data?.turnNumber ?? null,
+        target_card_name: card.base_card_data?.name ?? null,
+        target_card_id: card.user_card_instance_id,
+        target_total_power_before: data?.targetTotalPowerBefore ?? null,
+        target_max_side_power_before: data?.targetMaxSidePowerBefore ?? null,
+        power_delta: calculatePowerDelta(power, true),
+      },
+    }).catch(() => {});
+  }
 
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
@@ -686,11 +833,13 @@ export const destroyCardAtPosition = (
   position: BoardPosition,
   board: GameBoard,
   animation?: string,
-  actingPlayerId?: string
+  actingPlayerId?: string,
+  destroyerCard?: InGameCard
 ): BaseGameEvent | null => {
   const tile = getTileAtPosition(position, board);
   if (!tile?.card) return null;
 
+  const destroyedCard = tile.card;
   const cardId = tile.card.user_card_instance_id;
   const owner = tile.card.owner;
 
@@ -700,6 +849,25 @@ export const destroyCardAtPosition = (
   if (actingPlayerId && !simulationContext.isInSimulation()) {
     try {
       DailyTaskService.trackDestroy(actingPlayerId).catch(() => { });
+
+      const destroyerPower = destroyerCard ? getCardTotalPower(destroyerCard) : null;
+      const destroyedPower = getCardTotalPower(destroyedCard);
+
+      AchievementService.triggerAchievementEvent({
+        userId: actingPlayerId,
+        eventType: "card_destroyed",
+        eventData: {
+          destroyer_card_id: destroyerCard?.user_card_instance_id ?? null,
+          destroyer_card_name: destroyerCard?.base_card_data?.name ?? null,
+          destroyer_ability_id: getAbilityIdFromCard(destroyerCard),
+          destroyer_original_owner: destroyerCard?.original_owner ?? null,
+          target_card_id: destroyedCard.user_card_instance_id,
+          target_card_name: destroyedCard.base_card_data?.name ?? null,
+          target_tags: destroyedCard.base_card_data?.tags ?? [],
+          defeated_stronger_enemy:
+            destroyerPower !== null ? destroyerPower < destroyedPower : false,
+        },
+      }).catch(() => { });
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }
@@ -736,7 +904,9 @@ export const setTileStatus = (
   tile: BoardCell,
   position: BoardPosition,
   effect: TileEffect,
-  actingPlayerId?: string
+  actingPlayerId?: string,
+  sourceCard?: InGameCard,
+  metadata?: Record<string, any>
 ): BaseGameEvent => {
   tile.tile_effect = effect;
 
@@ -752,6 +922,28 @@ export const setTileStatus = (
       DailyTaskService.trackCurse(actingPlayerId).catch(() => { });
     } catch (error) {
       // Silently ignore tracking errors during gameplay
+    }
+  }
+
+  if (actingPlayerId && !simulationContext.isInSimulation()) {
+    try {
+      AchievementService.triggerAchievementEvent({
+        userId: actingPlayerId,
+        eventType: "tile_state_changed",
+        eventData: {
+          status: effect.status,
+          terrain: effect.terrain ?? null,
+          animation_label: effect.animation_label ?? null,
+          source_card_id: sourceCard?.user_card_instance_id ?? null,
+          source_card_name: sourceCard?.base_card_data?.name ?? null,
+          source_ability_id: getAbilityIdFromCard(sourceCard),
+          batch_id: metadata?.batchId ?? null,
+          turn_number: metadata?.turnNumber ?? null,
+          ...((metadata && metadata.extraEventData) || {}),
+        },
+      }).catch(() => {});
+    } catch {
+      // no-op
     }
   }
 
@@ -1323,7 +1515,8 @@ export function addTileBlessing(
 export function protectFromDefeat(
   card: InGameCard,
   turns: number,
-  position: BoardPosition
+  position: BoardPosition,
+  data?: Record<string, any>
 ): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
@@ -1334,6 +1527,27 @@ export function protectFromDefeat(
     duration: turns,
     type: EffectType.BlockDefeat,
   });
+
+  const actingPlayerId =
+    (data?.actingPlayerId as string | undefined) ||
+    (data?.sourcePlayerId as string | undefined);
+  const sourceCard = data?.sourceCard as InGameCard | undefined;
+  if (actingPlayerId && !simulationContext.isInSimulation()) {
+    AchievementService.triggerAchievementEvent({
+      userId: actingPlayerId,
+      eventType: "power_buff_applied",
+      eventData: {
+        source_card_id: sourceCard?.user_card_instance_id ?? null,
+        source_card_name: sourceCard?.base_card_data?.name ?? null,
+        source_ability_id: getAbilityIdFromCard(sourceCard),
+        batch_id: data?.batchId ?? null,
+        turn_number: data?.turnNumber ?? null,
+        target_card_name: card.base_card_data?.name ?? null,
+        target_card_id: card.user_card_instance_id,
+        power_delta: 0,
+      },
+    }).catch(() => {});
+  }
 
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,

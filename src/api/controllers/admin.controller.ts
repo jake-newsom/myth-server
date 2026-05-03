@@ -4,6 +4,8 @@ import { AuthenticatedRequest } from "../../types";
 import db from "../../config/db.config";
 import AIAutomationService from "../../services/aiAutomation.service";
 import DailyRewardsService from "../../services/dailyRewards.service";
+import BorderService from "../../services/border.service";
+import AchievementService from "../../services/achievement.service";
 import logger from "../../utils/logger";
 
 /**
@@ -394,6 +396,389 @@ const AdminController = {
         error: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString(),
       });
+    }
+  },
+
+  // ============================================================================
+  // ACHIEVEMENT MANAGEMENT ENDPOINTS
+  // ============================================================================
+
+  /**
+   * POST /api/admin/achievements
+   */
+  async createAchievement(req: AuthenticatedRequest, res: Response) {
+    try {
+      const body = req.body || {};
+      const required = [
+        "achievement_key",
+        "title",
+        "description",
+        "category",
+        "type",
+        "target_value",
+        "rarity",
+      ] as const;
+
+      for (const key of required) {
+        if (body[key] === undefined || body[key] === null || body[key] === "") {
+          return res.status(400).json({
+            status: "error",
+            message: `${key} is required`,
+          });
+        }
+      }
+
+      const result = await AchievementService.createAdminAchievement(body);
+      if (!result.success) {
+        return res.status(400).json({
+          status: "error",
+          message: result.error || "Failed to create achievement",
+        });
+      }
+
+      logger.info("Admin created achievement", {
+        adminId: req.user?.user_id,
+        achievementId: result.achievement?.id,
+        achievementKey: result.achievement?.achievement_key,
+      });
+
+      return res.status(201).json({ data: result.achievement });
+    } catch (error) {
+      logger.error(
+        "Admin create achievement error",
+        { adminId: req.user?.user_id },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to create achievement" });
+    }
+  },
+
+  /**
+   * PATCH /api/admin/achievements/:achievementId
+   */
+  async updateAchievement(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { achievementId } = req.params;
+      if (!achievementId) {
+        return res.status(400).json({
+          status: "error",
+          message: "achievementId is required",
+        });
+      }
+
+      const updates = req.body || {};
+      const result = await AchievementService.updateAdminAchievement(
+        achievementId,
+        updates
+      );
+
+      if (!result.success) {
+        const status = result.error === "Achievement not found" ? 404 : 400;
+        return res.status(status).json({
+          status: "error",
+          message: result.error || "Failed to update achievement",
+        });
+      }
+
+      logger.info("Admin updated achievement", {
+        adminId: req.user?.user_id,
+        achievementId,
+      });
+
+      return res.status(200).json({ data: result.achievement });
+    } catch (error) {
+      logger.error(
+        "Admin update achievement error",
+        { achievementId: req.params.achievementId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to update achievement" });
+    }
+  },
+
+  /**
+   * DELETE /api/admin/achievements/:achievementId
+   * Soft-delete by setting is_active=false.
+   */
+  async deactivateAchievement(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { achievementId } = req.params;
+      if (!achievementId) {
+        return res.status(400).json({
+          status: "error",
+          message: "achievementId is required",
+        });
+      }
+
+      const result = await AchievementService.deactivateAdminAchievement(
+        achievementId
+      );
+      if (!result.success) {
+        const status = result.error === "Achievement not found" ? 404 : 400;
+        return res.status(status).json({
+          status: "error",
+          message: result.error || "Failed to deactivate achievement",
+        });
+      }
+
+      logger.info("Admin deactivated achievement", {
+        adminId: req.user?.user_id,
+        achievementId,
+      });
+
+      return res.status(200).json({ data: result.achievement });
+    } catch (error) {
+      logger.error(
+        "Admin deactivate achievement error",
+        { achievementId: req.params.achievementId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to deactivate achievement" });
+    }
+  },
+
+  // ============================================================================
+  // BORDER MANAGEMENT ENDPOINTS
+  // ============================================================================
+
+  /**
+   * GET /api/admin/borders
+   * List the full border catalog (including inactive entries).
+   */
+  async listBorders(_req: AuthenticatedRequest, res: Response) {
+    try {
+      const borders = await BorderService.getFullCatalog();
+      return res.status(200).json({ data: borders });
+    } catch (error) {
+      logger.error(
+        "Admin list borders error",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to list borders" });
+    }
+  },
+
+  /**
+   * POST /api/admin/borders
+   * Body: { name, image_url, description?, animation_key?, character_id?, set_id? }
+   */
+  async createBorder(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { name, description, image_url, animation_key, character_id, set_id } =
+        req.body || {};
+
+      if (!name || typeof name !== "string") {
+        return res
+          .status(400)
+          .json({ status: "error", message: "name is required" });
+      }
+      if (!image_url || typeof image_url !== "string") {
+        return res
+          .status(400)
+          .json({ status: "error", message: "image_url is required" });
+      }
+
+      const border = await BorderService.createBorder({
+        name,
+        image_url,
+        description: description ?? null,
+        animation_key: animation_key ?? null,
+        character_id: character_id ?? null,
+        set_id: set_id ?? null,
+      });
+
+      logger.info("Admin created border", {
+        adminId: req.user?.user_id,
+        borderId: border.border_id,
+        name: border.name,
+      });
+
+      return res.status(201).json({ data: border });
+    } catch (error) {
+      logger.error(
+        "Admin create border error",
+        { adminId: req.user?.user_id },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to create border" });
+    }
+  },
+
+  /**
+   * PATCH /api/admin/borders/:borderId
+   * Body: any subset of { name, description, image_url, animation_key,
+   *                       character_id, set_id, is_active }
+   */
+  async updateBorder(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { borderId } = req.params;
+      if (!borderId) {
+        return res
+          .status(400)
+          .json({ status: "error", message: "borderId is required" });
+      }
+
+      const updates = req.body || {};
+      const border = await BorderService.updateBorder(borderId, updates);
+      if (!border) {
+        return res
+          .status(404)
+          .json({ status: "error", message: "Border not found" });
+      }
+
+      logger.info("Admin updated border", {
+        adminId: req.user?.user_id,
+        borderId,
+      });
+
+      return res.status(200).json({ data: border });
+    } catch (error) {
+      logger.error(
+        "Admin update border error",
+        { borderId: req.params.borderId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to update border" });
+    }
+  },
+
+  /**
+   * DELETE /api/admin/borders/:borderId
+   * Soft-delete by deactivating the border. Existing equipped/owned references
+   * remain intact (the border simply disappears from catalog listings).
+   */
+  async deactivateBorder(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { borderId } = req.params;
+      if (!borderId) {
+        return res
+          .status(400)
+          .json({ status: "error", message: "borderId is required" });
+      }
+      const border = await BorderService.deactivateBorder(borderId);
+      if (!border) {
+        return res
+          .status(404)
+          .json({ status: "error", message: "Border not found" });
+      }
+
+      logger.info("Admin deactivated border", {
+        adminId: req.user?.user_id,
+        borderId,
+      });
+
+      return res.status(200).json({ data: border });
+    } catch (error) {
+      logger.error(
+        "Admin deactivate border error",
+        { borderId: req.params.borderId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to deactivate border" });
+    }
+  },
+
+  /**
+   * POST /api/admin/borders/grant
+   * Body: { userId: string, borderId: string }
+   *
+   * Grant a border to a specific user. Idempotent.
+   */
+  async grantBorderToUser(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { userId, borderId } = req.body || {};
+      if (!userId || !borderId) {
+        return res.status(400).json({
+          status: "error",
+          message: "userId and borderId are required",
+        });
+      }
+
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res
+          .status(404)
+          .json({ status: "error", message: "User not found" });
+      }
+
+      const newlyGranted = await BorderService.grantBorder(userId, borderId);
+
+      logger.info("Admin granted border to user", {
+        adminId: req.user?.user_id,
+        targetUserId: userId,
+        borderId,
+        newlyGranted,
+      });
+
+      return res.status(200).json({
+        status: "success",
+        newly_granted: newlyGranted,
+      });
+    } catch (error) {
+      logger.error(
+        "Admin grant border error",
+        { userId: req.body?.userId, borderId: req.body?.borderId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to grant border" });
+    }
+  },
+
+  /**
+   * POST /api/admin/borders/revoke
+   * Body: { userId: string, borderId: string }
+   *
+   * Remove a border from a user's inventory. Also unequips any cards using it.
+   */
+  async revokeBorderFromUser(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { userId, borderId } = req.body || {};
+      if (!userId || !borderId) {
+        return res.status(400).json({
+          status: "error",
+          message: "userId and borderId are required",
+        });
+      }
+
+      const removed = await BorderService.revokeBorder(userId, borderId);
+
+      logger.info("Admin revoked border from user", {
+        adminId: req.user?.user_id,
+        targetUserId: userId,
+        borderId,
+        removed,
+      });
+
+      return res.status(200).json({
+        status: "success",
+        removed,
+      });
+    } catch (error) {
+      logger.error(
+        "Admin revoke border error",
+        { userId: req.body?.userId, borderId: req.body?.borderId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to revoke border" });
     }
   },
 };

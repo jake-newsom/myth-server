@@ -855,10 +855,11 @@ components:
             - card_fragments
             - card_pack
             - enhanced_card
+            - border
           description: Type of reward for this day
         amount:
           type: integer
-          description: Amount of reward (for gems, fragments, coins, packs)
+          description: Amount of reward (for gems, fragments, coins, packs). Ignored for enhanced_card and border.
         is_claimed:
           type: boolean
           description: Whether this day's reward has been claimed
@@ -900,11 +901,16 @@ components:
                 - card_fragments
                 - card_pack
                 - enhanced_card
+                - border
             amount:
               type: integer
             card_id:
               type: string
-              description: Card ID for enhanced_card rewards (optional)
+              description: user_card_instance_id created for enhanced_card rewards (optional)
+            border_id:
+              type: string
+              format: uuid
+              description: Border ID granted for border rewards (optional)
           required:
             - day
             - reward_type

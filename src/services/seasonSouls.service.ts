@@ -1,4 +1,4 @@
-import SeasonSoulsModel from "../models/seasonSouls.model";
+import SeasonSoulsModel, { SeasonOverallLeaderboardEntry } from "../models/seasonSouls.model";
 import SetModel from "../models/set.model";
 import SeasonService from "./season.service";
 import logger from "../utils/logger";
@@ -291,6 +291,62 @@ class SeasonSoulsServiceClass {
       rank_percentile: rankPercentile,
       eligible_for_rewards: stats.soulsTotal >= MIN_SOULS_FOR_REWARDS,
       minimum_souls_for_rewards: MIN_SOULS_FOR_REWARDS,
+    };
+  }
+
+  async getOverallLeaderboard(
+    page: number = 1,
+    limit: number = 50
+  ): Promise<{
+    off_season: boolean;
+    season_id: string | null;
+    leaderboard: SeasonOverallLeaderboardEntry[];
+    pagination: {
+      current_page: number;
+      total_pages: number;
+      total_players: number;
+      per_page: number;
+    };
+  }> {
+    const activeSeason = await SeasonService.getCurrentActiveSeason();
+    if (!activeSeason) {
+      return {
+        off_season: true,
+        season_id: null,
+        leaderboard: [],
+        pagination: {
+          current_page: page,
+          total_pages: 0,
+          total_players: 0,
+          per_page: limit,
+        },
+      };
+    }
+
+    const normalizedPage = Math.max(1, page);
+    const normalizedLimit = Math.min(Math.max(1, limit), 100);
+
+    const result = await SeasonSoulsModel.getOverallLeaderboardPaginated(
+      activeSeason.season_id,
+      normalizedPage,
+      normalizedLimit
+    );
+
+    const totalPages =
+      result.total_players === 0
+        ? 0
+        : Math.ceil(result.total_players / normalizedLimit);
+
+    return {
+      off_season: false,
+      season_id: activeSeason.season_id,
+      leaderboard: result.entries,
+      pagination: {
+        current_page: normalizedPage,
+        total_pages: totalPages,
+        total_players: result.total_players,
+        per_page: normalizedLimit,
+      },
     };
   }
 

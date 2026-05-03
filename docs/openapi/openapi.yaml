@@ -63,6 +63,8 @@ tags:
     description: Administrative endpoints for seasonal lifecycle
   - name: Asset Patches
     description: Client asset patch manifest and static ZIP hosting
+  - name: Borders
+    description: Card border catalog, ownership, and equip / unequip endpoints
 
 paths:
   # Static Pages (Root-level, no /api prefix)
@@ -139,6 +141,12 @@ paths:
   /api/characters:
     $ref: "./character.openapi.yaml#/paths/~1api~1characters"
 
+  /api/characters/{characterId}/achievements/me:
+    $ref: "./achievement.openapi.yaml#/paths/~1api~1characters~1{characterId}~1achievements~1me"
+
+  /api/characters/{characterId}/borders/eligible:
+    $ref: "./character.openapi.yaml#/paths/~1api~1characters~1{characterId}~1borders~1eligible"
+
   # Deck Endpoints
   /api/decks:
     $ref: "./deck.openapi.yaml#/paths/~1api~1decks"
@@ -152,6 +160,22 @@ paths:
 
   /api/user-cards/{userCardInstanceId}/lock:
     $ref: "./userCard.openapi.yaml#/paths/~1api~1user-cards~1{userCardInstanceId}~1lock"
+
+  /api/user-cards/{userCardInstanceId}/border:
+    $ref: "./border.openapi.yaml#/paths/~1api~1user-cards~1{userCardInstanceId}~1border"
+
+  /api/user-cards/borders/equip-all:
+    $ref: "./border.openapi.yaml#/paths/~1api~1user-cards~1borders~1equip-all"
+
+  /api/user-cards/borders/unequip-all:
+    $ref: "./border.openapi.yaml#/paths/~1api~1user-cards~1borders~1unequip-all"
+
+  # Border Catalog Endpoints
+  /api/borders:
+    $ref: "./border.openapi.yaml#/paths/~1api~1borders"
+
+  /api/borders/owned:
+    $ref: "./border.openapi.yaml#/paths/~1api~1borders~1owned"
 
   # XP System Endpoints
   /api/xp/level-config:
@@ -464,6 +488,26 @@ paths:
   /api/admin/database-status:
     $ref: "./admin.openapi.yaml#/paths/~1api~1admin~1database-status"
 
+  # Admin: Border Management
+  /api/admin/borders:
+    $ref: "./border.openapi.yaml#/paths/~1api~1admin~1borders"
+
+  /api/admin/borders/{borderId}:
+    $ref: "./border.openapi.yaml#/paths/~1api~1admin~1borders~1{borderId}"
+
+  /api/admin/borders/grant:
+    $ref: "./border.openapi.yaml#/paths/~1api~1admin~1borders~1grant"
+
+  /api/admin/borders/revoke:
+    $ref: "./border.openapi.yaml#/paths/~1api~1admin~1borders~1revoke"
+
+  # Admin: Achievement Management
+  /api/admin/achievements:
+    $ref: "./achievement.openapi.yaml#/paths/~1api~1admin~1achievements"
+
+  /api/admin/achievements/{achievementId}:
+    $ref: "./achievement.openapi.yaml#/paths/~1api~1admin~1achievements~1{achievementId}"
+
   /api/users/me/feature-tutorial-complete:
     $ref: "./user.openapi.yaml#/paths/~1api~1users~1me~1feature-tutorial-complete"
 
@@ -509,6 +553,14 @@ components:
       $ref: "./character.openapi.yaml#/components/schemas/CharacterWithVariants"
     UserCard:
       $ref: "./userCard.openapi.yaml#/components/schemas/UserCard"
+
+    # Border schemas
+    CardBorder:
+      $ref: "./border.openapi.yaml#/components/schemas/CardBorder"
+    OwnedBorder:
+      $ref: "./border.openapi.yaml#/components/schemas/OwnedBorder"
+    EquippedBorder:
+      $ref: "./border.openapi.yaml#/components/schemas/EquippedBorder"
 
     # Deck schemas
     CreateDeckRequest:

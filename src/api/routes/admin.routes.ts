@@ -56,4 +56,44 @@ router.post("/trigger-ai-fate-pick", AdminController.triggerAIFatePick);
  */
 router.post("/trigger-daily-rewards", AdminController.triggerDailyRewards);
 
+// ============================================================================
+// ACHIEVEMENT MANAGEMENT ENDPOINTS
+// ============================================================================
+
+/**
+ * Achievement admin CRUD.
+ * POST body includes achievement definition fields such as:
+ * { achievement_key, title, description, achievement_kind?, character_id?,
+ *   category, type, target_value, rarity, reward_* fields, sort_order? }
+ */
+router.post("/achievements", AdminController.createAchievement);
+router.patch("/achievements/:achievementId", AdminController.updateAchievement);
+router.delete(
+  "/achievements/:achievementId",
+  AdminController.deactivateAchievement
+);
+
+// ============================================================================
+// BORDER MANAGEMENT ENDPOINTS
+// ============================================================================
+
+/**
+ * Border catalog CRUD. The "create" body accepts:
+ *   { name, image_url, description?, animation_key?, character_id?, set_id? }
+ * The "update" PATCH accepts any subset of those fields plus is_active.
+ * Deletes are soft (set is_active = false) so existing user_owned_borders /
+ * user_owned_cards.equipped_border_id references stay intact.
+ */
+router.get("/borders", AdminController.listBorders);
+router.post("/borders", AdminController.createBorder);
+router.patch("/borders/:borderId", AdminController.updateBorder);
+router.delete("/borders/:borderId", AdminController.deactivateBorder);
+
+/**
+ * Grant / revoke a border on a specific user's inventory.
+ * Body: { userId: string, borderId: string }
+ */
+router.post("/borders/grant", AdminController.grantBorderToUser);
+router.post("/borders/revoke", AdminController.revokeBorderFromUser);
+
 export default router;

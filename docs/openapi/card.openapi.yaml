@@ -178,6 +178,13 @@ components:
           type: string
           format: uuid
           description: Identifier for the base card definition.
+        character_id:
+          type: string
+          format: uuid
+          description: |
+            Identifier of the underlying character in the `characters` table.
+            All variants of the same character share this id, so clients can use
+            it to deep-link from a card in the gallery to its character page.
         name:
           type: string
           example: "Shadow Fiend"
@@ -231,8 +238,13 @@ components:
           $ref: "#/components/schemas/PowerValues"
           description: Permanent stat increases from leveling or other enhancements.
           nullable: true
+        equipped_border:
+          $ref: "./border.openapi.yaml#/components/schemas/EquippedBorder"
+          description: The border currently equipped on this card instance, if any.
+          nullable: true
       required:
         - base_card_id
+        - character_id
         - name
         - rarity
         - image_url
@@ -266,6 +278,12 @@ components:
           type: string
           format: uuid
           description: Unique identifier for the base card definition
+        character_id:
+          type: string
+          format: uuid
+          description: |
+            Identifier of the underlying character in the `characters` table.
+            All variants of the same character share this id.
         name:
           type: string
           example: "Baldur"
@@ -332,6 +350,7 @@ components:
             - parameters
       required:
         - base_card_id
+        - character_id
         - name
         - rarity
         - image_url

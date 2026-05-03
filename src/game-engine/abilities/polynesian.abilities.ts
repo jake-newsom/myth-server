@@ -41,6 +41,8 @@ import {
 import { BaseGameEvent } from "../game-events";
 import { resolveCombat } from "../game.utils";
 import { randomInt } from "../simulation.rng";
+import { simulationContext } from "../simulation.context";
+import AchievementService from "../../services/achievement.service";
 
 import { v4 as uuidv4 } from "uuid";
 
@@ -64,6 +66,12 @@ const fillRandomEmptyTileWithWater = (
   }
 };
 
+const countActiveLavaTiles = (board: GameBoard): number => {
+  return board
+    .flat()
+    .filter((tile) => tile.tile_effect?.terrain === TileTerrain.Lava).length;
+};
+
 export const polynesianCombatResolvers: CombatResolverMap = {
   // Ocean's Shield: Cannot be defeated by enemies with lower total power.
   kamohoalii_oceans_shield: (context) => {
@@ -81,7 +89,7 @@ export const polynesianCombatResolvers: CombatResolverMap = {
     const enemyTotalPower = getCardTotalPower(triggerCard);
     const myTotalPower = getCardTotalPower(flippedCard);
 
-    if (enemyTotalPower > myTotalPower) return { preventDefeat: false };
+    if (enemyTotalPower >= myTotalPower) return { preventDefeat: false };
 
     return { preventDefeat: true };
   },
@@ -123,6 +131,10 @@ export const polynesianCombatResolvers: CombatResolverMap = {
           position,
           {
             animation: "harbor-protection",
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            turnNumber: context.state.turn_number,
           },
         ),
       ],
@@ -154,7 +166,15 @@ export const polynesianAbilities: AbilityMap = {
 
     if (!hasLavaEffect && !isOnLavaTile) return [];
 
-    return [createOrUpdateBuff(triggerCard, 1000, 1, "Lava Field", position)];
+    return [
+      createOrUpdateBuff(triggerCard, 1000, 1, "Lava Field", position, {
+        actingPlayerId: triggerCard.owner,
+        sourceCard: triggerCard,
+        sourcePlayerId: triggerCard.owner,
+        batchId: `${triggerCard.user_card_instance_id}:${state.turn_number}:pele`,
+        turnNumber: state.turn_number,
+      }),
+    ];
   },
 
   // Cleansing Hula: At the start of each round, cleanse a random ally of all curses
@@ -188,6 +208,7 @@ export const polynesianAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = `${triggerCard.user_card_instance_id}:${context.state.turn_number}:kane`;
 
     if (!position) return [];
 
@@ -197,7 +218,15 @@ export const polynesianAbilities: AbilityMap = {
       triggerCard.owner,
     );
     for (const ally of adjacentAllies) {
-      gameEvents.push(protectFromDefeat(ally, 3, position));
+      gameEvents.push(
+        protectFromDefeat(ally, 3, position, {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          batchId,
+          turnNumber: context.state.turn_number,
+        }),
+      );
     }
 
     return gameEvents;
@@ -286,15 +315,12 @@ export const polynesianAbilities: AbilityMap = {
   // War Stance: Gain +1 whenever an ally is defeated up to 5. At max, attack adjacent enemies again.
   ku_war_stance: (context) => {
     const { triggerCard, originalTriggerCard, state, position } = context;
-    const label = "War Stance";
+    const label = "Blood Altar";
     const gameEvents: BaseGameEvent[] = [];
-
-    const warStanceBuff = triggerCard.temporary_effects.find(
+    let bloodAltarBuff = triggerCard.temporary_effects.find(
       (effect) => effect.name === label,
     );
-    const belowMaxPower = (warStanceBuff?.power.top ?? 0) < 5;
-    const atMaxPower = (warStanceBuff?.power.top ?? 0) >= 5;
-    const usedAttack = warStanceBuff?.data?.usedAttack || false;
+    const belowMaxPower = (bloodAltarBuff?.power.top ?? 0) < 5;
 
     if (
       originalTriggerCard?.owner !== triggerCard.owner &&
@@ -302,29 +328,57 @@ export const polynesianAbilities: AbilityMap = {
       belowMaxPower
     ) {
       gameEvents.push(
-        createOrUpdateBuff(triggerCard, 1000, 1, label, position),
+        createOrUpdateBuff(triggerCard, 1000, 1, label, position, {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          turnNumber: context.state.turn_number,
+          animation: "debuff",
+        }),
+      );
+
+      // createOrUpdateBuff mutates card effects in place, so re-read here to
+      // allow immediate +4 -> +5 activation in the same trigger resolution.
+      bloodAltarBuff = triggerCard.temporary_effects.find(
+        (effect) => effect.name === label,
       );
     }
 
-    //check buff for max value & unused attack
-    if (warStanceBuff && atMaxPower && !usedAttack) {
+    // check buff for max value & unused attack
+    const atMaxPower = (bloodAltarBuff?.power.top ?? 0) >= 5;
+    const usedAttack = bloodAltarBuff?.data?.usedAttack || false;
+    if (bloodAltarBuff && atMaxPower && !usedAttack) {
       const triggerPosition = getPositionOfCardById(
         triggerCard.user_card_instance_id,
         state.board,
       );
       if (triggerPosition) {
-        // resolve combat only if the card is still on board
+        // Ensure re-entrant triggers in this same resolution frame
+        // observe the consumed bonus attack immediately.
+        bloodAltarBuff.data = {
+          ...(bloodAltarBuff.data ?? {}),
+          usedAttack: true,
+        };
+
+        // Mark attack as consumed before resolving combat to avoid
+        // re-entrant recursion when OnFlipped/Any* triggers fire mid-resolution.
+        gameEvents.push(
+          createOrUpdateBuff(triggerCard, 1000, 0, label, triggerPosition, {
+            usedAttack: true,
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            turnNumber: context.state.turn_number,
+          }),
+        );
+
+        // Resolve combat only if the card is still on board.
         const combatResult = resolveCombat(
           state,
           triggerPosition,
           triggerCard.owner,
         );
         gameEvents.push(...combatResult.events);
-        gameEvents.push(
-          createOrUpdateBuff(triggerCard, 1000, 0, label, triggerPosition, {
-            usedAttack: true,
-          }),
-        );
       }
     }
 
@@ -381,7 +435,12 @@ export const polynesianAbilities: AbilityMap = {
 
     if (context.triggerMoment === TriggerMoment.HandOnRoundEnd) {
       gameEvents.push(
-        createOrUpdateBuff(triggerCard, 1000, 1, label, HAND_POSITION),
+        createOrUpdateBuff(triggerCard, 1000, 1, label, HAND_POSITION, {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          turnNumber: context.state.turn_number,
+        }),
       );
       // triggerCard.current_power = updateCurrentPower(triggerCard);
     } else if (context.triggerMoment === TriggerMoment.AfterCombat) {
@@ -424,6 +483,7 @@ export const polynesianAbilities: AbilityMap = {
 
     const randomTile = getRandomEmptyTile(state.board);
     if (randomTile) {
+      const lavaActiveCount = countActiveLavaTiles(state.board) + 1;
       gameEvents.push(
         setTileStatus(
           randomTile.tile,
@@ -438,6 +498,13 @@ export const polynesianAbilities: AbilityMap = {
             power: { top: -1, bottom: -1, left: -1, right: -1 },
           },
           triggerCard.owner,
+          triggerCard,
+          {
+            turnNumber: context.state.turn_number,
+            extraEventData: {
+              lava_active_count: lavaActiveCount,
+            },
+          },
         ),
       );
     }
@@ -473,14 +540,21 @@ export const polynesianAbilities: AbilityMap = {
     if (!defeatedTile) return [];
 
     return [
-      setTileStatus(defeatedTile, defeatedPosition, {
-        status: TileStatus.Normal,
-        turns_left: 1000,
-        animation_label: "water",
-        terrain: TileTerrain.Ocean,
-        effect_duration: 1000,
-        applies_to_user: triggerCard.owner,
-      }),
+      setTileStatus(
+        defeatedTile,
+        defeatedPosition,
+        {
+          status: TileStatus.Normal,
+          turns_left: 1000,
+          animation_label: "water",
+          terrain: TileTerrain.Ocean,
+          effect_duration: 1000,
+          applies_to_user: triggerCard.owner,
+        },
+        triggerCard.owner,
+        triggerCard,
+        { turnNumber: context.state.turn_number },
+      ),
     ];
   },
 
@@ -566,6 +640,7 @@ export const polynesianAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    let pushedCount = 0;
 
     if (!position) return [];
 
@@ -576,7 +651,24 @@ export const polynesianAbilities: AbilityMap = {
     );
     for (const enemy of adjacentEnemies) {
       const pushEvents = pushCardAway(enemy, position, board);
+      pushedCount += pushEvents.filter(
+        (e) => e.type === EVENT_TYPES.CARD_MOVED,
+      ).length;
       gameEvents.push(...pushEvents);
+    }
+
+    if (pushedCount > 0 && !simulationContext.isInSimulation()) {
+      AchievementService.triggerAchievementEvent({
+        userId: triggerCard.owner,
+        eventType: "power_buff_applied",
+        eventData: {
+          source_card_id: triggerCard.user_card_instance_id,
+          source_card_name: triggerCard.base_card_data?.name ?? null,
+          source_ability_id: "laamaomao_gale_aura",
+          turn_number: context.state.turn_number,
+          power_delta: pushedCount,
+        },
+      }).catch(() => {});
     }
 
     return gameEvents;
@@ -648,6 +740,19 @@ export const polynesianAbilities: AbilityMap = {
             name: "Spirit Bind",
             animation: "smoke-shrink",
             position: flippedByPosition,
+            data: {
+              actingPlayerId: context.triggerCard.owner,
+              sourceCard: context.triggerCard,
+              sourcePlayerId: context.triggerCard.owner,
+              turnNumber: context.state.turn_number,
+              targetTotalPowerBefore: getCardTotalPower(flippedBy),
+              targetMaxSidePowerBefore: Math.max(
+                flippedBy.current_power.top,
+                flippedBy.current_power.right,
+                flippedBy.current_power.bottom,
+                flippedBy.current_power.left,
+              ),
+            },
           }),
         ];
       }
@@ -671,9 +776,7 @@ export const polynesianAbilities: AbilityMap = {
     if (adjacentEmptyTiles.length > 0) {
       //pick random adjacent empty tile
       const randomAdjacentEmptyTile =
-        adjacentEmptyTiles[
-          randomInt(adjacentEmptyTiles.length)
-        ];
+        adjacentEmptyTiles[randomInt(adjacentEmptyTiles.length)];
       //move to random adjacent empty tile
       gameEvents.push(
         ...moveCardToPosition(
@@ -699,6 +802,8 @@ export const polynesianAbilities: AbilityMap = {
               applies_to_user: getOpponentId(triggerCard.owner, state),
             },
             triggerCard.owner,
+            triggerCard,
+            { turnNumber: context.state.turn_number },
           ),
         );
       }
@@ -748,8 +853,7 @@ export const polynesianAbilities: AbilityMap = {
     );
     if (allEnemies.length === 0) return [];
 
-    const randomEnemy =
-      allEnemies[randomInt(allEnemies.length)];
+    const randomEnemy = allEnemies[randomInt(allEnemies.length)];
 
     const enemyPosition = getPositionOfCardById(
       randomEnemy.user_card_instance_id,
@@ -759,6 +863,7 @@ export const polynesianAbilities: AbilityMap = {
     if (!enemyPosition) return [];
 
     const randomSide = getRandomSide();
+    const batchId = uuidv4();
 
     const event = addTempDebuff(
       randomEnemy,
@@ -768,6 +873,13 @@ export const polynesianAbilities: AbilityMap = {
         name: "Thunderous Omen",
         animation: "lightning",
         position: enemyPosition,
+        data: {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          batchId,
+          turnNumber: context.state.turn_number,
+        },
       },
     );
 
@@ -781,11 +893,12 @@ export const polynesianAbilities: AbilityMap = {
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const batchId = uuidv4();
 
-    const waterTiles = getCardsByCondition(board, (card) =>
-      card.temporary_effects.some((effect) => effect.name === "water"),
-    );
-    if (waterTiles.length === 0) return [];
+    const waterTileCount = board
+      .flat()
+      .filter((tile) => tile.tile_effect?.terrain === TileTerrain.Ocean).length;
+    if (waterTileCount === 0) return [];
 
     const enemies = getCardsByCondition(
       board,
@@ -793,7 +906,7 @@ export const polynesianAbilities: AbilityMap = {
     );
     if (enemies.length === 0) return [];
 
-    for (let i = 0; i < waterTiles.length; i++) {
+    for (let i = 0; i < waterTileCount; i++) {
       const randomEnemy = chooseRandomCard(enemies);
       const enemyPosition = getPositionOfCardById(
         randomEnemy.user_card_instance_id,
@@ -805,6 +918,13 @@ export const polynesianAbilities: AbilityMap = {
             name: "Dual Aspect",
             animation: "water-circles-few",
             position: enemyPosition,
+            data: {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              batchId,
+              turnNumber: context.state.turn_number,
+            },
           }),
         );
       }

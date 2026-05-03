@@ -24,6 +24,12 @@ router.get(
 );
 
 router.get(
+  "/current/leaderboard/overall",
+  lenientRateLimit,
+  seasonController.getOverallLeaderboard,
+);
+
+router.get(
   "/current/leaderboard",
   lenientRateLimit,
   seasonController.getSetLeaderboard,

@@ -40,6 +40,9 @@ export interface TileEffect {
   terrain?: TileTerrain;
   animation_label?: string;
   applies_to_user?: string;
+  source_player_id?: string;
+  source_card_id?: string;
+  source_ability_id?: string;
 }
 
 export interface BoardCell {

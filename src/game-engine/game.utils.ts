@@ -25,6 +25,7 @@ import {
 } from "../types/game-engine.types";
 import DailyTaskService from "../services/dailyTask.service";
 import SeasonSoulsService from "../services/seasonSouls.service";
+import AchievementService from "../services/achievement.service";
 
 // Helper function to safely check if an ability has a specific trigger
 function hasTrigger(ability: any, trigger: TriggerMoment): boolean {
@@ -81,6 +82,7 @@ function getCombatResolver(ability?: { id?: string; ability_id?: string }) {
 import { v4 as uuidv4 } from "uuid";
 import {
   getPositionOfCardById,
+  getCardTotalPower,
   updateCurrentPower,
   transferTileEffectToCard,
   getCardsByCondition,
@@ -281,7 +283,9 @@ export function resolveCombat(
                 gameState,
                 position,
                 adjacentCell.card,
-                placedCell.card
+                placedCell.card,
+                undefined,
+                { forcedOwnerId: playerId }
               )
             );
           } else {
@@ -342,7 +346,8 @@ export function flipCard(
   position: BoardPosition,
   target: InGameCard,
   source: InGameCard,
-  customAttackAnimation?: string
+  customAttackAnimation?: string,
+  metadata?: { achievementBatchId?: string; forcedOwnerId?: string }
 ): BaseGameEvent[] {
   /**
    * Check various ways a card could be protected from defeat.
@@ -352,10 +357,27 @@ export function flipCard(
     target.temporary_effects.find(
       (effect) => effect.type === EffectType.BlockDefeat
     )
-  )
+  ) {
+    if (!simulationContext.isInSimulation()) {
+      AchievementService.triggerAchievementEvent({
+        userId: target.owner,
+        eventType: "power_buff_applied",
+        eventData: {
+          source_ability_id: "kane_pure_waters",
+          turn_number: state.turn_number,
+          target_card_id: target.user_card_instance_id,
+          power_delta: 0,
+          defeat_prevented_by_protection: true,
+        },
+      }).catch(() => {});
+    }
     return [];
+  }
 
   const events: BaseGameEvent[] = [];
+  const defeatingPlayerId = metadata?.forcedOwnerId ?? state.current_player_id;
+  const sourceTotalPowerBefore = getCardTotalPower(source);
+  const targetTotalPowerBefore = getCardTotalPower(target);
 
   events.push(
     ...triggerAbilities(TriggerMoment.OnFlip, {
@@ -366,7 +388,7 @@ export function flipCard(
       position,
     })
   );
-  target.owner = state.current_player_id;
+  target.owner = metadata?.forcedOwnerId ?? state.current_player_id;
   target.defeats.push({
     user_card_instance_id: source.user_card_instance_id,
     base_card_id: source.base_card_id,
@@ -387,7 +409,7 @@ export function flipCard(
     type: EVENT_TYPES.CARD_FLIPPED,
     eventId: uuidv4(),
     timestamp: Date.now(),
-    sourcePlayerId: state.current_player_id,
+    sourcePlayerId: defeatingPlayerId,
     cardId: target.user_card_instance_id,
     position: targetPosition,
     animation: attackAnimation || "attack",
@@ -406,7 +428,6 @@ export function flipCard(
   // Track daily progress, fail silently
   if (!simulationContext.isInSimulation()) {
     try {
-      const defeatingPlayerId = state.current_player_id;
       const setId = source.base_card_data?.set_id;
 
       setImmediate(() => {
@@ -416,6 +437,25 @@ export function flipCard(
           setId!
         ).catch(() => { });
         SeasonSoulsService.trackDefeat(defeatingPlayerId);
+        AchievementService.triggerAchievementEvent({
+          userId: defeatingPlayerId,
+          eventType: "card_flipped",
+          eventData: {
+            turn_number: state.turn_number,
+            source_card_id: source.user_card_instance_id,
+            batch_id: metadata?.achievementBatchId ?? null,
+            source_card_name: source.base_card_data?.name ?? null,
+            source_ability_id: getAbilityId(
+              source.base_card_data?.special_ability ?? undefined
+            ),
+            source_original_owner: source.original_owner,
+        source_total_power_before: sourceTotalPowerBefore,
+        target_total_power_before: targetTotalPowerBefore,
+            target_card_id: target.user_card_instance_id,
+            target_card_name: target.base_card_data?.name ?? null,
+            target_tags: target.base_card_data?.tags ?? [],
+          },
+        }).catch(() => {});
       });
     } catch { }
   }

@@ -63,6 +63,12 @@ export interface FeatureTutorialCompleteResponse {
 export interface CardResponse {
   user_card_instance_id?: string;
   base_card_id: string;
+  /**
+   * ID of the underlying character that this card variant represents. All
+   * variants of the same character share this id, so clients can use it to
+   * link a card in the user's gallery back to its character page.
+   */
+  character_id: string;
   name: string;
   description?: string | null; // Mythological character description (HTML content) - only included for static cards
   variant_description?: string | null; // Variant-specific art/lore description
@@ -84,6 +90,7 @@ export interface CardResponse {
   power_enhancements?: PowerValues;
   attack_animation?: string;
   is_exclusive?: boolean;
+  equipped_border?: import("./database.types").EquippedBorder | null;
 }
 
 export interface StaticCardCollectionResponse {
@@ -136,7 +143,8 @@ export interface MonthlyLoginStatusResponse {
       | "fate_coins"
       | "card_fragments"
       | "card_pack"
-      | "enhanced_card";
+      | "enhanced_card"
+      | "border";
     amount: number;
     is_claimed: boolean;
     can_claim: boolean;
@@ -156,9 +164,11 @@ export interface ClaimMonthlyRewardResponse {
       | "fate_coins"
       | "card_fragments"
       | "card_pack"
-      | "enhanced_card";
+      | "enhanced_card"
+      | "border";
     amount: number;
     card_id?: string; // user_card_instance_id for enhanced_card rewards
+    border_id?: string; // border_id for border rewards
   };
   updated_progress: {
     current_day: number;

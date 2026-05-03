@@ -5,6 +5,7 @@ import {
   GameResult,
   GameResultWithPlayers,
 } from "../types/database.types";
+import { QueryExecutor } from "../config/db.config";
 
 const LeaderboardModel = {
   /**
@@ -22,7 +23,8 @@ const LeaderboardModel = {
    */
   async getOrCreateUserRanking(
     userId: string,
-    season?: string
+    season?: string,
+    queryExecutor: QueryExecutor = db
   ): Promise<UserRanking> {
     const currentSeason = season || this.getCurrentSeason();
 
@@ -31,7 +33,7 @@ const LeaderboardModel = {
       SELECT * FROM user_rankings 
       WHERE user_id = $1 AND season = $2;
     `;
-    const { rows: existing } = await db.query(existingQuery, [
+    const { rows: existing } = await queryExecutor.query(existingQuery, [
       userId,
       currentSeason,
     ]);
@@ -46,7 +48,10 @@ const LeaderboardModel = {
       VALUES ($1, $2)
       RETURNING *;
     `;
-    const { rows } = await db.query(createQuery, [userId, currentSeason]);
+    const { rows } = await queryExecutor.query(createQuery, [
+      userId,
+      currentSeason,
+    ]);
     return rows[0];
   },
 
@@ -58,12 +63,13 @@ const LeaderboardModel = {
     ratingChange: number,
     isWin: boolean,
     isDraw: boolean,
-    season?: string
+    season?: string,
+    queryExecutor: QueryExecutor = db
   ): Promise<UserRanking> {
     const currentSeason = season || this.getCurrentSeason();
 
     // Get or create ranking first
-    await this.getOrCreateUserRanking(userId, currentSeason);
+    await this.getOrCreateUserRanking(userId, currentSeason, queryExecutor);
 
     const updateQuery = `
       UPDATE user_rankings 
@@ -81,7 +87,7 @@ const LeaderboardModel = {
     const lossIncrement = !isWin && !isDraw ? 1 : 0;
     const drawIncrement = isDraw ? 1 : 0;
 
-    const { rows } = await db.query(updateQuery, [
+    const { rows } = await queryExecutor.query(updateQuery, [
       ratingChange,
       winIncrement,
       lossIncrement,
@@ -127,56 +133,81 @@ const LeaderboardModel = {
     season?: string
   ): Promise<GameResult> {
     const currentSeason = season || this.getCurrentSeason();
+    const client = await db.getClient();
 
-    // Get current ratings
-    const [player1Ranking, player2Ranking] = await Promise.all([
-      this.getOrCreateUserRanking(player1Id, currentSeason),
-      this.getOrCreateUserRanking(player2Id, currentSeason),
-    ]);
+    try {
+      await client.query("BEGIN");
+      // Ensure the same game_id is processed exactly once even under concurrent calls.
+      await client.query(
+        `SELECT pg_advisory_xact_lock(hashtext($1)::bigint);`,
+        [gameId]
+      );
 
-    const player1Rating = player1Ranking.rating;
-    const player2Rating = player2Ranking.rating;
+      const existingResultQuery = `
+        SELECT * FROM game_results
+        WHERE game_id = $1
+        LIMIT 1;
+      `;
+      const { rows: existingRows } = await client.query(existingResultQuery, [
+        gameId,
+      ]);
 
-    // Determine game outcome
-    const isDraw = winnerId === null;
-    const player1Wins = winnerId === player1Id;
-    const player2Wins = winnerId === player2Id;
+      if (existingRows.length > 0) {
+        await client.query("COMMIT");
+        return existingRows[0];
+      }
 
-    // Calculate rating changes
-    const player1Change = this.calculateRatingChange(
-      player1Rating,
-      player2Rating,
-      player1Wins,
-      isDraw
-    );
+      // Get current ratings
+      const [player1Ranking, player2Ranking] = await Promise.all([
+        this.getOrCreateUserRanking(player1Id, currentSeason, client),
+        this.getOrCreateUserRanking(player2Id, currentSeason, client),
+      ]);
 
-    const player2Change = this.calculateRatingChange(
-      player2Rating,
-      player1Rating,
-      player2Wins,
-      isDraw
-    );
+      const player1Rating = player1Ranking.rating;
+      const player2Rating = player2Ranking.rating;
 
-    // Update both players' rankings
-    const [updatedPlayer1, updatedPlayer2] = await Promise.all([
-      this.updateUserRating(
-        player1Id,
-        player1Change,
+      // Determine game outcome
+      const isDraw = winnerId === null;
+      const player1Wins = winnerId === player1Id;
+      const player2Wins = winnerId === player2Id;
+
+      // Calculate rating changes
+      const player1Change = this.calculateRatingChange(
+        player1Rating,
+        player2Rating,
         player1Wins,
-        isDraw,
-        currentSeason
-      ),
-      this.updateUserRating(
-        player2Id,
-        player2Change,
-        player2Wins,
-        isDraw,
-        currentSeason
-      ),
-    ]);
+        isDraw
+      );
 
-    // Record the game result
-    const insertQuery = `
+      const player2Change = this.calculateRatingChange(
+        player2Rating,
+        player1Rating,
+        player2Wins,
+        isDraw
+      );
+
+      // Update both players' rankings
+      const [updatedPlayer1, updatedPlayer2] = await Promise.all([
+        this.updateUserRating(
+          player1Id,
+          player1Change,
+          player1Wins,
+          isDraw,
+          currentSeason,
+          client
+        ),
+        this.updateUserRating(
+          player2Id,
+          player2Change,
+          player2Wins,
+          isDraw,
+          currentSeason,
+          client
+        ),
+      ]);
+
+      // Record the game result
+      const insertQuery = `
       INSERT INTO game_results (
         game_id, player1_id, player2_id, winner_id, game_mode, 
         game_duration_seconds, player1_rating_before, player1_rating_after,
@@ -185,22 +216,29 @@ const LeaderboardModel = {
       RETURNING *;
     `;
 
-    const { rows } = await db.query(insertQuery, [
-      gameId,
-      player1Id,
-      player2Id,
-      winnerId,
-      gameMode,
-      gameDurationSeconds,
-      player1Rating,
-      updatedPlayer1.rating,
-      player2Rating,
-      updatedPlayer2.rating,
-      Math.abs(player1Change), // Store absolute value of rating change
-      currentSeason,
-    ]);
+      const { rows } = await client.query(insertQuery, [
+        gameId,
+        player1Id,
+        player2Id,
+        winnerId,
+        gameMode,
+        gameDurationSeconds,
+        player1Rating,
+        updatedPlayer1.rating,
+        player2Rating,
+        updatedPlayer2.rating,
+        Math.abs(player1Change), // Store absolute value of rating change
+        currentSeason,
+      ]);
 
-    return rows[0];
+      await client.query("COMMIT");
+      return rows[0];
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   },
 
   /**
@@ -231,6 +269,7 @@ const LeaderboardModel = {
         FROM user_rankings ur
         JOIN users u ON ur.user_id = u.user_id
         WHERE ur.season = $1
+          AND ur.user_id != '00000000-0000-0000-0000-000000000000'
       )
       SELECT *, calculated_rank as current_rank
       FROM ranked
@@ -255,6 +294,7 @@ const LeaderboardModel = {
           ROW_NUMBER() OVER (ORDER BY rating DESC, wins DESC) as rank
         FROM user_rankings
         WHERE season = $1
+          AND user_id != '00000000-0000-0000-0000-000000000000'
       )
       SELECT rank FROM ranked_users WHERE user_id = $2;
     `;
@@ -276,6 +316,7 @@ const LeaderboardModel = {
           ROW_NUMBER() OVER (ORDER BY rating DESC, wins DESC) as new_rank
         FROM user_rankings
         WHERE season = $1
+          AND user_id != '00000000-0000-0000-0000-000000000000'
       )
       UPDATE user_rankings
       SET current_rank = ranked_users.new_rank,
@@ -318,6 +359,7 @@ const LeaderboardModel = {
         FROM user_rankings ur
         JOIN users u ON ur.user_id = u.user_id
         WHERE ur.season = $2
+          AND ur.user_id != '00000000-0000-0000-0000-000000000000'
       )
       SELECT *, calculated_rank as current_rank
       FROM ranked
@@ -374,6 +416,7 @@ const LeaderboardModel = {
         COUNT(*) as tier_count
       FROM user_rankings
       WHERE season = $1
+        AND user_id != '00000000-0000-0000-0000-000000000000'
       GROUP BY rank_tier;
     `;
 
@@ -431,6 +474,7 @@ const LeaderboardModel = {
         FROM user_rankings ur
         JOIN users u ON ur.user_id = u.user_id
         WHERE ur.season = $1
+          AND ur.user_id != '00000000-0000-0000-0000-000000000000'
       )
       SELECT * FROM ranked_by_tier 
       WHERE tier_rank <= 3

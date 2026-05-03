@@ -26,7 +26,8 @@ export function canPlaceOnTile(
       canPlace: false,
       errorMessage: `Board position ${position.x},${position.y
         } is occupied: ${JSON.stringify(
-          gameState.board[position.y][position.x].card
+          gameState.board[position.y][position.x].card,
+          (key, value) => (key === "sourceCard" ? "[circular]" : value)
         )}`,
     };
   }

@@ -8,7 +8,7 @@ paths:
   /api/achievements:
     get:
       summary: Get all achievements
-      description: Get all available achievements (public endpoint)
+      description: Get all available standard achievements (public endpoint). Character achievements are excluded.
       tags:
         - Achievements
       parameters:
@@ -94,7 +94,7 @@ paths:
   /api/achievements/me/progress:
     get:
       summary: Get user's achievement progress
-      description: Get user's achievement progress with statistics
+      description: Get user's progress with statistics for standard achievements only.
       tags:
         - Achievements
       security:
@@ -140,7 +140,7 @@ paths:
   /api/achievements/me/stats:
     get:
       summary: Get user's achievement statistics
-      description: Get user's achievement progress statistics
+      description: Get user's achievement progress statistics for standard achievements only.
       tags:
         - Achievements
       security:
@@ -163,7 +163,7 @@ paths:
   /api/achievements/me/recent:
     get:
       summary: Get recently completed achievements
-      description: Get recently completed achievements for the user
+      description: Get recently completed standard achievements for the user
       tags:
         - Achievements
       security:
@@ -187,6 +187,45 @@ paths:
                 type: object
                 properties:
                   recent_achievements:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UserAchievement"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/characters/{characterId}/achievements/me:
+    get:
+      summary: Get character achievements for current user
+      description: Retrieve character-scoped achievements for a specific character. These are hidden from standard achievement endpoints.
+      tags:
+        - Achievements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: characterId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Character ID whose character achievements should be returned.
+        - name: include_locked
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Include locked tiers in the response.
+      responses:
+        "200":
+          description: Character achievements retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  achievements:
                     type: array
                     items:
                       $ref: "#/components/schemas/UserAchievement"
@@ -229,8 +268,18 @@ paths:
                         type: integer
                       gems:
                         type: integer
+                      fate_coins:
+                        type: integer
                       packs:
                         type: integer
+                      card_fragments:
+                        type: integer
+                      borders:
+                        type: array
+                        items:
+                          type: string
+                          format: uuid
+                        description: Border IDs newly granted from claimed achievements.
                   updatedCurrencies:
                     type: object
                     properties:
@@ -238,12 +287,117 @@ paths:
                         type: integer
                       gems:
                         type: integer
+                      fate_coins:
+                        type: integer
                       total_xp:
                         type: integer
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/admin/achievements:
+    post:
+      summary: Create achievement (admin)
+      description: Create a new achievement definition, including character-scoped achievements.
+      tags:
+        - Admin
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAchievementCreateRequest"
+      responses:
+        "201":
+          description: Achievement created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Achievement"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/admin/achievements/{achievementId}:
+    patch:
+      summary: Update achievement (admin)
+      description: Update an existing achievement definition.
+      tags:
+        - Admin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: achievementId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAchievementUpdateRequest"
+      responses:
+        "200":
+          description: Achievement updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Achievement"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      summary: Deactivate achievement (admin)
+      description: Soft-delete an achievement definition by setting is_active to false.
+      tags:
+        - Admin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: achievementId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Achievement deactivated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Achievement"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -266,6 +420,15 @@ components:
           type: string
         description:
           type: string
+        achievement_kind:
+          type: string
+          enum: [standard, character]
+          description: Character achievements are hidden from standard achievement listing endpoints.
+        character_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Set when `achievement_kind` is `character`.
         category:
           type: string
         rarity:
@@ -276,11 +439,146 @@ components:
           type: object
         rewards:
           type: object
+          description: Reward fields for completing the achievement (gold, gems, packs, fate_coins, card_fragments).
+        reward_border_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Border ID granted to the user when this achievement is claimed, if any.
         is_active:
           type: boolean
         created_at:
           type: string
           format: date-time
+
+    AdminAchievementCreateRequest:
+      type: object
+      properties:
+        achievement_key:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        achievement_kind:
+          type: string
+          enum: [standard, character]
+          default: standard
+        character_id:
+          type: string
+          format: uuid
+          nullable: true
+        category:
+          type: string
+        type:
+          type: string
+          enum: [single, progress, milestone]
+        target_value:
+          type: integer
+          minimum: 1
+        rarity:
+          type: string
+          enum: [common, uncommon, rare, epic, legendary]
+        reward_gems:
+          type: integer
+          minimum: 0
+        reward_fate_coins:
+          type: integer
+          minimum: 0
+        reward_packs:
+          type: integer
+          minimum: 0
+        reward_card_fragments:
+          type: integer
+          minimum: 0
+        reward_border_id:
+          type: string
+          format: uuid
+          nullable: true
+        icon_url:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        sort_order:
+          type: integer
+        base_achievement_key:
+          type: string
+          nullable: true
+        tier_level:
+          type: integer
+          nullable: true
+        story_id:
+          type: string
+          nullable: true
+      required:
+        - achievement_key
+        - title
+        - description
+        - category
+        - type
+        - target_value
+        - rarity
+
+    AdminAchievementUpdateRequest:
+      type: object
+      properties:
+        achievement_key:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        achievement_kind:
+          type: string
+          enum: [standard, character]
+        character_id:
+          type: string
+          format: uuid
+          nullable: true
+        category:
+          type: string
+        type:
+          type: string
+          enum: [single, progress, milestone]
+        target_value:
+          type: integer
+          minimum: 1
+        rarity:
+          type: string
+          enum: [common, uncommon, rare, epic, legendary]
+        reward_gems:
+          type: integer
+          minimum: 0
+        reward_fate_coins:
+          type: integer
+          minimum: 0
+        reward_packs:
+          type: integer
+          minimum: 0
+        reward_card_fragments:
+          type: integer
+          minimum: 0
+        reward_border_id:
+          type: string
+          format: uuid
+          nullable: true
+        icon_url:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        sort_order:
+          type: integer
+        base_achievement_key:
+          type: string
+          nullable: true
+        tier_level:
+          type: integer
+          nullable: true
+        story_id:
+          type: string
+          nullable: true
 
     UserAchievement:
       allOf:

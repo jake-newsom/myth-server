@@ -78,3 +78,34 @@ test("UnifiedScoreV2 applies risk to dangerous placements", () => {
   const score = scorer.scoreMove(gameState, fragileCard, { x: 2, y: 1 }, "ai");
   assert.ok(score.risk > 0);
 });
+
+test("UnifiedScoreV2 avoids placing weak cards adjacent to enemy Fenrir", () => {
+  const board = createEmptyBoard();
+  const enemyFenrir = createTestCard({
+    id: "enemy-fenrir",
+    owner: "enemy",
+    abilityId: "fenrir_devourer_surge",
+    power: { top: 8, right: 8, bottom: 8, left: 8 },
+  });
+  placeCardOnBoard(board, { x: 1, y: 1 }, enemyFenrir);
+
+  const weakCard = createTestCard({
+    id: "weak",
+    owner: "ai",
+    abilityId: "verdandi_present",
+    power: { top: 3, right: 3, bottom: 3, left: 3 },
+  });
+  const gameState = createTestGameState({ board, player1Id: "ai", player2Id: "enemy" });
+
+  const scorer = new UnifiedScoreV2(
+    new AbilityAnalyzer(),
+    new StrategicEvaluator(),
+    new AbilityRuleEngine()
+  );
+
+  const adjacentFenrirScore = scorer.scoreMove(gameState, weakCard, { x: 1, y: 2 }, "ai");
+  const safeScore = scorer.scoreMove(gameState, weakCard, { x: 3, y: 3 }, "ai");
+
+  assert.ok(adjacentFenrirScore.board_control < safeScore.board_control);
+  assert.ok(adjacentFenrirScore.total < safeScore.total);
+});

@@ -158,6 +158,28 @@ export const getSetLeaderboard = async (
   }
 };
 
+export const getOverallLeaderboard = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  try {
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt((req.query.limit as string) || "50", 10))
+    );
+
+    const data = await SeasonSoulsService.getOverallLeaderboard(page, limit);
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error("Error getting overall season leaderboard:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error",
+    });
+  }
+};
+
 export const getMyProgress = async (
   req: AuthenticatedRequest,
   res: Response

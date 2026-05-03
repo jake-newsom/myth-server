@@ -169,6 +169,7 @@ export class LookaheadEngine {
     for (const cardId of player.hand) {
       const cardData = gameState.hydrated_card_data_cache?.[cardId];
       if (!cardData) continue;
+      if (cardData.owner !== playerId) continue;
 
       for (let y = 0; y < GAME_CONFIG.BOARD_SIZE; y++) {
         for (let x = 0; x < GAME_CONFIG.BOARD_SIZE; x++) {

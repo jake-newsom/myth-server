@@ -28,6 +28,16 @@ export interface SeasonUserLeaderboardPage {
   total_players: number;
 }
 
+export interface SeasonOverallLeaderboardEntry extends SeasonUserStandingRow {
+  chosen_set_id: string | null;
+  chosen_mythology: string | null;
+}
+
+export interface SeasonOverallLeaderboardPage {
+  entries: SeasonOverallLeaderboardEntry[];
+  total_players: number;
+}
+
 export interface SeasonRewardStatusRow {
   season_id: string;
   status: "pending" | "sent" | "claimed" | "failed";
@@ -296,6 +306,65 @@ const SeasonSoulsModel = {
       souls_total: Number(row.souls_total || 0),
       rank: Number(row.rank || 0),
       total_players: totalPlayers,
+    }));
+
+    return {
+      entries,
+      total_players: totalPlayers,
+    };
+  },
+
+  async getOverallLeaderboardPaginated(
+    seasonId: string,
+    page: number,
+    limit: number
+  ): Promise<SeasonOverallLeaderboardPage> {
+    const offset = (page - 1) * limit;
+
+    const countQuery = `
+      SELECT COUNT(*)::int AS total_players
+      FROM season_soul_contributions
+      WHERE season_id = $1
+        AND user_id != '00000000-0000-0000-0000-000000000000';
+    `;
+
+    const entriesQuery = `
+      WITH ranked AS (
+        SELECT
+          c.user_id,
+          u.username,
+          c.souls_total,
+          smc.set_id AS chosen_set_id,
+          s.name AS chosen_mythology,
+          ROW_NUMBER() OVER (ORDER BY c.souls_total DESC, c.updated_at ASC) AS rank
+        FROM season_soul_contributions c
+        INNER JOIN users u ON u.user_id = c.user_id
+        LEFT JOIN season_mythology_choices smc
+          ON smc.user_id = c.user_id AND smc.season_id = c.season_id
+        LEFT JOIN sets s ON s.set_id = smc.set_id
+        WHERE c.season_id = $1
+          AND c.user_id != '00000000-0000-0000-0000-000000000000'
+      )
+      SELECT user_id, username, souls_total, chosen_set_id, chosen_mythology, rank
+      FROM ranked
+      ORDER BY rank ASC
+      LIMIT $2 OFFSET $3;
+    `;
+
+    const [{ rows: countRows }, { rows: entryRows }] = await Promise.all([
+      db.query(countQuery, [seasonId]),
+      db.query(entriesQuery, [seasonId, limit, offset]),
+    ]);
+
+    const totalPlayers = Number(countRows[0]?.total_players || 0);
+    const entries = entryRows.map((row) => ({
+      user_id: row.user_id,
+      username: row.username,
+      souls_total: Number(row.souls_total || 0),
+      rank: Number(row.rank || 0),
+      total_players: totalPlayers,
+      chosen_set_id: row.chosen_set_id || null,
+      chosen_mythology: row.chosen_mythology || null,
     }));
 
     return {

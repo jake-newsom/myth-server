@@ -30,6 +30,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/characters/{characterId}/borders/eligible:
+    get:
+      summary: Get borders eligible for a character (owned + locked)
+      description: |
+        Returns every active border that can be applied to the provided character,
+        including borders the user has not unlocked yet.
+      tags:
+        - Characters
+        - Borders
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: characterId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Character-eligible borders retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CharacterEligibleBorder"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Character not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     PowerValues:
@@ -126,6 +175,19 @@ components:
         - special_ability_id
         - tags
         - variants
+
+    CharacterEligibleBorder:
+      allOf:
+        - $ref: "./border.openapi.yaml#/components/schemas/CardBorder"
+        - type: object
+          properties:
+            is_owned:
+              type: boolean
+            is_locked:
+              type: boolean
+          required:
+            - is_owned
+            - is_locked
 
     ErrorResponse:
       type: object

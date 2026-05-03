@@ -28,6 +28,12 @@ export class StrategicEvaluator {
     score += this.evaluateBoardControl(gameState, position, aiPlayerId);
     score += this.evaluateDefensiveValue(gameState, card, position, aiPlayerId);
     score += this.evaluateOffensiveValue(gameState, card, position, aiPlayerId);
+    score += this.evaluateRecurringThreatExposure(
+      gameState,
+      card,
+      position,
+      aiPlayerId,
+    );
     score += this.evaluateTerritoryControl(gameState, position, aiPlayerId);
     score += this.evaluateAbilityPositionRequirements(
       gameState,
@@ -456,6 +462,48 @@ export class StrategicEvaluator {
     }
 
     return score;
+  }
+
+  /**
+   * Penalizes placements that feed recurring enemy threats.
+   */
+  private evaluateRecurringThreatExposure(
+    gameState: GameState,
+    card: InGameCard,
+    position: BoardPosition,
+    aiPlayerId: string,
+  ): number {
+    const adjacentEnemies = getEnemiesAdjacentTo(position, gameState.board, aiPlayerId);
+    const cardPower = this.calculateTotalPower(card.current_power);
+    const abilityId =
+      card.base_card_data.special_ability?.id ??
+      card.base_card_data.special_ability?.ability_id ??
+      "";
+    const hasFenrirAbilityImmunity =
+      abilityId === "baldr_immune" || abilityId === "jormungandr_shell";
+
+    if (hasFenrirAbilityImmunity) {
+      return 0;
+    }
+
+    let penalty = 0;
+
+    for (const enemy of adjacentEnemies) {
+      const enemyAbilityId =
+        enemy.base_card_data.special_ability?.id ??
+        enemy.base_card_data.special_ability?.ability_id ??
+        "";
+
+      // Fenrir destroys weaker adjacent enemies each round.
+      if (enemyAbilityId === "fenrir_devourer_surge") {
+        const enemyPower = this.calculateTotalPower(enemy.current_power);
+        if (enemyPower > cardPower) {
+          penalty -= 180;
+        }
+      }
+    }
+
+    return penalty;
   }
 
   /**

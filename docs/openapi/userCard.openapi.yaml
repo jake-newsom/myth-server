@@ -217,6 +217,13 @@ components:
         card_id:
           type: string
           format: uuid
+        character_id:
+          type: string
+          format: uuid
+          description: |
+            Identifier of the underlying character in the `characters` table.
+            All variants of the same character share this id, so clients can
+            link a card in the user's gallery back to its character page.
         name:
           type: string
         tags:
@@ -238,8 +245,14 @@ components:
         special_ability:
           $ref: "#/components/schemas/SpecialAbility"
           nullable: true
+        equipped_border:
+          $ref: "./border.openapi.yaml#/components/schemas/EquippedBorder"
+          nullable: true
+          description: |
+            Visible to opponents in-game. Null when no border is equipped.
       required:
         - card_id
+        - character_id
         - name
         - tags
         - rarity
@@ -276,6 +289,12 @@ components:
         power_enhancements:
           $ref: "#/components/schemas/PowerValues"
           description: Additional power values from level up boosts applied to the card (accumulated from all power ups)
+        equipped_border:
+          $ref: "./border.openapi.yaml#/components/schemas/EquippedBorder"
+          nullable: true
+          description: |
+            The border currently equipped on this card instance, or null if
+            none is equipped.
       required:
         - user_card_instance_id
         - base_card_id

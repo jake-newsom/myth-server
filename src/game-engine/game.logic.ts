@@ -24,6 +24,8 @@ import { v4 as uuidv4 } from "uuid";
 import PowerUpService from "../services/powerUp.service";
 import logger from "../utils/logger";
 import { GAME_CONFIG } from "../config/constants";
+import AchievementService from "../services/achievement.service";
+import { simulationContext } from "./simulation.context";
 
 import { GameStatus } from "../types";
 export { GameStatus };
@@ -52,11 +54,14 @@ export class GameLogic {
           ch.base_power->>'bottom' as base_power_bottom, ch.base_power->>'left' as base_power_left, 
           ch.tags, ch.special_ability_id, ch.set_id, cv.attack_animation,
           sa.id as ability_key, sa.name as ability_name, sa.description as ability_description, 
-          sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters
+          sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
+          cb.border_id as cb_border_id, cb.name as cb_name,
+          cb.image_url as cb_image_url, cb.animation_key as cb_animation_key
         FROM "user_owned_cards" uci
         JOIN "card_variants" cv ON uci.card_variant_id = cv.card_variant_id
         JOIN "characters" ch ON cv.character_id = ch.character_id
         LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
+        LEFT JOIN "card_borders" cb ON uci.equipped_border_id = cb.border_id
         WHERE uci.user_card_instance_id IN (${placeholders}) ${userIdToVerifyOwnership ? "AND uci.user_id = $1" : ""
         };
       `;
@@ -123,6 +128,14 @@ export class GameLogic {
             ...(row.attack_animation && {
               attack_animation: row.attack_animation,
             }),
+            equipped_border: row.cb_border_id
+              ? {
+                  border_id: row.cb_border_id,
+                  name: row.cb_name,
+                  image_url: row.cb_image_url,
+                  animation_key: row.cb_animation_key ?? null,
+                }
+              : null,
           },
           level: row.level,
           xp: row.xp,
@@ -318,6 +331,53 @@ export class GameLogic {
         position,
       } as CardPlacedEvent);
 
+      // Minamoto achievement: only when card is played and the Demon Bane
+      // temporary effect has reached +10 (all sides are symmetric for this buff).
+      const playedAbilityId =
+        newBoardCell.card?.base_card_data?.special_ability?.id ??
+        newBoardCell.card?.base_card_data?.special_ability?.ability_id;
+      const demonBaneEffect = newBoardCell.card?.temporary_effects?.find(
+        (effect) => effect.name === "Demon Bane"
+      );
+      if (
+        playedAbilityId === "minamoto_demon_bane" &&
+        demonBaneEffect &&
+        (demonBaneEffect.power.left ?? 0) >= 10
+      ) {
+        AchievementService.triggerAchievementEvent({
+          userId: playerId,
+          eventType: "power_buff_applied",
+          eventData: {
+            source_ability_id: "minamoto_played_with_demon_bane_10",
+            source_card_id: newBoardCell.card?.user_card_instance_id ?? null,
+            turn_number: newState.turn_number,
+            power_delta: 1,
+          },
+        }).catch(() => {});
+      }
+
+      // Maui achievement: only when card is played and Sun Trick has
+      // at least +5 on the left stat modifier.
+      const sunTrickEffect = newBoardCell.card?.temporary_effects?.find(
+        (effect) => effect.name === "Sun Trick"
+      );
+      if (
+        playedAbilityId === "maui_sun_trick" &&
+        sunTrickEffect &&
+        (sunTrickEffect.power.left ?? 0) >= 5
+      ) {
+        AchievementService.triggerAchievementEvent({
+          userId: playerId,
+          eventType: "power_buff_applied",
+          eventData: {
+            source_ability_id: "maui_played_with_sun_trick_5",
+            source_card_id: newBoardCell.card?.user_card_instance_id ?? null,
+            turn_number: newState.turn_number,
+            power_delta: 1,
+          },
+        }).catch(() => {});
+      }
+
       // Track events before abilities to detect terrain additions
       const eventsBeforeAbilities = events.length;
 
@@ -398,15 +458,17 @@ export class GameLogic {
 
       return { state: newState, events };
     } catch (error) {
-      logger.error(
-        "Error in placeCard",
-        {
-          playerId,
-          position: position ? `${position.x},${position.y}` : "unknown",
-          userCardInstanceId,
-        },
-        error instanceof Error ? error : new Error(String(error))
-      );
+      if (!simulationContext.isInSimulation()) {
+        logger.error(
+          "Error in placeCard",
+          {
+            playerId,
+            position: position ? `${position.x},${position.y}` : "unknown",
+            userCardInstanceId,
+          },
+          error instanceof Error ? error : new Error(String(error))
+        );
+      }
       throw error;
     }
   }

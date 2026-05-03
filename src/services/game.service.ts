@@ -237,7 +237,9 @@ class GameService {
       RETURNING game_id, game_state, game_status, winner_id;
     `;
     const values = [
-      JSON.stringify(updatedGameState),
+      JSON.stringify(updatedGameState, (key, value) =>
+        key === "sourceCard" ? undefined : value
+      ),
       newGameStatus,
       winnerId,
       gameId,

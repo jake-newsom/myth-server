@@ -124,6 +124,13 @@ export interface CardVariantWithCharacter
  */
 export interface Card {
   card_id: string;
+  /**
+   * Underlying character_id from the `characters` table. Multiple variants
+   * (different `card_id`s) can share the same `character_id`. Optional for
+   * backward compatibility with code paths that build a `Card` without
+   * sourcing character data, but production read paths should always set it.
+   */
+  character_id?: string;
   name: string;
   description?: string;
   rarity: Rarity;
@@ -148,7 +155,50 @@ export interface UserCardInstance {
   xp: number;
   is_locked: boolean;
   power_enhancements: PowerValues;
+  equipped_border_id?: string | null; // References card_borders table
   created_at?: Date;
+}
+
+/**
+ * CardBorder represents an admin-managed visual border that players can equip on
+ * their card instances. Borders are owned once per user and can be equipped on
+ * any number of cards simultaneously. Optional restrictions limit which cards a
+ * given border can be applied to:
+ *   - character_id: only cards whose variant references this character
+ *   - set_id:       only cards whose variant's character belongs to this set
+ *   - both null:    unrestricted (applies to all cards)
+ *   - both set:     both restrictions must match
+ */
+export interface CardBorder {
+  border_id: string;
+  name: string;
+  description?: string | null;
+  image_url: string;
+  animation_key?: string | null;
+  character_id?: string | null;
+  set_id?: string | null;
+  is_active: boolean;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+export interface UserOwnedBorder {
+  user_id: string;
+  border_id: string;
+  character_id?: string | null;
+  acquired_at: Date;
+}
+
+/**
+ * Lightweight projection of an equipped border attached to card responses and
+ * in-game card data. Includes only the fields the client needs to render the
+ * border; full catalog metadata stays on the CardBorder type.
+ */
+export interface EquippedBorder {
+  border_id: string;
+  name: string;
+  image_url: string;
+  animation_key?: string | null;
 }
 
 export interface Deck {
@@ -310,6 +360,8 @@ export interface Achievement {
   achievement_key: string;
   title: string;
   description: string;
+  achievement_kind: "standard" | "character";
+  character_id?: string | null;
   category:
   | "gameplay"
   | "collection"
@@ -324,6 +376,7 @@ export interface Achievement {
   reward_fate_coins?: number; // Optional until DB migration adds this column
   reward_packs: number;
   reward_card_fragments?: number; // Optional until DB migration adds this column
+  reward_border_id?: string | null; // References card_borders table
   icon_url?: string;
   is_active: boolean;
   sort_order: number;
@@ -377,6 +430,7 @@ export interface Mail {
   reward_packs: number;
   reward_fate_coins: number;
   reward_card_ids: string[];
+  reward_border_id?: string | null; // References card_borders table
   expires_at?: Date;
   read_at?: Date;
   claimed_at?: Date;
@@ -488,14 +542,16 @@ export type MonthlyRewardType =
   | "fate_coins"
   | "card_fragments"
   | "card_pack"
-  | "enhanced_card";
+  | "enhanced_card"
+  | "border";
 
 export interface MonthlyLoginConfig {
   config_id: string;
   day: number; // 1-24
   reward_type: MonthlyRewardType;
-  amount: number; // Amount for gems, fragments, coins, packs. Ignored for enhanced_card.
+  amount: number; // Amount for gems, fragments, coins, packs. Ignored for enhanced_card / border.
   card_id?: string | null; // Specific card_id for enhanced_card rewards (null for random)
+  reward_border_id?: string | null; // Specific border_id for border rewards
   is_active: boolean;
   created_at: Date;
   updated_at: Date;

@@ -4,8 +4,10 @@ import DailyTaskModel, {
   UserDailyTaskProgress,
 } from "../models/dailyTask.model";
 import UserModel from "../models/user.model";
+import RewardService from "./reward.service";
 import db from "../config/db.config";
 import logger from "../utils/logger";
+import { RewardItem } from "../types/service.types";
 
 // Reward tiers
 const REWARD_TIERS = [
@@ -111,27 +113,45 @@ const DailyTaskService = {
       const tier = nextReward.tier;
       const rewardConfig = REWARD_TIERS[tier - 1];
 
-      // Award rewards
-      let cardDetails = null;
-
+      const items: RewardItem[] = [];
       if (rewardConfig.gems > 0) {
-        await UserModel.updateGems(userId, rewardConfig.gems);
+        items.push({ type: "gems", amount: rewardConfig.gems });
       }
-
       if (rewardConfig.packs > 0) {
-        await UserModel.addPacks(userId, rewardConfig.packs);
+        items.push({ type: "packs", amount: rewardConfig.packs });
       }
 
+      // Card tiers grant a random low-rarity card. We resolve the random card
+      // (and capture its display metadata) outside RewardService so the API can
+      // return the card details, but we let RewardService perform the actual
+      // INSERT in its bulk path.
+      let cardDetails: {
+        card_id: string;
+        name: string;
+        rarity: string;
+        image_url: string;
+      } | null = null;
       if (rewardConfig.cards > 0) {
-        // Award a random card
-        cardDetails = await this.awardRandomCard(userId);
+        cardDetails = await this.pickRandomCardForDailyTask();
+        if (cardDetails) {
+          items.push({ type: "card", card_variant_id: cardDetails.card_id });
+        }
       }
 
-      // Update claimed tier
-      await DailyTaskModel.setRewardsClaimed(userId, tier);
+      const grantResult = await RewardService.grantRewards(userId, items);
+      if (!grantResult.success) {
+        return {
+          success: false,
+          error: grantResult.error || "Failed to apply rewards",
+        };
+      }
 
-      // Get updated balances
-      const user = await UserModel.findById(userId);
+      const grantedCard = grantResult.granted.find(
+        (g) => g.item.type === "card"
+      );
+      const userCardInstanceId = grantedCard?.user_card_instance_id;
+
+      await DailyTaskModel.setRewardsClaimed(userId, tier);
 
       return {
         success: true,
@@ -140,13 +160,15 @@ const DailyTaskService = {
           ...(rewardConfig.gems > 0 && { gems: rewardConfig.gems }),
           ...(rewardConfig.cards > 0 && {
             cards: rewardConfig.cards,
-            card_details: cardDetails,
+            card_details: cardDetails
+              ? { ...cardDetails, user_card_instance_id: userCardInstanceId }
+              : null,
           }),
           ...(rewardConfig.packs > 0 && { packs: rewardConfig.packs }),
         },
         new_balances: {
-          gems: user?.gems || 0,
-          pack_count: user?.pack_count || 0,
+          gems: grantResult.updated_currencies?.gems ?? 0,
+          pack_count: grantResult.updated_currencies?.pack_count ?? 0,
         },
       };
     } catch (error) {
@@ -160,9 +182,16 @@ const DailyTaskService = {
   },
 
   /**
-   * Award a random card to user
+   * Pick a random low-rarity, non-exclusive card variant for daily-task card
+   * tiers. Returns just the display metadata; the actual INSERT into
+   * user_owned_cards is performed by RewardService.
    */
-  async awardRandomCard(userId: string): Promise<any> {
+  async pickRandomCardForDailyTask(): Promise<{
+    card_id: string;
+    name: string;
+    rarity: string;
+    image_url: string;
+  } | null> {
     try {
       const countQuery = `
         SELECT COUNT(*)::int as total
@@ -192,28 +221,15 @@ const DailyTaskService = {
       }
 
       const card = rows[0];
-
-      // Add to user's collection
-      const insertQuery = `
-        INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp)
-        VALUES ($1, $2, 1, 0)
-        RETURNING user_card_instance_id;
-      `;
-      const { rows: insertRows } = await db.query(insertQuery, [
-        userId,
-        card.card_id,
-      ]);
-
       return {
         card_id: card.card_id,
         name: card.name,
         rarity: card.rarity,
         image_url: card.image_url,
-        user_card_instance_id: insertRows[0]?.user_card_instance_id,
       };
     } catch (error) {
       logger.error(
-        "Error awarding random card:",
+        "Error picking random card for daily task:",
         {},
         error instanceof Error ? error : new Error(String(error))
       );

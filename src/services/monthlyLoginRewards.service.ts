@@ -1,17 +1,17 @@
 import MonthlyLoginRewardsModel from "../models/monthlyLoginRewards.model";
-import UserModel from "../models/user.model";
-import PackService from "./pack.service";
+import RewardService from "./reward.service";
+import { monthlyLoginRewardToItems } from "../utils/rewards.helpers";
 import {
   MonthlyLoginConfig,
   UserMonthlyLoginProgress,
-  MonthlyRewardType,
 } from "../types/database.types";
 import {
   MonthlyLoginStatusResponse,
   ClaimMonthlyRewardResponse,
 } from "../types/api.types";
+import { RewardItem } from "../types/service.types";
 import logger from "../utils/logger";
-import db, { QueryExecutor, PoolClient } from "../config/db.config";
+import db, { PoolClient } from "../config/db.config";
 
 const MonthlyLoginRewardsService = {
   /**
@@ -252,16 +252,56 @@ const MonthlyLoginRewardsService = {
       throw new Error(`No reward configuration found for day ${day}`);
     }
 
+    // Pre-resolve any randomized payload (random enhanced_card) so the
+    // RewardItem we hand to RewardService is fully deterministic. This keeps
+    // the random-card selection outside the transaction and ensures we don't
+    // double-resolve on retry.
+    let resolvedCardId: string | undefined;
+    if (config.reward_type === "enhanced_card") {
+      resolvedCardId = config.card_id || undefined;
+      if (!resolvedCardId) {
+        const randomCardId =
+          await MonthlyLoginRewardsModel.getRandomEnhancedCard();
+        if (!randomCardId) {
+          throw new Error("No enhanced card available to distribute");
+        }
+        resolvedCardId = randomCardId;
+      }
+    }
+
+    const items = monthlyLoginRewardToItems({
+      reward_type: config.reward_type,
+      amount: config.amount,
+      card_id: resolvedCardId ?? null,
+      reward_border_id: config.reward_border_id ?? null,
+    });
+
     // Run reward distribution and progress update inside a transaction so that
-    // a failed progress write rolls back the reward rather than leaving them out
-    // of sync (e.g. gems credited but claimed_days not updated).
+    // a failed progress write rolls back the reward rather than leaving them
+    // out of sync (e.g. gems credited but claimed_days not updated).
     const client: PoolClient = await db.getClient();
+    let updatedProgress: UserMonthlyLoginProgress | null;
     let distributedCardInstanceId: string | undefined;
-    let updatedProgress: import("../types/database.types").UserMonthlyLoginProgress | null;
+    let distributedBorderId: string | undefined;
     try {
       await client.query("BEGIN");
 
-      distributedCardInstanceId = await this.distributeReward(userId, config, client);
+      const grantResult = await RewardService.grantRewards(userId, items, {
+        client,
+      });
+
+      if (!grantResult.success) {
+        throw new Error(grantResult.error || "Failed to distribute reward");
+      }
+
+      for (const granted of grantResult.granted) {
+        if (granted.item.type === "card" && granted.user_card_instance_id) {
+          distributedCardInstanceId = granted.user_card_instance_id;
+        }
+        if (granted.item.type === "border") {
+          distributedBorderId = granted.item.border_id;
+        }
+      }
 
       const today = this.getCurrentDateString();
       updatedProgress = await MonthlyLoginRewardsModel.addClaimedDay(
@@ -284,6 +324,10 @@ const MonthlyLoginRewardsService = {
       client.release();
     }
 
+    logger.info(
+      `Distributed monthly login reward (${config.reward_type}) to user ${userId} for day ${day}`
+    );
+
     return {
       success: true,
       message: `Successfully claimed reward for day ${day}`,
@@ -291,93 +335,14 @@ const MonthlyLoginRewardsService = {
         day,
         reward_type: config.reward_type,
         amount: config.amount,
-        card_id: distributedCardInstanceId || config.card_id || undefined,
+        card_id: distributedCardInstanceId,
+        border_id: distributedBorderId,
       },
       updated_progress: {
         current_day: updatedProgress.current_day,
         claimed_days: updatedProgress.claimed_days,
       },
     };
-  },
-
-  /**
-   * Distribute a reward to a user based on reward type
-   * @returns user_card_instance_id if reward_type is enhanced_card, otherwise undefined
-   */
-  async distributeReward(
-    userId: string,
-    config: MonthlyLoginConfig,
-    client?: QueryExecutor
-  ): Promise<string | undefined> {
-    const executor: QueryExecutor = client ?? db;
-    switch (config.reward_type) {
-      case "gems":
-        await UserModel.updateGems(userId, config.amount, executor);
-        logger.info(`Distributed ${config.amount} gems to user ${userId}`);
-        return undefined;
-
-      case "fate_coins":
-        await UserModel.updateFateCoins(userId, config.amount, executor);
-        logger.info(
-          `Distributed ${config.amount} fate coins to user ${userId}`
-        );
-        return undefined;
-
-      case "card_fragments":
-        await UserModel.updateCardFragments(userId, config.amount, executor);
-        logger.info(
-          `Distributed ${config.amount} card fragments to user ${userId}`
-        );
-        return undefined;
-
-      case "card_pack":
-        await UserModel.addPacks(userId, config.amount, executor);
-        logger.info(`Distributed ${config.amount} pack(s) to user ${userId}`);
-        return undefined;
-
-      case "enhanced_card":
-        const userCardInstanceId = await this.distributeEnhancedCard(userId, config, executor);
-        return userCardInstanceId;
-
-      default:
-        throw new Error(`Unknown reward type: ${config.reward_type}`);
-    }
-  },
-
-  /**
-   * Distribute an enhanced card to a user
-   * @returns The user_card_instance_id of the card instance that was created
-   */
-  async distributeEnhancedCard(
-    userId: string,
-    config: MonthlyLoginConfig,
-    client?: QueryExecutor
-  ): Promise<string> {
-    let cardId: string | null = null;
-
-    // If specific card_id is provided, use it; otherwise get random enhanced card
-    if (config.card_id) {
-      cardId = config.card_id;
-    } else {
-      cardId = await MonthlyLoginRewardsModel.getRandomEnhancedCard();
-    }
-
-    if (!cardId) {
-      throw new Error("No enhanced card available to distribute");
-    }
-
-    const executor = client ?? db;
-    const query = `
-      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
-      VALUES ($1, $2, 1, 0, NOW())
-      RETURNING user_card_instance_id;
-    `;
-    const { rows } = await executor.query(query, [userId, cardId]);
-    const userCardInstanceId = rows[0].user_card_instance_id;
-
-    logger.info(`Distributed enhanced card ${cardId} (instance: ${userCardInstanceId}) to user ${userId}`);
-    
-    return userCardInstanceId;
   },
 
   /**

@@ -18,6 +18,52 @@ type AchievementProgressUpdate = {
   value: number;
 };
 
+export interface AchievementAdminInput {
+  achievement_key: string;
+  title: string;
+  description: string;
+  achievement_kind?: "standard" | "character";
+  character_id?: string | null;
+  category: Achievement["category"];
+  type: Achievement["type"];
+  target_value: number;
+  rarity: Achievement["rarity"];
+  reward_gems?: number;
+  reward_fate_coins?: number;
+  reward_packs?: number;
+  reward_card_fragments?: number;
+  reward_border_id?: string | null;
+  icon_url?: string | null;
+  is_active?: boolean;
+  sort_order?: number;
+  base_achievement_key?: string | null;
+  tier_level?: number | null;
+  story_id?: string | null;
+}
+
+export interface AchievementAdminUpdate {
+  achievement_key?: string;
+  title?: string;
+  description?: string;
+  achievement_kind?: "standard" | "character";
+  character_id?: string | null;
+  category?: Achievement["category"];
+  type?: Achievement["type"];
+  target_value?: number;
+  rarity?: Achievement["rarity"];
+  reward_gems?: number;
+  reward_fate_coins?: number;
+  reward_packs?: number;
+  reward_card_fragments?: number;
+  reward_border_id?: string | null;
+  icon_url?: string | null;
+  is_active?: boolean;
+  sort_order?: number;
+  base_achievement_key?: string | null;
+  tier_level?: number | null;
+  story_id?: string | null;
+}
+
 function getCachedAchievementDefinition(
   achievementKey: string
 ): Achievement | null {
@@ -39,6 +85,10 @@ function cacheAchievementDefinition(achievement: Achievement): void {
   });
 }
 
+function clearAchievementDefinitionCache(): void {
+  achievementDefinitionCache.clear();
+}
+
 const AchievementModel = {
   /**
    * Get all achievements
@@ -48,7 +98,8 @@ const AchievementModel = {
   ): Promise<Achievement[]> {
     const query = `
       SELECT * FROM achievements
-      ${includeInactive ? "" : "WHERE is_active = true"}
+      WHERE achievement_kind = 'standard'
+      ${includeInactive ? "" : "AND is_active = true"}
       ORDER BY sort_order ASC, created_at ASC;
     `;
 
@@ -65,7 +116,9 @@ const AchievementModel = {
   ): Promise<Achievement[]> {
     const query = `
       SELECT * FROM achievements
-      WHERE category = $1 ${includeInactive ? "" : "AND is_active = true"}
+      WHERE category = $1
+        AND achievement_kind = 'standard'
+        ${includeInactive ? "" : "AND is_active = true"}
       ORDER BY sort_order ASC, created_at ASC;
     `;
 
@@ -111,6 +164,141 @@ const AchievementModel = {
       cacheAchievementDefinition(rows[0]);
     }
     return rows.length > 0 ? rows[0] : null;
+  },
+
+  async createAchievement(input: AchievementAdminInput): Promise<Achievement> {
+    const query = `
+      INSERT INTO achievements (
+        achievement_key,
+        title,
+        description,
+        achievement_kind,
+        character_id,
+        category,
+        type,
+        target_value,
+        rarity,
+        reward_gems,
+        reward_fate_coins,
+        reward_packs,
+        reward_card_fragments,
+        reward_border_id,
+        icon_url,
+        is_active,
+        sort_order,
+        base_achievement_key,
+        tier_level,
+        story_id
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+      )
+      RETURNING *;
+    `;
+
+    const { rows } = await db.query(query, [
+      input.achievement_key,
+      input.title,
+      input.description,
+      input.achievement_kind ?? "standard",
+      input.character_id ?? null,
+      input.category,
+      input.type,
+      input.target_value,
+      input.rarity,
+      input.reward_gems ?? 0,
+      input.reward_fate_coins ?? 0,
+      input.reward_packs ?? 0,
+      input.reward_card_fragments ?? 0,
+      input.reward_border_id ?? null,
+      input.icon_url ?? null,
+      input.is_active ?? true,
+      input.sort_order ?? 0,
+      input.base_achievement_key ?? null,
+      input.tier_level ?? null,
+      input.story_id ?? null,
+    ]);
+
+    const achievement = rows[0];
+    clearAchievementDefinitionCache();
+    cacheAchievementDefinition(achievement);
+    return achievement;
+  },
+
+  async updateAchievement(
+    achievementId: string,
+    updates: AchievementAdminUpdate
+  ): Promise<Achievement | null> {
+    const setClauses: string[] = [];
+    const values: any[] = [achievementId];
+    let idx = 2;
+
+    const assign = (column: string, value: any) => {
+      setClauses.push(`${column} = $${idx}`);
+      values.push(value);
+      idx++;
+    };
+
+    if (updates.achievement_key !== undefined)
+      assign("achievement_key", updates.achievement_key);
+    if (updates.title !== undefined) assign("title", updates.title);
+    if (updates.description !== undefined)
+      assign("description", updates.description);
+    if (updates.achievement_kind !== undefined)
+      assign("achievement_kind", updates.achievement_kind);
+    if (updates.character_id !== undefined)
+      assign("character_id", updates.character_id);
+    if (updates.category !== undefined) assign("category", updates.category);
+    if (updates.type !== undefined) assign("type", updates.type);
+    if (updates.target_value !== undefined)
+      assign("target_value", updates.target_value);
+    if (updates.rarity !== undefined) assign("rarity", updates.rarity);
+    if (updates.reward_gems !== undefined)
+      assign("reward_gems", updates.reward_gems);
+    if (updates.reward_fate_coins !== undefined)
+      assign("reward_fate_coins", updates.reward_fate_coins);
+    if (updates.reward_packs !== undefined)
+      assign("reward_packs", updates.reward_packs);
+    if (updates.reward_card_fragments !== undefined)
+      assign("reward_card_fragments", updates.reward_card_fragments);
+    if (updates.reward_border_id !== undefined)
+      assign("reward_border_id", updates.reward_border_id);
+    if (updates.icon_url !== undefined) assign("icon_url", updates.icon_url);
+    if (updates.is_active !== undefined) assign("is_active", updates.is_active);
+    if (updates.sort_order !== undefined)
+      assign("sort_order", updates.sort_order);
+    if (updates.base_achievement_key !== undefined)
+      assign("base_achievement_key", updates.base_achievement_key);
+    if (updates.tier_level !== undefined)
+      assign("tier_level", updates.tier_level);
+    if (updates.story_id !== undefined) assign("story_id", updates.story_id);
+
+    if (setClauses.length === 0) {
+      return this.getAchievementById(achievementId);
+    }
+
+    setClauses.push("updated_at = NOW()");
+
+    const query = `
+      UPDATE achievements
+      SET ${setClauses.join(", ")}
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+    const { rows } = await db.query(query, values);
+    if (rows.length === 0) {
+      return null;
+    }
+
+    clearAchievementDefinitionCache();
+    cacheAchievementDefinition(rows[0]);
+    return rows[0];
+  },
+
+  async softDeleteAchievement(achievementId: string): Promise<Achievement | null> {
+    return this.updateAchievement(achievementId, { is_active: false });
   },
 
   /**
@@ -226,6 +414,8 @@ const AchievementModel = {
         achievement_key: row.achievement_key,
         title: row.title,
         description: row.description,
+        achievement_kind: row.achievement_kind,
+        character_id: row.character_id ?? null,
         category: row.category,
         type: row.type,
         target_value: row.target_value,
@@ -311,6 +501,8 @@ const AchievementModel = {
           achievement_key: row.achievement_key,
           title: row.title,
           description: row.description,
+          achievement_kind: row.achievement_kind,
+          character_id: row.character_id ?? null,
           category: row.category,
           type: row.type,
           target_value: row.target_value,
@@ -346,7 +538,11 @@ const AchievementModel = {
     completedOnly: boolean = false,
     unclaimedOnly: boolean = false
   ): Promise<UserAchievementWithDetails[]> {
-    let whereConditions = ["ua.user_id = $1", "a.is_active = true"];
+    let whereConditions = [
+      "ua.user_id = $1",
+      "a.is_active = true",
+      "a.achievement_kind = 'standard'",
+    ];
     const params = [userId];
     let paramIndex = 2;
 
@@ -377,6 +573,8 @@ const AchievementModel = {
         a.achievement_key,
         a.title,
         a.description,
+        a.achievement_kind,
+        a.character_id,
         a.category,
         a.type,
         a.target_value,
@@ -432,6 +630,8 @@ const AchievementModel = {
         achievement_key: row.achievement_key,
         title: row.title,
         description: row.description,
+        achievement_kind: row.achievement_kind,
+        character_id: row.character_id ?? null,
         category: row.category,
         type: row.type,
         target_value: row.target_value,
@@ -464,7 +664,10 @@ const AchievementModel = {
     category?: string,
     includeLocked: boolean = false
   ): Promise<UserAchievementWithDetails[]> {
-    let whereConditions = ["a.is_active = true"];
+    let whereConditions = [
+      "a.is_active = true",
+      "a.achievement_kind = 'standard'",
+    ];
     const params = [userId];
     let paramIndex = 2;
 
@@ -539,6 +742,8 @@ const AchievementModel = {
         achievement_key: row.achievement_key,
         title: row.title,
         description: row.description,
+        achievement_kind: row.achievement_kind,
+        character_id: row.character_id ?? null,
         category: row.category,
         type: row.type,
         target_value: row.target_value,
@@ -547,6 +752,127 @@ const AchievementModel = {
         reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
         reward_card_fragments: row.reward_card_fragments || undefined,
+        icon_url: row.icon_url,
+        is_active: row.is_active,
+        sort_order: row.sort_order,
+        base_achievement_key: row.base_achievement_key,
+        tier_level: row.tier_level,
+        story_id: row.story_id,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      },
+      progress_percentage: parseFloat(row.progress_percentage),
+      can_claim: row.can_claim,
+      is_unlocked: row.is_unlocked,
+    }));
+  },
+
+  /**
+   * Get character-scoped achievements for a user.
+   * Only includes achievements with kind = "character" for the given character.
+   */
+  async getCharacterAchievementsForUser(
+    userId: string,
+    characterId: string,
+    includeLocked: boolean = false
+  ): Promise<UserAchievementWithDetails[]> {
+    const query = `
+      WITH unlocked_tiers AS (
+        SELECT DISTINCT a.base_achievement_key, a.tier_level
+        FROM user_achievements ua
+        JOIN achievements a ON ua.achievement_id = a.id
+        WHERE ua.user_id = $1
+          AND ua.is_completed = true
+          AND a.tier_level IS NOT NULL
+          AND a.achievement_kind = 'character'
+          AND a.character_id = $2
+      )
+      SELECT 
+        a.*,
+        COALESCE(ua.id, null) as user_achievement_id,
+        COALESCE(ua.current_progress, 0) as current_progress,
+        COALESCE(ua.is_completed, false) as is_completed,
+        ua.completed_at,
+        ua.claimed_at,
+        COALESCE(ua.is_claimed, false) as is_claimed,
+        COALESCE(ua.created_at, null) as ua_created_at,
+        COALESCE(ua.updated_at, null) as ua_updated_at,
+        CASE 
+          WHEN a.target_value > 0 
+          THEN ROUND((COALESCE(ua.current_progress, 0)::DECIMAL / a.target_value * 100), 2)
+          ELSE 0 
+        END as progress_percentage,
+        (COALESCE(ua.is_completed, false) = true AND COALESCE(ua.is_claimed, false) = false) as can_claim,
+        CASE 
+          WHEN a.tier_level IS NULL THEN true
+          WHEN a.tier_level = 1 THEN true
+          ELSE EXISTS (
+            SELECT 1 FROM unlocked_tiers ut
+            WHERE ut.base_achievement_key = a.base_achievement_key 
+              AND ut.tier_level = a.tier_level - 1
+          )
+        END as is_unlocked,
+        cb.border_id as border_id,
+        cb.name as border_name,
+        cb.description as border_description,
+        cb.image_url as border_image_url,
+        cb.animation_key as border_animation_key
+      FROM achievements a
+      LEFT JOIN user_achievements ua ON a.id = ua.achievement_id AND ua.user_id = $1
+      LEFT JOIN card_borders cb ON a.reward_border_id = cb.border_id AND cb.is_active = true
+      WHERE a.is_active = true
+        AND a.achievement_kind = 'character'
+        AND a.character_id = $2
+        ${
+          !includeLocked
+            ? `AND (a.tier_level IS NULL OR a.tier_level = 1 OR EXISTS (
+            SELECT 1 FROM unlocked_tiers ut
+            WHERE ut.base_achievement_key = a.base_achievement_key 
+              AND ut.tier_level = a.tier_level - 1
+          ))`
+            : ""
+        }
+      ORDER BY a.sort_order ASC, a.tier_level ASC, a.created_at ASC;
+    `;
+
+    const { rows } = await db.query(query, [userId, characterId]);
+
+    return rows.map((row) => ({
+      id: row.user_achievement_id,
+      user_id: userId,
+      achievement_id: row.id,
+      current_progress: row.current_progress,
+      is_completed: row.is_completed,
+      completed_at: row.completed_at,
+      claimed_at: row.claimed_at,
+      is_claimed: row.is_claimed,
+      created_at: row.ua_created_at,
+      updated_at: row.ua_updated_at,
+      achievement: {
+        id: row.id,
+        achievement_key: row.achievement_key,
+        title: row.title,
+        description: row.description,
+        achievement_kind: row.achievement_kind,
+        character_id: row.character_id ?? null,
+        category: row.category,
+        type: row.type,
+        target_value: row.target_value,
+        rarity: row.rarity,
+        reward_gems: row.reward_gems,
+        reward_fate_coins: row.reward_fate_coins || undefined,
+        reward_packs: row.reward_packs,
+        reward_card_fragments: row.reward_card_fragments || undefined,
+        reward_border_id: row.reward_border_id ?? null,
+        reward_border: row.border_id
+          ? {
+              border_id: row.border_id,
+              name: row.border_name,
+              description: row.border_description ?? null,
+              image_url: row.border_image_url,
+              animation_key: row.border_animation_key ?? null,
+            }
+          : null,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
@@ -833,11 +1159,13 @@ const AchievementModel = {
   ): Promise<{
     success: boolean;
     userAchievement?: UserAchievement;
+    achievement?: Achievement;
     rewards?: {
       gems: number;
       fate_coins: number;
       packs: number;
       card_fragments: number;
+      border_id?: string | null;
     };
   }> {
     // Check if achievement can be claimed
@@ -913,11 +1241,13 @@ const AchievementModel = {
     return {
       success: true,
       userAchievement: rows[0],
+      achievement,
       rewards: {
         gems: achievement.reward_gems,
         fate_coins: achievement.reward_fate_coins || 0,
         packs: achievement.reward_packs,
         card_fragments: achievement.reward_card_fragments || 0,
+        border_id: achievement.reward_border_id ?? null,
       },
     };
   },
@@ -976,6 +1306,7 @@ const AchievementModel = {
         FROM achievements a
         LEFT JOIN user_achievements ua ON a.id = ua.achievement_id AND ua.user_id = $1
         WHERE a.is_active = true
+          AND a.achievement_kind = 'standard'
         GROUP BY a.category, a.rarity
       ),
       totals AS (
@@ -1174,6 +1505,8 @@ const AchievementModel = {
         a.achievement_key,
         a.title,
         a.description,
+        a.achievement_kind,
+        a.character_id,
         a.category,
         a.type,
         a.target_value,
@@ -1195,7 +1528,9 @@ const AchievementModel = {
         true as is_unlocked
       FROM user_achievements ua
       JOIN achievements a ON ua.achievement_id = a.id
-      WHERE ua.user_id = $1 AND ua.is_completed = true
+      WHERE ua.user_id = $1
+        AND ua.is_completed = true
+        AND a.achievement_kind = 'standard'
       ORDER BY ua.completed_at DESC
       LIMIT $2;
     `;
@@ -1218,6 +1553,8 @@ const AchievementModel = {
         achievement_key: row.achievement_key,
         title: row.title,
         description: row.description,
+        achievement_kind: row.achievement_kind,
+        character_id: row.character_id ?? null,
         category: row.category,
         type: row.type,
         target_value: row.target_value,

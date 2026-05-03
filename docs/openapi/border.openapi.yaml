@@ -1,0 +1,598 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance - Card Borders API
+  description: |
+    Catalog and ownership endpoints for card borders. Borders are visual
+    decorations a player can equip onto any of their owned card instances.
+
+    Equip / unequip endpoints live under `/api/user-cards/...` because they
+    mutate a card instance, not the border itself. Admin CRUD and grant /
+    revoke operations live under `/api/admin/borders/...`.
+  version: 1.0.0
+
+paths:
+  /api/borders:
+    get:
+      tags:
+        - Borders
+      summary: List active borders
+      description: Returns the active border catalog. Cached server-side.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Active borders retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CardBorder"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/borders/owned:
+    get:
+      tags:
+        - Borders
+      summary: List borders owned by the authenticated user
+      description: Returns the user's owned borders, joined with catalog metadata.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Owned borders retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OwnedBorder"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/user-cards/{userCardInstanceId}/border:
+    patch:
+      tags:
+        - Borders
+        - User Cards
+      summary: Equip or unequip a border on a single card instance
+      description: |
+        Set the equipped border for a specific card instance. Pass
+        `border_id: null` to unequip. The server validates ownership of both
+        the card and the border, and that the border's restrictions
+        (`character_id` / `set_id`) are compatible with the card.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userCardInstanceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - border_id
+              properties:
+                border_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Border to equip, or `null` to unequip.
+            examples:
+              equip:
+                summary: Equip a border
+                value:
+                  border_id: "9d2a8b4e-3f1c-4a8e-bb7f-1c2d3e4f5a6b"
+              unequip:
+                summary: Remove the equipped border
+                value:
+                  border_id: null
+      responses:
+        "200":
+          description: Border equipped or unequipped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - user_card_instance_id
+                  - equipped_border_id
+                properties:
+                  user_card_instance_id:
+                    type: string
+                    format: uuid
+                  equipped_border_id:
+                    type: string
+                    format: uuid
+                    nullable: true
+        "400":
+          description: Invalid request (e.g. user does not own border, or border restrictions don't match the card)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Card or border not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/user-cards/borders/equip-all:
+    post:
+      tags:
+        - Borders
+        - User Cards
+      summary: Equip a border on every eligible card without one
+      description: |
+        Equip the supplied border on every card the user owns that:
+        - currently has no border equipped, AND
+        - matches the border's restrictions (`character_id` / `set_id`).
+
+        Free, no cooldowns or limits. Returns the number of card instances
+        affected.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - border_id
+              properties:
+                border_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Border applied to all matching empty cards
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - affected_count
+                  - border_id
+                properties:
+                  affected_count:
+                    type: integer
+                    description: Number of card instances updated.
+                  border_id:
+                    type: string
+                    format: uuid
+        "400":
+          description: Border missing, not owned, or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/user-cards/borders/unequip-all:
+    post:
+      tags:
+        - Borders
+        - User Cards
+      summary: Clear the equipped border on every card the user owns
+      description: |
+        Idempotent. Returns the number of card instances that had a border
+        cleared.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: All borders cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - affected_count
+                properties:
+                  affected_count:
+                    type: integer
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/borders:
+    get:
+      tags:
+        - Admin
+        - Borders
+      summary: List all borders (including inactive)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Full border catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CardBorder"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags:
+        - Admin
+        - Borders
+      summary: Create a new border
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - image_url
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                image_url:
+                  type: string
+                animation_key:
+                  type: string
+                  nullable: true
+                character_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: |
+                    Restrict this border to cards whose character matches.
+                    Null for no restriction.
+                set_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: |
+                    Restrict this border to cards from this set. Null for no
+                    restriction. May be combined with character_id; both must
+                    match when both are set.
+      responses:
+        "201":
+          description: Border created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CardBorder"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/borders/{borderId}:
+    patch:
+      tags:
+        - Admin
+        - Borders
+      summary: Update a border in the catalog
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: borderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Any subset of border fields to update.
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                image_url:
+                  type: string
+                animation_key:
+                  type: string
+                  nullable: true
+                character_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                set_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                is_active:
+                  type: boolean
+      responses:
+        "200":
+          description: Border updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CardBorder"
+        "404":
+          description: Border not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags:
+        - Admin
+        - Borders
+      summary: Soft-delete (deactivate) a border
+      description: |
+        Sets `is_active = false`. Existing ownership and equipped references
+        remain intact; the border simply disappears from active catalog
+        listings.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: borderId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Border deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CardBorder"
+        "404":
+          description: Border not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/borders/grant:
+    post:
+      tags:
+        - Admin
+        - Borders
+      summary: Grant a border to a user
+      description: |
+        Idempotent. If the user already owns the border, the request returns
+        200 with `newly_granted: false`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - borderId
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                borderId:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Grant attempt processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  newly_granted:
+                    type: boolean
+                    description: True only if this is the first time the user receives the border.
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/borders/revoke:
+    post:
+      tags:
+        - Admin
+        - Borders
+      summary: Remove a border from a user's inventory
+      description: |
+        Also unequips any of the user's cards that are currently using the
+        revoked border.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - borderId
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                borderId:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Revoke attempt processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  removed:
+                    type: boolean
+                    description: True if the user previously owned the border.
+
+components:
+  schemas:
+    CardBorder:
+      type: object
+      description: A border definition in the catalog.
+      properties:
+        border_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        image_url:
+          type: string
+        animation_key:
+          type: string
+          nullable: true
+          description: |
+            Optional client-side animation key. The server stores the
+            identifier only; the client is responsible for animation playback.
+        character_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            If set, this border can only be equipped on cards whose character
+            matches.
+        set_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            If set, this border can only be equipped on cards from this set.
+            When both `character_id` and `set_id` are present, both must match.
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - border_id
+        - name
+        - image_url
+        - is_active
+        - created_at
+        - updated_at
+
+    OwnedBorder:
+      allOf:
+        - $ref: "#/components/schemas/CardBorder"
+        - type: object
+          properties:
+            acquired_at:
+              type: string
+              format: date-time
+              description: When the user first acquired this border.
+          required:
+            - acquired_at
+
+    EquippedBorder:
+      type: object
+      description: |
+        Compact representation of an equipped border, embedded into card
+        responses (`UserCard.equipped_border` and game-state base card data).
+      properties:
+        border_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        image_url:
+          type: string
+        animation_key:
+          type: string
+          nullable: true
+      required:
+        - border_id
+        - name
+        - image_url
+
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        status:
+          type: string
+          example: error
+      required:
+        - message

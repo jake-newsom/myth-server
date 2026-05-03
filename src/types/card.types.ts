@@ -163,6 +163,14 @@ export interface PlayerCardInstance {
 
 export interface BaseCard {
   card_id: string; // base_card_id
+  /**
+   * Underlying character_id from the `characters` table. Multiple variants
+   * can share the same `character_id`; this lets clients link a card in the
+   * gallery / hand back to its character page. Optional for backward-compat
+   * with code paths that synthesise BaseCards (eg. tutorial fixtures); all
+   * production read paths populate it.
+   */
+  character_id?: string;
   name: string;
   tags: string[];
   rarity: Rarity;
@@ -172,6 +180,7 @@ export interface BaseCard {
   special_ability: SpecialAbility | null;
   attack_animation?: string;
   is_exclusive?: boolean;
+  equipped_border?: import("./database.types").EquippedBorder | null;
 }
 
 export type UserCard = {
@@ -183,6 +192,7 @@ export type UserCard = {
   xp: number;
   is_locked: boolean;
   power_enhancements: PowerValues;
+  equipped_border?: import("./database.types").EquippedBorder | null;
 };
 
 export type DefeatRecord = {

@@ -21,6 +21,7 @@ interface CreateMailInput {
   reward_packs?: number;
   reward_fate_coins?: number;
   reward_card_ids?: string[];
+  reward_border_id?: string | null;
   expires_at?: Date;
 }
 
@@ -57,6 +58,7 @@ const MailModel = {
       reward_packs = 0,
       reward_fate_coins = 0,
       reward_card_ids = [],
+      reward_border_id = null,
       expires_at = null,
     } = mailData;
 
@@ -64,9 +66,9 @@ const MailModel = {
       INSERT INTO mail (
         user_id, mail_type, subject, content, sender_id, sender_name,
         has_rewards, reward_gold, reward_gems, reward_packs, reward_fate_coins,
-        reward_card_ids, expires_at
+        reward_card_ids, reward_border_id, expires_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *;
     `;
 
@@ -83,6 +85,7 @@ const MailModel = {
       reward_packs,
       reward_fate_coins,
       reward_card_ids,
+      reward_border_id,
       expires_at,
     ];
 
@@ -381,14 +384,18 @@ const MailModel = {
       packs?: number;
       fate_coins?: number;
       card_ids?: string[];
+      border_id?: string | null;
     },
     expiresInDays?: number
   ): Promise<Mail> {
     const has_rewards =
       rewards &&
-      Object.values(rewards).some((v) =>
-        Array.isArray(v) ? v.length > 0 : v && v > 0
-      );
+      Object.entries(rewards).some(([key, value]) => {
+        if (value === undefined || value === null) return false;
+        if (key === "border_id") return typeof value === "string";
+        if (Array.isArray(value)) return value.length > 0;
+        return typeof value === "number" && value > 0;
+      });
 
     const expires_at = expiresInDays
       ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
@@ -406,6 +413,7 @@ const MailModel = {
       reward_packs: rewards?.packs || 0,
       reward_fate_coins: rewards?.fate_coins || 0,
       reward_card_ids: rewards?.card_ids || [],
+      reward_border_id: rewards?.border_id ?? null,
       expires_at,
     });
   },

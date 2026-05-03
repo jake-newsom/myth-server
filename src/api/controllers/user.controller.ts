@@ -23,6 +23,7 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
   base_card_id: card.base_card_id,
   base_card_data: {
     card_id: card.base_card_id,
+    character_id: card.character_id,
     name: card.name,
     tags: card.tags,
     rarity: card.rarity,
@@ -39,6 +40,7 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
         parameters: card.special_ability.parameters,
       }
       : null,
+    equipped_border: card.equipped_border ?? null,
   },
   level: card.level!,
   xp: card.xp!,
@@ -49,6 +51,7 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
     bottom: 0,
     left: 0,
   },
+  equipped_border: card.equipped_border ?? null,
 });
 
 const UserController = {

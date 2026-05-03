@@ -397,6 +397,52 @@ export interface FatePickParticipation {
   participated_at: Date;
 }
 
+// Reward Service Types
+
+/**
+ * Discriminated union describing a single reward unit. The RewardService accepts
+ * arrays of these and applies them in batched, single-statement-per-type SQL
+ * operations, replacing per-reward N+1 update flows on existing claim paths.
+ */
+export type RewardItem =
+  | { type: "gems"; amount: number }
+  | { type: "gold"; amount: number }
+  | { type: "fate_coins"; amount: number }
+  | { type: "card_fragments"; amount: number }
+  | { type: "packs"; amount: number }
+  | { type: "card"; card_variant_id: string }
+  | { type: "border"; border_id: string; character_id?: string | null };
+
+export interface GrantedReward {
+  item: RewardItem;
+  // For card grants, the resulting user_card_instance_id (single instance per card_variant_id)
+  user_card_instance_id?: string;
+  // For border grants, true if newly granted, false if user already owned it
+  newly_granted?: boolean;
+}
+
+export interface GrantRewardsResult {
+  success: boolean;
+  granted: GrantedReward[];
+  totals: {
+    gems: number;
+    gold: number;
+    fate_coins: number;
+    card_fragments: number;
+    packs: number;
+    cards: number;
+    borders: number;
+  };
+  updated_currencies?: {
+    gems: number;
+    gold: number;
+    fate_coins: number;
+    card_fragments: number;
+    pack_count: number;
+  };
+  error?: string;
+}
+
 // Power Up Service Types
 export interface ApplyPowerUpRequest {
   user_card_instance_id: string;

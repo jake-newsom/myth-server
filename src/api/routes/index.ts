@@ -24,6 +24,7 @@ import towerRoutes from "./tower.routes";
 import dailyTaskRoutes from "./dailyTask.routes";
 import seasonRoutes from "./season.routes";
 import assetPatchRoutes from "./assetPatch.routes";
+import borderRoutes from "./border.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -57,6 +58,7 @@ router.use("/tower", towerRoutes);
 router.use("/daily-tasks", dailyTaskRoutes);
 router.use("/seasons", seasonRoutes);
 router.use("/asset-patches", assetPatchRoutes);
+router.use("/borders", borderRoutes);
 
 // Global error handler
 router.use(errorHandler);

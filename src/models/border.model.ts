@@ -1,0 +1,489 @@
+import db, { QueryExecutor } from "../config/db.config";
+import {
+  CardBorder,
+  EquippedBorder,
+} from "../types/database.types";
+
+/**
+ * Border Model
+ *
+ * Data access for the card-border catalog and per-user ownership / equip state.
+ *
+ * Performance notes:
+ * - All multi-row writes (grant, equip-all, unequip-all) are single round-trip,
+ *   set-based statements.
+ * - Equip operations validate ownership and restriction in the same statement
+ *   via a self-join, so we never run separate SELECTs before the UPDATE.
+ * - Restriction filters use partial indexes on card_borders (active + character_id
+ *   / set_id) and the partial indexes on user_owned_cards keyed by
+ *   equipped_border_id IS NULL / NOT NULL (added in the migration).
+ */
+
+export interface CardBorderInput {
+  name: string;
+  description?: string | null;
+  image_url: string;
+  animation_key?: string | null;
+  character_id?: string | null;
+  set_id?: string | null;
+}
+
+export interface CardBorderUpdate {
+  name?: string;
+  description?: string | null;
+  image_url?: string;
+  animation_key?: string | null;
+  character_id?: string | null;
+  set_id?: string | null;
+  is_active?: boolean;
+}
+
+export interface OwnedBorderRow extends CardBorder {
+  acquired_at: Date;
+}
+
+export interface CharacterBorderAvailabilityRow extends CardBorder {
+  is_owned: boolean;
+  is_locked: boolean;
+}
+
+function rowToCardBorder(row: any): CardBorder {
+  return {
+    border_id: row.border_id,
+    name: row.name,
+    description: row.description ?? null,
+    image_url: row.image_url,
+    animation_key: row.animation_key ?? null,
+    character_id: row.character_id ?? null,
+    set_id: row.set_id ?? null,
+    is_active: row.is_active,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+const BorderModel = {
+  // ============================================================================
+  // CATALOG
+  // ============================================================================
+
+  /**
+   * List all active borders. Used for the user-facing catalog.
+   */
+  async listActive(): Promise<CardBorder[]> {
+    const query = `
+      SELECT border_id, name, description, image_url, animation_key,
+             character_id, set_id, is_active, created_at, updated_at
+      FROM "card_borders"
+      WHERE is_active = true
+      ORDER BY name ASC;
+    `;
+    const { rows } = await db.query(query);
+    return rows.map(rowToCardBorder);
+  },
+
+  /**
+   * List every border in the catalog including inactive ones (admin tooling).
+   */
+  async listAll(): Promise<CardBorder[]> {
+    const query = `
+      SELECT border_id, name, description, image_url, animation_key,
+             character_id, set_id, is_active, created_at, updated_at
+      FROM "card_borders"
+      ORDER BY is_active DESC, name ASC;
+    `;
+    const { rows } = await db.query(query);
+    return rows.map(rowToCardBorder);
+  },
+
+  async findById(borderId: string): Promise<CardBorder | null> {
+    const query = `
+      SELECT border_id, name, description, image_url, animation_key,
+             character_id, set_id, is_active, created_at, updated_at
+      FROM "card_borders"
+      WHERE border_id = $1;
+    `;
+    const { rows } = await db.query(query, [borderId]);
+    return rows.length > 0 ? rowToCardBorder(rows[0]) : null;
+  },
+
+  async create(input: CardBorderInput): Promise<CardBorder> {
+    const query = `
+      INSERT INTO "card_borders"
+        (name, description, image_url, animation_key, character_id, set_id, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6, true)
+      RETURNING border_id, name, description, image_url, animation_key,
+                character_id, set_id, is_active, created_at, updated_at;
+    `;
+    const { rows } = await db.query(query, [
+      input.name,
+      input.description ?? null,
+      input.image_url,
+      input.animation_key ?? null,
+      input.character_id ?? null,
+      input.set_id ?? null,
+    ]);
+    return rowToCardBorder(rows[0]);
+  },
+
+  async update(
+    borderId: string,
+    updates: CardBorderUpdate
+  ): Promise<CardBorder | null> {
+    const setClauses: string[] = [];
+    const values: any[] = [borderId];
+    let idx = 2;
+
+    const assign = (column: string, value: any) => {
+      setClauses.push(`${column} = $${idx}`);
+      values.push(value);
+      idx++;
+    };
+
+    if (updates.name !== undefined) assign("name", updates.name);
+    if (updates.description !== undefined)
+      assign("description", updates.description);
+    if (updates.image_url !== undefined) assign("image_url", updates.image_url);
+    if (updates.animation_key !== undefined)
+      assign("animation_key", updates.animation_key);
+    if (updates.character_id !== undefined)
+      assign("character_id", updates.character_id);
+    if (updates.set_id !== undefined) assign("set_id", updates.set_id);
+    if (updates.is_active !== undefined) assign("is_active", updates.is_active);
+
+    if (setClauses.length === 0) {
+      return this.findById(borderId);
+    }
+
+    setClauses.push(`updated_at = NOW()`);
+
+    const query = `
+      UPDATE "card_borders"
+      SET ${setClauses.join(", ")}
+      WHERE border_id = $1
+      RETURNING border_id, name, description, image_url, animation_key,
+                character_id, set_id, is_active, created_at, updated_at;
+    `;
+    const { rows } = await db.query(query, values);
+    return rows.length > 0 ? rowToCardBorder(rows[0]) : null;
+  },
+
+  /**
+   * Soft-delete a border by deactivating it. Existing equipped/owned references
+   * are preserved (they simply won't render in catalogs / can't be re-granted).
+   * Returns the updated row, or null if no border exists with the given id.
+   */
+  async softDelete(borderId: string): Promise<CardBorder | null> {
+    return this.update(borderId, { is_active: false });
+  },
+
+  // ============================================================================
+  // OWNERSHIP
+  // ============================================================================
+
+  /**
+   * Grant a single border to a user, optionally scoped to a character.
+   * Idempotent - returns true only if the row was newly inserted.
+   *
+   * When characterId is null the grant is global (usable on any applicable
+   * card). When set, the grant is scoped to that character only.
+   */
+  async grantToUser(
+    userId: string,
+    borderId: string,
+    characterId?: string | null,
+    client?: QueryExecutor
+  ): Promise<boolean> {
+    const exec = client ?? db;
+    const query = `
+      INSERT INTO "user_owned_borders" (user_id, border_id, character_id)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (user_id, border_id, COALESCE(character_id, '00000000-0000-0000-0000-000000000000'::uuid))
+      DO NOTHING
+      RETURNING border_id;
+    `;
+    const { rows } = await exec.query(query, [
+      userId,
+      borderId,
+      characterId ?? null,
+    ]);
+    return rows.length > 0;
+  },
+
+  /**
+   * Bulk grant. Single round-trip. Returns the set of border_ids that were
+   * newly granted to the user (already-owned ids are silently ignored).
+   *
+   * Each grant may optionally carry a character_id to scope ownership.
+   */
+  async grantBulkToUser(
+    userId: string,
+    grants: Array<{ border_id: string; character_id?: string | null }>,
+    client?: QueryExecutor
+  ): Promise<string[]> {
+    if (grants.length === 0) return [];
+    const exec = client ?? db;
+    const query = `
+      INSERT INTO "user_owned_borders" (user_id, border_id, character_id)
+      SELECT $1, (g->>'border_id')::uuid, (g->>'character_id')::uuid
+      FROM json_array_elements($2::json) AS g
+      ON CONFLICT (user_id, border_id, COALESCE(character_id, '00000000-0000-0000-0000-000000000000'::uuid))
+      DO NOTHING
+      RETURNING border_id;
+    `;
+    const { rows } = await exec.query(query, [
+      userId,
+      JSON.stringify(
+        grants.map((g) => ({
+          border_id: g.border_id,
+          character_id: g.character_id ?? null,
+        }))
+      ),
+    ]);
+    return rows.map((r) => r.border_id);
+  },
+
+  async revokeFromUser(userId: string, borderId: string): Promise<boolean> {
+    // Detach any equipped instances first so the FK delete doesn't surprise us.
+    // Single round-trip CTE.
+    const query = `
+      WITH unequip AS (
+        UPDATE "user_owned_cards"
+        SET equipped_border_id = NULL
+        WHERE user_id = $1 AND equipped_border_id = $2
+      )
+      DELETE FROM "user_owned_borders"
+      WHERE user_id = $1 AND border_id = $2
+      RETURNING border_id;
+    `;
+    const { rows } = await db.query(query, [userId, borderId]);
+    return rows.length > 0;
+  },
+
+  /**
+   * Returns the distinct border_ids the user currently owns (any scope).
+   */
+  async listOwnedBorderIds(userId: string): Promise<string[]> {
+    const query = `
+      SELECT DISTINCT border_id FROM "user_owned_borders" WHERE user_id = $1;
+    `;
+    const { rows } = await db.query(query, [userId]);
+    return rows.map((r) => r.border_id);
+  },
+
+  /**
+   * Returns the user's owned borders joined with catalog metadata. Active
+   * filter is applied so soft-deleted borders are hidden from inventories.
+   * Uses DISTINCT ON to collapse per-character rows into one per border.
+   */
+  async listOwnedWithDetails(userId: string): Promise<OwnedBorderRow[]> {
+    const query = `
+      SELECT DISTINCT ON (b.border_id)
+             b.border_id, b.name, b.description, b.image_url, b.animation_key,
+             b.character_id, b.set_id, b.is_active, b.created_at, b.updated_at,
+             uob.acquired_at
+      FROM "user_owned_borders" uob
+      JOIN "card_borders" b ON uob.border_id = b.border_id
+      WHERE uob.user_id = $1 AND b.is_active = true
+      ORDER BY b.border_id, uob.acquired_at ASC;
+    `;
+    const { rows } = await db.query(query, [userId]);
+    return rows.map((row) => ({
+      ...rowToCardBorder(row),
+      acquired_at: row.acquired_at,
+    }));
+  },
+
+  /**
+   * Returns all active borders applicable to a specific character and marks
+   * whether the authenticated user owns each one.
+   *
+   * Applicability rules:
+   * - unrestricted borders (character_id/set_id both null)
+   * - borders restricted to this character_id
+   * - borders restricted to this character's set_id
+   * - borders restricted to both (both must match)
+   *
+   * Ownership is satisfied by either a global grant (character_id IS NULL in
+   * user_owned_borders) or a character-scoped grant matching this character.
+   */
+  async listApplicableForCharacter(
+    userId: string,
+    characterId: string
+  ): Promise<CharacterBorderAvailabilityRow[]> {
+    const query = `
+      SELECT b.border_id, b.name, b.description, b.image_url, b.animation_key,
+             b.character_id, b.set_id, b.is_active, b.created_at, b.updated_at,
+             EXISTS(
+               SELECT 1 FROM "user_owned_borders" uob
+               WHERE uob.user_id = $1
+                 AND uob.border_id = b.border_id
+                 AND (uob.character_id IS NULL OR uob.character_id = ch.character_id)
+             ) AS is_owned
+      FROM "characters" ch
+      JOIN "card_borders" b ON b.is_active = true
+        AND (b.character_id IS NULL OR b.character_id = ch.character_id)
+        AND (b.set_id IS NULL OR b.set_id = ch.set_id)
+      WHERE ch.character_id = $2
+      ORDER BY b.name ASC;
+    `;
+    const { rows } = await db.query(query, [userId, characterId]);
+    return rows.map((row) => ({
+      ...rowToCardBorder(row),
+      is_owned: row.is_owned === true,
+      is_locked: row.is_owned !== true,
+    }));
+  },
+
+  async userOwnsBorder(userId: string, borderId: string): Promise<boolean> {
+    const query = `
+      SELECT 1 FROM "user_owned_borders"
+      WHERE user_id = $1 AND border_id = $2 LIMIT 1;
+    `;
+    const { rows } = await db.query(query, [userId, borderId]);
+    return rows.length > 0;
+  },
+
+  // ============================================================================
+  // EQUIP / UNEQUIP
+  // ============================================================================
+
+  /**
+   * Equip a border on a single card instance. The UPDATE itself enforces:
+   *   - the card belongs to the user
+   *   - the user owns the border (globally or for the card's character)
+   *   - the border is active
+   *   - the border's restrictions (character_id / set_id) match the card variant
+   * If any check fails, zero rows are updated and we return null.
+   */
+  async equipBorderOnInstance(
+    userId: string,
+    instanceId: string,
+    borderId: string
+  ): Promise<{ user_card_instance_id: string; equipped_border_id: string } | null> {
+    const query = `
+      UPDATE "user_owned_cards" uoc
+      SET equipped_border_id = $3
+      FROM "card_variants" cv
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      JOIN "card_borders" b ON b.border_id = $3
+      WHERE uoc.user_card_instance_id = $1
+        AND uoc.user_id = $2
+        AND uoc.card_variant_id = cv.card_variant_id
+        AND b.is_active = true
+        AND (b.character_id IS NULL OR cv.character_id = b.character_id)
+        AND (b.set_id IS NULL OR ch.set_id = b.set_id)
+        AND EXISTS (
+          SELECT 1 FROM "user_owned_borders" uob
+          WHERE uob.user_id = $2
+            AND uob.border_id = $3
+            AND (uob.character_id IS NULL OR uob.character_id = cv.character_id)
+        )
+      RETURNING uoc.user_card_instance_id, uoc.equipped_border_id;
+    `;
+    const { rows } = await db.query(query, [instanceId, userId, borderId]);
+    return rows.length > 0
+      ? {
+          user_card_instance_id: rows[0].user_card_instance_id,
+          equipped_border_id: rows[0].equipped_border_id,
+        }
+      : null;
+  },
+
+  /**
+   * Unequip whatever border is on a single card instance. Returns the
+   * affected row, or null if the card doesn't belong to the user.
+   */
+  async unequipBorderOnInstance(
+    userId: string,
+    instanceId: string
+  ): Promise<{ user_card_instance_id: string } | null> {
+    const query = `
+      UPDATE "user_owned_cards"
+      SET equipped_border_id = NULL
+      WHERE user_card_instance_id = $1 AND user_id = $2
+      RETURNING user_card_instance_id;
+    `;
+    const { rows } = await db.query(query, [instanceId, userId]);
+    return rows.length > 0
+      ? { user_card_instance_id: rows[0].user_card_instance_id }
+      : null;
+  },
+
+  /**
+   * Equip a border on every empty-border card instance the user owns that
+   * passes the border's restriction filter AND for which the user has
+   * ownership (global or character-scoped). Single round-trip UPDATE.
+   * Returns the count of rows changed.
+   */
+  async equipBorderOnAllEmpty(
+    userId: string,
+    borderId: string
+  ): Promise<number> {
+    const query = `
+      UPDATE "user_owned_cards" uoc
+      SET equipped_border_id = $2
+      FROM "card_variants" cv
+      JOIN "characters" ch ON cv.character_id = ch.character_id
+      JOIN "card_borders" b ON b.border_id = $2
+      WHERE uoc.user_id = $1
+        AND uoc.equipped_border_id IS NULL
+        AND uoc.card_variant_id = cv.card_variant_id
+        AND b.is_active = true
+        AND (b.character_id IS NULL OR cv.character_id = b.character_id)
+        AND (b.set_id IS NULL OR ch.set_id = b.set_id)
+        AND EXISTS (
+          SELECT 1 FROM "user_owned_borders" uob
+          WHERE uob.user_id = $1
+            AND uob.border_id = $2
+            AND (uob.character_id IS NULL OR uob.character_id = cv.character_id)
+        );
+    `;
+    const result = await db.query(query, [userId, borderId]);
+    return result.rowCount ?? 0;
+  },
+
+  /**
+   * Clear equipped_border_id on every card instance the user owns. Single
+   * round-trip UPDATE; uses the partial index keyed on
+   * `equipped_border_id IS NOT NULL`.
+   */
+  async unequipAllForUser(userId: string): Promise<number> {
+    const query = `
+      UPDATE "user_owned_cards"
+      SET equipped_border_id = NULL
+      WHERE user_id = $1 AND equipped_border_id IS NOT NULL;
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rowCount ?? 0;
+  },
+
+  /**
+   * Lightweight helper that returns the equipped border (if any) for a single
+   * card instance, projected to the EquippedBorder shape. Used by callers that
+   * need to confirm or display equip state outside of the standard card
+   * response paths.
+   */
+  async findEquippedBorderForInstance(
+    userId: string,
+    instanceId: string
+  ): Promise<EquippedBorder | null> {
+    const query = `
+      SELECT b.border_id, b.name, b.image_url, b.animation_key
+      FROM "user_owned_cards" uoc
+      JOIN "card_borders" b ON uoc.equipped_border_id = b.border_id
+      WHERE uoc.user_card_instance_id = $1 AND uoc.user_id = $2
+      LIMIT 1;
+    `;
+    const { rows } = await db.query(query, [instanceId, userId]);
+    if (rows.length === 0) return null;
+    return {
+      border_id: rows[0].border_id,
+      name: rows[0].name,
+      image_url: rows[0].image_url,
+      animation_key: rows[0].animation_key ?? null,
+    };
+  },
+};
+
+export default BorderModel;
