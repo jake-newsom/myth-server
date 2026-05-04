@@ -301,8 +301,14 @@ const BorderModel = {
    * Applicability rules:
    * - unrestricted borders (character_id/set_id both null)
    * - borders restricted to this character_id
-   * - borders restricted to this character's set_id
-   * - borders restricted to both (both must match)
+   * - borders restricted to this character's set_id, BUT if any active
+   *   achievement gates the border (i.e. is its `reward_border_id`), the
+   *   character must have an applicable achievement for that border —
+   *   either a set-wide one (achievements.character_id IS NULL) or one
+   *   scoped to this character. This prevents set-tier achievement rewards
+   *   from advertising themselves on characters that have no path to earn
+   *   them.
+   * - borders restricted to both character and set must match both
    *
    * Ownership is satisfied by either a global grant (character_id IS NULL in
    * user_owned_borders) or a character-scoped grant matching this character.
@@ -324,6 +330,24 @@ const BorderModel = {
       JOIN "card_borders" b ON b.is_active = true
         AND (b.character_id IS NULL OR b.character_id = ch.character_id)
         AND (b.set_id IS NULL OR b.set_id = ch.set_id)
+        AND (
+          -- Borders that aren't gated by any active achievement are visible
+          -- to every character that passes the character/set restrictions.
+          NOT EXISTS (
+            SELECT 1 FROM "achievements" a
+            WHERE a.reward_border_id = b.border_id
+              AND a.is_active = true
+          )
+          -- Otherwise, the character must have an active achievement that
+          -- rewards this border — either a set-wide one or one scoped to
+          -- this specific character.
+          OR EXISTS (
+            SELECT 1 FROM "achievements" a
+            WHERE a.reward_border_id = b.border_id
+              AND a.is_active = true
+              AND (a.character_id IS NULL OR a.character_id = ch.character_id)
+          )
+        )
       WHERE ch.character_id = $2
       ORDER BY b.name ASC;
     `;

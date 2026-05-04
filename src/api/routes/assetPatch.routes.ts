@@ -70,12 +70,12 @@ const PATCHES: AssetPatch[] = [
     description: "second gold cards patch",
   },
   {
-    id: "border-pack-1.2",
-    version: 2,
+    id: "border-pack-1.5",
+    version: 5,
     type: "graphics",
-    r2Key: "patches/border-pack-1.2.zip",
+    r2Key: "patches/borders-pack-1.5.zip",
     checksum:
-      "sha256:0d133d8d50b96872fe5f1a8f891b69a52519f8b359f7b40667f2954b5148e20b",
+      "sha256:cdd922140d11d2a7d4c3f0295c953c2fcd82577ab0628a4ec0d4a2f3871fdacc",
     size: 0,
     description: "borders pack 1",
   },

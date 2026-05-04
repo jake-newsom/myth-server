@@ -264,7 +264,9 @@ export function setupGameNamespace(io: Server): void {
             startingPlayer,
             meta.playerIds,
             async (timedOutPlayerId) => {
-              // ----------- Phase-4 AI fallback on timeout ---------------
+              // Acquire the same per-game lock used by client:action so
+              // a last-second player move and the timeout cannot race.
+              const releaseLock = await acquireActionLock(gameId);
               try {
                 const ai = new AILogic();
                 const latestRecord = await gameService.getRawGameRecord(
@@ -272,13 +274,16 @@ export function setupGameNamespace(io: Server): void {
                   timedOutPlayerId
                 );
 
-                if (!latestRecord) return; // game ended or inaccessible
+                if (!latestRecord) return;
+
+                // If the player already acted before we acquired the lock,
+                // the turn has moved on — skip the AI fallback entirely.
+                if (latestRecord.game_state.current_player_id !== timedOutPlayerId) return;
 
                 let currentState = latestRecord.game_state;
                 let events: any[] = [];
                 let aiMoveUsed = false;
 
-                // Pass the timed-out player's ID so AI uses their hand, not the opponent's
                 const aiDifficulty = resolveAIDifficulty({
                   isTimeoutFallback: true,
                 });
@@ -299,7 +304,6 @@ export function setupGameNamespace(io: Server): void {
                   currentState = result.state;
                   events = result.events;
                 } else {
-                  // No valid placeCard — just end turn
                   const result = await GameLogic.endTurn(
                     currentState,
                     timedOutPlayerId
@@ -332,6 +336,8 @@ export function setupGameNamespace(io: Server): void {
                 }
               } catch (err) {
                 console.error("[namespace.game] AI move error", err);
+              } finally {
+                releaseLock();
               }
             }
           );

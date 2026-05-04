@@ -958,9 +958,36 @@ const AchievementService = {
     eventData: any,
     result: AchievementCompletionResult
   ): Promise<void> {
-    const { rarityCounts, totalUniqueCards, totalMythicCards } = eventData;
+    const {
+      rarityCounts,
+      totalUniqueCards,
+      totalMythicCards,
+      uniqueCharactersBySetSlug,
+    } = eventData;
     const keysToFetch: string[] = [];
     const updates: BatchedAchievementUpdate[] = [];
+
+    // Set-collection achievements: one per set, target is the number of
+    // distinct characters the set contains (currently 30). The achievement
+    // key is `collect_<set_slug>_set` and the value is the count of distinct
+    // characters in that set the user owns at least one card of.
+    if (
+      uniqueCharactersBySetSlug &&
+      typeof uniqueCharactersBySetSlug === "object"
+    ) {
+      for (const [setSlug, ownedCount] of Object.entries(
+        uniqueCharactersBySetSlug as Record<string, number>
+      )) {
+        if (typeof ownedCount !== "number") continue;
+        const achievementKey = `collect_${setSlug}_set`;
+        updates.push({
+          achievement_key: achievementKey,
+          mode: "set",
+          value: ownedCount,
+        });
+        keysToFetch.push(achievementKey);
+      }
+    }
 
     // Track card_collection tiered achievements (SET - only needs to be called once)
     if (totalUniqueCards !== undefined) {

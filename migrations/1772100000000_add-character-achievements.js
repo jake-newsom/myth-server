@@ -61,7 +61,7 @@ exports.up = (pgm) => {
       '7f52c228-04f6-4ac7-84d0-f5c1f98ce77f'::uuid,
       'Ravenous Fang',
       'Awarded for proving Fenrir''s hunger: destroy 1,000 enemies with Devourer''s Surge.',
-      'https://assets.myth-server/borders/ravenous-fang.png',
+      '/borders/ravenous-fang.png',
       'fenrir_devourers_surge',
       f.character_id,
       NULL,

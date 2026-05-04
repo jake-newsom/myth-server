@@ -521,6 +521,20 @@ const MailModel = {
     const { rows } = await db.query(query, [userId]);
     return parseInt(rows[0].count);
   },
+
+  /**
+   * Get total (non-expired) mail count for a user
+   */
+  async getTotalCount(userId: string): Promise<number> {
+    const query = `
+      SELECT COUNT(*) as count 
+      FROM mail 
+      WHERE user_id = $1 
+        AND (expires_at IS NULL OR expires_at > NOW());
+    `;
+    const { rows } = await db.query(query, [userId]);
+    return parseInt(rows[0].count);
+  },
 };
 
 export default MailModel;

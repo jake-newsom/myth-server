@@ -25,6 +25,9 @@ import {
   getRandomSide,
   isSameCard,
   getOpponentId,
+  blockTile,
+  getAdjacentPositions,
+  getTileAtPosition,
 } from "../ability.utils";
 import { drawCardSync, flipCard } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
@@ -241,80 +244,25 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  //After 3 rounds all played cards lose -1 and grant cards in your hand +1
   heimdall_block: (context) => {
     const {
-      triggerCard,
       position,
-      state: { board, player1, player2, hydrated_card_data_cache },
+      state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
-    const HAND_POSITION = { x: -1, y: -1 };
 
-    const existingBuff = triggerCard.temporary_effects.find(
-      (effect) => effect.name === "Watchman's Gate",
-    );
-    if (existingBuff) {
-      if (existingBuff.data?.rounds === 3) {
-        const allCards = getCardsByCondition(board, (card) => true);
-        for (const card of allCards) {
-          const cardPosition = getPositionOfCardById(
-            card.user_card_instance_id,
-            board,
-          );
-          if (cardPosition) {
-            gameEvents.push(
-              debuff(card, -1, {
-                name: "Watchman's Gate",
-                animation: "lightning-circle",
-                position: cardPosition,
-              }),
-            );
-          }
-        }
-        const player =
-          player1.user_id === triggerCard.owner ? player1 : player2;
-        for (const cardId of player.hand) {
-          const card = hydrated_card_data_cache?.[cardId];
-          if (card) {
-            gameEvents.push(
-              addTempBuff(card, 1000, 1, {
-                name: "Watchman's Gate",
-                position: HAND_POSITION,
-              }),
-            );
-          }
-        }
-      } else {
-        const triggerPosition =
-          position ||
-          getPositionOfCardById(triggerCard.user_card_instance_id, board);
-        if (triggerPosition) {
-          createOrUpdateBuff(
-            triggerCard,
-            3,
-            0,
-            "Watchman's Gate",
-            triggerPosition,
-            {
-              rounds: existingBuff.data?.rounds + 1,
-            },
-          );
-        }
-      }
-    } else {
-      const triggerPosition =
-        position ||
-        getPositionOfCardById(triggerCard.user_card_instance_id, board);
-      if (triggerPosition) {
-        createOrUpdateBuff(
-          triggerCard,
-          3,
-          0,
-          "Watchman's Gate",
-          triggerPosition,
-          { rounds: 1 },
-        );
+    const adjacentPositions = getAdjacentPositions(position, board.length);
+    const emptyAdjacentTiles = adjacentPositions.filter((pos) => {
+      const tile = getTileAtPosition(pos, board);
+      return (
+        tile && !tile.card && tile.tile_effect?.status !== TileStatus.Blocked
+      );
+    });
+
+    for (const pos of emptyAdjacentTiles) {
+      const event = blockTile(pos, board, 2, "heimdall_gate");
+      if (event) {
+        gameEvents.push(event);
       }
     }
 
@@ -874,7 +822,7 @@ export const norseAbilities: AbilityMap = {
     if (!originalTriggerCard?.base_card_data.tags.includes("dragon")) return [];
 
     return [
-      createOrUpdateBuff(triggerCard, 1000, 2, "Dragon Slayer", HAND_POSITION, {
+      createOrUpdateBuff(triggerCard, 1000, 2, "Gram's Edge", HAND_POSITION, {
         animation: "dragon-slayer",
         actingPlayerId: triggerCard.owner,
         sourceCard: triggerCard,

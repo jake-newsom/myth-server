@@ -747,17 +747,20 @@ const MailService = {
     success: boolean;
     unread_count: number;
     unclaimed_rewards_count: number;
+    total_count: number;
   }> {
     try {
-      const [unreadCount, unclaimedCount] = await Promise.all([
+      const [unreadCount, unclaimedCount, totalCount] = await Promise.all([
         MailModel.getUnreadCount(userId),
         MailModel.getUnclaimedRewardsCount(userId),
+        MailModel.getTotalCount(userId),
       ]);
 
       return {
         success: true,
         unread_count: unreadCount,
         unclaimed_rewards_count: unclaimedCount,
+        total_count: totalCount,
       };
     } catch (error) {
       console.error("Error fetching mail counts:", error);
@@ -765,6 +768,7 @@ const MailService = {
         success: false,
         unread_count: 0,
         unclaimed_rewards_count: 0,
+        total_count: 0,
       };
     }
   },

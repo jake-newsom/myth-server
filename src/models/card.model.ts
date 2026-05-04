@@ -1067,6 +1067,44 @@ const CardModel = {
   },
 
   /**
+   * For each set, count the distinct characters in that set the user owns at
+   * least one card of. Returned keyed by lowercased set name (the same slug
+   * convention used by the set-collection achievement keys).
+   *
+   * Sets with zero owned characters are still present in the result with a
+   * count of 0, so callers can drive `mode: "set"` achievement progress from
+   * the map directly without separately knowing which sets exist.
+   */
+  async getUserUniqueCharactersBySetSlug(
+    userId: string
+  ): Promise<Record<string, number>> {
+    const query = `
+      SELECT
+        lower(s.name) AS set_slug,
+        COUNT(DISTINCT ch.character_id) FILTER (
+          WHERE EXISTS (
+            SELECT 1
+            FROM "user_owned_cards" uoc
+            JOIN "card_variants" cv
+              ON cv.card_variant_id = uoc.card_variant_id
+            WHERE uoc.user_id = $1
+              AND cv.character_id = ch.character_id
+          )
+        )::int AS owned_character_count
+      FROM "sets" s
+      LEFT JOIN "characters" ch ON ch.set_id = s.set_id
+      GROUP BY s.name;
+    `;
+    const { rows } = await db.query(query, [userId]);
+
+    const result: Record<string, number> = {};
+    for (const row of rows) {
+      result[row.set_slug] = row.owned_character_count;
+    }
+    return result;
+  },
+
+  /**
    * Get count of cards at specific level by rarity for a user
    */
   async getUserCardsAtLevelByRarity(

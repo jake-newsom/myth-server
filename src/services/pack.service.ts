@@ -136,6 +136,8 @@ const PackService = {
       );
       const uniqueCardsByRarity =
         await CardModel.default.getUserUniqueCardCountByRarity(userId);
+      const uniqueCharactersBySetSlug =
+        await CardModel.default.getUserUniqueCharactersBySetSlug(userId);
 
       // Trigger card collection event ONCE with all rarity counts
       await AchievementService.default.triggerAchievementEvent({
@@ -146,6 +148,7 @@ const PackService = {
           totalUniqueCards,
           totalMythicCards,
           uniqueCardsByRarity,
+          uniqueCharactersBySetSlug,
         },
       });
     } catch (error) {

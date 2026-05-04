@@ -126,7 +126,9 @@ export class TurnManager {
   }
 
   private handleTimeout(playerId: string): void {
-    // Increase strike count up to cap
+    // If a player action already advanced the turn, this timeout is stale.
+    if (playerId !== this.currentPlayerId) return;
+
     const currentStrike = this.strikes.get(playerId) ?? 0;
     const nextStrike = Math.min(
       currentStrike + 1,
@@ -134,7 +136,6 @@ export class TurnManager {
     );
     this.strikes.set(playerId, nextStrike);
 
-    // Execute external callback (Phase-4 might invoke AI move)
     this.onTimeout(playerId);
   }
 }
