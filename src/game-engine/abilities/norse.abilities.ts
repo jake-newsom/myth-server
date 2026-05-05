@@ -1,4 +1,8 @@
-import { AbilityMap, CombatResolverMap } from "../../types/game-engine.types";
+import {
+  AbilityMap,
+  COMBAT_TYPES,
+  CombatResolverMap,
+} from "../../types/game-engine.types";
 import { InGameCard } from "../../types/card.types";
 import { simulationContext } from "../simulation.context";
 import {
@@ -154,7 +158,7 @@ export const norseAbilities: AbilityMap = {
       if (allyPosition) {
         gameEvents.push(
           buff(ally, 1, {
-            name: "Foresight",
+            name: "Eye of Mimir",
             animation: "red-lightning",
             position: allyPosition,
           }),
@@ -233,7 +237,7 @@ export const norseAbilities: AbilityMap = {
       if (allyPosition) {
         gameEvents.push(
           buff(ally, 1, {
-            name: "Mother's Blessing",
+            name: "Fensalir's Grace",
             animation: "light-cross-spin",
             position: allyPosition,
           }),
@@ -259,6 +263,12 @@ export const norseAbilities: AbilityMap = {
       );
     });
 
+    // turns_left is decremented at every endTurn (both players'). To block for
+    // "the rest of my turn + my opponent's turn" we need 2 ticks:
+    //   - Heimdall plays   -> turns_left = 2
+    //   - My endTurn       -> 2 -> 1 (still blocked through opponent's turn)
+    //   - Opponent endTurn -> 1 -> 0 -> resetTile fires (event lands in their move)
+    //   - My next turn     -> tile is open
     for (const pos of emptyAdjacentTiles) {
       const event = blockTile(pos, board, 2, "heimdall_gate");
       if (event) {
@@ -346,7 +356,7 @@ export const norseAbilities: AbilityMap = {
       if (triggerCardPosition) {
         gameEvents.push(
           buff(triggerCard, 3, {
-            name: "Silent Vengeance",
+            name: "The Iron Shoe",
             animation: "triangle-shield",
             position: triggerCardPosition,
           }),
@@ -391,7 +401,7 @@ export const norseAbilities: AbilityMap = {
     if (adjacentSeaCards.length > 0) {
       gameEvents.push(
         buff(triggerCard, 3, {
-          name: "Sea's Protection",
+          name: "Nóatún’s Guard",
           animation: "splash-up-down",
           position,
         }),
@@ -449,7 +459,7 @@ export const norseAbilities: AbilityMap = {
     if (adjacentEnemies.length === 0) {
       gameEvents.push(
         buff(triggerCard, 2, {
-          name: "Peaceful Strength",
+          name: "Alfheim's Truce",
           position,
         }),
       );
@@ -479,7 +489,7 @@ export const norseAbilities: AbilityMap = {
 
       gameEvents.push(
         addTempDebuff(enemy, 3, -3, {
-          name: "Winter's Grasp",
+          name: "Winter's Step",
           animation: "winter-grasp",
           position: enemyPosition,
           data: {
@@ -535,6 +545,10 @@ export const norseAbilities: AbilityMap = {
               achievementBatchId: batchId,
               // Loki flips should always invert card ownership, including allied cards.
               forcedOwnerId: getOpponentId(selectedCard.owner, state),
+              // Trickster's Gambit ignores all defeat-prevention abilities
+              // (Ocean's Shield, Jormungandr's Shell, Harbor Guardian, etc.).
+              overrideProtection: true,
+              combatType: COMBAT_TYPES.SPECIAL,
             },
           ),
         );
@@ -590,7 +604,7 @@ export const norseAbilities: AbilityMap = {
     if (adjacentCards.length === 0) {
       gameEvents.push(
         buff(triggerCard, 2, {
-          name: "Primordial Force",
+          name: "Aurgelmir’s Flesh",
           position,
         }),
       );

@@ -102,6 +102,8 @@ const FatePickModel = {
 
     if (friendIds.length > 0) {
       // Round-robin interleave, friends promoted within each round.
+      // Packs with legendary+++ cards float to the very top, followed
+      // by other +++ packs, then normal round-robin ordering.
       query = `
         WITH ranked AS (
           SELECT
@@ -119,7 +121,18 @@ const FatePickModel = {
             ROW_NUMBER() OVER (
               PARTITION BY wp.original_owner_id
               ORDER BY wp.created_at DESC
-            ) AS player_rank
+            ) AS player_rank,
+            CASE
+              WHEN EXISTS (
+                SELECT 1 FROM jsonb_array_elements(wp.original_cards::jsonb) AS card
+                WHERE card->>'rarity' = 'legendary+++'
+              ) THEN 0
+              WHEN EXISTS (
+                SELECT 1 FROM jsonb_array_elements(wp.original_cards::jsonb) AS card
+                WHERE card->>'rarity' LIKE '%+++'
+              ) THEN 1
+              ELSE 2
+            END AS rarity_priority
           FROM fate_picks wp
           JOIN users u ON wp.original_owner_id = u.user_id
           JOIN sets s ON wp.set_id = s.set_id
@@ -130,6 +143,7 @@ const FatePickModel = {
         )
         SELECT * FROM ranked
         ORDER BY
+          rarity_priority ASC,
           player_rank ASC,
           CASE WHEN original_owner_id = ANY($2) THEN 0 ELSE 1 END ASC,
           created_at DESC
@@ -138,6 +152,8 @@ const FatePickModel = {
       queryParams = [userId, friendIds, limit, offset];
     } else {
       // No friends — still interleave by player, newest pick per round first.
+      // Packs with legendary+++ cards float to the very top, followed
+      // by other +++ packs, then normal round-robin ordering.
       query = `
         WITH ranked AS (
           SELECT
@@ -155,7 +171,18 @@ const FatePickModel = {
             ROW_NUMBER() OVER (
               PARTITION BY wp.original_owner_id
               ORDER BY wp.created_at DESC
-            ) AS player_rank
+            ) AS player_rank,
+            CASE
+              WHEN EXISTS (
+                SELECT 1 FROM jsonb_array_elements(wp.original_cards::jsonb) AS card
+                WHERE card->>'rarity' = 'legendary+++'
+              ) THEN 0
+              WHEN EXISTS (
+                SELECT 1 FROM jsonb_array_elements(wp.original_cards::jsonb) AS card
+                WHERE card->>'rarity' LIKE '%+++'
+              ) THEN 1
+              ELSE 2
+            END AS rarity_priority
           FROM fate_picks wp
           JOIN users u ON wp.original_owner_id = u.user_id
           JOIN sets s ON wp.set_id = s.set_id
@@ -165,7 +192,7 @@ const FatePickModel = {
             AND wp.current_participants < wp.max_participants
         )
         SELECT * FROM ranked
-        ORDER BY player_rank ASC, created_at DESC
+        ORDER BY rarity_priority ASC, player_rank ASC, created_at DESC
         LIMIT $2 OFFSET $3;
       `;
       queryParams = [userId, limit, offset];
@@ -208,6 +235,8 @@ const FatePickModel = {
         original_cards: parsedCards,
         can_participate: row.can_participate,
         user_has_participated: row.user_has_participated,
+        has_triple_plus: row.rarity_priority <= 1,
+        has_legendary_triple_plus: row.rarity_priority === 0,
       };
     });
   },

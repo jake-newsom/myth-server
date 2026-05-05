@@ -140,7 +140,7 @@ ON CONFLICT (id) DO UPDATE SET
   trigger_moment = EXCLUDED.trigger_moment,
   parameters = EXCLUDED.parameters;
 INSERT INTO special_abilities (id, name, description, trigger_moment, parameters)
-VALUES ('heimdall_block', 'Watchman''s Gate', 'Blocks enemy placements on all adjacent tiles for 1 turn.', 'OnPlace', '{}')
+VALUES ('heimdall_block', 'Watchman''s Gate', 'Blocks enemy placements on all adjacent tiles until your next turn.', 'OnPlace', '{}')
 ON CONFLICT (id) DO UPDATE SET 
   name = EXCLUDED.name,
   description = EXCLUDED.description,

@@ -4,7 +4,11 @@ import {
   PowerValues,
   TileStatus,
 } from "../../types";
-import { AbilityMap, CombatResolverMap } from "../../types/game-engine.types";
+import {
+  AbilityMap,
+  COMBAT_TYPES,
+  CombatResolverMap,
+} from "../../types/game-engine.types";
 import {
   addTempBuff,
   buff,
@@ -147,7 +151,7 @@ export const japaneseAbilities: AbilityMap = {
       if (enemyPosition) {
         gameEvents.push(
           addTempDebuff(enemy, 3, -1, {
-            name: "Frost Row",
+            name: "Frozen Breath",
             animation: "snow-swirl",
             position: enemyPosition,
             data: {
@@ -400,14 +404,14 @@ export const japaneseAbilities: AbilityMap = {
     const adjacentCards = getAdjacentCards(position, board);
     if (adjacentCards.length === 0) return [];
     const adjacentEnemies = adjacentCards.filter(
-      (card) => card.owner !== triggerCard.owner
+      (card) => card.owner !== triggerCard.owner,
     );
     const copiedEnemy =
       adjacentEnemies.length > 0
         ? adjacentEnemies.reduce((strongest, current) =>
             getCardTotalPower(current) > getCardTotalPower(strongest)
               ? current
-              : strongest
+              : strongest,
           )
         : null;
 
@@ -434,7 +438,7 @@ export const japaneseAbilities: AbilityMap = {
     if (Object.values(buffs).some((value) => value > 0)) {
       return [
         addTempBuff(triggerCard, 3, buffs, {
-          name: "Echo Power",
+          name: "Mountain's Mimicry",
           animation: "smoke-blue-flashes",
           position,
           data: {
@@ -508,7 +512,7 @@ export const japaneseAbilities: AbilityMap = {
       if (allyPosition) {
         gameEvents.push(
           addTempBuff(ally, 3, 1, {
-            name: "Allies Rally",
+            name: "Kibi Dango Treat",
             animation: "purple-grow",
             position: allyPosition,
           }),
@@ -538,7 +542,7 @@ export const japaneseAbilities: AbilityMap = {
 
     return [
       addTempBuff(triggerCard, 1000, adjacentEnemies.length, {
-        name: "Steadfast Guard",
+        name: "Standing Death",
         animation: "plasm-sphere",
         position,
         data: {
@@ -655,8 +659,7 @@ export const japaneseAbilities: AbilityMap = {
     });
 
     if (enemiesInColumn.length > 0) {
-      const randomEnemy =
-        enemiesInColumn[randomInt(enemiesInColumn.length)];
+      const randomEnemy = enemiesInColumn[randomInt(enemiesInColumn.length)];
       const enemyPosition = getPositionOfCardById(
         randomEnemy.user_card_instance_id,
         board,
@@ -700,7 +703,7 @@ export const japaneseAbilities: AbilityMap = {
       if (enemyPosition) {
         gameEvents.push(
           debuff(enemy, -1, {
-            name: "Piercing Shot",
+            name: "Centipede Arrow",
             animation: "flame-drop-3",
             position: enemyPosition,
           }),
@@ -729,7 +732,7 @@ export const japaneseAbilities: AbilityMap = {
         if (allyPosition) {
           gameEvents.push(
             addTempBuff(randomAlly, 1000, 1, {
-              name: "Radiant Blessing",
+              name: "Cave's Light",
               animation: "light-cross-spin",
               position: allyPosition,
               data: {
@@ -757,16 +760,13 @@ export const japaneseAbilities: AbilityMap = {
 
     const gameEvents: BaseGameEvent[] = [];
 
-    const enemyBeastsAndDragons = getCardsByCondition(
-      board,
-      (card) => {
-        if (card.owner === triggerCard.owner) return false;
-        const tags = (card.base_card_data.tags || []).map((tag) =>
-          tag.toUpperCase(),
-        );
-        return tags.includes("BEAST") || tags.includes("DRAGON");
-      },
-    );
+    const enemyBeastsAndDragons = getCardsByCondition(board, (card) => {
+      if (card.owner === triggerCard.owner) return false;
+      const tags = (card.base_card_data.tags || []).map((tag) =>
+        tag.toUpperCase(),
+      );
+      return tags.includes("BEAST") || tags.includes("DRAGON");
+    });
 
     if (enemyBeastsAndDragons.length > 0) {
       const strongestEnemy = enemyBeastsAndDragons.reduce(
@@ -798,7 +798,7 @@ export const japaneseAbilities: AbilityMap = {
             if (triggerPosition) {
               gameEvents.push(
                 addTempBuff(triggerCard, 1000, 2, {
-                  name: "Storm Breaker",
+                  name: "Kusanagi's Strike",
                   animation: "lightning-cloud",
                   position: triggerPosition,
                 }),
@@ -835,7 +835,7 @@ export const japaneseAbilities: AbilityMap = {
       );
       if (allyPosition) {
         const event = addTempBuff(ally, 1000, 1, {
-          name: "Warrior's Aura",
+          name: "Divine Archery",
           animation: "flame-spin-3",
           position: allyPosition,
           data: {
@@ -888,7 +888,7 @@ export const japaneseAbilities: AbilityMap = {
       if (enemyPosition) {
         gameEvents.push(
           debuff(enemy, -1, {
-            name: "Many Heads",
+            name: "Eight-Fold Venom",
             animation: "purple-slashes",
             position: enemyPosition,
             data: {
@@ -937,7 +937,10 @@ export const japaneseAbilities: AbilityMap = {
             enemy,
             triggerCard,
             "water-burst-2",
-            { achievementBatchId: batchId }
+            {
+              achievementBatchId: batchId,
+              combatType: COMBAT_TYPES.SPECIAL,
+            },
           ),
         );
       }

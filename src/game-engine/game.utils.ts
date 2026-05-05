@@ -202,82 +202,10 @@ export function resolveCombat(
           const placedCardPower = placedCell.card.current_power[dir.from];
           const adjacentCardPower = adjacentCell.card.current_power[dir.to];
 
-          let abilityPreventedDefeat = false;
-
-          const combatContext = {
-            flippedCard: adjacentCell.card,
-            triggerCard: placedCell.card,
-            triggerMoment: TriggerMoment.OnCombat,
-            position: { x: nx, y: ny },
-            state: gameState,
-            combatType: COMBAT_TYPES.STANDARD,
-          };
-
-          // Check if the defending card has its own combat resolver
-          if (
-            hasTrigger(
-              adjacentCell.card.base_card_data.special_ability,
-              TriggerMoment.OnCombat
-            )
-          ) {
-            const abilityFunction = getCombatResolver(
-              adjacentCell.card.base_card_data.special_ability ?? undefined
-            );
-            if (abilityFunction) {
-              const result = abilityFunction(combatContext);
-
-              // Handle both boolean and CombatResolverResult returns
-              abilityPreventedDefeat = result.preventDefeat;
-              if (result.events) {
-                events.push(...result.events);
-              }
-            }
-          }
-
-          // Check if any ally has a protection ability (like Harbor Guardian)
-          if (!abilityPreventedDefeat && placedCardPower > adjacentCardPower) {
-            const allyCombatResolvers = getCardsByCondition(
-              gameState.board,
-              (card: InGameCard) => {
-                if (
-                  card.user_card_instance_id ===
-                  adjacentCell?.card?.user_card_instance_id
-                )
-                  return false;
-                const sameOwner = card.owner === adjacentCell?.card?.owner;
-                const hasCombatResolver =
-                  !!getCombatResolver(
-                    card.base_card_data.special_ability ?? undefined
-                  );
-                return sameOwner && hasCombatResolver ? true : false;
-              }
-            );
-
-            for (const ally of allyCombatResolvers) {
-              const protectionContext = {
-                ...combatContext,
-                triggerCard: ally,
-                flippedCard: adjacentCell.card,
-                flippedBy: placedCell.card,
-              };
-              const protectionResolver = getCombatResolver(
-                ally.base_card_data.special_ability ?? undefined
-              );
-              if (!protectionResolver) continue;
-
-              const protectionResult = protectionResolver(protectionContext);
-
-              if (protectionResult.preventDefeat) {
-                abilityPreventedDefeat = true;
-                if (protectionResult.events) {
-                  events.push(...protectionResult.events);
-                }
-                break;
-              }
-            }
-          }
-
-          if (!abilityPreventedDefeat && placedCardPower > adjacentCardPower) {
+          if (placedCardPower > adjacentCardPower) {
+            // flipCard owns all defeat-prevention logic (lockedTurns,
+            // BlockDefeat effect, self-defense and ally combat resolvers).
+            // It returns CARD_DEFENDED + OnDefend events when prevented.
             events.push(
               ...flipCard(
                 gameState,
@@ -285,7 +213,10 @@ export function resolveCombat(
                 adjacentCell.card,
                 placedCell.card,
                 undefined,
-                { forcedOwnerId: playerId }
+                {
+                  forcedOwnerId: playerId,
+                  combatType: COMBAT_TYPES.STANDARD,
+                }
               )
             );
           } else {
@@ -347,35 +278,145 @@ export function flipCard(
   target: InGameCard,
   source: InGameCard,
   customAttackAnimation?: string,
-  metadata?: { achievementBatchId?: string; forcedOwnerId?: string }
+  metadata?: {
+    achievementBatchId?: string;
+    forcedOwnerId?: string;
+    overrideProtection?: boolean;
+    combatType?: (typeof COMBAT_TYPES)[keyof typeof COMBAT_TYPES];
+  }
 ): BaseGameEvent[] {
-  /**
-   * Check various ways a card could be protected from defeat.
-   */
-  if (target.lockedTurns > 0) return [];
-  if (
-    target.temporary_effects.find(
-      (effect) => effect.type === EffectType.BlockDefeat
-    )
-  ) {
-    if (!simulationContext.isInSimulation()) {
-      AchievementService.triggerAchievementEvent({
-        userId: target.owner,
-        eventType: "power_buff_applied",
-        eventData: {
-          source_ability_id: "kane_pure_waters",
-          turn_number: state.turn_number,
-          target_card_id: target.user_card_instance_id,
-          power_delta: 0,
-          defeat_prevented_by_protection: true,
-        },
-      }).catch(() => {});
+  const defeatingPlayerId = metadata?.forcedOwnerId ?? state.current_player_id;
+  const targetPosition = getPositionOfCardById(
+    target.user_card_instance_id,
+    state.board
+  );
+
+  // Helper to build the events emitted when a flip is prevented. Includes
+  // CARD_DEFENDED + OnDefend trigger so all prevention paths behave consistently.
+  const buildDefendedEvents = (
+    preventionEvents: BaseGameEvent[] = []
+  ): BaseGameEvent[] => {
+    const out: BaseGameEvent[] = [...preventionEvents];
+    if (!targetPosition) return out;
+    out.push({
+      type: EVENT_TYPES.CARD_DEFENDED,
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      sourcePlayerId: defeatingPlayerId,
+      cardId: target.user_card_instance_id,
+      position: targetPosition,
+      animation: "defend",
+    } as CardEvent);
+    out.push(
+      ...triggerAbilities(TriggerMoment.OnDefend, {
+        state,
+        triggerCard: target,
+        triggerMoment: TriggerMoment.OnDefend,
+        flippedCard: target,
+        flippedBy: source,
+        position: targetPosition,
+      })
+    );
+    return out;
+  };
+
+  // preFlipEvents holds events emitted by self-defense resolvers that didn't
+  // prevent the flip — they still need to surface alongside the flip events
+  // (matching prior resolveCombat behavior).
+  const preFlipEvents: BaseGameEvent[] = [];
+
+  // Trickster's Gambit and any other caller that should bypass all defenses
+  // can set overrideProtection to skip the checks below.
+  if (!metadata?.overrideProtection) {
+    if (target.lockedTurns > 0) {
+      return buildDefendedEvents();
     }
-    return [];
+
+    if (
+      target.temporary_effects.find(
+        (effect) => effect.type === EffectType.BlockDefeat
+      )
+    ) {
+      if (!simulationContext.isInSimulation()) {
+        AchievementService.triggerAchievementEvent({
+          userId: target.owner,
+          eventType: "power_buff_applied",
+          eventData: {
+            source_ability_id: "kane_pure_waters",
+            turn_number: state.turn_number,
+            target_card_id: target.user_card_instance_id,
+            power_delta: 0,
+            defeat_prevented_by_protection: true,
+          },
+        }).catch(() => {});
+      }
+      return buildDefendedEvents();
+    }
+
+    const combatType = metadata?.combatType ?? COMBAT_TYPES.STANDARD;
+
+    // 1. Self-defense combat resolver (e.g. Ocean's Shield, Jormungandr's Shell).
+    // Self-resolvers may emit side-effect events even when they don't prevent
+    // defeat (matching prior resolveCombat behavior), so collect them and
+    // only surface them once we know whether the flip proceeds.
+    const selfResolver = getCombatResolver(
+      target.base_card_data.special_ability ?? undefined
+    );
+    if (selfResolver) {
+      const selfResult = selfResolver({
+        flippedCard: target,
+        triggerCard: source,
+        triggerMoment: TriggerMoment.OnCombat,
+        position: targetPosition ?? position,
+        state,
+        combatType,
+      });
+      if (selfResult.events) {
+        preFlipEvents.push(...selfResult.events);
+      }
+      if (selfResult.preventDefeat) {
+        return buildDefendedEvents(preFlipEvents);
+      }
+    }
+
+    // 2. Ally protection (e.g. Harbor Guardian).
+    const allyCombatResolvers = getCardsByCondition(
+      state.board,
+      (card: InGameCard) => {
+        if (card.user_card_instance_id === target.user_card_instance_id) {
+          return false;
+        }
+        if (card.owner !== target.owner) return false;
+        return !!getCombatResolver(
+          card.base_card_data.special_ability ?? undefined
+        );
+      }
+    );
+
+    for (const ally of allyCombatResolvers) {
+      const allyResolver = getCombatResolver(
+        ally.base_card_data.special_ability ?? undefined
+      );
+      if (!allyResolver) continue;
+
+      const allyResult = allyResolver({
+        flippedCard: target,
+        triggerCard: ally,
+        flippedBy: source,
+        triggerMoment: TriggerMoment.OnCombat,
+        position: targetPosition ?? position,
+        state,
+        combatType,
+      });
+
+      if (allyResult.preventDefeat) {
+        const allyEvents = allyResult.events ?? [];
+        return buildDefendedEvents([...preFlipEvents, ...allyEvents]);
+      }
+    }
   }
 
-  const events: BaseGameEvent[] = [];
-  const defeatingPlayerId = metadata?.forcedOwnerId ?? state.current_player_id;
+  const events: BaseGameEvent[] = [...preFlipEvents];
   const sourceTotalPowerBefore = getCardTotalPower(source);
   const targetTotalPowerBefore = getCardTotalPower(target);
 
@@ -395,10 +436,6 @@ export function flipCard(
     name: source.base_card_data.name,
   });
 
-  const targetPosition = getPositionOfCardById(
-    target.user_card_instance_id,
-    state.board
-  );
   if (!targetPosition) return events;
 
   // Check if the source card has a custom attack animation

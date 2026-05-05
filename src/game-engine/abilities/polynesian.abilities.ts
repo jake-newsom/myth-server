@@ -415,7 +415,7 @@ export const polynesianAbilities: AbilityMap = {
         if (allyPosition) {
           gameEvents.push(
             addTempBuff(ally, 3, 1, {
-              name: "Fertile Ground",
+              name: "Makahiki Bounty",
               animation: "nature-swirl",
               position: allyPosition,
             }),
@@ -713,7 +713,7 @@ export const polynesianAbilities: AbilityMap = {
               1000,
               { [randomSide]: 1 },
               {
-                name: "Rain's Blessing",
+                name: "Koolau Mist",
                 animation: "bubbles-centered",
                 position: cardPosition,
               },
@@ -874,7 +874,7 @@ export const polynesianAbilities: AbilityMap = {
       1000,
       { [randomSide]: -2 },
       {
-        name: "Thunderous Omen",
+        name: "Split SKy",
         animation: "lightning",
         position: enemyPosition,
         data: {
