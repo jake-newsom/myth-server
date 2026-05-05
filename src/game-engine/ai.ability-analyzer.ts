@@ -463,8 +463,16 @@ export class AbilityAnalyzer {
       // Can only be defeated by Thor - nearly invincible
       score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * 2.5;
     } else if (abilityName === "baldr_immune") {
-      // Cannot be defeated by special abilities
-      score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * 1.8;
+      // When defeated, returns to its original owner's hand instead of being
+      // captured. The value comes from being a re-deployable threat (tempo +
+      // material), not from blanket invincibility.
+      // Worth more when the AI has board space to keep replaying it and when
+      // there are valuable trades available on the current board.
+      const recursionValue = AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * 0.9;
+      const tradeValue = adjacentEnemies.length > 0
+        ? AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 0.5
+        : 0;
+      score += recursionValue + tradeValue;
     } else if (abilityName === "kamohoalii_oceans_shield") {
       // Cannot be defeated by enemies with lower total power
       score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * 1.5;
@@ -478,17 +486,34 @@ export class AbilityAnalyzer {
       // Permanent +1 to all allies
       score += allAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2; // Permanent buff
     } else if (abilityName === "thor_push") {
-      // Debuff all enemies
-      score += allEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
+      // Temporary -2 to TOP side only on every enemy. Most useful when
+      // multiple enemies have a vulnerable top edge that the AI's own cards
+      // (or future placements) attack.
+      const enemiesAttackedFromBelow = allEnemies.filter(
+        (e) => e.current_power.top >= 4
+      ).length;
+      score +=
+        allEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.6 +
+        enemiesAttackedFromBelow * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.4;
     } else if (abilityName === "tyr_binding_justice") {
       // Equalizes power - great when opponent has strong cards
       const hasStrongEnemies = allEnemies.some((e) => getCardTotalPower(e) > 20);
       score += hasStrongEnemies ? AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 2 : 50;
     } else if (abilityName === "heimdall_block") {
-      // After 3 rounds: -1 to played cards, +1 to hand cards
-      // Value depends on having more disposable cards on board than opponent
-      const boardAdvantage = allEnemies.length > allAllies.length;
-      score += boardAdvantage ? 100 : 40;
+      // Watchman's Gate: when placed, blocks every adjacent EMPTY tile for 2
+      // turns so the opponent cannot use those slots. Value scales with the
+      // number of empty adjacent tiles and is highest when those tiles are in
+      // a contested area (mid-board, late game) where the opponent has cards
+      // queued up to play. Loses most of its value if all adjacent tiles are
+      // already occupied.
+      if (emptyAdjacent === 0) {
+        score += 10; // Effectively wasted ability
+      } else {
+        const denialPerTile =
+          AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 1.5;
+        const contentionBonus = allEnemies.length > 0 ? 20 : 0;
+        score += emptyAdjacent * denialPerTile + contentionBonus;
+      }
     }
 
     // === DESTRUCTION/REMOVAL ABILITIES ===
@@ -511,8 +536,10 @@ export class AbilityAnalyzer {
 
     // === COMEBACK/SCALING ABILITIES ===
     else if (abilityName === "vali_revenge") {
-      // +1 to all stats per ally defeated
-      score += defeatedAlliesCount * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2;
+      // NOTE: Implementation is currently a no-op (handler returns []).
+      // Until the ability is restored, treat it as a vanilla card so the AI
+      // does not over-prioritise Vali based on the design intent.
+      score += 0;
     } else if (abilityName === "ku_war_stance") {
       // Gains +1 per ally defeated (max 5), then attacks again
       score += defeatedAlliesCount * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
@@ -534,8 +561,20 @@ export class AbilityAnalyzer {
       // Temporary +1 to adjacent allies
       score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE;
     } else if (abilityName === "bragi_inspire") {
-      // Temporary +1 to adjacent allies for a round
-      score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE;
+      // Poet's Rhythm: blesses every empty SURROUNDING tile (8-neighbour) so
+      // future allied placements there gain +1/+1/+1/+1 for 3 turns. Value
+      // tracks empty neighbour count and the AI's ability to follow up on
+      // those tiles (decent hand size).
+      const aiPlayerForBragi =
+        gameState.player1.user_id === aiPlayerId
+          ? gameState.player1
+          : gameState.player2;
+      const followUpFactor = Math.min(aiPlayerForBragi.hand.length, 3) / 3;
+      const surroundingEmpty = Math.max(emptyAdjacent, 1);
+      score +=
+        surroundingEmpty *
+        AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE *
+        (0.6 + 0.4 * followUpFactor);
     } else if (abilityName === "freyja_bless") {
       // Temporary +2 to adjacent allies
       score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
@@ -558,9 +597,12 @@ export class AbilityAnalyzer {
       const hasThorAdjacent = adjacentAllies.some((c) => c.base_card_data.name === "Thor");
       score += hasThorAdjacent ? AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS : 15;
     } else if (abilityName === "thrym_demand") {
-      // +3 Right if adjacent to Goddess
+      // +3 to ALL sides if adjacent to a Goddess (handler buffs the trigger
+      // card by 3 omnidirectionally, not just the right side).
       const hasGoddessAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Goddess"));
-      score += hasGoddessAdjacent ? AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 1.5 : 10;
+      score += hasGoddessAdjacent
+        ? AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 3
+        : 10;
     } else if (abilityName === "freyr_peace") {
       // +2 if no adjacent enemies
       score += adjacentEnemies.length === 0 ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5 : 0;
@@ -617,8 +659,12 @@ export class AbilityAnalyzer {
 
     // === TERRAIN/TILE MANIPULATION ===
     else if (abilityName === "skadi_freeze") {
-      // Freeze adjacent tile for 1 turn
-      score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * emptyAdjacent;
+      // Winter's Grasp: temporary -3 to every enemy in the same column for
+      // ~3 turns. Value scales with how many enemies share Skadi's column,
+      // not with empty adjacent tiles. (`cardsInColumn` already excludes the
+      // AI player's own cards.)
+      score +=
+        cardsInColumn.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5;
     } else if (abilityName === "jorogumo_web_curse") {
       // Curse adjacent tiles, drain power for 1 round
       score += emptyAdjacent * AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 2;
@@ -680,20 +726,55 @@ export class AbilityAnalyzer {
       // When ally defeated, +1 to random ally
       score += AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.8;
     } else if (abilityName === "hel_soul") {
-      // Enemies Hel defeats become permanent allies
-      score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 3; // Very powerful
+      // Soul Lock: every enemy Hel flips is locked (cannot be flipped back).
+      // Locks only unwind if Hel is DESTROYED (removed from the board), which
+      // requires one of a small handful of destroy-effect abilities, so the
+      // lock should be treated as effectively permanent in most games.
+      const weakerAdjacentEnemies = adjacentEnemies.filter(
+        (e) => getCardTotalPower(e) < getCardTotalPower(card)
+      ).length;
+      // Each soul Hel can plausibly bind on placement is worth roughly a
+      // permanent flip (a regular flip + one "cannot be flipped back" turn).
+      score +=
+        weakerAdjacentEnemies *
+        AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE *
+        2.2;
+      // If there are enemies adjacent that Hel CAN'T currently flip, she's
+      // less effective on this placement than her best case.
+      if (weakerAdjacentEnemies === 0 && adjacentEnemies.length > 0) {
+        score -= 15;
+      }
     }
 
     // === RECURRING EFFECTS ===
     else if (abilityName === "hachiman_warriors_aura") {
-      // +1 to allies in same row each round
-      const alliesInRow = getAlliesAdjacentTo(position, board, aiPlayerId).filter(a => 
-        getCardsInSameRow(position, board, aiPlayerId).includes(a)
+      // Temp +1 to every OTHER allied card in the same row, each round.
+      // `getCardsInSameRow(position, board, aiPlayerId)` excludes the AI's
+      // own cards, so the original implementation that intersected it with
+      // `adjacentAllies` always evaluated to 0. Use the row scan with the
+      // OPPONENT id to actually count allied row-mates and exclude self.
+      const opponentId =
+        gameState.player1.user_id === aiPlayerId
+          ? gameState.player2.user_id
+          : gameState.player1.user_id;
+      const alliesInRow = getCardsInSameRow(position, board, opponentId).filter(
+        (c) => c.user_card_instance_id !== card.user_card_instance_id
       );
       score += alliesInRow.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
     } else if (abilityName === "tsukuyomi_moons_balance") {
-      // Each round: -1 to strongest enemy, +1 to weakest ally
-      score += allEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5 : 40;
+      // Each round: permanent -1 to strongest enemy on the board AND temp +1
+      // to the weakest card currently in the AI's HAND (not on the board).
+      const aiPlayerForMoon =
+        gameState.player1.user_id === aiPlayerId
+          ? gameState.player1
+          : gameState.player2;
+      const handBuffValue = aiPlayerForMoon.hand.length > 0
+        ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.6
+        : 0;
+      const enemyDebuffValue = allEnemies.length > 0
+        ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5
+        : 30;
+      score += handBuffValue + enemyDebuffValue;
     } else if (abilityName === "lono_fertile_ground") {
       // Each round grant +1 to allies with blessings
       score += allAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.5;

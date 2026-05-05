@@ -1,10 +1,10 @@
 [
     {
       "special_abilities.name": "Watchman's Gate",
-      "special_abilities.description": "After 3 rounds all played cards lose -1 and grant cards in your hand +1",
+      "special_abilities.description": "When placed, blocks every adjacent empty tile for 2 turns so the opponent cannot play onto them.",
       "suggested_use": {
-        "when_to_play": "Early to mid-game. This is a long-term strategic play. The AI should deploy this when it anticipates controlling the board in the late game and wants a decisive advantage on future draws. **Crucially, the AI should play this if the majority of its currently played cards are disposable or have high base stats to absorb the -1 penalty, or if the opponent has more cards on the board.**",
-        "best_grid_placement": "Center (B2, B3, C2, C3) or a semi-central position. Since the effect takes 3 rounds to trigger and impacts the entire board (yours and the opponent's), placing it centrally helps ensure it survives long enough to activate, as central cards are generally harder to isolate and defeat early on. Placing it too close to an edge makes it an easy target for a strong single-sided attack."
+        "when_to_play": "Mid-game board control. The AI should deploy this on a turn where it has multiple empty adjacent tiles to lock down, especially when the opponent still has cards left to play and is threatening to claim those slots. Worthless if all four adjacent tiles are already occupied.",
+        "best_grid_placement": "A semi-central tile with **as many empty orthogonal neighbours as possible (ideally 3-4)**, in a contested area where the opponent was about to develop. Avoid corners or fully surrounded positions where the block effect has nothing to deny."
       }
     },
     {
@@ -145,10 +145,10 @@
     },
     {
       "special_abilities.name": "Soul Lock",
-      "special_abilities.description": "Enemies Hel defeats become permanent allies.",
+      "special_abilities.description": "Every enemy Hel defeats has its soul bound (cannot be flipped back). Locks only release if Hel is destroyed (removed from the board, not merely flipped) - which only a small handful of abilities can do.",
       "suggested_use": {
-        "when_to_play": "The ultimate control card. The AI should play this when 'Hel' (the card) is adjacent to a high-value enemy card. This should be played strategically to defeat the strongest enemy card possible and steal it, permanently changing the balance of power.",
-        "best_grid_placement": "Directly adjacent to the **highest value enemy card** that Hel can successfully defeat with its current power. This requires careful calculation of Hel's power vs. the enemy's adjacent power."
+        "when_to_play": "A denial / lockdown card. The AI should play Hel adjacent to one or more weaker enemy cards she can immediately flip, treating each successful flip as effectively permanent. Best in mid-to-late game when she can lock several key tiles in one turn.",
+        "best_grid_placement": "Directly adjacent to **multiple weaker enemy cards**. Hel being flipped back later does NOT release the souls she bound, so don't over-prioritise super-safe positions - prioritise raw flip count on placement."
       }
     },
     {

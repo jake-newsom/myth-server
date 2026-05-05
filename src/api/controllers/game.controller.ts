@@ -32,6 +32,7 @@ import {
   getTutorialAIMove,
 } from "../../game-engine/tutorial.data";
 import { resolveAIDifficulty } from "../../game-engine/ai.difficulty";
+import { DECK_CONFIG } from "../../config/constants";
 
 // Initialize ability registry
 // AbilityRegistry.initialize();
@@ -72,10 +73,16 @@ class GameController {
         deckId
       );
 
-      if (playerCardInstanceIds.length === 0) {
-        // DeckService.getDeckCardInstances doesn't throw EmptyDeckError by default
-        // as per plan, to match original behavior of checking length here.
-        res.status(400).json({ error: "Deck is empty" });
+      if (playerCardInstanceIds.length !== DECK_CONFIG.DECK_SIZE) {
+        const missingCount =
+          DECK_CONFIG.DECK_SIZE - playerCardInstanceIds.length;
+        const message =
+          missingCount > 0
+            ? `Your deck is missing ${missingCount} card${
+                missingCount === 1 ? "" : "s"
+              }. Decks must contain exactly ${DECK_CONFIG.DECK_SIZE} cards to start a game (your deck currently has ${playerCardInstanceIds.length}).`
+            : `Your deck has too many cards. Decks must contain exactly ${DECK_CONFIG.DECK_SIZE} cards to start a game (your deck currently has ${playerCardInstanceIds.length}).`;
+        res.status(400).json({ error: message });
         return;
       }
 
@@ -353,6 +360,21 @@ class GameController {
           );
           break;
 
+        case "forcePass":
+          // Validate it is the player's turn
+          if (currentGameState.current_player_id !== userId) {
+            res.status(400).json({ error: "Not your turn" });
+            return;
+          }
+
+          const forcePassResult = await GameLogic.forcePass(
+            currentGameState,
+            userId
+          );
+          updatedGameState = forcePassResult.state;
+          events.push(...forcePassResult.events);
+          break;
+
         default:
           res.status(400).json({ error: "Invalid action type" });
           return;
@@ -591,27 +613,39 @@ class GameController {
           updatedGameState = placeCardResult.state;
           events.push(...placeCardResult.events);
         } else {
-          const endTurnResult = await GameLogic.endTurn(
-            currentGameState,
-            AI_PLAYER_ID
-          );
-          updatedGameState = endTurnResult.state;
-          events.push(...endTurnResult.events);
+          const aiPlayer = validators.getPlayer(currentGameState, AI_PLAYER_ID);
 
-          const aiPlayer = validators.getPlayer(updatedGameState, AI_PLAYER_ID);
-
-          if (
-            validators.shouldDrawCard(
-              aiPlayer,
-              updatedGameState.max_cards_in_hand
-            )
-          ) {
-            const drawCardResult = await GameLogic.drawCard(
-              updatedGameState,
+          if (!validators.canPlayerPlay(aiPlayer)) {
+            // AI has no cards left — force-pass the turn
+            const forcePassResult = await GameLogic.forcePass(
+              currentGameState,
               AI_PLAYER_ID
             );
-            updatedGameState = drawCardResult.state;
-            events.push(...drawCardResult.events);
+            updatedGameState = forcePassResult.state;
+            events.push(...forcePassResult.events);
+          } else {
+            const endTurnResult = await GameLogic.endTurn(
+              currentGameState,
+              AI_PLAYER_ID
+            );
+            updatedGameState = endTurnResult.state;
+            events.push(...endTurnResult.events);
+
+            const aiPlayerAfter = validators.getPlayer(updatedGameState, AI_PLAYER_ID);
+
+            if (
+              validators.shouldDrawCard(
+                aiPlayerAfter,
+                updatedGameState.max_cards_in_hand
+              )
+            ) {
+              const drawCardResult = await GameLogic.drawCard(
+                updatedGameState,
+                AI_PLAYER_ID
+              );
+              updatedGameState = drawCardResult.state;
+              events.push(...drawCardResult.events);
+            }
           }
         }
       }

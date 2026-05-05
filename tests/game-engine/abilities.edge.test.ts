@@ -79,6 +79,7 @@ function makeCard(params: {
     owner,
     original_owner: owner,
     lockedTurns: 0,
+    lockedBy: null,
     defeats: [],
     base_card_data: {
       card_id: `card-${id}`,

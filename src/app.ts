@@ -93,9 +93,14 @@ const allowedOrigins = new Set<string>(
     "https://myth-server.onrender.com",
     "http://localhost:8100", // Local dev
     "http://localhost:3000", // Local dev (alt port)
-    "https://localhost", // Capacitor Android
-    "capacitor://localhost", // Capacitor iOS
+    "https://localhost", // Capacitor Android (no hostname configured)
+    "capacitor://localhost", // Capacitor iOS (no hostname configured)
     "ionic://localhost", // Ionic webview
+    // Capacitor with hostname configured in capacitor.config.ts. iOS WKWebView
+    // uses the `capacitor://` scheme regardless of `iosScheme: "https"`, so we
+    // need both the https and capacitor variants of the configured hostname.
+    "capacitor://cardsofmyth.com",
+    "capacitor://www.cardsofmyth.com",
   ].filter((origin): origin is string => Boolean(origin)),
 );
 
@@ -109,7 +114,8 @@ const corsOriginCheck = (
   if (allowedOrigins.has(origin)) {
     return callback(null, true);
   }
-  return callback(new Error("Not allowed by CORS"));
+  console.warn(`[CORS] Rejected origin: ${origin}`);
+  return callback(new Error(`Not allowed by CORS: ${origin}`));
 };
 
 app.use(

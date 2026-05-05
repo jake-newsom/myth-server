@@ -58,6 +58,7 @@ export function createTestCard(params: {
     owner: params.owner,
     original_owner: params.owner,
     lockedTurns: 0,
+    lockedBy: null,
     defeats: [],
   };
 }

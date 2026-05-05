@@ -74,7 +74,7 @@ export interface JoinGamePayload {
 
 export interface GameActionPayload {
   gameId: string;
-  actionType: "placeCard" | "endTurn" | "surrender";
+  actionType: "placeCard" | "endTurn" | "surrender" | "forcePass";
   user_card_instance_id?: string;
   position?: BoardPosition;
 }

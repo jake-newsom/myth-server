@@ -544,11 +544,17 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
+  // Soul Lock: Hel binds the soul of every enemy she flips, locking that
+  // card so it cannot be flipped back. Locks persist as long as Hel is on
+  // the board; if Hel is later DESTROYED (removed from the board, not just
+  // flipped), `releaseLocksAppliedBy` in `destroyCardAtPosition` clears
+  // every soul she had bound.
   hel_soul: (context) => {
     const { flippedCard, triggerCard } = context;
 
     if (flippedCard) {
       flippedCard.lockedTurns = 1000;
+      flippedCard.lockedBy = triggerCard.user_card_instance_id;
       if (!simulationContext.isInSimulation()) {
         AchievementService.triggerAchievementEvent({
           userId: triggerCard.owner,

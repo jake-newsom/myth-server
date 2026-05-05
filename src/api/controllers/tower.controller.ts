@@ -153,7 +153,13 @@ export class TowerController {
         error instanceof Error &&
         (error.message.includes("not available") ||
           error.message.includes("empty") ||
-          error.message.includes("not found"))
+          error.message.includes("not found") ||
+          error.message.includes("missing") ||
+          error.message.includes("too many cards") ||
+          error.message.includes("must contain") ||
+          error.message.includes("exactly 20 cards") ||
+          error.message.includes("legendary") ||
+          error.message.includes("copies"))
       ) {
         res.status(400).json({
           error: error.message,

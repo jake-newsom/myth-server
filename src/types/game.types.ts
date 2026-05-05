@@ -91,13 +91,19 @@ export interface GameState {
   max_cards_in_hand: number;
   initial_cards_to_draw: number;
   winner: string | null;
+  /**
+   * Counts consecutive forced passes. Incremented when a player with an empty
+   * hand passes their turn. Reset to 0 when any card is successfully played.
+   * When this reaches 2 (both players passed back-to-back), the game ends.
+   */
+  consecutive_passes?: number;
   // Cache for quick lookup of hydrated card instance details by user_card_instance_id
   hydrated_card_data_cache?: Record<string, InGameCard>;
 }
 
 export interface GameAction {
   game_id: string;
-  action_type: "placeCard" | "endTurn" | "surrender";
+  action_type: "placeCard" | "endTurn" | "surrender" | "forcePass";
   user_card_instance_id?: string; // ID of the UserCardInstance being played
   position?: BoardPosition;
 }

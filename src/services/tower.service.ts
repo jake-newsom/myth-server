@@ -965,9 +965,14 @@ class TowerService {
 
       // Rule 1: Must have exactly 20 cards
       if (cards.length !== 20) {
-        throw new Error(
-          `Deck must have exactly 20 cards. Your deck has ${cards.length} cards.`
-        );
+        const missingCount = 20 - cards.length;
+        const message =
+          missingCount > 0
+            ? `Your deck is missing ${missingCount} card${
+                missingCount === 1 ? "" : "s"
+              }. Decks must contain exactly 20 cards to start a game (your deck currently has ${cards.length}).`
+            : `Your deck has too many cards. Decks must contain exactly 20 cards to start a game (your deck currently has ${cards.length}).`;
+        throw new Error(message);
       }
 
       // Rule 2: Count legendary cards (max 2)

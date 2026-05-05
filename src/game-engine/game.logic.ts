@@ -148,6 +148,7 @@ export class GameLogic {
           card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
           temporary_effects: [],
           lockedTurns: 0,
+          lockedBy: null,
           defeats: [],
         };
 
@@ -296,6 +297,9 @@ export class GameLogic {
       const { boardCell: newBoardCell, tileEffectTransferred, curseTransferred } =
         gameUtils.createBoardCell(playedCardData, playerId, existingTileEffect);
       player.hand.splice(cardIndexInHand, 1);
+
+      // A card was successfully played — reset the consecutive-pass counter
+      newState.consecutive_passes = 0;
 
       if (tileEffectTransferred) {
         // Calculate power delta from tile effect
@@ -648,5 +652,74 @@ export class GameLogic {
         : newState.player1.user_id;
 
     return newState;
+  }
+
+  /**
+   * Called when a player has no cards in hand and cannot play.
+   * Increments the consecutive-pass counter and ends the turn.
+   * If both players pass consecutively (counter reaches 2), the game ends
+   * immediately with the current board scores determining the winner.
+   */
+  static async forcePass(
+    currentGameState: GameState,
+    playerId: string
+  ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
+    if (!validators.isPlayerTurn(currentGameState, playerId)) {
+      throw new Error("Not current player's turn.");
+    }
+
+    const player = validators.getPlayer(currentGameState, playerId);
+    if (validators.canPlayerPlay(player)) {
+      throw new Error("Player still has cards to play and cannot force-pass.");
+    }
+
+    let newState = _.cloneDeep(currentGameState);
+    const events: BaseGameEvent[] = [];
+
+    newState.consecutive_passes = (newState.consecutive_passes ?? 0) + 1;
+
+    events.push({
+      type: EVENT_TYPES.FORCED_PASS,
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      sourcePlayerId: playerId,
+    });
+
+    if (newState.consecutive_passes >= 2) {
+      // Both players are out of cards — end the game on current board scores
+      const scores = validators.calculateScores(
+        newState.board,
+        newState.player1.user_id,
+        newState.player2.user_id
+      );
+      newState.player1.score = scores.player1Score;
+      newState.player2.score = scores.player2Score;
+
+      const winnerId = validators.determineGameOutcome(
+        scores.player1Score,
+        scores.player2Score,
+        newState.player1.user_id,
+        newState.player2.user_id
+      );
+
+      newState.status = GameStatus.COMPLETED;
+      newState.winner = winnerId;
+
+      events.push({
+        type: EVENT_TYPES.GAME_OVER,
+        eventId: uuidv4(),
+        timestamp: Date.now(),
+        sourcePlayerId: playerId,
+      });
+
+      return { state: newState, events };
+    }
+
+    // Only one player has passed so far — end the turn and let the opponent play
+    const endTurnResult = await GameLogic.endTurn(newState, playerId);
+    return {
+      state: endTurnResult.state,
+      events: [...events, ...endTurnResult.events],
+    };
   }
 }

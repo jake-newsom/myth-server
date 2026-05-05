@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { Request, Response, NextFunction } from "express";
 import { GameState } from "../../types/game.types";
 import DeckService from "../../services/deck.service";
+import { DECK_CONFIG } from "../../config/constants";
 
 // Define interfaces for queue entries and active matches
 interface QueueEntry {
@@ -65,10 +66,22 @@ const MatchmakingController = {
           deckId,
           userId
         );
-        if (!playerDeck || playerDeck.cards.length < 10) {
-          // Min deck size requirement
+        if (!playerDeck) {
           return res.status(400).json({
-            error: { message: "Invalid or incomplete deck selected." },
+            error: { message: "Selected deck could not be found." },
+          });
+        }
+        if (playerDeck.cards.length !== DECK_CONFIG.DECK_SIZE) {
+          const cardCount = playerDeck.cards.length;
+          const missingCount = DECK_CONFIG.DECK_SIZE - cardCount;
+          const message =
+            missingCount > 0
+              ? `Your deck "${playerDeck.name}" is missing ${missingCount} card${
+                  missingCount === 1 ? "" : "s"
+                }. Decks must contain exactly ${DECK_CONFIG.DECK_SIZE} cards to start a game (currently has ${cardCount}).`
+              : `Your deck "${playerDeck.name}" has too many cards. Decks must contain exactly ${DECK_CONFIG.DECK_SIZE} cards to start a game (currently has ${cardCount}).`;
+          return res.status(400).json({
+            error: { message },
           });
         }
 

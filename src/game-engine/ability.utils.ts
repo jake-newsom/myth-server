@@ -829,6 +829,26 @@ export const rerollHighestStat = (card: InGameCard): void => {
   }
 };
 
+/**
+ * Releases any soul-locks (lockedTurns/lockedBy) that were applied by the
+ * given source card. Used when a "binder" card such as Hel leaves the board
+ * so the souls she had bound can act again.
+ */
+export const releaseLocksAppliedBy = (
+  board: GameBoard,
+  sourceCardInstanceId: string
+): void => {
+  const lockedCards = getCardsByCondition(
+    board,
+    (card) =>
+      card.lockedBy === sourceCardInstanceId && card.lockedTurns > 0
+  );
+  for (const card of lockedCards) {
+    card.lockedTurns = 0;
+    card.lockedBy = null;
+  }
+};
+
 export const destroyCardAtPosition = (
   position: BoardPosition,
   board: GameBoard,
@@ -844,6 +864,10 @@ export const destroyCardAtPosition = (
   const owner = tile.card.owner;
 
   tile.card = null;
+
+  // If the destroyed card was the source of any soul-locks, release them so
+  // the previously bound cards become free to act again.
+  releaseLocksAppliedBy(board, cardId);
 
   // Track daily task progress for card destruction (fire-and-forget)
   if (actingPlayerId && !simulationContext.isInSimulation()) {

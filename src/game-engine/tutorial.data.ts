@@ -111,6 +111,7 @@ function buildInGameCard(
     owner,
     original_owner: owner,
     lockedTurns: 0,
+    lockedBy: null,
     defeats: [],
   };
 }

@@ -103,13 +103,18 @@ const rules: Record<string, AbilityRule> = {
   }),
   hel_soul: makeRule({
     cardId: "hel_soul",
+    // Soul Lock is denial, not steal: every enemy Hel flips is locked
+    // permanently (only released if Hel is later destroyed, which most decks
+    // can't do). Reward setups that flip multiple weaker neighbours.
     timing: "late",
-    riskProfile: "comeback",
+    riskProfile: "denial",
     preferWhen: [
-      { metric: "adjacentWeakerEnemyCount", operator: ">=", value: 1, score: 35 },
-      { metric: "enemyStrongestPower", operator: ">=", value: 20, score: 15 },
+      { metric: "adjacentWeakerEnemyCount", operator: ">=", value: 2, score: 45 },
+      { metric: "adjacentWeakerEnemyCount", operator: ">=", value: 1, score: 25 },
     ],
-    avoidWhen: [{ metric: "adjacentWeakerEnemyCount", operator: "==", value: 0, score: -30 }],
+    avoidWhen: [
+      { metric: "adjacentWeakerEnemyCount", operator: "==", value: 0, score: -25 },
+    ],
     placementPriorities: [{ metric: "adjacentWeakerEnemyCount", score: 18 }],
   }),
 
@@ -319,14 +324,22 @@ const rules: Record<string, AbilityRule> = {
   }),
   heimdall_block: makeRule({
     cardId: "heimdall_block",
-    timing: "early",
-    riskProfile: "combo",
+    // Watchman's Gate denies adjacent empty tiles for 2 turns, so it is most
+    // valuable as mid-game board control rather than an early setup card.
+    timing: "mid",
+    riskProfile: "denial",
     preferWhen: [
-      { metric: "highHandSize", operator: "==", value: 1, score: 20 },
+      // Best when there are several empty adjacent tiles to lock down.
+      { metric: "adjacentEmptyCount", operator: ">=", value: 3, score: 28 },
+      { metric: "adjacentEmptyCount", operator: ">=", value: 2, score: 16 },
+      // Higher value when the opponent still has cards left to play into them.
       { metric: "isAhead", operator: "==", value: 0, score: 8 },
     ],
-    avoidWhen: [{ metric: "lowHandSize", operator: "==", value: 1, score: -20 }],
-    placementPriorities: [{ metric: "safePlacementScore", score: 0.2 }],
+    avoidWhen: [
+      // No empty neighbours = ability is mostly wasted.
+      { metric: "adjacentEmptyCount", operator: "==", value: 0, score: -25 },
+    ],
+    placementPriorities: [{ metric: "adjacentEmptyCount", score: 12 }],
   }),
   nightmarchers_dread_aura: makeRule({
     cardId: "nightmarchers_dread_aura",

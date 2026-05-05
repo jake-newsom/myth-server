@@ -184,9 +184,13 @@ export const polynesianAbilities: AbilityMap = {
       state: { board },
     } = context;
 
-    const randomAlly = chooseRandomCard(
-      getAllAlliesOnBoard(board, triggerCard.owner),
+    // Hi'iaka cleanses an ally other than herself; otherwise the ability can
+    // simply target the trigger card on its own (a no-op when uncursed).
+    const eligibleAllies = getAllAlliesOnBoard(board, triggerCard.owner).filter(
+      (ally) => !isSameCard(triggerCard, ally),
     );
+
+    const randomAlly = chooseRandomCard(eligibleAllies);
 
     if (randomAlly) {
       const allyPosition = getPositionOfCardById(

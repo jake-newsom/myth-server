@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import XpPoolModel from "../../models/xpPool.model";
 import XpService from "../../services/xp.service";
 import { XP_CONFIG } from "../../config/constants";
+import db from "../../config/db.config";
 
 export const getXpPools = async (req: Request, res: Response) => {
   try {
@@ -94,6 +95,25 @@ export const sacrificeCards = async (req: Request, res: Response) => {
     if (!card_ids || !Array.isArray(card_ids) || card_ids.length === 0) {
       return res.status(400).json({
         error: "Missing or invalid card_ids array",
+      });
+    }
+
+    // Block sacrificing any card that is currently part of one of the user's decks.
+    // Removing a card mid-deck would silently invalidate the deck on the next game.
+    const deckMembershipResult = await db.query(
+      `SELECT DISTINCT d.name AS deck_name
+       FROM "deck_cards" dc
+       JOIN "decks" d ON dc.deck_id = d.deck_id
+       WHERE dc.user_card_instance_id = ANY($1::uuid[]) AND d.user_id = $2`,
+      [card_ids, userId]
+    );
+
+    if (deckMembershipResult.rows.length > 0) {
+      const deckNames = deckMembershipResult.rows
+        .map((row: { deck_name: string }) => `"${row.deck_name}"`)
+        .join(", ");
+      return res.status(400).json({
+        error: `Cannot sacrifice cards that are part of one of your decks (${deckNames}). Remove them from the deck first.`,
       });
     }
 

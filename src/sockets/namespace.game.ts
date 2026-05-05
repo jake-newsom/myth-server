@@ -421,6 +421,10 @@ export function setupGameNamespace(io: Server): void {
               const result = await GameLogic.endTurn(nextState, userId);
               nextState = result.state;
               events = result.events;
+            } else if (actionType === "forcePass") {
+              const result = await GameLogic.forcePass(nextState, userId);
+              nextState = result.state;
+              events = result.events;
             } else if (actionType === "surrender") {
               nextState = await GameLogic.surrender(nextState, userId);
             } else {

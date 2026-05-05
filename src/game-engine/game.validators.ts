@@ -3,6 +3,7 @@ import {
   BoardPosition,
   BoardCell,
   TileStatus,
+  Player,
 } from "../types/game.types";
 
 export function getBoardSize(gameState: GameState): number {
@@ -143,6 +144,14 @@ export function calculateScores(
 
 export function shouldDrawCard(player: any, maxCardsInHand: number): boolean {
   return player.hand.length < maxCardsInHand && player.deck.length > 0;
+}
+
+/**
+ * Returns true if a player has at least one card in hand to play.
+ * When this returns false, the player must forcePass their turn.
+ */
+export function canPlayerPlay(player: Player): boolean {
+  return player.hand.length > 0;
 }
 
 export function determineGameOutcome(

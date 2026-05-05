@@ -213,6 +213,9 @@ export interface InGameCard extends UserCard {
   owner: string;
   original_owner: string;
   lockedTurns: number;
+  // Tracks the card instance that applied the current lock (if any).
+  // When the source card is flipped/destroyed the lock should be released.
+  lockedBy?: string | null;
   defeats: DefeatRecord[];
 }
 
