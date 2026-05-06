@@ -28,6 +28,24 @@ interface GoogleTokenInfoResponse {
   kid: string;
 }
 
+/**
+ * Build the list of allowed Google OAuth client IDs (token `aud` values).
+ *
+ * Native iOS and Android Google Sign-In SDKs issue ID tokens whose `aud` is the
+ * platform-specific client ID (not the web client ID), so the server must accept
+ * any client ID belonging to the project. Configure via either:
+ *   - GOOGLE_ALLOWED_AUDIENCES: comma-separated list (preferred), or
+ *   - GOOGLE_CLIENT_ID: single value (legacy/back-compat).
+ */
+function getAllowedAudiences(): string[] {
+  const raw =
+    process.env.GOOGLE_ALLOWED_AUDIENCES || process.env.GOOGLE_CLIENT_ID || "";
+  return raw
+    .split(",")
+    .map((a) => a.trim())
+    .filter(Boolean);
+}
+
 const GoogleService = {
   /**
    * Validate Google ID token and get user profile
@@ -42,8 +60,19 @@ const GoogleService = {
 
       const response = await axios.get<GoogleTokenInfoResponse>(tokenInfoUrl);
 
-      if (response.data.aud !== process.env.GOOGLE_CLIENT_ID) {
-        logger.warn("Google token audience mismatch");
+      const allowedAudiences = getAllowedAudiences();
+      if (allowedAudiences.length === 0) {
+        logger.error(
+          "Google audience validation is not configured (set GOOGLE_ALLOWED_AUDIENCES or GOOGLE_CLIENT_ID)",
+        );
+        return null;
+      }
+
+      if (!allowedAudiences.includes(response.data.aud)) {
+        logger.warn("Google token audience mismatch", {
+          receivedAud: response.data.aud,
+          allowedAudiences,
+        });
         return null;
       }
 

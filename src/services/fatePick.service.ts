@@ -16,7 +16,7 @@ const FatePickService = {
     originalOwnerId: string,
     cards: any[],
     setId: string,
-    costWonderCoins: number = 1
+    costWonderCoins: number = 1,
   ): Promise<{ success: boolean; fatePick?: any; error?: string }> {
     try {
       // Only create Fate picks for packs with exactly 5 cards
@@ -32,7 +32,7 @@ const FatePickService = {
         originalOwnerId,
         cards,
         setId,
-        costWonderCoins
+        costWonderCoins,
       );
 
       return {
@@ -54,7 +54,7 @@ const FatePickService = {
   async getAvailableFatePicks(
     userId: string,
     page: number = 1,
-    limit: number = 20
+    limit: number = 20,
   ): Promise<{
     success: boolean;
     fatePicks?: FatePickWithDetails[];
@@ -78,7 +78,7 @@ const FatePickService = {
       const fatePicks = await FatePickModel.getAvailableFatePicks(
         userId,
         limit,
-        offset
+        offset,
       );
 
       // Get total count for pagination
@@ -126,7 +126,7 @@ const FatePickService = {
    */
   async getFatePickDetails(
     fatePickId: string,
-    userId: string
+    userId: string,
   ): Promise<{
     success: boolean;
     fatePick?: FatePickWithDetails;
@@ -146,7 +146,7 @@ const FatePickService = {
       // Get user's participation if it exists
       const userParticipation = await FatePickModel.getUserParticipation(
         fatePickId,
-        userId
+        userId,
       );
 
       return {
@@ -168,7 +168,7 @@ const FatePickService = {
    */
   async participateInFatePick(
     fatePickId: string,
-    userId: string
+    userId: string,
   ): Promise<{
     success: boolean;
     participation?: FatePickParticipation;
@@ -276,7 +276,7 @@ const FatePickService = {
       const participation = await FatePickModel.createParticipation(
         fatePickId,
         userId,
-        fatePick.cost_fate_coins
+        fatePick.cost_fate_coins,
       );
 
       await client.query("COMMIT");
@@ -292,7 +292,7 @@ const FatePickService = {
             mail_type: "reward",
             subject: "A Fate Shared",
             content: `For sharing your fate with ${user.username}`,
-            sender_name: `Gods of ${user.username}`,
+            sender_name: `The Gods`,
             has_rewards: true,
             reward_gems: 20,
             expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -300,7 +300,7 @@ const FatePickService = {
         } catch (rewardError) {
           console.error(
             "Error sending fate pick creator reward mail:",
-            rewardError
+            rewardError,
           );
         }
       }
@@ -328,7 +328,7 @@ const FatePickService = {
   async selectCardPosition(
     fatePickId: string,
     userId: string,
-    selectedPosition: number
+    selectedPosition: number,
   ): Promise<{
     success: boolean;
     result?: {
@@ -355,7 +355,7 @@ const FatePickService = {
       // Get user's participation
       const userParticipation = await FatePickModel.getUserParticipation(
         fatePickId,
-        userId
+        userId,
       );
 
       if (!userParticipation) {
@@ -385,7 +385,7 @@ const FatePickService = {
       // Select the card position and get the result
       const { participation, wonCard } = await FatePickModel.selectCardPosition(
         userParticipation.id,
-        selectedPosition
+        selectedPosition,
       );
 
       // Add the won card to user's collection
@@ -438,7 +438,7 @@ const FatePickService = {
   async getUserParticipationHistory(
     userId: string,
     page: number = 1,
-    limit: number = 20
+    limit: number = 20,
   ): Promise<{
     success: boolean;
     participations?: Array<
@@ -460,7 +460,7 @@ const FatePickService = {
       const participations = await FatePickModel.getUserParticipationHistory(
         userId,
         limit,
-        offset
+        offset,
       );
 
       // Get total count for pagination
@@ -524,7 +524,7 @@ const FatePickService = {
   async awardFateCoins(
     userId: string,
     amount: number,
-    reason: string = "Fate coins awarded"
+    reason: string = "Fate coins awarded",
   ): Promise<{
     success: boolean;
     newBalance?: number;
