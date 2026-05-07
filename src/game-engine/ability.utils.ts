@@ -49,7 +49,7 @@ function getAbilityIdFromCard(card?: InGameCard): string | null {
  */
 export function getTileEffectForPosition(
   gameState: GameState,
-  position: BoardPosition
+  position: BoardPosition,
 ): TileEffect | undefined {
   return gameState.board[position.y]?.[position.x]?.tile_effect;
 }
@@ -60,7 +60,7 @@ export function getTileEffectForPosition(
  */
 export function transferTileEffectToCard(
   card: InGameCard,
-  tileEffect: TileEffect | undefined
+  tileEffect: TileEffect | undefined,
 ): boolean {
   if (!tileEffect?.power) return false;
 
@@ -90,7 +90,7 @@ export function transferTileEffectToCard(
   ) {
     const totalPower = Object.values(tileEffect.power).reduce(
       (sum, val) => sum + (val || 0),
-      0
+      0,
     );
     const isDebuff = totalPower < 0;
     if (isDebuff) {
@@ -115,14 +115,14 @@ export function transferTileEffectToCard(
 
 export function updateCurrentPower(card: InGameCard): PowerValues {
   const currentPower: PowerValues = structuredClone(
-    card.base_card_data.base_power
+    card.base_card_data.base_power,
   );
 
   // Add enhancements
   (Object.keys(card.power_enhancements) as (keyof PowerValues)[]).forEach(
     (direction) => {
       currentPower[direction] += card.power_enhancements[direction];
-    }
+    },
   );
 
   // Add temporary effects
@@ -131,7 +131,7 @@ export function updateCurrentPower(card: InGameCard): PowerValues {
       (Object.keys(effect.power) as (keyof PowerValues)[]).forEach(
         (direction) => {
           currentPower[direction] += effect.power[direction] ?? 0;
-        }
+        },
       );
     });
   }
@@ -155,7 +155,7 @@ export function getOpponentId(playerId: string, gameState: GameState): string {
  */
 function calculatePowerDelta(
   power: number | Partial<PowerValues>,
-  isDebuff = false
+  isDebuff = false,
 ): number {
   if (typeof power === "number") {
     return isDebuff ? -Math.abs(power) : power;
@@ -181,7 +181,7 @@ type PowerChangeEventOptions = {
 export function buff(
   card: InGameCard,
   amount: number | PowerValues,
-  options: PowerChangeEventOptions
+  options: PowerChangeEventOptions,
 ): BaseGameEvent {
   return addTempBuff(card, 1000, amount, options);
 }
@@ -189,7 +189,7 @@ export function buff(
 export function debuff(
   card: InGameCard,
   amount: number | PowerValues,
-  options: PowerChangeEventOptions
+  options: PowerChangeEventOptions,
 ): BaseGameEvent {
   return addTempDebuff(card, 1000, amount, options);
 }
@@ -198,7 +198,7 @@ export function addTempBuff(
   card: InGameCard,
   duration: number,
   power: number | Partial<PowerValues>,
-  options: PowerChangeEventOptions
+  options: PowerChangeEventOptions,
 ): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
@@ -207,11 +207,11 @@ export function addTempBuff(
   const buff =
     typeof power === "number"
       ? {
-        top: power,
-        bottom: power,
-        left: power,
-        right: power,
-      }
+          top: power,
+          bottom: power,
+          left: power,
+          right: power,
+        }
       : power;
 
   card.temporary_effects.push({
@@ -269,7 +269,7 @@ export function addTempDebuff(
   card: InGameCard,
   duration: number,
   power: number | Partial<PowerValues>,
-  options: PowerChangeEventOptions
+  options: PowerChangeEventOptions,
 ): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
@@ -277,11 +277,11 @@ export function addTempDebuff(
   const negativePower =
     typeof power === "number"
       ? {
-        top: power,
-        bottom: power,
-        left: power,
-        right: power,
-      }
+          top: power,
+          bottom: power,
+          left: power,
+          right: power,
+        }
       : power;
 
   card.temporary_effects.push({
@@ -334,7 +334,7 @@ export function createOrUpdateBuff(
   power: number | Partial<PowerValues>,
   name: string,
   position: BoardPosition,
-  data?: Record<string, any>
+  data?: Record<string, any>,
 ): BaseGameEvent {
   //create the initial buff if it doesn't exist
   if (!card.temporary_effects.some((effect) => effect.name === name)) {
@@ -343,7 +343,7 @@ export function createOrUpdateBuff(
 
   //increase the value by whatever was provided
   const existingBuff = card.temporary_effects.find(
-    (effect) => effect.name === name
+    (effect) => effect.name === name,
   );
   if (existingBuff) {
     if (typeof power === "number") {
@@ -420,7 +420,7 @@ export function createOrUpdateDebuff(
   power: number | Partial<PowerValues>,
   name: string,
   position: BoardPosition,
-  data?: Record<string, any>
+  data?: Record<string, any>,
 ): BaseGameEvent {
   //create the initial debuff if it doesn't exist
   if (!card.temporary_effects.some((effect) => effect.name === name)) {
@@ -429,7 +429,7 @@ export function createOrUpdateDebuff(
 
   //increase the value by whatever was provided
   const existingDebuff = card.temporary_effects.find(
-    (effect) => effect.name === name
+    (effect) => effect.name === name,
   );
   if (existingDebuff) {
     if (typeof power === "number") {
@@ -485,7 +485,7 @@ export function createOrUpdateDebuff(
 
 export const getPositionOfCardById = (
   cardId: string,
-  board: GameBoard
+  board: GameBoard,
 ): BoardPosition | null => {
   for (let y = 0; y < board.length; y++) {
     for (let x = 0; x < board[y].length; x++) {
@@ -539,7 +539,7 @@ export const isValidPosition = (position: BoardPosition, boardSize: number) => {
 
 export const getAdjacentPositions = (
   position: BoardPosition,
-  boardSize: number
+  boardSize: number,
 ): BoardPosition[] => {
   const { x, y } = position;
   const directions = [
@@ -554,7 +554,7 @@ export const getAdjacentPositions = (
 
 export const getDiagonallyAdjacentPositions = (
   position: BoardPosition,
-  boardSize: number
+  boardSize: number,
 ): BoardPosition[] => {
   const { x, y } = position;
   const directions = [
@@ -569,7 +569,7 @@ export const getDiagonallyAdjacentPositions = (
 
 export const getTileAtPosition = (
   position: BoardPosition | null | undefined,
-  board: GameBoard
+  board: GameBoard,
 ): BoardCell | null => {
   if (!position) return null;
   return board[position.y]?.[position.x] || null;
@@ -577,7 +577,7 @@ export const getTileAtPosition = (
 
 export const cardAtPosition = (
   position: BoardPosition,
-  board: GameBoard
+  board: GameBoard,
 ): InGameCard | null => {
   return board[position.y][position.x]?.card;
 };
@@ -591,7 +591,7 @@ export const getAdjacentCards = (
     tag?: string;
     includeEmpty?: boolean;
     name?: string;
-  }
+  },
 ): InGameCard[] => {
   const adjacentPositions = getAdjacentPositions(position, board.length);
   let cards = adjacentPositions
@@ -612,7 +612,7 @@ export const getAdjacentCards = (
 
   if (options?.tag) {
     cards = cards.filter(
-      (card) => card && card.base_card_data.tags?.includes(options.tag!)
+      (card) => card && card.base_card_data.tags?.includes(options.tag!),
     );
   }
 
@@ -632,7 +632,7 @@ export const getDiagonallyAdjacentCards = (
     tag?: string;
     includeEmpty?: boolean;
     name?: string;
-  }
+  },
 ): InGameCard[] => {
   const positions = getDiagonallyAdjacentPositions(position, board.length);
   let cards = positions
@@ -651,7 +651,7 @@ export const getDiagonallyAdjacentCards = (
 
   if (options?.tag) {
     cards = cards.filter(
-      (card) => card && card.base_card_data.tags?.includes(options.tag!)
+      (card) => card && card.base_card_data.tags?.includes(options.tag!),
     );
   }
 
@@ -665,7 +665,7 @@ export const getDiagonallyAdjacentCards = (
 export const getStrongestAdjacentEnemy = (
   position: BoardPosition,
   board: GameBoard,
-  playerId: string
+  playerId: string,
 ): InGameCard | null => {
   const enemyCards = getAdjacentCards(position, board, {
     owner: "enemy",
@@ -683,7 +683,7 @@ export const getStrongestAdjacentEnemy = (
 
 export const getFacingEnemy = (
   position: BoardPosition,
-  board: GameBoard
+  board: GameBoard,
 ): InGameCard | null => {
   // Assuming "facing" means the card directly opposite based on board center
   const boardCenter = Math.floor(board.length / 2);
@@ -710,7 +710,7 @@ export const getFacingEnemy = (
 
 export const isSurrounded = (
   position: BoardPosition,
-  board: GameBoard
+  board: GameBoard,
 ): boolean => {
   const adjacentCards = getAdjacentCards(position, board);
   return adjacentCards.length >= 2;
@@ -719,7 +719,7 @@ export const isSurrounded = (
 export const getAlliesAdjacentTo = (
   position: BoardPosition,
   board: GameBoard,
-  playerId: string
+  playerId: string,
 ): InGameCard[] => {
   return getAdjacentCards(position, board, {
     owner: "ally",
@@ -730,7 +730,7 @@ export const getAlliesAdjacentTo = (
 export const getEnemiesAdjacentTo = (
   position: BoardPosition,
   board: GameBoard,
-  playerId: string
+  playerId: string,
 ): InGameCard[] => {
   return getAdjacentCards(position, board, {
     owner: "enemy",
@@ -751,7 +751,7 @@ export const getCardTotalPower = (card: InGameCard): number => {
 export const isFlankedByEnemies = (
   position: BoardPosition,
   board: GameBoard,
-  playerId: string
+  playerId: string,
 ): boolean => {
   const adjacentEnemies = getEnemiesAdjacentTo(position, board, playerId);
   if (adjacentEnemies.length < 2) {
@@ -775,10 +775,10 @@ export const isFlankedByEnemies = (
     .filter((p) => p) as BoardPosition[];
 
   const hasHorizontalFlank = positions.some((p) =>
-    positions.some((other) => p.y === other.y && Math.abs(p.x - other.x) === 2)
+    positions.some((other) => p.y === other.y && Math.abs(p.x - other.x) === 2),
   );
   const hasVerticalFlank = positions.some((p) =>
-    positions.some((other) => p.x === other.x && Math.abs(p.y - other.y) === 2)
+    positions.some((other) => p.x === other.x && Math.abs(p.y - other.y) === 2),
   );
 
   return hasHorizontalFlank || hasVerticalFlank;
@@ -786,7 +786,7 @@ export const isFlankedByEnemies = (
 
 export const getCardsByCondition = (
   board: GameBoard,
-  filterFn: (card: InGameCard) => boolean
+  filterFn: (card: InGameCard) => boolean,
 ): InGameCard[] => {
   const cards: InGameCard[] = [];
   for (const row of board) {
@@ -801,7 +801,7 @@ export const getCardsByCondition = (
 
 export const countCornersControlled = (
   board: GameBoard,
-  playerId: string
+  playerId: string,
 ): number => {
   const corners = [
     board[0][0],
@@ -836,12 +836,11 @@ export const rerollHighestStat = (card: InGameCard): void => {
  */
 export const releaseLocksAppliedBy = (
   board: GameBoard,
-  sourceCardInstanceId: string
+  sourceCardInstanceId: string,
 ): void => {
   const lockedCards = getCardsByCondition(
     board,
-    (card) =>
-      card.lockedBy === sourceCardInstanceId && card.lockedTurns > 0
+    (card) => card.lockedBy === sourceCardInstanceId && card.lockedTurns > 0,
   );
   for (const card of lockedCards) {
     card.lockedTurns = 0;
@@ -854,7 +853,7 @@ export const destroyCardAtPosition = (
   board: GameBoard,
   animation?: string,
   actingPlayerId?: string,
-  destroyerCard?: InGameCard
+  destroyerCard?: InGameCard,
 ): BaseGameEvent | null => {
   const tile = getTileAtPosition(position, board);
   if (!tile?.card) return null;
@@ -872,9 +871,11 @@ export const destroyCardAtPosition = (
   // Track daily task progress for card destruction (fire-and-forget)
   if (actingPlayerId && !simulationContext.isInSimulation()) {
     try {
-      DailyTaskService.trackDestroy(actingPlayerId).catch(() => { });
+      DailyTaskService.trackDestroy(actingPlayerId).catch(() => {});
 
-      const destroyerPower = destroyerCard ? getCardTotalPower(destroyerCard) : null;
+      const destroyerPower = destroyerCard
+        ? getCardTotalPower(destroyerCard)
+        : null;
       const destroyedPower = getCardTotalPower(destroyedCard);
 
       AchievementService.triggerAchievementEvent({
@@ -891,7 +892,7 @@ export const destroyCardAtPosition = (
           defeated_stronger_enemy:
             destroyerPower !== null ? destroyerPower < destroyedPower : false,
         },
-      }).catch(() => { });
+      }).catch(() => {});
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }
@@ -911,7 +912,7 @@ export const destroyCardAtPosition = (
 
 export const resetTile = (
   tile: BoardCell,
-  position: BoardPosition
+  position: BoardPosition,
 ): BaseGameEvent => {
   tile.tile_effect = undefined;
 
@@ -930,7 +931,7 @@ export const setTileStatus = (
   effect: TileEffect,
   actingPlayerId?: string,
   sourceCard?: InGameCard,
-  metadata?: Record<string, any>
+  metadata?: Record<string, any>,
 ): BaseGameEvent => {
   tile.tile_effect = effect;
 
@@ -943,7 +944,7 @@ export const setTileStatus = (
     !simulationContext.isInSimulation()
   ) {
     try {
-      DailyTaskService.trackCurse(actingPlayerId).catch(() => { });
+      DailyTaskService.trackCurse(actingPlayerId).catch(() => {});
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }
@@ -978,7 +979,7 @@ export const setTileStatus = (
     !simulationContext.isInSimulation()
   ) {
     try {
-      DailyTaskService.trackBless(actingPlayerId).catch(() => { });
+      DailyTaskService.trackBless(actingPlayerId).catch(() => {});
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }
@@ -994,7 +995,7 @@ export const setTileStatus = (
 };
 
 export const getRandomEmptyTile = (
-  board: GameBoard
+  board: GameBoard,
 ): { position: BoardPosition; tile: BoardCell } | null => {
   const emptyTiles: Array<{ position: BoardPosition; tile: BoardCell }> = [];
 
@@ -1022,7 +1023,7 @@ export const getRandomEmptyTile = (
 export function getCardsInSameRow(
   position: BoardPosition,
   board: GameBoard,
-  excludePlayerId?: string
+  excludePlayerId?: string,
 ): InGameCard[] {
   const cards: InGameCard[] = [];
   const { y } = position;
@@ -1041,7 +1042,7 @@ export function getCardsInSameRow(
 export function getCardsInSameColumn(
   position: BoardPosition,
   board: GameBoard,
-  excludePlayerId?: string
+  excludePlayerId?: string,
 ): InGameCard[] {
   const cards: InGameCard[] = [];
   const { x } = position;
@@ -1060,7 +1061,7 @@ export function getCardsInSameColumn(
 export function removeTemporaryBuffs(
   card: InGameCard,
   position: BoardPosition,
-  animation?: string
+  animation?: string,
 ): BaseGameEvent {
   // Calculate total power being removed before filtering
   let totalRemoved = 0;
@@ -1068,7 +1069,7 @@ export function removeTemporaryBuffs(
     for (const effect of card.temporary_effects) {
       const totalPowerChange = Object.values(effect.power).reduce(
         (sum, val) => sum + (val || 0),
-        0
+        0,
       );
       if (totalPowerChange > 0) {
         totalRemoved += totalPowerChange;
@@ -1078,7 +1079,7 @@ export function removeTemporaryBuffs(
     card.temporary_effects = card.temporary_effects.filter((effect) => {
       const totalPowerChange = Object.values(effect.power).reduce(
         (sum, val) => sum + (val || 0),
-        0
+        0,
       );
       return totalPowerChange <= 0; // Keep debuffs, remove buffs
     });
@@ -1100,7 +1101,7 @@ export function removeBuffsByCondition(
   card: InGameCard,
   condition: (effect: TemporaryEffect) => boolean,
   position: BoardPosition,
-  animation?: string
+  animation?: string,
 ): BaseGameEvent {
   // Calculate total power being removed before filtering
   let totalRemoved = 0;
@@ -1109,13 +1110,13 @@ export function removeBuffsByCondition(
       if (condition(effect)) {
         const totalPowerChange = Object.values(effect.power).reduce(
           (sum, val) => sum + (val || 0),
-          0
+          0,
         );
         totalRemoved += totalPowerChange;
       }
     }
     card.temporary_effects = card.temporary_effects.filter(
-      (effect) => !condition(effect)
+      (effect) => !condition(effect),
     );
   }
   return {
@@ -1133,7 +1134,7 @@ export function removeBuffsByCondition(
 // New utility functions for Polynesian abilities
 export function getEmptyAdjacentTiles(
   position: BoardPosition,
-  board: GameBoard
+  board: GameBoard,
 ): Array<{ position: BoardPosition; tile: BoardCell }> {
   const adjacentPositions = getAdjacentPositions(position, board.length);
   const emptyTiles: Array<{ position: BoardPosition; tile: BoardCell }> = [];
@@ -1155,11 +1156,11 @@ export function getEmptyAdjacentTiles(
  */
 export function getSurroundingTiles(
   position: BoardPosition,
-  board: GameBoard
+  board: GameBoard,
 ): Array<{ position: BoardPosition; tile: BoardCell }> {
   const diagonallyAdjacentPositions = getDiagonallyAdjacentPositions(
     position,
-    board.length
+    board.length,
   );
   const adjacentPositions = getAdjacentPositions(position, board.length);
 
@@ -1182,7 +1183,7 @@ export function cleanseDebuffs(
   card: InGameCard,
   count: number,
   position: BoardPosition,
-  animation?: string
+  animation?: string,
 ): BaseGameEvent {
   // Remove negative temporary effects (debuffs) up to the specified count
   let totalCleansed = 0;
@@ -1193,7 +1194,7 @@ export function cleanseDebuffs(
 
       const totalPowerChange = Object.values(effect.power).reduce(
         (sum, val) => sum + (val || 0),
-        0
+        0,
       );
 
       if (totalPowerChange < 0) {
@@ -1219,7 +1220,7 @@ export function cleanseDebuffs(
 
 export function getAllAlliesOnBoard(
   board: GameBoard,
-  playerId: string
+  playerId: string,
 ): InGameCard[] {
   return getCardsByCondition(board, (card) => card.owner === playerId);
 }
@@ -1253,23 +1254,22 @@ export function getCardHighestPower(card: InGameCard): {
 export function applyTileEffectsToMovedCard(
   card: InGameCard,
   newPosition: BoardPosition,
-  board: GameBoard
+  board: GameBoard,
 ): BaseGameEvent[] {
   const events: BaseGameEvent[] = [];
   const newTile = getTileAtPosition(newPosition, board);
 
   if (newTile?.tile_effect) {
     const tileEffect = newTile.tile_effect;
-    const tileEffectTransferred = transferTileEffectToCard(
-      card,
-      tileEffect
-    );
+    const tileEffectTransferred = transferTileEffectToCard(card, tileEffect);
 
     if (tileEffectTransferred) {
       // Calculate powerDelta from tile effect
       const powerDelta = tileEffect.power
-        ? (tileEffect.power.top || 0) + (tileEffect.power.bottom || 0) +
-        (tileEffect.power.left || 0) + (tileEffect.power.right || 0)
+        ? (tileEffect.power.top || 0) +
+          (tileEffect.power.bottom || 0) +
+          (tileEffect.power.left || 0) +
+          (tileEffect.power.right || 0)
         : 0;
 
       // Update the card's current power after applying tile effect
@@ -1293,7 +1293,7 @@ export function applyTileEffectsToMovedCard(
 export function pushCardAway(
   card: InGameCard,
   fromPosition: BoardPosition,
-  board: GameBoard
+  board: GameBoard,
 ): BaseGameEvent[] {
   const events: BaseGameEvent[] = [];
 
@@ -1359,7 +1359,7 @@ export function pushCardAway(
 export function pullCardsIn(
   position: BoardPosition,
   board: GameBoard,
-  playerId: string
+  playerId: string,
 ): BaseGameEvent[] {
   const gameEvents: BaseGameEvent[] = [];
 
@@ -1420,7 +1420,7 @@ export function pullCardsIn(
 
       // Apply tile effects to the moved card
       gameEvents.push(
-        ...applyTileEffectsToMovedCard(enemyCard, intermediatePosition, board)
+        ...applyTileEffectsToMovedCard(enemyCard, intermediatePosition, board),
       );
     }
   }
@@ -1433,7 +1433,7 @@ export function moveCardToPosition(
   toPosition: BoardPosition,
   fromPosition: BoardPosition,
   board: GameBoard,
-  animation?: string
+  animation?: string,
 ): BaseGameEvent[] {
   if (toPosition.x === fromPosition.x && toPosition.y === fromPosition.y)
     throw new Error("Cannot move to the same position");
@@ -1472,7 +1472,7 @@ export function moveCardToPosition(
 export function getAlternatingTurnEffect(
   turnNumber: number,
   effectA: any,
-  effectB: any
+  effectB: any,
 ): any {
   // Placeholder implementation - needs actual turn tracking
   return turnNumber % 2 === 0 ? effectA : effectB;
@@ -1481,7 +1481,7 @@ export function getAlternatingTurnEffect(
 export function disableAbilities(
   card: InGameCard,
   turns: number,
-  position: BoardPosition
+  position: BoardPosition,
 ): BaseGameEvent {
   // TODO: Need to implement ability disabling system
   // This would require adding a disabled_abilities field to the card or a game state system
@@ -1507,12 +1507,12 @@ export function addTileBlessing(
   position: BoardPosition,
   bonus: number,
   ownerId: string,
-  actingPlayerId?: string
+  actingPlayerId?: string,
 ): BaseGameEvent {
   // Track daily task progress for blessings (fire-and-forget)
   if (actingPlayerId && !simulationContext.isInSimulation()) {
     try {
-      DailyTaskService.trackBless(actingPlayerId).catch(() => { });
+      DailyTaskService.trackBless(actingPlayerId).catch(() => {});
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }
@@ -1540,7 +1540,7 @@ export function protectFromDefeat(
   card: InGameCard,
   turns: number,
   position: BoardPosition,
-  data?: Record<string, any>
+  data?: Record<string, any>,
 ): BaseGameEvent {
   if (!card.temporary_effects) {
     card.temporary_effects = [];
@@ -1589,15 +1589,18 @@ export function blockTile(
   position: BoardPosition,
   board: GameBoard,
   turns = 2,
-  animationLabel = "frozen"
+  animationLabel = "frozen",
 ): BaseGameEvent | undefined {
-  // if this is the last open tile on the board, return undefined
-  const openTiles = board.flat().filter((tile) => tile.card === null);
-  simulationContext.debugLog("open tiles: ", openTiles);
-  if (openTiles.length <= 1) return undefined;
-
   const tile = getTileAtPosition(position, board);
   if (!tile) return undefined;
+
+  const isPlayable = (t: BoardCell) =>
+    t.card === null && t.tile_effect?.status !== TileStatus.Blocked;
+
+  const playableTiles = board.flat().filter(isPlayable);
+  simulationContext.debugLog("playable tiles: ", playableTiles);
+
+  if (isPlayable(tile) && playableTiles.length <= 1) return undefined;
 
   return setTileStatus(tile, position, {
     status: TileStatus.Blocked,
@@ -1619,7 +1622,7 @@ export function getRandomCard(
     ownerId?: string;
     excludeOwnerId?: string;
     excludeCardId?: string;
-  }
+  },
 ): InGameCard | null {
   let cards = getCardsByCondition(board, (card) => {
     // Filter by owner ID if specified
@@ -1669,7 +1672,7 @@ export function chooseRandomCard(cards: InGameCard[]): InGameCard {
 
 export function isSameCard(
   triggerCard: InGameCard,
-  flippedCard: InGameCard
+  flippedCard: InGameCard,
 ): boolean {
   return triggerCard.user_card_instance_id === flippedCard.user_card_instance_id
     ? true

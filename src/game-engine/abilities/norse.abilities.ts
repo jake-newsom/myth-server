@@ -263,12 +263,6 @@ export const norseAbilities: AbilityMap = {
       );
     });
 
-    // turns_left is decremented at every endTurn (both players'). To block for
-    // "the rest of my turn + my opponent's turn" we need 2 ticks:
-    //   - Heimdall plays   -> turns_left = 2
-    //   - My endTurn       -> 2 -> 1 (still blocked through opponent's turn)
-    //   - Opponent endTurn -> 1 -> 0 -> resetTile fires (event lands in their move)
-    //   - My next turn     -> tile is open
     for (const pos of emptyAdjacentTiles) {
       const event = blockTile(pos, board, 2, "heimdall_gate");
       if (event) {
