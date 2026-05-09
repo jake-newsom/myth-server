@@ -118,6 +118,55 @@ export const getCharacterAchievementsForUser = async (
 };
 
 /**
+ * Get the primary character achievement for ALL characters in one request.
+ * Returns a map of character_id → UserAchievementWithDetails.
+ */
+export const getAllCharacterAchievementPrimaries = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const userId = req.user?.user_id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          type: "AUTH_ERROR",
+          message: "Authentication required",
+          suggestion: "Please log in to view character achievements",
+        },
+      });
+    }
+
+    const result =
+      await AchievementService.getAllCharacterAchievementPrimaries(userId);
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          type: "ACHIEVEMENTS_ERROR",
+          message: "Failed to fetch character achievements",
+          suggestion: "Please try again later",
+        },
+      });
+    }
+
+    res.status(200).json({ achievements: result.achievements });
+  } catch (error) {
+    console.error("Error fetching all character achievement primaries:", error);
+    res.status(500).json({
+      success: false,
+      error: {
+        type: "ACHIEVEMENTS_ERROR",
+        message: "Failed to fetch character achievements",
+        suggestion: "Please try again later",
+      },
+    });
+  }
+};
+
+/**
  * Get achievement categories with counts
  */
 export const getAchievementCategories = async (req: Request, res: Response) => {

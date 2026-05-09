@@ -267,6 +267,8 @@ class GameController {
         game_id: game.game_id,
         game_state: sanitizeGameStateForPlayer(game.game_state, userId),
         game_status: game.game_status,
+        game_mode: game.game_mode,
+        floor_number: game.floor_number ?? null,
         ai_deck_id: game.game_mode === "solo" ? game.player2_deck_id : null,
         opponent_mythology: opponentMythology,
         current_user_id: userId,

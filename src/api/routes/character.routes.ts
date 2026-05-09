@@ -11,6 +11,12 @@ router.get("/", CharacterController.getAllCharacters);
 
 // Auth routes
 router.get(
+  "/achievements/me/all",
+  authMiddleware.protect,
+  moderateRateLimit,
+  AchievementController.getAllCharacterAchievementPrimaries
+);
+router.get(
   "/:characterId/achievements/me",
   authMiddleware.protect,
   moderateRateLimit,

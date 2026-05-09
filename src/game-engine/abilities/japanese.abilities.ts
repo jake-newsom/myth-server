@@ -182,7 +182,7 @@ export const japaneseAbilities: AbilityMap = {
     );
     for (const pos of adjacentPositions) {
       const tile = getTileAtPosition(pos, state.board);
-      if (tile) {
+      if (tile && !tile.card) {
         gameEvents.push(
           setTileStatus(
             tile,

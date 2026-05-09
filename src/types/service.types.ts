@@ -68,6 +68,7 @@ export interface GameRecord {
   winner_id?: string | null;
   player1_username?: string;
   player2_username?: string;
+  floor_number?: number | null;
 }
 
 export interface SanitizedGame extends Omit<GameRecord, "game_state"> {

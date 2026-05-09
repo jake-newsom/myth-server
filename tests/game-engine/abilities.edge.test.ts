@@ -11,6 +11,7 @@ import {
 } from "../../src/types/game.types";
 import { TriggerContext, CombatContext } from "../../src/types/game-engine.types";
 import { GameStatus } from "../../src/game-engine/game.logic";
+import { blockTile } from "../../src/game-engine/ability.utils";
 import DailyTaskService from "../../src/services/dailyTask.service";
 import SeasonSoulsService from "../../src/services/seasonSouls.service";
 
@@ -71,6 +72,7 @@ function makeCard(params: {
     base_card_id: `base-${id}`,
     level: 1,
     xp: 0,
+    is_locked: false,
     power_enhancements: { top: 0, bottom: 0, left: 0, right: 0 },
     card_modifiers_positive: { top: 0, bottom: 0, left: 0, right: 0 },
     card_modifiers_negative: { top: 0, bottom: 0, left: 0, right: 0 },
@@ -344,6 +346,135 @@ for (const [resolverName, resolverFn] of Object.entries(combatResolvers)) {
     assert.equal(typeof sparseResult.preventDefeat, "boolean");
   });
 }
+
+/**
+ * Regression: `blockTile` must not soft-lock the board by blocking the last
+ * playable tile. A tile is "playable" only if it has no card AND isn't already
+ * blocked. The previous implementation counted every empty tile (including
+ * blocked ones) as "open", which let Heimdall block the final playable tile
+ * when other empties were already blocked, or block both of two adjacent
+ * empties in sequence (each call mutates the board and the next call sees the
+ * just-blocked tile as still "open").
+ */
+
+function fillBoardExcept(
+  board: GameBoard,
+  emptyPositions: BoardPosition[],
+  ownerId: string,
+): void {
+  const emptyKeys = new Set(emptyPositions.map((p) => `${p.x},${p.y}`));
+  for (let y = 0; y < board.length; y++) {
+    for (let x = 0; x < board[y].length; x++) {
+      if (emptyKeys.has(`${x},${y}`)) continue;
+      board[y][x].card = makeCard({
+        id: `filler-${x}-${y}`,
+        name: `Filler ${x},${y}`,
+        owner: ownerId,
+      });
+    }
+  }
+}
+
+test("blockTile refuses to block the last playable tile when other empties are already blocked", () => {
+  const board = makeBoard();
+  const blockedEmpty: BoardPosition = { x: 0, y: 0 };
+  const lastOpen: BoardPosition = { x: 3, y: 3 };
+
+  fillBoardExcept(board, [blockedEmpty, lastOpen], PLAYER_1);
+
+  // Pre-block one empty tile so it has `card === null` but is not playable.
+  board[blockedEmpty.y][blockedEmpty.x].tile_effect = {
+    status: TileStatus.Blocked,
+    turns_left: 2,
+    animation_label: "frozen",
+  };
+
+  const before = board[lastOpen.y][lastOpen.x].tile_effect;
+  const event = blockTile(lastOpen, board, 2, "heimdall_gate");
+
+  assert.equal(event, undefined, "should refuse to block the last playable tile");
+  assert.equal(
+    board[lastOpen.y][lastOpen.x].tile_effect,
+    before,
+    "tile_effect should be unchanged when the call is refused",
+  );
+});
+
+test("sequential blockTile calls leave at least one playable tile (Heimdall soft-lock regression)", () => {
+  const board = makeBoard();
+  const tileA: BoardPosition = { x: 0, y: 0 };
+  const tileB: BoardPosition = { x: 0, y: 1 };
+
+  // Only two playable tiles on the entire board.
+  fillBoardExcept(board, [tileA, tileB], PLAYER_1);
+
+  const eventA = blockTile(tileA, board, 2, "heimdall_gate");
+  assert.ok(eventA, "first call should successfully block tile A");
+  assert.equal(
+    board[tileA.y][tileA.x].tile_effect?.status,
+    TileStatus.Blocked,
+  );
+
+  // The buggy implementation counted tile A (now blocked, no card) as still
+  // "open" and would happily block tile B too, leaving zero playable tiles.
+  const eventB = blockTile(tileB, board, 2, "heimdall_gate");
+  assert.equal(
+    eventB,
+    undefined,
+    "second call must refuse so at least one playable tile remains",
+  );
+  assert.notEqual(
+    board[tileB.y][tileB.x].tile_effect?.status,
+    TileStatus.Blocked,
+    "tile B should remain playable",
+  );
+});
+
+test("heimdall_block end-to-end never blocks the last playable tile on the board", () => {
+  const state = makeGameState();
+  const board = state.board;
+
+  const heimdallPos: BoardPosition = { x: 1, y: 1 };
+  // Two empty tiles adjacent to Heimdall; everything else is filled.
+  // After Heimdall is placed, only these two adjacent tiles remain playable.
+  const adjacentEmpty1: BoardPosition = { x: 0, y: 1 };
+  const adjacentEmpty2: BoardPosition = { x: 2, y: 1 };
+
+  fillBoardExcept(board, [heimdallPos, adjacentEmpty1, adjacentEmpty2], PLAYER_2);
+
+  const heimdall = makeCard({
+    id: "heimdall-1",
+    name: "Heimdall",
+    owner: PLAYER_1,
+    abilityName: "Heimdall",
+  });
+  placeCard(state, heimdallPos, heimdall);
+
+  const heimdallBlock = abilities["heimdall_block"];
+  assert.ok(heimdallBlock, "heimdall_block ability should be registered");
+
+  const events = heimdallBlock(
+    buildContext({
+      state,
+      triggerCard: heimdall,
+      triggerMoment: TriggerMoment.OnPlace,
+      position: heimdallPos,
+    }),
+  );
+
+  assert.ok(Array.isArray(events));
+
+  const playableCount = board
+    .flat()
+    .filter(
+      (t) => t.card === null && t.tile_effect?.status !== TileStatus.Blocked,
+    ).length;
+
+  assert.ok(
+    playableCount >= 1,
+    `heimdall_block left ${playableCount} playable tiles; must leave at least 1`,
+  );
+});
 
 after(() => {
   console.log = originalConsoleLog;

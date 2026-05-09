@@ -79,6 +79,16 @@ const PATCHES: AssetPatch[] = [
     size: 0,
     description: "border pack",
   },
+  {
+    id: "audio-pack-1",
+    version: 1,
+    type: "audio",
+    r2Key: "patches/audio-patch-1.zip",
+    checksum:
+      "sha256:cb1ced7cc03da155e7e843779c9940a4c73e99c07b0f869244b03560eddaa16f",
+    size: 0,
+    description: "audio pack",
+  },
 ];
 
 function assetUrl(r2Key: string): string {

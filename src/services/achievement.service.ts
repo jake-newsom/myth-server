@@ -13,6 +13,7 @@ import {
 } from "../types/database.types";
 import { GrantedReward } from "../types/service.types";
 import { RarityUtils } from "../types/card.types";
+import { simulationContext } from "../game-engine/simulation.context";
 
 interface AchievementProgressEvent {
   userId: string;
@@ -290,6 +291,38 @@ const AchievementService = {
         success: false,
         achievements: [],
       };
+    }
+  },
+
+  /**
+   * Get the primary (active) character achievement for every character, keyed
+   * by character_id. Single DB round-trip.
+   */
+  async getAllCharacterAchievementPrimaries(
+    userId: string
+  ): Promise<{
+    success: boolean;
+    achievements: Record<string, UserAchievementWithDetails>;
+  }> {
+    try {
+      const rows =
+        await AchievementModel.getAllCharacterAchievementPrimaries(userId);
+
+      const byCharacter: Record<string, UserAchievementWithDetails> = {};
+      for (const row of rows) {
+        const charId = row.achievement?.character_id;
+        if (charId) {
+          byCharacter[charId] = row;
+        }
+      }
+
+      return { success: true, achievements: byCharacter };
+    } catch (error) {
+      console.error(
+        "Error fetching all character achievement primaries:",
+        error
+      );
+      return { success: false, achievements: {} };
     }
   },
 
@@ -2152,6 +2185,13 @@ const AchievementService = {
     event: AchievementProgressEvent
   ): Promise<UserAchievementWithDetails[]> {
     if (event.userId === AI_SYSTEM_USER_ID) {
+      return [];
+    }
+    // Suppress achievement progress while the AI lookahead engine is simulating
+    // moves. Without this guard the AI would credit the human player for every
+    // hypothetical play it explores during negamax (e.g. dozens of "Minamoto
+    // played at +10 Demon Bane" credits per real turn).
+    if (simulationContext.isInSimulation()) {
       return [];
     }
     const result = await this.processAchievementProgress(event);

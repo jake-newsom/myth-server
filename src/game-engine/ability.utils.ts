@@ -543,10 +543,10 @@ export const getAdjacentPositions = (
 ): BoardPosition[] => {
   const { x, y } = position;
   const directions = [
-    { x: x - 1, y: y },
-    { x: x + 1, y: y },
-    { x: x, y: y - 1 },
-    { x: x, y: y + 1 },
+    { x: x, y: y - 1 }, //top
+    { x: x + 1, y: y }, //right
+    { x: x, y: y + 1 }, //bottom
+    { x: x - 1, y: y }, //left
   ];
 
   return directions.filter((pos) => isValidPosition(pos, boardSize));
@@ -558,10 +558,10 @@ export const getDiagonallyAdjacentPositions = (
 ): BoardPosition[] => {
   const { x, y } = position;
   const directions = [
-    { x: x - 1, y: y - 1 },
-    { x: x + 1, y: y - 1 },
-    { x: x - 1, y: y + 1 },
-    { x: x + 1, y: y + 1 },
+    { x: x - 1, y: y - 1 }, //top-left
+    { x: x + 1, y: y - 1 }, //top-right
+    { x: x + 1, y: y + 1 }, //bottom-right
+    { x: x - 1, y: y + 1 }, //bottom-left
   ];
 
   return directions.filter((pos) => isValidPosition(pos, boardSize));

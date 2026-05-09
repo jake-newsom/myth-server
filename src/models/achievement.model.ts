@@ -889,6 +889,135 @@ const AchievementModel = {
   },
 
   /**
+   * Get the primary (active) character achievement for ALL characters in a
+   * single query. Returns at most one achievement per character — the lowest
+   * unclaimed tier, or the highest claimed tier if everything is done.
+   */
+  async getAllCharacterAchievementPrimaries(
+    userId: string
+  ): Promise<UserAchievementWithDetails[]> {
+    const query = `
+      WITH unlocked_tiers AS (
+        SELECT DISTINCT a.base_achievement_key, a.tier_level, a.character_id
+        FROM user_achievements ua
+        JOIN achievements a ON ua.achievement_id = a.id
+        WHERE ua.user_id = $1
+          AND ua.is_completed = true
+          AND a.tier_level IS NOT NULL
+          AND a.achievement_kind = 'character'
+      ),
+      ranked AS (
+        SELECT
+          a.*,
+          COALESCE(ua.id, null) as user_achievement_id,
+          COALESCE(ua.current_progress, 0) as current_progress,
+          COALESCE(ua.is_completed, false) as is_completed,
+          ua.completed_at,
+          ua.claimed_at,
+          COALESCE(ua.is_claimed, false) as is_claimed,
+          COALESCE(ua.created_at, null) as ua_created_at,
+          COALESCE(ua.updated_at, null) as ua_updated_at,
+          CASE
+            WHEN a.target_value > 0
+            THEN ROUND((COALESCE(ua.current_progress, 0)::DECIMAL / a.target_value * 100), 2)
+            ELSE 0
+          END as progress_percentage,
+          (COALESCE(ua.is_completed, false) = true AND COALESCE(ua.is_claimed, false) = false) as can_claim,
+          CASE
+            WHEN a.tier_level IS NULL THEN true
+            WHEN a.tier_level = 1 THEN true
+            ELSE EXISTS (
+              SELECT 1 FROM unlocked_tiers ut
+              WHERE ut.base_achievement_key = a.base_achievement_key
+                AND ut.tier_level = a.tier_level - 1
+            )
+          END as is_unlocked,
+          cb.border_id as border_id,
+          cb.name as border_name,
+          cb.description as border_description,
+          cb.image_url as border_image_url,
+          cb.animation_key as border_animation_key,
+          ROW_NUMBER() OVER (
+            PARTITION BY a.character_id
+            ORDER BY
+              CASE WHEN COALESCE(ua.is_claimed, false) = false THEN 0 ELSE 1 END,
+              a.tier_level ASC NULLS FIRST,
+              a.sort_order ASC
+          ) as rn
+        FROM achievements a
+        LEFT JOIN user_achievements ua ON a.id = ua.achievement_id AND ua.user_id = $1
+        LEFT JOIN card_borders cb ON a.reward_border_id = cb.border_id AND cb.is_active = true
+        WHERE a.is_active = true
+          AND a.achievement_kind = 'character'
+          AND a.character_id IS NOT NULL
+          AND (
+            a.tier_level IS NULL
+            OR a.tier_level = 1
+            OR EXISTS (
+              SELECT 1 FROM unlocked_tiers ut
+              WHERE ut.base_achievement_key = a.base_achievement_key
+                AND ut.tier_level = a.tier_level - 1
+            )
+          )
+      )
+      SELECT * FROM ranked WHERE rn = 1
+      ORDER BY character_id;
+    `;
+
+    const { rows } = await db.query(query, [userId]);
+
+    return rows.map((row) => ({
+      id: row.user_achievement_id,
+      user_id: userId,
+      achievement_id: row.id,
+      current_progress: row.current_progress,
+      is_completed: row.is_completed,
+      completed_at: row.completed_at,
+      claimed_at: row.claimed_at,
+      is_claimed: row.is_claimed,
+      created_at: row.ua_created_at,
+      updated_at: row.ua_updated_at,
+      achievement: {
+        id: row.id,
+        achievement_key: row.achievement_key,
+        title: row.title,
+        description: row.description,
+        achievement_kind: row.achievement_kind,
+        character_id: row.character_id ?? null,
+        category: row.category,
+        type: row.type,
+        target_value: row.target_value,
+        rarity: row.rarity,
+        reward_gems: row.reward_gems,
+        reward_fate_coins: row.reward_fate_coins || undefined,
+        reward_packs: row.reward_packs,
+        reward_card_fragments: row.reward_card_fragments || undefined,
+        reward_border_id: row.reward_border_id ?? null,
+        reward_border: row.border_id
+          ? {
+              border_id: row.border_id,
+              name: row.border_name,
+              description: row.border_description ?? null,
+              image_url: row.border_image_url,
+              animation_key: row.border_animation_key ?? null,
+            }
+          : null,
+        icon_url: row.icon_url,
+        is_active: row.is_active,
+        sort_order: row.sort_order,
+        base_achievement_key: row.base_achievement_key,
+        tier_level: row.tier_level,
+        story_id: row.story_id,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      },
+      progress_percentage: parseFloat(row.progress_percentage),
+      can_claim: row.can_claim,
+      is_unlocked: row.is_unlocked,
+    }));
+  },
+
+  /**
    * Create or update user achievement progress
    */
   async applyProgressUpdatesBatch(
