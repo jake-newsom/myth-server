@@ -4,9 +4,15 @@ import { default as UserModel } from "../../models/user.model";
 import { GameLogic } from "../../game-engine/game.logic";
 import { v4 as uuidv4 } from "uuid";
 import { Request, Response, NextFunction } from "express";
+import { Server as IoServer } from "socket.io";
 import { GameState } from "../../types/game.types";
 import DeckService from "../../services/deck.service";
 import { DECK_CONFIG } from "../../config/constants";
+import {
+  PresenceNamespaceEvent,
+  MatchmakingFoundPayload,
+} from "../../types/socket.types";
+import { userRoom } from "../../sockets/namespace.presence";
 
 // Define interfaces for queue entries and active matches
 interface QueueEntry {
@@ -308,13 +314,39 @@ const MatchmakingController = {
           activeMatches.set(userId, newGameId);
           activeMatches.set(opponent.userId, newGameId);
 
-          // Get opponent username for response
-          const opponentUser = await UserModel.findById(opponent.userId);
+          // Look up display names for both players for the response payloads.
+          const [opponentUser, joiningUser] = await Promise.all([
+            UserModel.findById(opponent.userId),
+            UserModel.findById(userId),
+          ]);
           const opponentUsername = opponentUser
             ? opponentUser.username
             : "Opponent";
+          const joiningUsername = joiningUser
+            ? joiningUser.username
+            : "Opponent";
 
-          // Return match information to the player
+          // Push the match-found event to the user that was already
+          // waiting in the queue. Their /presence socket is the
+          // always-on transport, so they receive it immediately and
+          // don't need to poll. The HTTP response below covers the
+          // user who just joined.
+          const io = req.app.get("io") as IoServer | undefined;
+          if (io) {
+            const payload: MatchmakingFoundPayload = {
+              gameId: newGameId,
+              opponentUsername: joiningUsername,
+            };
+            io.of("/presence")
+              .to(userRoom(opponent.userId))
+              .emit(
+                PresenceNamespaceEvent.SERVER_MATCHMAKING_FOUND,
+                payload
+              );
+          }
+
+          // Return match information to the player who just joined the
+          // queue (and therefore triggered the match).
           res.status(200).json({
             status: "matched",
             gameId: newGameId,

@@ -8,6 +8,14 @@ import {
 import logger from "../utils/logger";
 
 /**
+ * Socket.IO room name used by the `/presence` namespace to group all
+ * sockets belonging to a given user. Other modules (e.g. the matchmaking
+ * controller) can target a user with
+ * `io.of("/presence").to(userRoom(userId)).emit(...)`.
+ */
+export const userRoom = (userId: string): string => `user:${userId}`;
+
+/**
  * Set up the `/presence` Socket.IO namespace. Tracks unique connected users
  * and broadcasts the live player count to all clients when anyone connects or disconnects.
  * Uses JWT-only auth (no gameId required) so clients can connect when they open the game.
@@ -42,6 +50,12 @@ export function setupPresenceNamespace(io: Server): void {
       userSocketsMap.set(userId, socketsForUser);
     }
     socketsForUser.add(socket.id);
+
+    // Join a per-user room so other parts of the server (e.g. the
+    // matchmaking controller) can target a specific user with
+    // `presenceNs.to(`user:${userId}`).emit(...)` without having to
+    // track socket ids themselves.
+    socket.join(userRoom(userId));
 
     logger.debug("[/presence] Connected", {
       userId,

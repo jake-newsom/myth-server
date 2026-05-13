@@ -36,7 +36,7 @@ const PackService = {
   async _openSinglePackCore(
     userId: string,
     setId: string,
-    setCards: CardWithAbility[]
+    setCards: CardWithAbility[],
   ): Promise<{
     selectedCards: CardWithAbility[];
     isGodPack: boolean;
@@ -80,14 +80,14 @@ const PackService = {
           userId,
           selectedCards,
           setId,
-          1 // Cost in wonder coins
+          1, // Cost in wonder coins
         );
       }
     } catch (error) {
       logger.error(
         "Error creating fate pick from pack opening",
         {},
-        error instanceof Error ? error : new Error(String(error))
+        error instanceof Error ? error : new Error(String(error)),
       );
       // Don't fail the pack opening process if fate pick creation fails
     }
@@ -121,19 +121,17 @@ const PackService = {
    */
   async _triggerCardCollectionAchievements(
     userId: string,
-    rarityCounts: Record<string, number>
+    rarityCounts: Record<string, number>,
   ): Promise<void> {
     try {
       const AchievementService = await import("./achievement.service");
       const CardModel = await import("../models/card.model");
 
       // Get updated card counts after adding cards to collection
-      const totalUniqueCards = await CardModel.default.getUserUniqueCardCount(
-        userId
-      );
-      const totalMythicCards = await CardModel.default.getUserMythicCardCount(
-        userId
-      );
+      const totalUniqueCards =
+        await CardModel.default.getUserUniqueCardCount(userId);
+      const totalMythicCards =
+        await CardModel.default.getUserMythicCardCount(userId);
       const uniqueCardsByRarity =
         await CardModel.default.getUserUniqueCardCountByRarity(userId);
       const uniqueCharactersBySetSlug =
@@ -155,7 +153,7 @@ const PackService = {
       logger.error(
         "Error processing card collection achievement events",
         {},
-        error instanceof Error ? error : new Error(String(error))
+        error instanceof Error ? error : new Error(String(error)),
       );
       // Don't fail the pack opening process if achievement processing fails
     }
@@ -163,7 +161,7 @@ const PackService = {
 
   async openPack(
     userId: string,
-    setId: string
+    setId: string,
   ): Promise<PackOpenResult | null> {
     // 1. Verify the set exists and is released
     const set = await SetModel.findById(setId);
@@ -199,7 +197,7 @@ const PackService = {
     const { selectedCards, isGodPack } = await this._openSinglePackCore(
       userId,
       setId,
-      setCards
+      setCards,
     );
 
     // 7. Invalidate user's card cache since collection changed
@@ -227,7 +225,7 @@ const PackService = {
       logger.error(
         "Error processing achievement events",
         {},
-        error instanceof Error ? error : new Error(String(error))
+        error instanceof Error ? error : new Error(String(error)),
       );
       // Don't fail the pack opening process if achievement processing fails
     }
@@ -293,12 +291,12 @@ const PackService = {
 
   selectGodPackCards(
     cards: CardWithAbility[],
-    count: number
+    count: number,
   ): CardWithAbility[] {
     // God Pack rarity distribution: 50% legendary, 20% epic, 15% rare, 15% common
     // All cards must be variant (+/++/+++)
     const godPackRarities = ["legendary", "epic", "rare", "common"];
-    const godPackWeights = [50, 20, 15, 15]; // Percentages
+    const godPackWeights = [60, 25, 10, 5]; // Percentages
     const variantTypes = ["+", "++", "+++"];
 
     // Group cards by base rarity
@@ -369,7 +367,7 @@ const PackService = {
 
   selectRandomCards(
     cards: CardWithAbility[],
-    count: number
+    count: number,
   ): CardWithAbility[] {
     // Group cards by rarity
     const cardsByRarity: { [key: string]: CardWithAbility[] } = {};
@@ -386,7 +384,7 @@ const PackService = {
         Object.entries(cardsByRarity).map(([rarity, cards]) => [
           rarity,
           cards.length,
-        ])
+        ]),
       ),
     });
 
@@ -437,7 +435,7 @@ const PackService = {
 
   async addCardsToUserCollection(
     userId: string,
-    cards: CardWithAbility[]
+    cards: CardWithAbility[],
   ): Promise<void> {
     const db = require("../config/db.config").default;
 
@@ -455,7 +453,7 @@ const PackService = {
   async logPackOpening(
     userId: string,
     setId: string,
-    cards: CardWithAbility[]
+    cards: CardWithAbility[],
   ): Promise<void> {
     const db = require("../config/db.config").default;
 
@@ -489,7 +487,7 @@ const PackService = {
 
     const totalWeight = Object.values(weights).reduce(
       (sum, weight) => sum + weight,
-      0
+      0,
     );
     let random = Math.random() * totalWeight;
 
@@ -637,7 +635,7 @@ const PackService = {
         const { selectedCards, isGodPack } = await this._openSinglePackCore(
           userId,
           setId,
-          setCards
+          setCards,
         );
 
         if (isGodPack) {
@@ -680,13 +678,13 @@ const PackService = {
         // Card collection achievements - trigger once per rarity with accumulated counts
         await this._triggerCardCollectionAchievements(
           userId,
-          totalRarityCounts
+          totalRarityCounts,
         );
       } catch (error) {
         logger.error(
           "Error processing achievement events",
           {},
-          error instanceof Error ? error : new Error(String(error))
+          error instanceof Error ? error : new Error(String(error)),
         );
         // Don't fail the pack opening process if achievement processing fails
       }
@@ -698,7 +696,7 @@ const PackService = {
         logger.error(
           "Error tracking pack opening for daily task",
           {},
-          error instanceof Error ? error : new Error(String(error))
+          error instanceof Error ? error : new Error(String(error)),
         );
         // Don't fail the pack opening process if tracking fails
       }
@@ -716,7 +714,7 @@ const PackService = {
       logger.error(
         "Error in openMultiplePacks",
         {},
-        error instanceof Error ? error : new Error(String(error))
+        error instanceof Error ? error : new Error(String(error)),
       );
       return {
         success: false,

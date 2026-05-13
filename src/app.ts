@@ -262,6 +262,12 @@ if (require.main === module) {
       },
     });
 
+    // Make the Socket.IO server reachable from HTTP controllers via
+    // `req.app.get("io")`. This lets routes (e.g. matchmaking) push events
+    // to connected clients without needing a circular dependency on the
+    // socket manager module.
+    app.set("io", io);
+
     // Try to load socket manager if it exists
     try {
       const socketManager = require("./sockets/socket.manager");

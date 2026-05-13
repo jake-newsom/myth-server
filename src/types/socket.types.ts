@@ -58,13 +58,23 @@ export enum GameNamespaceEvent {
   SERVER_GAME_END = "server:game_end",
 }
 
-// Presence namespace ("/presence") events for players-online count
+// Presence namespace ("/presence") events.
+// The presence socket is the always-on, per-user connection used while a
+// client is logged in. In addition to the players-online count, we
+// piggy-back targeted notifications (like matchmaking results) on it
+// so the client doesn't have to poll the HTTP API.
 export enum PresenceNamespaceEvent {
   SERVER_PLAYER_COUNT = "presence:player_count",
+  SERVER_MATCHMAKING_FOUND = "matchmaking:found",
 }
 
 export interface PresencePlayerCountPayload {
   count: number;
+}
+
+export interface MatchmakingFoundPayload {
+  gameId: string;
+  opponentUsername: string;
 }
 
 // Payload types for socket events

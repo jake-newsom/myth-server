@@ -825,6 +825,9 @@ export const polynesianAbilities: AbilityMap = {
 
     const emptyAdjacentTiles = getEmptyAdjacentTiles(position, state.board);
     for (const { position: tilePos, tile } of emptyAdjacentTiles) {
+      if (!tile || tile.card) {
+        continue;
+      }
       gameEvents.push(
         setTileStatus(
           tile,

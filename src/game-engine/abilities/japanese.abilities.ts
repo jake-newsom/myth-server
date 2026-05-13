@@ -34,6 +34,7 @@ import {
   removeBuffsByCondition,
   createOrUpdateDebuff,
   updateCurrentPower,
+  getEmptyAdjacentTiles,
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { flipCard } from "../game.utils";
@@ -176,34 +177,32 @@ export const japaneseAbilities: AbilityMap = {
 
     if (!position) return [];
 
-    const adjacentPositions = getAdjacentPositions(
-      position,
-      state.board.length,
-    );
-    for (const pos of adjacentPositions) {
-      const tile = getTileAtPosition(pos, state.board);
-      if (tile && !tile.card) {
-        gameEvents.push(
-          setTileStatus(
-            tile,
-            pos,
-            {
-              status: TileStatus.Cursed,
-              turns_left: 5,
-              animation_label: "web-curse",
-              power: { top: -2, bottom: -2, left: -2, right: -2 },
-              effect_duration: 3,
-              applies_to_user: getOpponentId(triggerCard.owner, state),
-              source_player_id: triggerCard.owner,
-              source_card_id: triggerCard.user_card_instance_id,
-              source_ability_id: "jorogumo_web_curse",
-            },
-            triggerCard.owner,
-            triggerCard,
-            { turnNumber: state.turn_number },
-          ),
-        );
+    const emptyAdjacentTiles = getEmptyAdjacentTiles(position, state.board);
+
+    for (const { position: tilePos, tile } of emptyAdjacentTiles) {
+      if (!tile || tile.card) {
+        continue;
       }
+      gameEvents.push(
+        setTileStatus(
+          tile,
+          tilePos,
+          {
+            status: TileStatus.Cursed,
+            turns_left: 3,
+            animation_label: "web-curse",
+            power: { top: -2, bottom: -2, left: -2, right: -2 },
+            effect_duration: 3,
+            applies_to_user: getOpponentId(triggerCard.owner, state),
+            source_player_id: triggerCard.owner,
+            source_card_id: triggerCard.user_card_instance_id,
+            source_ability_id: "jorogumo_web_curse",
+          },
+          triggerCard.owner,
+          triggerCard,
+          { turnNumber: state.turn_number },
+        ),
+      );
     }
 
     return gameEvents;
