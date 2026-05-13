@@ -80,8 +80,8 @@ const PATCHES: AssetPatch[] = [
     description: "border pack",
   },
   {
-    id: "audio-pack-2",
-    version: 2,
+    id: "audio-pack-2.1",
+    version: 3,
     type: "audio",
     r2Key: "patches/audio-patch-2.zip",
     checksum:
