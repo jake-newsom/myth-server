@@ -18,6 +18,7 @@ const allowedOrigins = new Set(
     "https://www.cardsofmyth.com",
     "https://myth-server.onrender.com",
     "http://localhost:8100", // Local dev
+    "https://localhost:8100", // Local dev (Ionic/SSL)
     "http://localhost:3000", // Local dev (alt port)
     "https://localhost", // Capacitor Android (no hostname configured)
     "capacitor://localhost", // Capacitor iOS (no hostname configured)

@@ -92,6 +92,7 @@ const allowedOrigins = new Set<string>(
     "https://www.cardsofmyth.com",
     "https://myth-server.onrender.com",
     "http://localhost:8100", // Local dev
+    "https://localhost:8100", // Local dev (Ionic/SSL)
     "http://localhost:3000", // Local dev (alt port)
     "https://localhost", // Capacitor Android (no hostname configured)
     "capacitor://localhost", // Capacitor iOS (no hostname configured)
@@ -123,7 +124,7 @@ app.use(
     origin: corsOriginCheck,
     credentials: true,
     exposedHeaders: ["X-Server-Version"], // Allow client to read custom headers
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Client-Version"],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   }),
 );
