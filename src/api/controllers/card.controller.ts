@@ -1,9 +1,11 @@
 // src/api/controllers/card.controller.ts
 import CardModel from "../../models/card.model";
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import crypto from "crypto";
 import { RarityUtils } from "../../types/card.types";
 import { redisCache } from "../../services/redis.cache.service";
+import { AuthenticatedRequest } from "../../types";
+import { catalogOptionsFromUser } from "../../utils/catalogRelease";
 
 const CardController = {
   /**
@@ -14,7 +16,7 @@ const CardController = {
    * @param {NextFunction} next - Express next middleware function
    */
   async getAllStaticCards(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> {
@@ -94,10 +96,17 @@ const CardController = {
       }
 
       const filters = { rarity, name, tag, ids: processedIds };
-      
+      const catalogOpts = catalogOptionsFromUser(req.user);
+
       // Generate cache key based on query parameters
       // Only cache when no filters are applied and limit=0 (fetch all cards)
-      const shouldCache = limitNum === 0 && !rarity && !name && !tag && !ids;
+      const shouldCache =
+        limitNum === 0 &&
+        !rarity &&
+        !name &&
+        !tag &&
+        !ids &&
+        !catalogOpts.includeUnreleased;
       const cacheKey = "cards:all";
       
       // Try to get from cache first if caching is applicable
@@ -125,7 +134,12 @@ const CardController = {
       }
 
       // Fetch from database
-      const result = await CardModel.findAllStatic(filters, pageNum, limitNum);
+      const result = await CardModel.findAllStatic(
+        filters,
+        pageNum,
+        limitNum,
+        catalogOpts
+      );
 
       // Cache the result if applicable
       if (shouldCache) {
@@ -166,7 +180,7 @@ const CardController = {
    * @param {NextFunction} next - Express next middleware function
    */
   async getStaticCardById(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> {
@@ -180,7 +194,10 @@ const CardController = {
         return;
       }
 
-      const card = await CardModel.findStaticByIdWithAbility(cardId);
+      const card = await CardModel.findStaticByIdWithAbility(
+        cardId,
+        catalogOptionsFromUser(req.user)
+      );
 
       if (!card) {
         res.status(404).json({

@@ -8,6 +8,7 @@ import StarterService from "../../services/starter.service";
 import SessionService from "../../services/session.service";
 import db from "../../config/db.config";
 import logger from "../../utils/logger";
+import { catalogOptionsFromUser } from "../../utils/catalogRelease";
 import { Request, Response, NextFunction } from "express"; // Assuming Express types
 import {
   UserCard,
@@ -101,7 +102,8 @@ const UserController = {
         return;
       }
       const ownedCardInstances = await CardModel.findInstancesByUserId(
-        req.user.user_id
+        req.user.user_id,
+        catalogOptionsFromUser(req.user)
       );
 
       // Transform CardResponse array to UserCard array

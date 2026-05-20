@@ -120,6 +120,8 @@ const DailyShopModel = {
           OR (
             COALESCE(cv.is_exclusive, false) = false
             AND cv.rarity::text <> 'legendary+++'
+            AND cv.released_at <= NOW()
+            AND ch.released_at <= NOW()
           )
         )
       ORDER BY dso.item_type, dso.slot_number;
@@ -312,6 +314,8 @@ const DailyShopModel = {
       WHERE s.name = $1 AND cv.rarity::text = $2
         AND COALESCE(cv.is_exclusive, false) = false
         AND cv.rarity::text <> 'legendary+++'
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW()
       ORDER BY ch.name;
     `;
 
@@ -330,6 +334,8 @@ const DailyShopModel = {
       WHERE cv.rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
         AND COALESCE(cv.is_exclusive, false) = false
         AND cv.rarity::text <> 'legendary+++'
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW()
       ORDER BY cv.card_variant_id;
     `;
 

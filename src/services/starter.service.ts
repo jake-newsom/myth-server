@@ -47,7 +47,9 @@ const StarterService = {
        FROM "card_variants" cv
        JOIN "characters" ch ON cv.character_id = ch.character_id
        WHERE ch.name IN (${cardNamePlaceholders}) 
-       AND cv.rarity::text NOT LIKE '%+%';`,
+       AND cv.rarity::text NOT LIKE '%+%'
+       AND cv.released_at <= NOW()
+       AND ch.released_at <= NOW();`,
       baseCardNames
     );
     const cardIdMap = new Map<string, { card_id: string; rarity: string }>(

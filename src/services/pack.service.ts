@@ -255,7 +255,9 @@ const PackService = {
       JOIN "characters" ch ON cv.character_id = ch.character_id
       LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
       WHERE ch.set_id = $1
-        AND cv.is_exclusive = false;
+        AND cv.is_exclusive = false
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW();
     `;
     const { rows } = await db.query(query, [setId]);
 
@@ -733,7 +735,9 @@ const PackService = {
       SELECT COUNT(*) as card_count 
       FROM card_variants cv 
       JOIN characters ch ON cv.character_id = ch.character_id 
-      WHERE ch.set_id = $1;
+      WHERE ch.set_id = $1
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW();
     `;
     const { rows } = await db.query(query, [setId]);
     return parseInt(rows[0]?.card_count || "0", 10);

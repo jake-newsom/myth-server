@@ -196,8 +196,11 @@ const DailyTaskService = {
       const countQuery = `
         SELECT COUNT(*)::int as total
         FROM card_variants cv
+        JOIN characters ch ON ch.character_id = cv.character_id
         WHERE cv.rarity IN ('common', 'uncommon', 'rare')
-          AND cv.is_exclusive = false;
+          AND cv.is_exclusive = false
+          AND cv.released_at <= NOW()
+          AND ch.released_at <= NOW();
       `;
       const { rows: countRows } = await db.query(countQuery);
       const total = Number(countRows[0]?.total || 0);
@@ -212,6 +215,8 @@ const DailyTaskService = {
         JOIN characters ch ON cv.character_id = ch.character_id
         WHERE cv.rarity IN ('common', 'uncommon', 'rare')
           AND cv.is_exclusive = false
+          AND cv.released_at <= NOW()
+          AND ch.released_at <= NOW()
         ORDER BY cv.card_variant_id
         LIMIT 1 OFFSET $1;
       `;

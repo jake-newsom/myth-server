@@ -88,6 +88,8 @@ export interface Character {
   special_ability_id: string | null;
   set_id?: string | null;
   tags: string[];
+  /** When this character becomes visible in the public catalog. */
+  released_at?: Date;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -104,6 +106,8 @@ export interface CardVariant {
   description?: string | null; // Variant-specific lore/art description
   attack_animation?: string;
   is_exclusive?: boolean;
+  /** When this variant becomes visible in the public catalog. */
+  released_at?: Date;
   created_at?: Date;
   updated_at?: Date;
 }

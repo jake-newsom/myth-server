@@ -198,6 +198,8 @@ class TowerGenerationService {
       JOIN characters ch ON cv.character_id = ch.character_id
       LEFT JOIN special_abilities sa ON ch.special_ability_id = sa.ability_id
       WHERE cv.rarity::text NOT LIKE '%+'
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW()
       ORDER BY ch.name
     `);
 
@@ -823,6 +825,8 @@ FLOOR NAMING REQUIREMENTS (CRITICAL):
          JOIN characters ch ON cv.character_id = ch.character_id
          WHERE LOWER(ch.name) = ANY($1::text[])
            AND cv.rarity::text NOT LIKE '%+'
+           AND cv.released_at <= NOW()
+           AND ch.released_at <= NOW()
          ORDER BY LOWER(ch.name), cv.card_variant_id`,
         [normalizedCardNames]
       );

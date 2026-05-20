@@ -134,7 +134,9 @@ const SetModel = {
       SELECT COUNT(*) as count 
       FROM "card_variants" cv 
       JOIN "characters" ch ON cv.character_id = ch.character_id 
-      WHERE ch.set_id = $1;
+      WHERE ch.set_id = $1
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW();
     `;
     const { rows } = await db.query(query, [setId]);
     return parseInt(rows[0].count, 10);

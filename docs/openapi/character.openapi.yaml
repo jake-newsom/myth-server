@@ -12,6 +12,9 @@ paths:
         Retrieve all characters and include their card art variants in a nested `variants` array.
         Character `description` stores the general mythological context, while each variant can
         include its own `description` for art/story-specific lore.
+
+        Only entries with `released_at` in the past are returned unless the request includes a
+        valid Bearer token for a user with the `admin` role.
       tags:
         - Characters
       responses:
@@ -117,6 +120,12 @@ components:
           nullable: true
         is_exclusive:
           type: boolean
+        released_at:
+          type: string
+          format: date-time
+          description: >
+            Variant is hidden from public catalog until this time (UTC).
+            Admins with a valid Bearer token see all entries regardless.
         created_at:
           type: string
           format: date-time
@@ -126,6 +135,7 @@ components:
         - rarity
         - image_url
         - is_exclusive
+        - released_at
 
     CharacterWithVariants:
       type: object
@@ -155,6 +165,11 @@ components:
           type: array
           items:
             type: string
+        released_at:
+          type: string
+          format: date-time
+          description: >
+            Character is hidden from public catalog until this time (UTC).
         created_at:
           type: string
           format: date-time

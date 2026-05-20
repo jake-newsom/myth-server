@@ -1,12 +1,15 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import CharacterModel from "../../models/character.model";
 import BorderService from "../../services/border.service";
 import { AuthenticatedRequest } from "../../types";
+import { catalogOptionsFromUser } from "../../utils/catalogRelease";
 
 const CharacterController = {
-  async getAllCharacters(req: Request, res: Response) {
+  async getAllCharacters(req: AuthenticatedRequest, res: Response) {
     try {
-      const characters = await CharacterModel.findAllWithVariants();
+      const characters = await CharacterModel.findAllWithVariants(
+        catalogOptionsFromUser(req.user)
+      );
       return res.status(200).json(characters);
     } catch (error) {
       console.error("Error getting characters:", error);

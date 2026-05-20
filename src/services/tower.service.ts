@@ -675,8 +675,11 @@ class TowerService {
     const countQuery = `
       SELECT COUNT(*)::int as total
       FROM card_variants cv
+      JOIN characters ch ON ch.character_id = cv.character_id
       WHERE cv.rarity::text = ANY($1::text[])
-        AND cv.is_exclusive = false;
+        AND cv.is_exclusive = false
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW();
     `;
     const { rows: countRows } = await db.query(countQuery, [rarityCandidates]);
     const total = Number(countRows[0]?.total || 0);
@@ -693,6 +696,8 @@ class TowerService {
       JOIN characters ch ON cv.character_id = ch.character_id
       WHERE cv.rarity::text = ANY($1::text[])
         AND cv.is_exclusive = false
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW()
       ORDER BY cv.card_variant_id
       LIMIT 1 OFFSET $2;
     `;
@@ -735,8 +740,11 @@ class TowerService {
     const countQuery = `
       SELECT COUNT(*)::int as total
       FROM card_variants cv
+      JOIN characters ch ON ch.character_id = cv.character_id
       WHERE cv.rarity::text = $1
-        AND cv.is_exclusive = false;
+        AND cv.is_exclusive = false
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW();
     `;
     const { rows: countRows } = await db.query(countQuery, [rarity]);
     const total = Number(countRows[0]?.total || 0);
@@ -751,6 +759,8 @@ class TowerService {
       JOIN characters ch ON cv.character_id = ch.character_id
       WHERE cv.rarity::text = $1
         AND cv.is_exclusive = false
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW()
       ORDER BY cv.card_variant_id
       LIMIT 1 OFFSET $2;
     `;

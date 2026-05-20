@@ -89,6 +89,16 @@ const PATCHES: AssetPatch[] = [
     size: 0,
     description: "audio pack",
   },
+  {
+    id: "cards-may-2026",
+    version: 3,
+    type: "graphics",
+    r2Key: "patches/card-patch-may-2026.zip",
+    checksum:
+      "sha256:dd787aed2f6fe5b4cba4c0377896bcb3738d3b46b2d70972d416ac7ad04e0508",
+    size: 0,
+    description: "cards update",
+  }
 ];
 
 function assetUrl(r2Key: string): string {

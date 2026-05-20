@@ -178,9 +178,12 @@ const MonthlyLoginRewardsModel = {
   async getRandomEnhancedCard(): Promise<string | null> {
     const countQuery = `
       SELECT COUNT(*)::int as total
-      FROM card_variants
-      WHERE rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
-        AND is_exclusive = false;
+      FROM card_variants cv
+      JOIN characters ch ON ch.character_id = cv.character_id
+      WHERE cv.rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
+        AND COALESCE(cv.is_exclusive, false) = false
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW();
     `;
     const { rows: countRows } = await db.query(countQuery);
     const total = Number(countRows[0]?.total || 0);
@@ -190,11 +193,14 @@ const MonthlyLoginRewardsModel = {
 
     const randomOffset = Math.floor(Math.random() * total);
     const query = `
-      SELECT card_variant_id as card_id
-      FROM card_variants
-      WHERE rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
-        AND is_exclusive = false
-      ORDER BY card_variant_id
+      SELECT cv.card_variant_id as card_id
+      FROM card_variants cv
+      JOIN characters ch ON ch.character_id = cv.character_id
+      WHERE cv.rarity::text ~ '^(common|uncommon|rare|epic|legendary)\\+{1,3}$'
+        AND COALESCE(cv.is_exclusive, false) = false
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW()
+      ORDER BY cv.card_variant_id
       LIMIT 1 OFFSET $1;
     `;
     const { rows } = await db.query(query, [randomOffset]);

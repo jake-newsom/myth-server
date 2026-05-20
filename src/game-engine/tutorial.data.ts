@@ -59,7 +59,9 @@ async function fetchCardsByName(names: string[]): Promise<Map<string, DbCardRow>
      JOIN "characters" ch ON cv.character_id = ch.character_id
      LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
      WHERE ch.name IN (${placeholders})
-       AND cv.rarity::text NOT LIKE '%+%'`,
+       AND cv.rarity::text NOT LIKE '%+%'
+       AND cv.released_at <= NOW()
+       AND ch.released_at <= NOW()`,
     names
   );
 

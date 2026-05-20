@@ -1,4 +1,8 @@
 import db, { QueryExecutor } from "../config/db.config";
+import {
+  andCatalogReleased,
+  CatalogQueryOptions,
+} from "../utils/catalogRelease";
 import { CardResponse } from "../types/api.types";
 import {
   UserCardInstance,
@@ -136,11 +140,15 @@ const CardModel = {
    * Find all card instances owned by a user
    * Joins card_variants -> characters -> special_abilities
    */
-  async findInstancesByUserId(userId: string): Promise<CardResponse[]> {
+  async findInstancesByUserId(
+    userId: string,
+    options: CatalogQueryOptions = {}
+  ): Promise<CardResponse[]> {
+    const includeUnreleased = options.includeUnreleased === true;
     const query = `
       SELECT ${USER_CARD_SELECT_COLUMNS}
       ${USER_CARD_JOINS}
-      WHERE uoc.user_id = $1
+      WHERE uoc.user_id = $1${andCatalogReleased("ch", "cv", includeUnreleased)}
       ORDER BY ch.name;
     `;
 
@@ -217,7 +225,11 @@ const CardModel = {
   /**
    * Find a card variant by ID (returns flattened card data)
    */
-  async findById(cardVariantId: string): Promise<BaseCard | null> {
+  async findById(
+    cardVariantId: string,
+    options: CatalogQueryOptions = {}
+  ): Promise<BaseCard | null> {
+    const includeUnreleased = options.includeUnreleased === true;
     const query = `
       SELECT
         cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
@@ -229,7 +241,7 @@ const CardModel = {
         ch.special_ability_id, ch.set_id, ch.tags
       FROM "card_variants" cv
       JOIN "characters" ch ON cv.character_id = ch.character_id
-      WHERE cv.card_variant_id = $1;
+      WHERE cv.card_variant_id = $1${andCatalogReleased("ch", "cv", includeUnreleased)};
     `;
     const { rows } = await db.query(query, [cardVariantId]);
     if (rows.length === 0) return null;
@@ -351,7 +363,8 @@ const CardModel = {
       ids?: string;
     } = {},
     page = 1,
-    limit = 20
+    limit = 20,
+    options: CatalogQueryOptions = {}
   ): Promise<{
     data: Omit<
       CardResponse,
@@ -366,8 +379,14 @@ const CardModel = {
 
       const offset = (page - 1) * limit;
 
+      const includeUnreleased = options.includeUnreleased === true;
+
       // Build the query with placeholders
       let whereClauses: string[] = [];
+      if (!includeUnreleased) {
+        whereClauses.push("ch.released_at <= NOW()");
+        whereClauses.push("cv.released_at <= NOW()");
+      }
       let queryParams: any[] = [];
 
       // Start the parameter index at 1
@@ -459,6 +478,10 @@ const CardModel = {
             fallbackParams.push(limit, offset);
           }
 
+          const fallbackReleased =
+            includeUnreleased
+              ? ""
+              : " AND ch.released_at <= NOW() AND cv.released_at <= NOW()";
           const fallbackQuery = `
             SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
                   ch.character_id, ch.name, ch.description, ch.type,
@@ -474,7 +497,7 @@ const CardModel = {
             FROM "card_variants" cv
             JOIN "characters" ch ON cv.character_id = ch.character_id
             LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
-            WHERE cv.card_variant_id::text = ANY($1::text[])
+            WHERE cv.card_variant_id::text = ANY($1::text[])${fallbackReleased}
             ORDER BY ch.name
             ${fallbackLimitClause};
           `;
@@ -488,7 +511,16 @@ const CardModel = {
             // Use results from fallback query instead
 
             // Get count of total matching IDs for pagination
-            const fallbackCountQuery = `SELECT COUNT(*) FROM "card_variants" WHERE card_variant_id::text = ANY($1::text[])`;
+            const fallbackCountReleased = includeUnreleased
+              ? ""
+              : ` AND cv.released_at <= NOW()
+                  AND EXISTS (
+                    SELECT 1 FROM characters ch2
+                    WHERE ch2.character_id = cv.character_id AND ch2.released_at <= NOW()
+                  )`;
+            const fallbackCountQuery = `
+              SELECT COUNT(*) FROM "card_variants" cv
+              WHERE cv.card_variant_id::text = ANY($1::text[])${fallbackCountReleased}`;
             const { rows: fallbackCountRows } = await db.query(
               fallbackCountQuery,
               [idArray]
@@ -594,7 +626,8 @@ const CardModel = {
    * Find a static card variant by ID with ability info
    */
   async findStaticByIdWithAbility(
-    cardVariantId: string
+    cardVariantId: string,
+    options: CatalogQueryOptions = {}
   ): Promise<Omit<
     CardResponse,
     "user_card_instance_id" | "level" | "xp" | "power_enhancements"
@@ -613,7 +646,7 @@ const CardModel = {
       FROM "card_variants" cv
       JOIN "characters" ch ON cv.character_id = ch.character_id
       LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
-      WHERE cv.card_variant_id = $1;
+      WHERE cv.card_variant_id = $1${andCatalogReleased("ch", "cv", options.includeUnreleased === true)};
     `;
     const { rows } = await db.query(query, [cardVariantId]);
     if (rows.length === 0) return null;
@@ -743,7 +776,11 @@ const CardModel = {
   /**
    * Find a card variant by character name (returns first match)
    */
-  async findByName(name: string): Promise<BaseCard | null> {
+  async findByName(
+    name: string,
+    options: CatalogQueryOptions = {}
+  ): Promise<BaseCard | null> {
+    const includeUnreleased = options.includeUnreleased === true;
     const query = `
       SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
              ch.character_id, ch.name, ch.description,
@@ -754,7 +791,7 @@ const CardModel = {
              ch.special_ability_id, ch.set_id, ch.tags
       FROM "card_variants" cv
       JOIN "characters" ch ON cv.character_id = ch.character_id
-      WHERE ch.name = $1
+      WHERE ch.name = $1${andCatalogReleased("ch", "cv", includeUnreleased)}
       LIMIT 1;
     `;
     const { rows } = await db.query(query, [name]);
@@ -784,10 +821,14 @@ const CardModel = {
   /**
    * Find card variants by character names (returns one variant per name)
    */
-  async findByNames(names: string[]): Promise<BaseCard[]> {
+  async findByNames(
+    names: string[],
+    options: CatalogQueryOptions = {}
+  ): Promise<BaseCard[]> {
     if (names.length === 0) {
       return [];
     }
+    const includeUnreleased = options.includeUnreleased === true;
     const query = `
       SELECT DISTINCT ON (ch.name) 
              cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
@@ -799,7 +840,7 @@ const CardModel = {
              ch.special_ability_id, ch.set_id, ch.tags
       FROM "card_variants" cv
       JOIN "characters" ch ON cv.character_id = ch.character_id
-      WHERE ch.name = ANY($1::text[])
+      WHERE ch.name = ANY($1::text[])${andCatalogReleased("ch", "cv", includeUnreleased)}
       ORDER BY ch.name, cv.rarity;
     `;
     const { rows } = await db.query(query, [names]);
@@ -835,7 +876,8 @@ const CardModel = {
       tag?: string;
     } = {},
     page = 1,
-    limit = 20
+    limit = 20,
+    options: CatalogQueryOptions = {}
   ): Promise<{
     data: CardResponse[];
     total: number;
@@ -845,8 +887,13 @@ const CardModel = {
     try {
       const { rarity, name, tag } = filters;
       const offset = (page - 1) * limit;
+      const includeUnreleased = options.includeUnreleased === true;
 
       let whereClauses: string[] = ["uoc.user_id = $1"];
+      if (!includeUnreleased) {
+        whereClauses.push("ch.released_at <= NOW()");
+        whereClauses.push("cv.released_at <= NOW()");
+      }
       let queryParams: any[] = [userId];
       let paramIndex = 2; // Start after userId
 
@@ -1059,8 +1106,11 @@ const CardModel = {
       SELECT COUNT(DISTINCT cv.card_variant_id) as count
       FROM "user_owned_cards" uoc
       JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN "characters" ch ON cv.character_id = ch.character_id
       WHERE uoc.user_id = $1
-        AND POSITION('+' IN cv.rarity::text) > 0;
+        AND POSITION('+' IN cv.rarity::text) > 0
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW();
     `;
     const { rows } = await db.query(query, [userId]);
     return parseInt(rows[0].count, 10);
@@ -1089,10 +1139,12 @@ const CardModel = {
               ON cv.card_variant_id = uoc.card_variant_id
             WHERE uoc.user_id = $1
               AND cv.character_id = ch.character_id
+              AND cv.released_at <= NOW()
+              AND ch.released_at <= NOW()
           )
         )::int AS owned_character_count
       FROM "sets" s
-      LEFT JOIN "characters" ch ON ch.set_id = s.set_id
+      LEFT JOIN "characters" ch ON ch.set_id = s.set_id AND ch.released_at <= NOW()
       GROUP BY s.name;
     `;
     const { rows } = await db.query(query, [userId]);
@@ -1117,9 +1169,12 @@ const CardModel = {
         COUNT(*) as count
       FROM "user_owned_cards" uoc
       JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN "characters" ch ON cv.character_id = ch.character_id
       WHERE uoc.user_id = $1
         AND uoc.level >= 2
         AND cv.rarity IN ('rare', 'epic', 'legendary')
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW()
       GROUP BY cv.rarity, uoc.level;
     `;
     const { rows } = await db.query(query, [userId]);
@@ -1173,7 +1228,10 @@ const CardModel = {
         COUNT(DISTINCT cv.card_variant_id) as count
       FROM "user_owned_cards" uoc
       JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN "characters" ch ON cv.character_id = ch.character_id
       WHERE uoc.user_id = $1
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW()
       GROUP BY base_rarity;
     `;
     const { rows } = await db.query(query, [userId]);
@@ -1199,7 +1257,11 @@ const CardModel = {
   /**
    * Find all variants for a specific character
    */
-  async findVariantsByCharacterId(characterId: string): Promise<BaseCard[]> {
+  async findVariantsByCharacterId(
+    characterId: string,
+    options: CatalogQueryOptions = {}
+  ): Promise<BaseCard[]> {
+    const includeUnreleased = options.includeUnreleased === true;
     const query = `
       SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
              ch.name, ch.description,
@@ -1210,7 +1272,7 @@ const CardModel = {
              ch.special_ability_id, ch.set_id, ch.tags
       FROM "card_variants" cv
       JOIN "characters" ch ON cv.character_id = ch.character_id
-      WHERE cv.character_id = $1
+      WHERE cv.character_id = $1${andCatalogReleased("ch", "cv", includeUnreleased)}
       ORDER BY cv.rarity;
     `;
     const { rows } = await db.query(query, [characterId]);
@@ -1239,8 +1301,10 @@ const CardModel = {
    * Find all variants for a character by name
    */
   async findVariantsByCharacterName(
-    characterName: string
+    characterName: string,
+    options: CatalogQueryOptions = {}
   ): Promise<BaseCard[]> {
+    const includeUnreleased = options.includeUnreleased === true;
     const query = `
       SELECT cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
              ch.character_id, ch.name, ch.description,
@@ -1251,7 +1315,7 @@ const CardModel = {
              ch.special_ability_id, ch.set_id, ch.tags
       FROM "card_variants" cv
       JOIN "characters" ch ON cv.character_id = ch.character_id
-      WHERE ch.name = $1
+      WHERE ch.name = $1${andCatalogReleased("ch", "cv", includeUnreleased)}
       ORDER BY cv.rarity;
     `;
     const { rows } = await db.query(query, [characterName]);

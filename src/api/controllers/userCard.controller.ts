@@ -5,6 +5,7 @@ import { redisCache } from "../../services/redis.cache.service";
 import { cacheInvalidation } from "../../services/cache.invalidation.service";
 import BorderService from "../../services/border.service";
 import logger from "../../utils/logger";
+import { catalogOptionsFromUser } from "../../utils/catalogRelease";
 
 export const getAllUserCards = async (
   req: AuthenticatedRequest,
@@ -45,7 +46,8 @@ export const getAllUserCards = async (
       userId,
       filters,
       pageNumber,
-      limitNumber
+      limitNumber,
+      catalogOptionsFromUser(req.user)
     );
 
     // Cache the result if applicable (30 minutes)

@@ -1,12 +1,13 @@
 // src/api/routes/card.routes.ts
-import express, { Router } from "express";
+import { Router } from "express";
 import CardController from "../controllers/card.controller";
+import optionalAuth from "../middlewares/optionalAuth.middleware";
 
 // Create router instance
 const router = Router();
 
-// Public endpoints for static card data - no authentication required
-router.get("/", CardController.getAllStaticCards);
-router.get("/:cardId", CardController.getStaticCardById);
+// Optional auth: admins with a valid token see unreleased catalog entries
+router.get("/", optionalAuth, CardController.getAllStaticCards);
+router.get("/:cardId", optionalAuth, CardController.getStaticCardById);
 
 export default router;
