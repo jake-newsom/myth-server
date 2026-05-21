@@ -81,6 +81,11 @@ export interface Player {
   deck_effect_state?: DeckEffectState;
 }
 
+export interface MulliganPlayerState {
+  committed: boolean;
+  replaced_count: number;
+}
+
 export interface GameState {
   board: GameBoard;
   player1: Player;
@@ -99,6 +104,11 @@ export interface GameState {
   consecutive_passes?: number;
   // Cache for quick lookup of hydrated card instance details by user_card_instance_id
   hydrated_card_data_cache?: Record<string, InGameCard>;
+  mulligan_state?: {
+    player1: MulliganPlayerState;
+    player2: MulliganPlayerState;
+    deadline_ms?: number;
+  };
 }
 
 export interface GameAction {
