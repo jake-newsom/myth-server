@@ -56,6 +56,7 @@ export enum GameNamespaceEvent {
   SERVER_START_TURN = "server:start_turn",
   SERVER_EVENTS = "server:events",
   SERVER_GAME_END = "server:game_end",
+  SERVER_MULLIGAN_START = "server:mulligan_start",
 }
 
 // Presence namespace ("/presence") events.
@@ -84,9 +85,15 @@ export interface JoinGamePayload {
 
 export interface GameActionPayload {
   gameId: string;
-  actionType: "placeCard" | "endTurn" | "surrender" | "forcePass";
+  actionType: "placeCard" | "endTurn" | "surrender" | "forcePass" | "mulligan";
   user_card_instance_id?: string;
   position?: BoardPosition;
+  replaced_card_instance_ids?: string[];
+}
+
+export interface ServerMulliganStartPayload {
+  deadline_ms: number;
+  duration_seconds: number;
 }
 
 export interface MatchmakingJoinPayload {
