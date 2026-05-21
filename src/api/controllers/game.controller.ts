@@ -331,6 +331,14 @@ class GameController {
       let updatedGameState: GameState = _.cloneDeep(currentGameState); // Start with a copy for modifications by GameLogic
       let events: BaseGameEvent[] = [];
 
+      if (
+        currentGameState.status === GameStatus.MULLIGAN &&
+        action.action_type !== "mulligan"
+      ) {
+        res.status(400).json({ error: "Game is in mulligan phase" });
+        return;
+      }
+
       switch (action.action_type) {
         case "placeCard":
           if (!action.user_card_instance_id || !action.position) {
@@ -388,6 +396,27 @@ class GameController {
           updatedGameState = forcePassResult.state;
           events.push(...forcePassResult.events);
           break;
+
+        case "mulligan": {
+          if (currentGameState.status !== GameStatus.MULLIGAN) {
+            res.status(400).json({ error: "Mulligan phase has ended" });
+            return;
+          }
+          const replaced: string[] =
+            (action as any).replaced_card_instance_ids ?? [];
+          if (!Array.isArray(replaced) || replaced.length > MAX_MULLIGAN_REPLACEMENTS) {
+            res.status(400).json({
+              error: `replaced_card_instance_ids must be an array of at most ${MAX_MULLIGAN_REPLACEMENTS} ids`,
+            });
+            return;
+          }
+          const mulliganResult = applyPlayerMulligan(currentGameState, userId, replaced);
+          updatedGameState = mulliganResult.state;
+          events.push(...mulliganResult.events);
+          const finalizeResult = finalizeMulliganIfReady(updatedGameState);
+          updatedGameState = finalizeResult.state;
+          break;
+        }
 
         default:
           res.status(400).json({ error: "Invalid action type" });
@@ -570,6 +599,12 @@ class GameController {
       // Validate that it's the AI's turn
       if (currentGameState.current_player_id !== AI_PLAYER_ID) {
         res.status(400).json({ error: "Not AI's turn" });
+        return;
+      }
+
+      // Validate game is not in mulligan phase
+      if (currentGameState.status === GameStatus.MULLIGAN) {
+        res.status(400).json({ error: "Game is in mulligan phase" });
         return;
       }
 

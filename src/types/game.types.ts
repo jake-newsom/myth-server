@@ -113,9 +113,10 @@ export interface GameState {
 
 export interface GameAction {
   game_id: string;
-  action_type: "placeCard" | "endTurn" | "surrender" | "forcePass";
+  action_type: "placeCard" | "endTurn" | "surrender" | "forcePass" | "mulligan";
   user_card_instance_id?: string; // ID of the UserCardInstance being played
   position?: BoardPosition;
+  replaced_card_instance_ids?: string[]; // For mulligan action
 }
 
 export interface AbilityEffect {
