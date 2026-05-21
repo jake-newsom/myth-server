@@ -13,6 +13,7 @@ import {
   applyPlayerMulligan,
   finalizeMulliganIfReady,
   MULLIGAN_DURATION_SECONDS,
+  MAX_MULLIGAN_REPLACEMENTS,
 } from "../game-engine/game.mulligan";
 
 import { TurnManager } from "./turn.manager";
@@ -487,8 +488,33 @@ export function setupGameNamespace(io: Server): void {
             return;
           }
 
-          // Validate that the game is still active
-          if (gameRecord.game_status !== GameStatus.ACTIVE) {
+          // Guard: non-mulligan actions are blocked during MULLIGAN phase
+          if (
+            gameRecord.game_state.status === GameStatus.MULLIGAN &&
+            actionType !== "mulligan"
+          ) {
+            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
+              message: "Game is in mulligan phase",
+            });
+            return;
+          }
+
+          // Guard: mulligan action is blocked when not in MULLIGAN phase
+          if (
+            actionType === "mulligan" &&
+            gameRecord.game_state.status !== GameStatus.MULLIGAN
+          ) {
+            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
+              message: "Mulligan phase has ended",
+            });
+            return;
+          }
+
+          // Validate that the game is still active (for non-mulligan actions)
+          if (
+            gameRecord.game_status !== GameStatus.ACTIVE &&
+            gameRecord.game_state.status !== GameStatus.MULLIGAN
+          ) {
             socket.emit(GameNamespaceEvent.SERVER_ERROR, {
               message: `Game is not active (status: ${gameRecord.game_status})`,
             });
@@ -525,6 +551,19 @@ export function setupGameNamespace(io: Server): void {
               events = result.events;
             } else if (actionType === "surrender") {
               nextState = await GameLogic.surrender(nextState, userId);
+            } else if (actionType === "mulligan") {
+              const replaced: string[] =
+                (actionPayload as any).replaced_card_instance_ids ?? [];
+              if (!Array.isArray(replaced) || replaced.length > MAX_MULLIGAN_REPLACEMENTS) {
+                socket.emit(GameNamespaceEvent.SERVER_ERROR, {
+                  message: `replaced_card_instance_ids must be an array of ≤ ${MAX_MULLIGAN_REPLACEMENTS}`,
+                });
+                return;
+              }
+              const r = applyPlayerMulligan(nextState, userId, replaced);
+              nextState = r.state;
+              events.push(...r.events);
+              nextState = finalizeMulliganIfReady(nextState).state;
             } else {
               socket.emit(GameNamespaceEvent.SERVER_ERROR, {
                 message: "Invalid actionType",
@@ -559,7 +598,26 @@ export function setupGameNamespace(io: Server): void {
 
           // Timer & turn management
           const meta = activeGames.get(gameId);
-          if (meta && meta.turnManager) {
+
+          if (actionType === "mulligan") {
+            const transitionedToActive = nextState.status === GameStatus.ACTIVE;
+            if (transitionedToActive && meta) {
+              if (meta.mulliganTimer) {
+                clearTimeout(meta.mulliganTimer);
+                meta.mulliganTimer = null;
+              }
+              if (!meta.turnManager) {
+                meta.turnManager = new TurnManager(
+                  gameNs,
+                  roomName,
+                  nextState.current_player_id,
+                  meta.playerIds,
+                  makeOnTurnTimeout(gameId, roomName, meta)
+                );
+                meta.turnManager.startTurn(nextState.current_player_id, true);
+              }
+            }
+          } else if (meta && meta.turnManager) {
             meta.turnManager.onPlayerAction(userId);
 
             if (nextState.status === GameStatus.COMPLETED) {
