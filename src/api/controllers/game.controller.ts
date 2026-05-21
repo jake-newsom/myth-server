@@ -1,6 +1,12 @@
 import { Request, Response } from "express";
 import { GameLogic, GameStatus } from "../../game-engine/game.logic";
 import { AILogic } from "../../game-engine/ai.logic";
+import {
+  applyPlayerMulligan,
+  chooseAIMulligan,
+  finalizeMulliganIfReady,
+  MAX_MULLIGAN_REPLACEMENTS,
+} from "../../game-engine/game.mulligan";
 // import { AbilityRegistry } from "../../game-engine/ability.registry";
 import { GameState, GameAction } from "../../types/game.types";
 import * as validators from "../../game-engine/game.validators";
@@ -141,8 +147,14 @@ class GameController {
         initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
       }
 
-      // Set the final game state (no automatic AI moves)
-      let finalGameState = initialGameState;
+      // AI auto-commits its mulligan at game creation (player2 is always AI in solo).
+      const aiReplacedIds = chooseAIMulligan(initialGameState, AI_PLAYER_ID);
+      const aiMulliganResult = applyPlayerMulligan(
+        initialGameState,
+        AI_PLAYER_ID,
+        aiReplacedIds,
+      );
+      let finalGameState = aiMulliganResult.state;
       let events: BaseGameEvent[] = [];
 
       // 5. Create game record in database
