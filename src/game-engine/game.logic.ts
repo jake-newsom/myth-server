@@ -173,7 +173,8 @@ export class GameLogic {
     player1UserCardInstanceIds: string[], // Array of UserCardInstance IDs
     player2UserCardInstanceIds: string[], // Array of UserCardInstance IDs for AI or P2
     player1UserId: string,
-    player2UserId = "00000000-0000-0000-0000-000000000000"
+    player2UserId = "00000000-0000-0000-0000-000000000000",
+    options: { isTutorial?: boolean } = {}
   ): Promise<GameState> {
     const shuffleDeck = (deck: string[]): string[] => _.shuffle(deck);
     const p1DeckShuffled = shuffleDeck([...player1UserCardInstanceIds]);
@@ -228,17 +229,27 @@ export class GameLogic {
       score: 0,
     };
 
+    const isTutorial = options.isTutorial ?? false;
+
     return {
       board,
       player1,
       player2,
       current_player_id: player1UserId,
       turn_number: 1,
-      status: GameStatus.ACTIVE,
+      status: isTutorial ? GameStatus.ACTIVE : GameStatus.MULLIGAN,
       max_cards_in_hand: 10,
       initial_cards_to_draw: initialHandSize,
       hydrated_card_data_cache,
-      winner: null, // Initialize with no winner
+      winner: null,
+      ...(isTutorial
+        ? {}
+        : {
+            mulligan_state: {
+              player1: { committed: false, replaced_count: 0 },
+              player2: { committed: false, replaced_count: 0 },
+            },
+          }),
     };
   }
 
