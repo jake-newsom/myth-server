@@ -19,6 +19,12 @@ import {
 import DeckService from "./deck.service";
 import { GameLogic } from "../game-engine/game.logic";
 import { AI_PLAYER_ID } from "../api/controllers/game.controller";
+import {
+  applyPlayerMulligan,
+  bootstrapSoloMulliganForClient,
+  chooseAIMulligan,
+} from "../game-engine/game.mulligan";
+import { clientSupportsMulligan } from "../utils/clientVersion";
 
 // Constants for reward calculation
 const GROWTH_RATE = 1.06; // +6% every 10 floors
@@ -336,7 +342,8 @@ class TowerService {
    */
   async startTowerGame(
     userId: string,
-    playerDeckId: string
+    playerDeckId: string,
+    clientVersion?: string
   ): Promise<TowerGameStartResponse> {
     const client = await db.getClient();
 
@@ -406,6 +413,22 @@ class TowerService {
         initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
       }
 
+      // AI auto-commits its mulligan at game creation (player2 is always AI in tower).
+      const aiReplacedIds = chooseAIMulligan(initialGameState, AI_PLAYER_ID);
+      const aiMulliganResult = applyPlayerMulligan(
+        initialGameState,
+        AI_PLAYER_ID,
+        aiReplacedIds,
+      );
+      let finalGameState = aiMulliganResult.state;
+      const supportsMulliganUi = clientSupportsMulligan(clientVersion);
+      const legacyBootstrap = bootstrapSoloMulliganForClient(
+        finalGameState,
+        userId,
+        supportsMulliganUi
+      );
+      finalGameState = legacyBootstrap.state;
+
       // Create game record with floor_number
       const createdGame = await this.createTowerGameRecord(
         userId,
@@ -413,7 +436,7 @@ class TowerService {
         playerDeckId,
         floor.ai_deck_id,
         floorNumber,
-        initialGameState
+        finalGameState
       );
 
       // Get AI deck info for preview and opponent mythology in parallel

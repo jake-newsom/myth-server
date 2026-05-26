@@ -93,6 +93,7 @@ export enum GameStatus {
   COMPLETED = "completed",
   ABORTED = "aborted",
   REWARDED = "rewarded",
+  MULLIGAN = "mulligan",
 }
 
 export type TriggerContext = {

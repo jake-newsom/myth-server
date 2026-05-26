@@ -23,6 +23,7 @@
     "test-rate-limit": "node tests/rate-limit.test.js",
     "test-ai-drawing": "node tests/ai-card-drawing.test.js",
     "test:abilities": "node --test -r ts-node/register tests/game-engine/abilities.edge.test.ts",
+    "test:mulligan": "node --test -r ts-node/register tests/game-engine/game.mulligan.test.ts",
     "test:ai-v2": "node --test -r ts-node/register src/game-engine/__tests__/simulation.rng.test.ts src/game-engine/__tests__/ai.rules.engine.test.ts src/game-engine/__tests__/ai.unified-score.test.ts src/game-engine/__tests__/ai.regression-packs.test.ts src/game-engine/__tests__/ai.move-selection.test.ts",
     "benchmark:ai": "node -r ts-node/register scripts/ai-selfplay-benchmark.ts",
     "gate:ai-rollout": "node -r ts-node/register scripts/ai-rollout-gate.ts",

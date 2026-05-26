@@ -56,6 +56,7 @@ export enum GameNamespaceEvent {
   SERVER_START_TURN = "server:start_turn",
   SERVER_EVENTS = "server:events",
   SERVER_GAME_END = "server:game_end",
+  SERVER_MULLIGAN_START = "server:mulligan_start",
 }
 
 // Presence namespace ("/presence") events.
@@ -66,6 +67,14 @@ export enum GameNamespaceEvent {
 export enum PresenceNamespaceEvent {
   SERVER_PLAYER_COUNT = "presence:player_count",
   SERVER_MATCHMAKING_FOUND = "matchmaking:found",
+  CHALLENGE_INCOMING = "challenge:incoming",
+  CHALLENGE_ACCEPTED = "challenge:accepted",
+  CHALLENGE_DECLINED = "challenge:declined",
+  CHALLENGE_DECK_SELECTION_REQUIRED = "challenge:deck_selection_required",
+  CHALLENGE_DECK_CONFIRMED = "challenge:deck_confirmed",
+  CHALLENGE_READY = "challenge:ready",
+  CHALLENGE_EXPIRED = "challenge:expired",
+  CHALLENGE_CANCELLED = "challenge:cancelled",
 }
 
 export interface PresencePlayerCountPayload {
@@ -77,6 +86,46 @@ export interface MatchmakingFoundPayload {
   opponentUsername: string;
 }
 
+export interface ChallengeIncomingPayload {
+  challengeId: string;
+  challengerId: string;
+  challengerUsername: string;
+  expiresAt: number;
+}
+
+export interface ChallengeAcceptedPayload {
+  challengeId: string;
+  opponentId: string;
+  opponentUsername: string;
+}
+
+export interface ChallengeDeclinedPayload {
+  challengeId: string;
+}
+
+export interface ChallengeDeckSelectionRequiredPayload {
+  challengeId: string;
+}
+
+export interface ChallengeDeckConfirmedPayload {
+  challengeId: string;
+  userId: string;
+}
+
+export interface ChallengeReadyPayload {
+  challengeId: string;
+  gameId: string;
+}
+
+export interface ChallengeExpiredPayload {
+  challengeId: string;
+}
+
+export interface ChallengeCancelledPayload {
+  challengeId: string;
+  cancelledBy: string;
+}
+
 // Payload types for socket events
 export interface JoinGamePayload {
   gameId: string;
@@ -84,9 +133,15 @@ export interface JoinGamePayload {
 
 export interface GameActionPayload {
   gameId: string;
-  actionType: "placeCard" | "endTurn" | "surrender" | "forcePass";
+  actionType: "placeCard" | "endTurn" | "surrender" | "forcePass" | "mulligan";
   user_card_instance_id?: string;
   position?: BoardPosition;
+  replaced_card_instance_ids?: string[];
+}
+
+export interface ServerMulliganStartPayload {
+  deadline_ms: number;
+  duration_seconds: number;
 }
 
 export interface MatchmakingJoinPayload {

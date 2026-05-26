@@ -1,6 +1,18 @@
 import { Request, Response } from "express";
 import { GameLogic, GameStatus } from "../../game-engine/game.logic";
 import { AILogic } from "../../game-engine/ai.logic";
+import {
+  applyPlayerMulligan,
+  bootstrapSoloMulliganForClient,
+  chooseAIMulligan,
+  finalizeMulliganIfReady,
+  MAX_MULLIGAN_REPLACEMENTS,
+  resolveLegacyMulliganBeforeAction,
+} from "../../game-engine/game.mulligan";
+import {
+  clientSupportsMulligan,
+  getClientVersionFromHeader,
+} from "../../utils/clientVersion";
 // import { AbilityRegistry } from "../../game-engine/ability.registry";
 import { GameState, GameAction } from "../../types/game.types";
 import * as validators from "../../game-engine/game.validators";
@@ -33,6 +45,7 @@ import {
 } from "../../game-engine/tutorial.data";
 import { resolveAIDifficulty } from "../../game-engine/ai.difficulty";
 import { DECK_CONFIG } from "../../config/constants";
+import ChallengeService from "../../services/challenge.service";
 
 // Initialize ability registry
 // AbilityRegistry.initialize();
@@ -58,6 +71,14 @@ class GameController {
 
       if (!userId) {
         res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      if (ChallengeService.hasActiveChallengeLock(userId)) {
+        res.status(409).json({
+          error:
+            "You have a pending challenge. Cancel it before starting another game.",
+        });
         return;
       }
 
@@ -141,9 +162,26 @@ class GameController {
         initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
       }
 
-      // Set the final game state (no automatic AI moves)
-      let finalGameState = initialGameState;
+      // AI auto-commits its mulligan at game creation (player2 is always AI in solo).
+      const aiReplacedIds = chooseAIMulligan(initialGameState, AI_PLAYER_ID);
+      const aiMulliganResult = applyPlayerMulligan(
+        initialGameState,
+        AI_PLAYER_ID,
+        aiReplacedIds,
+      );
+      let finalGameState = aiMulliganResult.state;
       let events: BaseGameEvent[] = [];
+
+      const supportsMulliganUi = clientSupportsMulligan(
+        getClientVersionFromHeader(req.headers)
+      );
+      const legacyBootstrap = bootstrapSoloMulliganForClient(
+        finalGameState,
+        userId,
+        supportsMulliganUi
+      );
+      finalGameState = legacyBootstrap.state;
+      events.push(...legacyBootstrap.events);
 
       // 5. Create game record in database
       const createdGameResponse: CreateGameResponse =
@@ -313,11 +351,39 @@ class GameController {
         return;
       }
 
-      const currentGameState: GameState = gameRecord.game_state; // Already an object
+      let currentGameState: GameState = gameRecord.game_state; // Already an object
 
       // Process the action based on action_type
       let updatedGameState: GameState = _.cloneDeep(currentGameState); // Start with a copy for modifications by GameLogic
       let events: BaseGameEvent[] = [];
+
+      const supportsMulliganUi = clientSupportsMulligan(
+        getClientVersionFromHeader(req.headers)
+      );
+      const legacyResolve = resolveLegacyMulliganBeforeAction(
+        currentGameState,
+        userId,
+        supportsMulliganUi
+      );
+      if (legacyResolve.events.length > 0) {
+        currentGameState = legacyResolve.state;
+        updatedGameState = _.cloneDeep(currentGameState);
+        events.push(...legacyResolve.events);
+        await GameService.updateGameAfterAction(
+          gameId,
+          currentGameState,
+          currentGameState.status,
+          currentGameState.winner ?? null
+        );
+      }
+
+      if (
+        currentGameState.status === GameStatus.MULLIGAN &&
+        action.action_type !== "mulligan"
+      ) {
+        res.status(400).json({ error: "Game is in mulligan phase" });
+        return;
+      }
 
       switch (action.action_type) {
         case "placeCard":
@@ -376,6 +442,27 @@ class GameController {
           updatedGameState = forcePassResult.state;
           events.push(...forcePassResult.events);
           break;
+
+        case "mulligan": {
+          if (currentGameState.status !== GameStatus.MULLIGAN) {
+            res.status(400).json({ error: "Mulligan phase has ended" });
+            return;
+          }
+          const replaced: string[] =
+            (action as any).replaced_card_instance_ids ?? [];
+          if (!Array.isArray(replaced) || replaced.length > MAX_MULLIGAN_REPLACEMENTS) {
+            res.status(400).json({
+              error: `replaced_card_instance_ids must be an array of at most ${MAX_MULLIGAN_REPLACEMENTS} ids`,
+            });
+            return;
+          }
+          const mulliganResult = applyPlayerMulligan(currentGameState, userId, replaced);
+          updatedGameState = mulliganResult.state;
+          events.push(...mulliganResult.events);
+          const finalizeResult = finalizeMulliganIfReady(updatedGameState);
+          updatedGameState = finalizeResult.state;
+          break;
+        }
 
         default:
           res.status(400).json({ error: "Invalid action type" });
@@ -558,6 +645,12 @@ class GameController {
       // Validate that it's the AI's turn
       if (currentGameState.current_player_id !== AI_PLAYER_ID) {
         res.status(400).json({ error: "Not AI's turn" });
+        return;
+      }
+
+      // Validate game is not in mulligan phase
+      if (currentGameState.status === GameStatus.MULLIGAN) {
+        res.status(400).json({ error: "Game is in mulligan phase" });
         return;
       }
 
