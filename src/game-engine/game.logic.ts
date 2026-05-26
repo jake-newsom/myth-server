@@ -297,10 +297,6 @@ export class GameLogic {
       );
       if (!canPlace) throw new Error(errorMessage);
 
-      // Apply Norse deck effect BEFORE card is placed (checks if opponent leads)
-      // This modifies playedCardData in place with a +1 buff if conditions are met
-      events.push(...applyNorseDeckEffect(newState, playerId, playedCardData));
-
       // Get existing tile effect before placing the card
       const existingTileEffect =
         newState.board[position.y][position.x]?.tile_effect;
@@ -596,6 +592,9 @@ export class GameLogic {
       newState.current_player_id === newState.player1.user_id
         ? newState.player2.user_id
         : newState.player1.user_id;
+
+    // Start-of-turn Norse deck effect: if behind, buff a random card in hand.
+    events.push(...applyNorseDeckEffect(newState, newState.current_player_id));
 
     // Track events to detect terrain additions for deck effects
     const eventsBeforeTurnEnd = events.length;

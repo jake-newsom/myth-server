@@ -14,7 +14,10 @@ import {
   finalizeMulliganIfReady,
   MULLIGAN_DURATION_SECONDS,
   MAX_MULLIGAN_REPLACEMENTS,
+  resolveLegacyMulliganBeforeAction,
+  skipMulliganPhase,
 } from "../game-engine/game.mulligan";
+import { clientSupportsMulligan } from "../utils/clientVersion";
 
 import { TurnManager } from "./turn.manager";
 import { GameLogic, GameStatus } from "../game-engine/game.logic";
@@ -26,6 +29,13 @@ import {
 } from "../api/controllers/matchmaking.controller";
 import { sanitizeGameStateForPlayer } from "../utils/sanitize";
 import logger from "../utils/logger";
+
+// Users with an active /game namespace socket connection.
+const gameNamespaceConnectedUsers = new Set<string>();
+
+export function getGameNamespaceConnectedUserIds(): string[] {
+  return Array.from(gameNamespaceConnectedUsers);
+}
 
 /**
  * Set up the `/game` Socket.IO namespace. Handles authentication and initial
@@ -41,16 +51,21 @@ export function setupGameNamespace(io: Server): void {
   gameNs.use((socket, next) => socketAuthMiddleware(socket as any, next));
 
   // Store per-game metadata (players, turn manager, etc.)
-  const activeGames: Map<
-    string,
-    {
-      playerIds: [string, string];
-      turnManager: TurnManager | null;
-      mulliganTimer: NodeJS.Timeout | null;
-      graceTimers: Map<string, NodeJS.Timeout>; // userId -> timeout
-      actionLock: Promise<void>; // mutex for serializing actions
-    }
-  > = new Map();
+  type GameRoomMeta = {
+    playerIds: [string, string];
+    turnManager: TurnManager | null;
+    mulliganTimer: NodeJS.Timeout | null;
+    graceTimers: Map<string, NodeJS.Timeout>;
+    clientVersions: Map<string, string | undefined>;
+    actionLock: Promise<void>;
+  };
+
+  const activeGames: Map<string, GameRoomMeta> = new Map();
+
+  const bothPlayersSupportMulligan = (meta: GameRoomMeta): boolean =>
+    meta.playerIds.every((pid) =>
+      clientSupportsMulligan(meta.clientVersions.get(pid))
+    );
 
   /**
    * Acquire a per-game lock to serialize action processing.
@@ -96,6 +111,39 @@ export function setupGameNamespace(io: Server): void {
     }
   }
 
+  async function hydrateMissingHandCardsForPlayer(
+    state: any,
+    playerId: string
+  ): Promise<void> {
+    const player =
+      state.player1?.user_id === playerId
+        ? state.player1
+        : state.player2?.user_id === playerId
+          ? state.player2
+          : null;
+
+    if (!player) return;
+
+    const cache = state.hydrated_card_data_cache ?? {};
+    const missingIds = (player.hand ?? []).filter(
+      (cardId: string) => !!cardId && !cache[cardId]
+    );
+
+    if (!missingIds.length) return;
+
+    const hydratedMap = await GameLogic.hydrateCardInstances(
+      missingIds,
+      playerId.startsWith("AI_") ? undefined : playerId
+    );
+
+    if (!state.hydrated_card_data_cache) {
+      state.hydrated_card_data_cache = {};
+    }
+    for (const [cardId, cardData] of hydratedMap.entries()) {
+      state.hydrated_card_data_cache[cardId] = cardData;
+    }
+  }
+
   /**
    * Returns the on-turn-timeout callback used by TurnManager. Extracted so both
    * the normal bootstrap and `onMulliganExpire` can share the same behavior.
@@ -103,7 +151,7 @@ export function setupGameNamespace(io: Server): void {
   function makeOnTurnTimeout(
     gameId: string,
     roomName: string,
-    meta: { playerIds: [string, string]; turnManager: TurnManager | null; mulliganTimer: NodeJS.Timeout | null; graceTimers: Map<string, NodeJS.Timeout>; actionLock: Promise<void> }
+    meta: GameRoomMeta
   ) {
     return async (timedOutPlayerId: string) => {
       const releaseLock = await acquireActionLock(gameId);
@@ -258,6 +306,7 @@ export function setupGameNamespace(io: Server): void {
       }
     }
     userGameSocketMap.set(userId, socket.id);
+    gameNamespaceConnectedUsers.add(userId);
 
     /**
      * client:join_game — Client requests to enter a game room once the REST
@@ -384,6 +433,11 @@ export function setupGameNamespace(io: Server): void {
         }
 
         /* ---------------- TurnManager bootstrap ---------------- */
+        const handshakeClientVersion =
+          typeof authedSocket.handshake.auth?.clientVersion === "string"
+            ? authedSocket.handshake.auth.clientVersion
+            : undefined;
+
         let meta = activeGames.get(gameId);
         if (!meta) {
           meta = {
@@ -391,10 +445,12 @@ export function setupGameNamespace(io: Server): void {
             turnManager: null,
             mulliganTimer: null,
             graceTimers: new Map(),
+            clientVersions: new Map(),
             actionLock: Promise.resolve(), // Initialize with resolved promise
           };
           activeGames.set(gameId, meta);
         }
+        meta.clientVersions.set(userId, handshakeClientVersion);
 
         // If both players are present in the room, bootstrap the next phase
         const room = gameNs.adapter.rooms.get(roomName);
@@ -405,32 +461,79 @@ export function setupGameNamespace(io: Server): void {
           const currentStatus = freshRecord.game_state.status;
 
           if (currentStatus === GameStatus.MULLIGAN && !meta.mulliganTimer) {
-            // Set deadline, persist, emit start event, arm 30s timer.
-            const deadlineMs = Date.now() + MULLIGAN_DURATION_SECONDS * 1000;
-            const stateWithDeadline = {
-              ...freshRecord.game_state,
-              mulligan_state: {
-                ...freshRecord.game_state.mulligan_state!,
-                deadline_ms: deadlineMs,
-              },
-            };
-            await gameService.updateGameAfterAction(
-              gameId,
-              stateWithDeadline,
-              GameStatus.MULLIGAN,
-              null
-            );
-            gameNs.to(roomName).emit(GameNamespaceEvent.SERVER_MULLIGAN_START, {
-              deadline_ms: deadlineMs,
-              duration_seconds: MULLIGAN_DURATION_SECONDS,
-            });
-            meta.mulliganTimer = setTimeout(
-              () =>
-                onMulliganExpire(gameId, roomName).catch((err) =>
-                  console.error("[namespace.game] onMulliganExpire error", err)
-                ),
-              MULLIGAN_DURATION_SECONDS * 1000
-            );
+            const releaseLock = await acquireActionLock(gameId);
+            try {
+              const latest = await gameService.getRawGameRecord(
+                gameId,
+                meta.playerIds[0]
+              );
+              if (!latest || latest.game_state.status !== GameStatus.MULLIGAN) {
+                return;
+              }
+
+              if (bothPlayersSupportMulligan(meta)) {
+                // Both clients support mulligan — run timed phase for new clients.
+                const deadlineMs =
+                  Date.now() + MULLIGAN_DURATION_SECONDS * 1000;
+                const stateWithDeadline = {
+                  ...latest.game_state,
+                  mulligan_state: {
+                    ...latest.game_state.mulligan_state!,
+                    deadline_ms: deadlineMs,
+                  },
+                };
+                await gameService.updateGameAfterAction(
+                  gameId,
+                  stateWithDeadline,
+                  GameStatus.MULLIGAN,
+                  null
+                );
+                gameNs.to(roomName).emit(GameNamespaceEvent.SERVER_MULLIGAN_START, {
+                  deadline_ms: deadlineMs,
+                  duration_seconds: MULLIGAN_DURATION_SECONDS,
+                });
+                meta.mulliganTimer = setTimeout(
+                  () =>
+                    onMulliganExpire(gameId, roomName).catch((err) =>
+                      console.error("[namespace.game] onMulliganExpire error", err)
+                    ),
+                  MULLIGAN_DURATION_SECONDS * 1000
+                );
+              } else {
+                // Legacy client in match — skip mulligan immediately (no 30s wait).
+                const skipped = skipMulliganPhase(
+                  latest.game_state,
+                  meta.playerIds
+                );
+                await gameService.updateGameAfterAction(
+                  gameId,
+                  skipped.state,
+                  skipped.state.status,
+                  skipped.state.winner ?? null
+                );
+                await emitGameStateSanitized(gameNs, roomName, skipped.state, {
+                  events: skipped.events,
+                });
+                if (
+                  skipped.state.status === GameStatus.ACTIVE &&
+                  !meta.turnManager
+                ) {
+                  meta.turnManager = new TurnManager(
+                    gameNs,
+                    roomName,
+                    skipped.state.current_player_id,
+                    meta.playerIds,
+                    makeOnTurnTimeout(gameId, roomName, meta)
+                  );
+                  meta.turnManager.startTurn(
+                    skipped.state.current_player_id,
+                    true
+                  );
+                }
+              }
+            } finally {
+              releaseLock();
+            }
           } else if (currentStatus === GameStatus.ACTIVE && !meta.turnManager) {
             // Normal active-game bootstrap
             const startingPlayer = freshRecord.game_state.current_player_id;
@@ -524,6 +627,29 @@ export function setupGameNamespace(io: Server): void {
           let nextState = gameRecord.game_state;
           let events: any[] = [];
 
+          const meta = activeGames.get(gameId);
+          const supportsMulliganUi = clientSupportsMulligan(
+            meta?.clientVersions.get(userId)
+          );
+          const legacyResolve = resolveLegacyMulliganBeforeAction(
+            nextState,
+            userId,
+            supportsMulliganUi
+          );
+          if (legacyResolve.events.length > 0) {
+            nextState = legacyResolve.state;
+            events.push(...legacyResolve.events);
+            await gameService.updateGameAfterAction(
+              gameId,
+              nextState,
+              nextState.status,
+              nextState.winner ?? null
+            );
+            await emitGameStateSanitized(gameNs, roomName, nextState, {
+              events: legacyResolve.events,
+            });
+          }
+
           try {
             if (actionType === "placeCard") {
               if (!user_card_instance_id || !position) {
@@ -563,6 +689,11 @@ export function setupGameNamespace(io: Server): void {
               const r = applyPlayerMulligan(nextState, userId, replaced);
               nextState = r.state;
               events.push(...r.events);
+
+              // Mulligan draws replacement cards directly from deck; hydrate any newly
+              // drawn cards so clients can render them and timeout fallback can play them.
+              await hydrateMissingHandCardsForPlayer(nextState, userId);
+
               nextState = finalizeMulliganIfReady(nextState).state;
             } else {
               socket.emit(GameNamespaceEvent.SERVER_ERROR, {
@@ -597,36 +728,36 @@ export function setupGameNamespace(io: Server): void {
           }
 
           // Timer & turn management
-          const meta = activeGames.get(gameId);
+          const roomMeta = activeGames.get(gameId);
 
           if (actionType === "mulligan") {
             const transitionedToActive = nextState.status === GameStatus.ACTIVE;
-            if (transitionedToActive && meta) {
-              if (meta.mulliganTimer) {
-                clearTimeout(meta.mulliganTimer);
-                meta.mulliganTimer = null;
+            if (transitionedToActive && roomMeta) {
+              if (roomMeta.mulliganTimer) {
+                clearTimeout(roomMeta.mulliganTimer);
+                roomMeta.mulliganTimer = null;
               }
-              if (!meta.turnManager) {
-                meta.turnManager = new TurnManager(
+              if (!roomMeta.turnManager) {
+                roomMeta.turnManager = new TurnManager(
                   gameNs,
                   roomName,
                   nextState.current_player_id,
-                  meta.playerIds,
-                  makeOnTurnTimeout(gameId, roomName, meta)
+                  roomMeta.playerIds,
+                  makeOnTurnTimeout(gameId, roomName, roomMeta)
                 );
-                meta.turnManager.startTurn(nextState.current_player_id, true);
+                roomMeta.turnManager.startTurn(nextState.current_player_id, true);
               }
             }
-          } else if (meta && meta.turnManager) {
-            meta.turnManager.onPlayerAction(userId);
+          } else if (roomMeta && roomMeta.turnManager) {
+            roomMeta.turnManager.onPlayerAction(userId);
 
             if (nextState.status === GameStatus.COMPLETED) {
-              meta.turnManager.dispose();
-              meta.turnManager = null;
-              clearActiveMatch(meta.playerIds[0]);
-              clearActiveMatch(meta.playerIds[1]);
+              roomMeta.turnManager.dispose();
+              roomMeta.turnManager = null;
+              clearActiveMatch(roomMeta.playerIds[0]);
+              clearActiveMatch(roomMeta.playerIds[1]);
             } else {
-              meta.turnManager.startTurn(nextState.current_player_id);
+              roomMeta.turnManager.startTurn(nextState.current_player_id);
             }
           }
 
@@ -726,6 +857,7 @@ export function setupGameNamespace(io: Server): void {
       // (avoids removing a newer socket's entry when an old one disconnects)
       if (userGameSocketMap.get(userId) === socket.id) {
         userGameSocketMap.delete(userId);
+        gameNamespaceConnectedUsers.delete(userId);
       }
 
       // Clean up matchmaking queue on disconnect

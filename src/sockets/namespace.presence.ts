@@ -15,6 +15,13 @@ import logger from "../utils/logger";
  */
 export const userRoom = (userId: string): string => `user:${userId}`;
 
+// userId -> Set of socketIds (one user can have multiple tabs/devices; we count unique users)
+const userSocketsMap = new Map<string, Set<string>>();
+
+export function getPresenceConnectedUserIds(): string[] {
+  return Array.from(userSocketsMap.keys());
+}
+
 /**
  * Set up the `/presence` Socket.IO namespace. Tracks unique connected users
  * and broadcasts the live player count to all clients when anyone connects or disconnects.
@@ -25,9 +32,6 @@ export const userRoom = (userId: string): string => `user:${userId}`;
 export function setupPresenceNamespace(io: Server): void {
   const presenceNs: Namespace = io.of("/presence");
   presenceNs.use((socket, next) => presenceAuthMiddleware(socket as any, next));
-
-  // userId -> Set of socketIds (one user can have multiple tabs/devices; we count unique users)
-  const userSocketsMap = new Map<string, Set<string>>();
 
   function getUniqueUserCount(): number {
     return userSocketsMap.size;

@@ -116,3 +116,73 @@ export function finalizeMulliganIfReady(
   next.status = GameStatus.ACTIVE;
   return { state: next, transitioned: true };
 }
+
+/**
+ * Auto-commit empty mulligans for any uncommitted players and transition to ACTIVE.
+ * Used when one or both clients do not support the mulligan phase (legacy rollout).
+ */
+export function skipMulliganPhase(
+  state: GameState,
+  playerIds: [string, string],
+): { state: GameState; events: BaseGameEvent[] } {
+  if (state.status !== GameStatus.MULLIGAN || !state.mulligan_state) {
+    return { state, events: [] };
+  }
+
+  let next = state;
+  const events: BaseGameEvent[] = [];
+
+  for (const playerId of playerIds) {
+    const playerKey = getPlayerKey(next, playerId);
+    if (!next.mulligan_state?.[playerKey].committed) {
+      const result = applyPlayerMulligan(next, playerId, []);
+      next = result.state;
+      events.push(...result.events);
+    }
+  }
+
+  next = finalizeMulliganIfReady(next).state;
+  return { state: next, events };
+}
+
+/**
+ * Solo/tower bootstrap: after AI mulligan, legacy human clients skip straight to ACTIVE.
+ */
+export function bootstrapSoloMulliganForClient(
+  state: GameState,
+  humanPlayerId: string,
+  supportsMulliganUi: boolean,
+): { state: GameState; events: BaseGameEvent[] } {
+  if (supportsMulliganUi || state.status !== GameStatus.MULLIGAN) {
+    return { state, events: [] };
+  }
+
+  const playerIds: [string, string] = [state.player1.user_id, state.player2.user_id];
+  return skipMulliganPhase(state, playerIds);
+}
+
+/**
+ * Safety net for legacy clients that attempt a normal action while still in mulligan.
+ */
+export function resolveLegacyMulliganBeforeAction(
+  state: GameState,
+  playerId: string,
+  supportsMulliganUi: boolean,
+): { state: GameState; events: BaseGameEvent[] } {
+  if (supportsMulliganUi || state.status !== GameStatus.MULLIGAN) {
+    return { state, events: [] };
+  }
+
+  let next = state;
+  const events: BaseGameEvent[] = [];
+  const playerKey = getPlayerKey(next, playerId);
+
+  if (!next.mulligan_state?.[playerKey].committed) {
+    const result = applyPlayerMulligan(next, playerId, []);
+    next = result.state;
+    events.push(...result.events);
+  }
+
+  next = finalizeMulliganIfReady(next).state;
+  return { state: next, events };
+}

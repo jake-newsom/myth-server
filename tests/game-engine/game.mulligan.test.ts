@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyPlayerMulligan,
+  bootstrapSoloMulliganForClient,
   chooseAIMulligan,
   finalizeMulliganIfReady,
   MAX_MULLIGAN_REPLACEMENTS,
+  skipMulliganPhase,
 } from "../../src/game-engine/game.mulligan";
 import { GameStatus } from "../../src/game-engine/game.logic";
 import type { GameState } from "../../src/types/game.types";
@@ -178,4 +180,29 @@ test("finalizeMulliganIfReady: idempotent after transition", () => {
   const second = finalizeMulliganIfReady(first.state);
   assert.equal(second.transitioned, false);
   assert.equal(second.state.status, GameStatus.ACTIVE);
+});
+
+test("skipMulliganPhase: auto-commits both and transitions to ACTIVE", () => {
+  const state = makeMulliganState();
+  const result = skipMulliganPhase(state, [PLAYER_1, AI]);
+  assert.equal(result.state.status, GameStatus.ACTIVE);
+  assert.equal(result.state.mulligan_state!.player1.committed, true);
+  assert.equal(result.state.mulligan_state!.player2.committed, true);
+  assert.equal(result.events.length, 2);
+});
+
+test("bootstrapSoloMulliganForClient: legacy client skips to ACTIVE after AI committed", () => {
+  const state = makeMulliganState();
+  state.mulligan_state!.player2.committed = true;
+  const result = bootstrapSoloMulliganForClient(state, PLAYER_1, false);
+  assert.equal(result.state.status, GameStatus.ACTIVE);
+  assert.equal(result.state.mulligan_state!.player1.committed, true);
+});
+
+test("bootstrapSoloMulliganForClient: new client stays in MULLIGAN", () => {
+  const state = makeMulliganState();
+  state.mulligan_state!.player2.committed = true;
+  const result = bootstrapSoloMulliganForClient(state, PLAYER_1, true);
+  assert.equal(result.state.status, GameStatus.MULLIGAN);
+  assert.equal(result.state.mulligan_state!.player1.committed, false);
 });

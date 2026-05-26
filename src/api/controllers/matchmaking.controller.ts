@@ -13,6 +13,7 @@ import {
   MatchmakingFoundPayload,
 } from "../../types/socket.types";
 import { userRoom } from "../../sockets/namespace.presence";
+import ChallengeService from "../../services/challenge.service";
 
 // Define interfaces for queue entries and active matches
 interface QueueEntry {
@@ -25,8 +26,13 @@ interface QueueEntry {
 const matchmakingQueue: QueueEntry[] = []; // Stores { userId, deckId, timestamp }
 const activeMatches = new Map<string, string>(); // Stores gameId by userId if they are matched
 
+export const isUserInMatchmakingQueue = (userId: string): boolean =>
+  matchmakingQueue.some((entry) => entry.userId === userId);
+
 // Lock set to prevent race conditions when the same user sends concurrent joinQueue requests
 const joinInProgress = new Set<string>();
+
+ChallengeService.setQueueStatusResolver(isUserInMatchmakingQueue);
 
 // --- Match Cleanup Function ---
 function clearActiveMatch(userId: string) {
@@ -51,6 +57,15 @@ const MatchmakingController = {
     try {
       const userId = req.user.user_id;
       const { deckId } = req.body;
+
+      if (ChallengeService.hasActiveChallengeLock(userId)) {
+        return res.status(409).json({
+          error: {
+            message:
+              "You have a pending challenge. Cancel it before starting another game.",
+          },
+        });
+      }
 
       if (!deckId) {
         return res.status(400).json({

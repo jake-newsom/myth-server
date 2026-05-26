@@ -25,6 +25,7 @@ import dailyTaskRoutes from "./dailyTask.routes";
 import seasonRoutes from "./season.routes";
 import assetPatchRoutes from "./assetPatch.routes";
 import borderRoutes from "./border.routes";
+import challengeRoutes from "./challenge.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -36,6 +37,7 @@ const router = Router();
 router.use("/auth", authRoutes);
 router.use("/games", gameRoutes);
 router.use("/matchmaking", matchmakingRoutes);
+router.use("/challenges", challengeRoutes);
 router.use("/users", userRoutes);
 router.use("/cards", cardRoutes);
 router.use("/characters", characterRoutes);

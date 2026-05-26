@@ -55,7 +55,7 @@ export type GameBoard = Array<Array<BoardCell>>;
 
 /**
  * Deck effect types based on mythology composition (12+ cards of same set)
- * - norse: Played card gains +1 to all sides when you play while opponent leads
+ * - norse: Random card in hand gains +1 at turn start when behind
  * - polynesian: Random card in hand gains +1 when terrain is added (once per round)
  * - japanese: Random card in hand gains +1 when a card receives a curse (once per round)
  */

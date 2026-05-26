@@ -3,10 +3,16 @@ import { GameLogic, GameStatus } from "../../game-engine/game.logic";
 import { AILogic } from "../../game-engine/ai.logic";
 import {
   applyPlayerMulligan,
+  bootstrapSoloMulliganForClient,
   chooseAIMulligan,
   finalizeMulliganIfReady,
   MAX_MULLIGAN_REPLACEMENTS,
+  resolveLegacyMulliganBeforeAction,
 } from "../../game-engine/game.mulligan";
+import {
+  clientSupportsMulligan,
+  getClientVersionFromHeader,
+} from "../../utils/clientVersion";
 // import { AbilityRegistry } from "../../game-engine/ability.registry";
 import { GameState, GameAction } from "../../types/game.types";
 import * as validators from "../../game-engine/game.validators";
@@ -39,6 +45,7 @@ import {
 } from "../../game-engine/tutorial.data";
 import { resolveAIDifficulty } from "../../game-engine/ai.difficulty";
 import { DECK_CONFIG } from "../../config/constants";
+import ChallengeService from "../../services/challenge.service";
 
 // Initialize ability registry
 // AbilityRegistry.initialize();
@@ -64,6 +71,14 @@ class GameController {
 
       if (!userId) {
         res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      if (ChallengeService.hasActiveChallengeLock(userId)) {
+        res.status(409).json({
+          error:
+            "You have a pending challenge. Cancel it before starting another game.",
+        });
         return;
       }
 
@@ -156,6 +171,17 @@ class GameController {
       );
       let finalGameState = aiMulliganResult.state;
       let events: BaseGameEvent[] = [];
+
+      const supportsMulliganUi = clientSupportsMulligan(
+        getClientVersionFromHeader(req.headers)
+      );
+      const legacyBootstrap = bootstrapSoloMulliganForClient(
+        finalGameState,
+        userId,
+        supportsMulliganUi
+      );
+      finalGameState = legacyBootstrap.state;
+      events.push(...legacyBootstrap.events);
 
       // 5. Create game record in database
       const createdGameResponse: CreateGameResponse =
@@ -325,11 +351,31 @@ class GameController {
         return;
       }
 
-      const currentGameState: GameState = gameRecord.game_state; // Already an object
+      let currentGameState: GameState = gameRecord.game_state; // Already an object
 
       // Process the action based on action_type
       let updatedGameState: GameState = _.cloneDeep(currentGameState); // Start with a copy for modifications by GameLogic
       let events: BaseGameEvent[] = [];
+
+      const supportsMulliganUi = clientSupportsMulligan(
+        getClientVersionFromHeader(req.headers)
+      );
+      const legacyResolve = resolveLegacyMulliganBeforeAction(
+        currentGameState,
+        userId,
+        supportsMulliganUi
+      );
+      if (legacyResolve.events.length > 0) {
+        currentGameState = legacyResolve.state;
+        updatedGameState = _.cloneDeep(currentGameState);
+        events.push(...legacyResolve.events);
+        await GameService.updateGameAfterAction(
+          gameId,
+          currentGameState,
+          currentGameState.status,
+          currentGameState.winner ?? null
+        );
+      }
 
       if (
         currentGameState.status === GameStatus.MULLIGAN &&

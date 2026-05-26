@@ -5,6 +5,8 @@
 import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../../types/middleware.types";
 import TowerService from "../../services/tower.service";
+import ChallengeService from "../../services/challenge.service";
+import { getClientVersionFromHeader } from "../../utils/clientVersion";
 
 export class TowerController {
   /**
@@ -127,6 +129,14 @@ export class TowerController {
         return;
       }
 
+      if (ChallengeService.hasActiveChallengeLock(userId)) {
+        res.status(409).json({
+          error:
+            "You have a pending challenge. Cancel it before starting another game.",
+        });
+        return;
+      }
+
       const { player_deck_id } = req.body;
 
       if (!player_deck_id) {
@@ -138,7 +148,8 @@ export class TowerController {
 
       const gameStart = await TowerService.startTowerGame(
         userId,
-        player_deck_id
+        player_deck_id,
+        getClientVersionFromHeader(req.headers)
       );
 
       res.status(200).json({
