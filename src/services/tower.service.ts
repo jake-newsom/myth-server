@@ -18,6 +18,7 @@ import {
 } from "../types/tower.types";
 import DeckService from "./deck.service";
 import { GameLogic } from "../game-engine/game.logic";
+import { hydrateGameStateCards } from "../game-engine/game.utils";
 import { AI_PLAYER_ID } from "../api/controllers/game.controller";
 import {
   applyPlayerMulligan,
@@ -428,6 +429,7 @@ class TowerService {
         supportsMulliganUi
       );
       finalGameState = legacyBootstrap.state;
+      await hydrateGameStateCards(finalGameState);
 
       // Create game record with floor_number
       const createdGame = await this.createTowerGameRecord(

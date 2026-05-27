@@ -182,6 +182,7 @@ class GameController {
       );
       finalGameState = legacyBootstrap.state;
       events.push(...legacyBootstrap.events);
+      await hydrateGameStateCards(finalGameState);
 
       // 5. Create game record in database
       const createdGameResponse: CreateGameResponse =
@@ -699,6 +700,7 @@ class GameController {
         );
 
         if (aiMove) {
+          await hydrateGameStateCards(currentGameState);
           const placeCardResult = await GameLogic.placeCard(
             currentGameState,
             AI_PLAYER_ID,
