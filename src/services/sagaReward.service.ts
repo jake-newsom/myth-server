@@ -3,6 +3,7 @@ import SagaCardModel from "../models/sagaCard.model";
 import SagaDeckModel from "../models/sagaDeck.model";
 import SagaRunModel from "../models/sagaRun.model";
 import SagaMapService from "./sagaMap.service";
+import { getSagaCardRewardPickRarityWeights } from "../config/sagaDraft.config";
 import SagaDraftService from "./sagaDraft.service";
 import SagaService from "./saga.service";
 import { isSagaNodeMapData } from "./sagaMapGeneration.service";
@@ -22,19 +23,6 @@ function httpError(statusCode: number, message: string): Error & { statusCode: n
   const err = new Error(message) as Error & { statusCode: number };
   err.statusCode = statusCode;
   return err;
-}
-
-function shuffle<T>(items: T[]): T[] {
-  const copy = [...items];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
-function sampleUnique(pool: string[], count: number): string[] {
-  return shuffle(pool).slice(0, Math.min(count, pool.length));
 }
 
 function findNode(
@@ -133,12 +121,12 @@ const SagaRewardService = {
   },
 
   async generateCardRewardOptions(runId: string): Promise<string[]> {
-    const pool = await SagaDraftService.getCatalogPoolIds();
     const owned = await SagaCardModel.findByRunId(runId);
     const ownedIds = new Set(owned.map((c) => c.base_card_id));
-    const available = pool.filter((id) => !ownedIds.has(id));
-    const source = available.length >= 3 ? available : pool;
-    return sampleUnique(source, 3);
+    return SagaDraftService.generateWeightedPickOptions(
+      ownedIds,
+      getSagaCardRewardPickRarityWeights()
+    );
   },
 
   async setPendingReward(

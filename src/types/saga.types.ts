@@ -26,11 +26,6 @@ export const SAGA_DRAFT_CONFIG = {
   LEGENDARY_PICKS: 1,
   CORE_PICKS: 9,
   COPIES_PER_CARD: 2,
-  /** Weighted rarity roll for each core draft pick option slot. */
-  PICK_RARITY_WEIGHTS: {
-    legendary: 0.08,
-    epic: 0.39,
-  },
 } as const;
 
 export interface SagaSeason {

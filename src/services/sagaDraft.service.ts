@@ -10,6 +10,11 @@ import SagaMapService from "./sagaMap.service";
 import { RarityUtils } from "../types/card.types";
 import { CardResponse } from "../types/api.types";
 import {
+  getSagaDraftPickRarityWeights,
+  rollSagaPickRarity,
+  type SagaPickRarityWeights,
+} from "../config/sagaDraft.config";
+import {
   SAGA_DRAFT_CONFIG,
   SagaDraftState,
   SagaRunDetail,
@@ -40,20 +45,6 @@ function sampleUnique<T>(pool: T[], count: number): T[] {
     throw httpError(500, "Not enough cards in draft pool");
   }
   return shuffle(pool).slice(0, count);
-}
-
-/** Core pick rarity roll: 2% legendary, 39% epic, 59% rare. */
-function rollDraftPickRarity(): "legendary" | "epic" | "rare" {
-  const roll = Math.random();
-  if (roll < SAGA_DRAFT_CONFIG.PICK_RARITY_WEIGHTS.legendary) return "legendary";
-  if (
-    roll <
-    SAGA_DRAFT_CONFIG.PICK_RARITY_WEIGHTS.legendary +
-      SAGA_DRAFT_CONFIG.PICK_RARITY_WEIGHTS.epic
-  ) {
-    return "epic";
-  }
-  return "rare";
 }
 
 function isEpicRarity(rarity: string): boolean {
@@ -277,9 +268,13 @@ const SagaDraftService = {
     }
   },
 
-  async generatePickOptions(draftState: SagaDraftState): Promise<string[]> {
+  async generateWeightedPickOptions(
+    excludedIds: Iterable<string>,
+    weights: SagaPickRarityWeights,
+    count = 3
+  ): Promise<string[]> {
     const pools = await this.getDraftRarityPools();
-    const excluded = new Set(draftState.picked_base_card_ids);
+    const excluded = new Set(excludedIds);
     const picked = new Set<string>();
     const options: string[] = [];
 
@@ -292,9 +287,9 @@ const SagaDraftService = {
       );
 
     let attempts = 0;
-    while (options.length < 3 && attempts < 100) {
+    while (options.length < count && attempts < 100) {
       attempts++;
-      const rarity = rollDraftPickRarity();
+      const rarity = rollSagaPickRarity(weights);
       let pool = poolForRarity(rarity);
       if (pool.length === 0) pool = fallbackPool();
       if (pool.length === 0) break;
@@ -303,10 +298,17 @@ const SagaDraftService = {
       options.push(choice);
     }
 
-    if (options.length < 3) {
+    if (options.length < count) {
       throw httpError(500, "Not enough cards in draft pool");
     }
     return options;
+  },
+
+  async generatePickOptions(draftState: SagaDraftState): Promise<string[]> {
+    return this.generateWeightedPickOptions(
+      draftState.picked_base_card_ids,
+      getSagaDraftPickRarityWeights()
+    );
   },
 
   async getCurrentPickOptions(runId: string, playerId: string): Promise<{
