@@ -1,5 +1,5 @@
 /**
- * Seed Sagas Season 1 (Ragnar?k) enemy AI decks from GDD deck definitions.
+ * Seed Sagas Season 1 (Ragnarök) enemy AI decks from GDD deck definitions.
  *
  * Creates 14 AI decks (10 unique Norse cards ? 2 copies = 20 cards each) and
  * optionally wires them into saga_seasons.enemy_decks for season_id ragnarok_s1.
@@ -25,20 +25,20 @@ const SHOP_PACK_MAX_PER_SEASON = 5;
 
 const SEASON_CARD_BACK = {
   code_key: "ragnarok_s1_card_back",
-  name: "Ragnar?k",
+  name: "Ragnarök",
   // Card backs resolve directly through assetManager (no implicit "cards/" prefix),
   // so keep the canonical patch path including "cards/".
   image_url: "cards/backs/ragnarok.webp",
 };
 
 const SEASON_CARD_BORDER = {
-  name: "Ragnar?k",
+  name: "Ragnarök",
   image_url: "borders/ragnarok.webp",
   animation_key: "ragnarok_flame",
 };
 
 const SEASON_BOSS_CARD = {
-  character_name: "Ragnar?k",
+  character_name: "Ragnarök",
   type: "boss",
   base_power: { top: 9, right: 9, bottom: 9, left: 9 },
   tags: ["event"],
@@ -49,7 +49,7 @@ const SEASON_BOSS_CARD = {
 
 const RAGNAROK_ABILITY = {
   id: "ragnarok_worlds_end",
-  name: "Ragnar?k",
+  name: "Ragnarök",
   description:
     "Fill empty tiles on the board with lava for 1 round. GOD cards in both players hand lose 1 power each round.",
 };
@@ -98,7 +98,7 @@ const SEASON_VARIANTS = [
     attack_animation: "fire",
   },
   {
-    character_name: "J?rmungandr",
+    character_name: "Jörmungandr",
     rarity: "legendary+",
     image_url: "ragnarok/jormungandr-ragnarok.webp",
   },
@@ -106,8 +106,8 @@ const SEASON_VARIANTS = [
 
 /** Map design-doc names to catalog character names when they differ. */
 const CARD_NAME_ALIASES = {
-  "Ragnar?k (Season Card)": "Ragnar?k",
-  "Jormungandr": "J?rmungandr",
+  "Ragnarök (Season Card)": "Ragnarök",
+  "Jormungandr": "Jörmungandr",
 };
 
 /**
@@ -238,7 +238,7 @@ const DECK_DEFINITIONS = [
     floor: 2,
     name: "The Serpent's Coil",
     cards: [
-      "J?rmungandr",
+      "Jörmungandr",
       "Loki",
       "Ran",
       "Hel",
@@ -255,7 +255,7 @@ const DECK_DEFINITIONS = [
     floor: 2,
     name: "Jormungandr Rises",
     cards: [
-      "J?rmungandr",
+      "Jörmungandr",
       "Loki",
       "Odin",
       "Ran",
@@ -338,9 +338,9 @@ const DECK_DEFINITIONS = [
   {
     id: "3-BOSS",
     floor: 3,
-    name: "Ragnar?k",
+    name: "Ragnarök",
     cards: [
-      "Ragnar?k",
+      "Ragnarök",
       "Surtr",
       "Thor",
       "Loki",
@@ -348,7 +348,7 @@ const DECK_DEFINITIONS = [
       "Odin",
       "Vidar",
       "Hel",
-      "J?rmungandr",
+      "Jörmungandr",
       "Baldr",
     ],
   },
@@ -566,11 +566,11 @@ async function ensureSeasonBossCard(client, setId) {
        RETURNING character_id`,
       [
         SEASON_BOSS_CARD.character_name,
-        `Ragnar?k is the story of the end of the world in Norse mythology. It begins after a long, terrible winter called Fimbulwinter, when the sun disappears, the cold becomes harsh, and people turn against each other. The gods know that a great battle is coming, but they cannot stop it. Powerful enemies, including giants and monsters, break free and march toward Asgard, the home of the gods.
+        `Ragnarök is the story of the end of the world in Norse mythology. It begins after a long, terrible winter called Fimbulwinter, when the sun disappears, the cold becomes harsh, and people turn against each other. The gods know that a great battle is coming, but they cannot stop it. Powerful enemies, including giants and monsters, break free and march toward Asgard, the home of the gods.
 
 In the final battle, many famous figures face their enemies. Odin fights the giant wolf Fenrir, Thor battles the huge serpent Jormungandr, and Loki joins the enemies of the gods. The fighting is fierce, and many gods and monsters die. The world is then covered in fire and swallowed by the sea, making it seem like everything has ended.
 
-But Ragnar?k is not only a story about destruction. After the world is ruined, it rises again, fresh and green. A few gods survive, and two humans live through the disaster and help begin the human race again. The story shows that even after terrible loss, life can return and a new beginning is possible.`,
+But Ragnarök is not only a story about destruction. After the world is ruined, it rises again, fresh and green. A few gods survive, and two humans live through the disaster and help begin the human race again. The story shows that even after terrible loss, life can return and a new beginning is possible.`,
         SEASON_BOSS_CARD.type,
         JSON.stringify(SEASON_BOSS_CARD.base_power),
         ragnarokAbilityId,
