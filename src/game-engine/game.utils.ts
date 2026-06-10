@@ -447,6 +447,7 @@ export function flipCard(
     eventId: uuidv4(),
     timestamp: Date.now(),
     sourcePlayerId: defeatingPlayerId,
+    sourceCardId: source.user_card_instance_id,
     cardId: target.user_card_instance_id,
     position: targetPosition,
     animation: attackAnimation || "attack",

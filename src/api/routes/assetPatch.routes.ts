@@ -98,6 +98,16 @@ const PATCHES: AssetPatch[] = [
       "sha256:dd787aed2f6fe5b4cba4c0377896bcb3738d3b46b2d70972d416ac7ad04e0508",
     size: 0,
     description: "cards update",
+  },
+  {
+    id: "ragnarok-saga-june-2026",
+    version: 2,
+    type: "graphics",
+    r2Key: "patches/ragnarok-saga-1.1.zip",
+    checksum:
+      "sha256:cc4ed5b36cee8c46984752e5090b80af7e213e5eff45ed05cc2f3144d4ceb4e9",
+    size: 88257900,
+    description: "graphics for ragnarok saga",
   }
 ];
 

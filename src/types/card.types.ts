@@ -217,6 +217,18 @@ export interface InGameCard extends UserCard {
   // When the source card is flipped/destroyed the lock should be released.
   lockedBy?: string | null;
   defeats: DefeatRecord[];
+  /** Sagas blessing icon (Phase 4+) */
+  saga_rune_type?:
+    | "fury"
+    | "slayer"
+    | "iron"
+    | "sight"
+    | "thorns"
+    | "first"
+    | "bonds"
+    | "underdog"
+    | null;
+  saga_card_id?: string;
 }
 
 export enum EffectType {

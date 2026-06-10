@@ -1,4 +1,7 @@
 import {
+  TriggerMoment,
+} from "../../types/card.types";
+import {
   AbilityMap,
   COMBAT_TYPES,
   CombatResolverMap,
@@ -24,6 +27,7 @@ import {
   destroyCardAtPosition,
   getPositionOfCardById,
   createOrUpdateBuff,
+  createOrUpdateDebuff,
   getCardsInSameColumn,
   getSurroundingTiles,
   getRandomSide,
@@ -36,7 +40,7 @@ import {
 import { drawCardSync, flipCard } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
 import { v4 as uuidv4 } from "uuid";
-import { TileStatus } from "../../types/game.types";
+import { TileStatus, TileTerrain } from "../../types/game.types";
 import { randomChance, randomInt } from "../simulation.rng";
 import AchievementService from "../../services/achievement.service";
 
@@ -87,6 +91,72 @@ export const norseCombatResolvers: CombatResolverMap = {
 };
 
 export const norseAbilities: AbilityMap = {
+  // World's End: the actual tile-destruction cadence is driven by saga battle
+  // mechanics. This ability entry keeps the card ability ID wired to the Norse map.
+  ragnarok_worlds_end: (context) => {
+    const { triggerCard, state, triggerMoment } = context;
+    const gameEvents: BaseGameEvent[] = [];
+
+    if (triggerMoment === TriggerMoment.OnPlace) {
+      for (let y = 0; y < state.board.length; y++) {
+        for (let x = 0; x < state.board[y].length; x++) {
+          const cell = state.board[y][x];
+          if (cell.card) continue;
+          gameEvents.push(
+            setTileStatus(
+              cell,
+              { x, y },
+              {
+                status: TileStatus.Cursed,
+                turns_left: 2, // Lasts through one full round (both players' turns)
+                terrain: TileTerrain.Lava,
+                animation_label: "lava",
+                effect_duration: 2,
+              },
+              triggerCard.owner,
+              triggerCard,
+              { turnNumber: context.state.turn_number }
+            )
+          );
+        }
+      }
+      return gameEvents;
+    }
+
+    if (triggerMoment === TriggerMoment.OnRoundStart) {
+      const HAND_POSITION = { x: -1, y: -1 };
+      const allHands = [...state.player1.hand, ...state.player2.hand];
+
+      for (const cardId of allHands) {
+        const handCard = state.hydrated_card_data_cache?.[cardId];
+        if (!handCard) continue;
+        const tags = handCard.base_card_data.tags ?? [];
+        const isGodCard = tags.some(
+          (tag) => String(tag).toLowerCase() === "god"
+        );
+        if (!isGodCard) continue;
+
+        gameEvents.push(
+          createOrUpdateDebuff(
+            handCard,
+            1000,
+            1,
+            "World's End",
+            HAND_POSITION,
+            {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              turnNumber: context.state.turn_number,
+            }
+          )
+        );
+      }
+    }
+
+    return gameEvents;
+  },
+
   // Returns to your hand when defeated
   baldr_immune: (context) => {
     const {

@@ -22,6 +22,7 @@ export const getCurrencies = async (req: Request, res: Response) => {
       gems: user.gems,
       fate_coins: user.fate_coins,
       card_fragments: user.card_fragments,
+      echoes: user.echoes,
       pack_count: user.pack_count,
       total_xp: user.total_xp,
       // Legacy field for backward compatibility

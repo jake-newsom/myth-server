@@ -5,6 +5,7 @@ import db from "../../config/db.config";
 import AIAutomationService from "../../services/aiAutomation.service";
 import DailyRewardsService from "../../services/dailyRewards.service";
 import BorderService from "../../services/border.service";
+import CardBackService from "../../services/cardBack.service";
 import AchievementService from "../../services/achievement.service";
 import logger from "../../utils/logger";
 
@@ -779,6 +780,177 @@ const AdminController = {
       return res
         .status(500)
         .json({ status: "error", message: "Failed to revoke border" });
+    }
+  },
+
+  // ============================================================================
+  // CARD BACK MANAGEMENT ENDPOINTS
+  // ============================================================================
+  async listCardBacks(_req: AuthenticatedRequest, res: Response) {
+    try {
+      const cardBacks = await CardBackService.getFullCatalog();
+      return res.status(200).json({ data: cardBacks });
+    } catch (error) {
+      logger.error(
+        "Admin list card backs error",
+        {},
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to list card backs" });
+    }
+  },
+
+  async createCardBack(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { code_key, name, description, image_url, animation_key } = req.body || {};
+      if (!code_key || typeof code_key !== "string") {
+        return res
+          .status(400)
+          .json({ status: "error", message: "code_key is required" });
+      }
+      if (!name || typeof name !== "string") {
+        return res
+          .status(400)
+          .json({ status: "error", message: "name is required" });
+      }
+      if (!image_url || typeof image_url !== "string") {
+        return res
+          .status(400)
+          .json({ status: "error", message: "image_url is required" });
+      }
+
+      const cardBack = await CardBackService.createCardBack({
+        code_key,
+        name,
+        description: description ?? null,
+        image_url,
+        animation_key: animation_key ?? null,
+      });
+
+      return res.status(201).json({ data: cardBack });
+    } catch (error) {
+      logger.error(
+        "Admin create card back error",
+        { adminId: req.user?.user_id },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to create card back" });
+    }
+  },
+
+  async updateCardBack(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { backId } = req.params;
+      if (!backId) {
+        return res
+          .status(400)
+          .json({ status: "error", message: "backId is required" });
+      }
+      const cardBack = await CardBackService.updateCardBack(backId, req.body || {});
+      if (!cardBack) {
+        return res
+          .status(404)
+          .json({ status: "error", message: "Card back not found" });
+      }
+      return res.status(200).json({ data: cardBack });
+    } catch (error) {
+      logger.error(
+        "Admin update card back error",
+        { backId: req.params.backId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to update card back" });
+    }
+  },
+
+  async deactivateCardBack(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { backId } = req.params;
+      if (!backId) {
+        return res
+          .status(400)
+          .json({ status: "error", message: "backId is required" });
+      }
+      const cardBack = await CardBackService.deactivateCardBack(backId);
+      if (!cardBack) {
+        return res
+          .status(404)
+          .json({ status: "error", message: "Card back not found" });
+      }
+      return res.status(200).json({ data: cardBack });
+    } catch (error) {
+      logger.error(
+        "Admin deactivate card back error",
+        { backId: req.params.backId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to deactivate card back" });
+    }
+  },
+
+  async grantCardBackToUser(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { userId, backId } = req.body || {};
+      if (!userId || !backId) {
+        return res.status(400).json({
+          status: "error",
+          message: "userId and backId are required",
+        });
+      }
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        return res
+          .status(404)
+          .json({ status: "error", message: "User not found" });
+      }
+      const newlyGranted = await CardBackService.grantCardBack(userId, backId);
+      return res.status(200).json({
+        status: "success",
+        newly_granted: newlyGranted,
+      });
+    } catch (error) {
+      logger.error(
+        "Admin grant card back error",
+        { userId: req.body?.userId, backId: req.body?.backId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to grant card back" });
+    }
+  },
+
+  async revokeCardBackFromUser(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { userId, backId } = req.body || {};
+      if (!userId || !backId) {
+        return res.status(400).json({
+          status: "error",
+          message: "userId and backId are required",
+        });
+      }
+      const removed = await CardBackService.revokeCardBack(userId, backId);
+      return res.status(200).json({
+        status: "success",
+        removed,
+      });
+    } catch (error) {
+      logger.error(
+        "Admin revoke card back error",
+        { userId: req.body?.userId, backId: req.body?.backId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to revoke card back" });
     }
   },
 };

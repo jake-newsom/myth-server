@@ -19,6 +19,7 @@ export interface User {
   gems: number;
   fate_coins: number;
   card_fragments: number;
+  echoes: number;
   total_xp: number;
   pack_count: number;
   win_streak_multiplier: number; // Win streak multiplier for online games (1.0 - 5.0)
@@ -205,10 +206,37 @@ export interface EquippedBorder {
   animation_key?: string | null;
 }
 
+export interface CardBack {
+  back_id: string;
+  code_key: string;
+  name: string;
+  description?: string | null;
+  image_url: string;
+  animation_key?: string | null;
+  is_active: boolean;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+export interface UserOwnedCardBack {
+  user_id: string;
+  back_id: string;
+  acquired_at: Date;
+}
+
+export interface EquippedCardBack {
+  back_id: string;
+  code_key: string;
+  name: string;
+  image_url: string;
+  animation_key?: string | null;
+}
+
 export interface Deck {
   deck_id: string;
   user_id: string;
   name: string;
+  equipped_card_back_id?: string | null;
   created_at: Date;
   updated_at: Date;
 }

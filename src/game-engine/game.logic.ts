@@ -219,6 +219,7 @@ export class GameLogic {
       deck: p1DeckShuffled.slice(initialHandSize),
       discard_pile: [],
       score: 0,
+      equipped_card_back: null,
     };
 
     const player2: Player = {
@@ -227,6 +228,7 @@ export class GameLogic {
       deck: p2DeckShuffled.slice(initialHandSize),
       discard_pile: [],
       score: 0,
+      equipped_card_back: null,
     };
 
     const isTutorial = options.isTutorial ?? false;
@@ -412,6 +414,32 @@ export class GameLogic {
         events.push(...triggerTerrainDeckEffects(newState));
       }
 
+      let sightBlessingTriggered = false;
+      if (newState.saga_context) {
+        const {
+          applySlayerOnPlace,
+          applyFirstBlessingOnPlace,
+          refreshDynamicBlessings,
+          hasSightBlessingOnPlacedCard,
+        } = await import("./sagaBattle.mechanics");
+        const firstResult = applyFirstBlessingOnPlace(newState, position, playerId);
+        newState = firstResult.state;
+        events.push(...firstResult.events);
+
+        const preCombatBlessings = refreshDynamicBlessings(newState);
+        newState = preCombatBlessings.state;
+        events.push(...preCombatBlessings.events);
+
+        const slayerResult = applySlayerOnPlace(newState, position, playerId);
+        newState = slayerResult.state;
+        events.push(...slayerResult.events);
+        sightBlessingTriggered = hasSightBlessingOnPlacedCard(
+          newState,
+          position,
+          playerId
+        );
+      }
+
       // Resolve combat with adjacent cards
       const eventsBeforeCombat = events.length;
       const combatResult = gameUtils.resolveCombat(
@@ -421,6 +449,27 @@ export class GameLogic {
       );
       newState = combatResult.state;
       events.push(...combatResult.events);
+
+      if (newState.saga_context) {
+        const {
+          applyThornsOnFlips,
+          applyWorldsEndAfterFlips,
+          countFlipEvents,
+          refreshDynamicBlessings,
+        } = await import("./sagaBattle.mechanics");
+        const thorns = applyThornsOnFlips(newState, combatResult.events);
+        newState = thorns.state;
+        events.push(...thorns.events);
+
+        const flipCount = countFlipEvents(combatResult.events);
+        const worldsEnd = applyWorldsEndAfterFlips(newState, flipCount);
+        newState = worldsEnd.state;
+        events.push(...worldsEnd.events);
+
+        const postCombatBlessings = refreshDynamicBlessings(newState);
+        newState = postCombatBlessings.state;
+        events.push(...postCombatBlessings.events);
+      }
 
       // Check if any combat/flip abilities added terrain effects (for Polynesian deck effect)
       // This catches abilities like "Feast or Famine" that trigger on flip
@@ -448,8 +497,17 @@ export class GameLogic {
         events.push(...drawCardResult.events);
       }
 
-      if (validators.isBoardFull(newState.board)) {
-        // Move all cards to discard piles and determine winner
+      if (sightBlessingTriggered) {
+        const refreshedPlayer = validators.getPlayer(newState, playerId);
+        if (validators.shouldDrawCard(refreshedPlayer, newState.max_cards_in_hand)) {
+          const bonusDrawResult = await this.drawCard(newState, playerId);
+          newState = bonusDrawResult.state;
+          events.push(...bonusDrawResult.events);
+        }
+      }
+
+      if (!validators.hasPlayableEmptyTiles(newState.board)) {
+        // Board is full or every remaining empty tile is blocked — resolve scores.
         const winnerId = validators.determineGameOutcome(
           newState.player1.score,
           newState.player2.score,
@@ -502,9 +560,15 @@ export class GameLogic {
 
     if (!newState.hydrated_card_data_cache?.[drawnInstanceId]) {
       try {
-        const cardData = (
-          await this.hydrateCardInstances([drawnInstanceId], player.user_id)
-        ).get(drawnInstanceId);
+        const cached = newState.hydrated_card_data_cache?.[drawnInstanceId];
+        const cardData =
+          cached ??
+          (
+            await this.hydrateCardInstances(
+              [drawnInstanceId],
+              newState.saga_context ? undefined : player.user_id
+            )
+          ).get(drawnInstanceId);
         if (cardData && newState.hydrated_card_data_cache) {
           newState.hydrated_card_data_cache[drawnInstanceId] = cardData;
         }

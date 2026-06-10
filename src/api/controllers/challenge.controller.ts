@@ -232,6 +232,10 @@ class ChallengeController {
         initialGameState.player2.deck_effect = opponentDeckEffect;
         initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
       }
+      initialGameState.player1.equipped_card_back =
+        challengerDeck.equipped_card_back ?? null;
+      initialGameState.player2.equipped_card_back =
+        opponentDeck.equipped_card_back ?? null;
 
       const game = await GameService.createGameRecord(
         challenge.challengerId,

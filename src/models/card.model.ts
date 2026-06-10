@@ -572,7 +572,7 @@ const CardModel = {
 
       // Count query - use the same where clause but without limit/offset
       const countQuery = `SELECT COUNT(*) FROM "card_variants" cv JOIN "characters" ch ON cv.character_id = ch.character_id ${whereClause}`;
-      const countParams = queryParams.slice(0, -2); // Remove limit and offset
+      const countParams = limit > 0 ? queryParams.slice(0, -2) : queryParams;
 
       const { rows: countRows } = await db.query(countQuery, countParams);
 

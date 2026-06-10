@@ -1,0 +1,98 @@
+openapi: 3.0.0
+info:
+  title: Viking Vengeance - Card Back API
+  description: User-facing card back catalog and ownership endpoints
+  version: 1.0.0
+
+paths:
+  /api/card-backs:
+    get:
+      summary: List active card backs
+      tags:
+        - Card Backs
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Active card backs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CardBack"
+
+  /api/card-backs/owned:
+    get:
+      summary: List card backs owned by current user
+      tags:
+        - Card Backs
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Owned card backs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OwnedCardBack"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CardBack:
+      type: object
+      properties:
+        back_id:
+          type: string
+          format: uuid
+        code_key:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        image_url:
+          type: string
+        animation_key:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - back_id
+        - code_key
+        - name
+        - image_url
+        - is_active
+
+    OwnedCardBack:
+      allOf:
+        - $ref: "#/components/schemas/CardBack"
+        - type: object
+          properties:
+            acquired_at:
+              type: string
+              format: date-time
+          required:
+            - acquired_at

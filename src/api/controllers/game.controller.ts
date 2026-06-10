@@ -37,6 +37,7 @@ import GameRewardsService, {
   GameCompletionResult,
 } from "../../services/gameRewards.service";
 import TowerService from "../../services/tower.service";
+import SagaBattleService from "../../services/sagaBattle.service";
 import { BaseGameEvent } from "../../game-engine/game-events";
 import { sanitizeGameStateForPlayer } from "../../utils/sanitize";
 import {
@@ -308,6 +309,8 @@ class GameController {
         game_status: game.game_status,
         game_mode: game.game_mode,
         floor_number: game.floor_number ?? null,
+        saga_run_id: game.saga_run_id ?? null,
+        saga_node_id: game.saga_node_id ?? null,
         ai_deck_id: game.game_mode === "solo" ? game.player2_deck_id : null,
         opponent_mythology: opponentMythology,
         current_user_id: userId,
@@ -481,11 +484,39 @@ class GameController {
       let new_game_status_for_db: GameStatus = updatedGameState.status;
       let gameCompletionResult: GameCompletionResult | null = null;
       let towerCompletion: any = null;
+      let sagaCompletion: Awaited<
+        ReturnType<typeof SagaBattleService.processBattleCompletion>
+      > | null = null;
 
       // Skip rewards entirely for tutorial games
-      const isTowerGame = gameRecord.floor_number != null;
+      const isSagaGame = !!gameRecord.saga_run_id;
+      const isTowerGame =
+        gameRecord.floor_number != null && !isSagaGame;
       if (new_game_status_for_db === GameStatus.COMPLETED && !isSubmitTutorial) {
         try {
+          if (isSagaGame) {
+            const won = winner_id_for_db === userId;
+            sagaCompletion = await SagaBattleService.processBattleCompletion(
+              userId,
+              gameId,
+              won
+            );
+            gameCompletionResult = {
+              game_result: {
+                winner: winner_id_for_db,
+                final_scores: {
+                  player1: updatedGameState.player1.score,
+                  player2: updatedGameState.player2.score,
+                },
+                game_duration_seconds: 0,
+              },
+              rewards: {
+                currency: { gems: 0 },
+                card_xp_rewards: [],
+              },
+              updated_currencies: { gems: 0, total_xp: 0 },
+            };
+          } else {
           const [gameRewardsResult, floorNumber] = await Promise.all([
             GameRewardsService.processGameCompletion(
               userId,
@@ -518,9 +549,15 @@ class GameController {
               console.error("Error processing tower completion:", error);
             }
           }
+          }
         } catch (error) {
           console.error("Error processing game completion rewards:", error);
-          if (winner_id_for_db === userId && gameRecord.game_mode === "solo" && !isTowerGame) {
+          if (
+            winner_id_for_db === userId &&
+            gameRecord.game_mode === "solo" &&
+            !isTowerGame &&
+            !isSagaGame
+          ) {
             await UserService.awardCurrency(userId, 10);
           }
         }
@@ -546,6 +583,10 @@ class GameController {
         winner_id: updatedGameResponse.winner_id,
         events,
       };
+
+      if (sagaCompletion) {
+        response.saga_completion = sagaCompletion;
+      }
 
       if (isSubmitTutorial && new_game_status_for_db === GameStatus.COMPLETED) {
         response.game_result = {
@@ -691,13 +732,32 @@ class GameController {
         // Normal AI move calculation
         const ai = new AILogic();
         const aiDifficulty = resolveAIDifficulty({
-          isTowerGame: gameRecord.floor_number != null,
+          isTowerGame:
+            gameRecord.floor_number != null && !gameRecord.saga_run_id,
           floorNumber: gameRecord.floor_number ?? null,
+          sagaAiProfile: currentGameState.saga_context?.ai_profile,
         });
-        const aiMove = await ai.makeAIMove(
+        let aiMove = await ai.makeAIMove(
           _.cloneDeep(currentGameState),
           aiDifficulty
         );
+        const forcedOpeningCardId =
+          currentGameState.saga_context?.forced_ai_opening_card_instance_id;
+        const shouldForceOpeningPlay =
+          !!forcedOpeningCardId &&
+          !!currentGameState.saga_context?.ai_opening_play_pending;
+        if (shouldForceOpeningPlay && forcedOpeningCardId) {
+          const aiPlayer = validators.getPlayer(currentGameState, AI_PLAYER_ID);
+          if (aiPlayer.hand.includes(forcedOpeningCardId)) {
+            const forcedState = _.cloneDeep(currentGameState);
+            const forcedStateAiPlayer = validators.getPlayer(forcedState, AI_PLAYER_ID);
+            forcedStateAiPlayer.hand = [forcedOpeningCardId];
+            const forcedMove = await ai.makeAIMove(forcedState, aiDifficulty);
+            if (forcedMove) {
+              aiMove = forcedMove;
+            }
+          }
+        }
 
         if (aiMove) {
           await hydrateGameStateCards(currentGameState);
@@ -709,6 +769,9 @@ class GameController {
           );
           updatedGameState = placeCardResult.state;
           events.push(...placeCardResult.events);
+          if (updatedGameState.saga_context?.ai_opening_play_pending) {
+            updatedGameState.saga_context.ai_opening_play_pending = false;
+          }
         } else {
           const aiPlayer = validators.getPlayer(currentGameState, AI_PLAYER_ID);
 
@@ -720,6 +783,9 @@ class GameController {
             );
             updatedGameState = forcePassResult.state;
             events.push(...forcePassResult.events);
+            if (updatedGameState.saga_context?.ai_opening_play_pending) {
+              updatedGameState.saga_context.ai_opening_play_pending = false;
+            }
           } else {
             const endTurnResult = await GameLogic.endTurn(
               currentGameState,
@@ -727,6 +793,9 @@ class GameController {
             );
             updatedGameState = endTurnResult.state;
             events.push(...endTurnResult.events);
+            if (updatedGameState.saga_context?.ai_opening_play_pending) {
+              updatedGameState.saga_context.ai_opening_play_pending = false;
+            }
 
             const aiPlayerAfter = validators.getPlayer(updatedGameState, AI_PLAYER_ID);
 
@@ -756,14 +825,42 @@ class GameController {
       let new_game_status_for_db: GameStatus = updatedGameState.status;
       let gameCompletionResult: GameCompletionResult | null = null;
       let towerCompletionAI: any = null;
+      let sagaCompletionAI: Awaited<
+        ReturnType<typeof SagaBattleService.processBattleCompletion>
+      > | null = null;
 
-      // Skip rewards entirely for tutorial games
-      const isTowerGameAI = gameRecord.floor_number != null;
+      const isSagaGameAI = !!gameRecord.saga_run_id;
+      const isTowerGameAI =
+        gameRecord.floor_number != null && !isSagaGameAI;
       if (
         new_game_status_for_db === GameStatus.COMPLETED &&
         !isTutorial
       ) {
         try {
+          if (isSagaGameAI) {
+            const wonAI = winner_id_for_db === userId;
+            sagaCompletionAI =
+              await SagaBattleService.processBattleCompletion(
+                userId,
+                gameId,
+                wonAI
+              );
+            gameCompletionResult = {
+              game_result: {
+                winner: winner_id_for_db,
+                final_scores: {
+                  player1: updatedGameState.player1.score,
+                  player2: updatedGameState.player2.score,
+                },
+                game_duration_seconds: 0,
+              },
+              rewards: {
+                currency: { gems: 0 },
+                card_xp_rewards: [],
+              },
+              updated_currencies: { gems: 0, total_xp: 0 },
+            };
+          } else {
           const [gameRewardsResult, floorNumberAI] = await Promise.all([
             GameRewardsService.processGameCompletion(
               userId,
@@ -796,9 +893,15 @@ class GameController {
               console.error("Error processing tower completion:", error);
             }
           }
+          }
         } catch (error) {
           console.error("Error processing game completion rewards:", error);
-          if (winner_id_for_db === userId && gameRecord.game_mode === "solo" && !isTowerGameAI) {
+          if (
+            winner_id_for_db === userId &&
+            gameRecord.game_mode === "solo" &&
+            !isTowerGameAI &&
+            !isSagaGameAI
+          ) {
             await UserService.awardCurrency(userId, 10);
           }
         }
@@ -824,6 +927,10 @@ class GameController {
         winner_id: updatedGameResponse.winner_id,
         events,
       };
+
+      if (sagaCompletionAI) {
+        response.saga_completion = sagaCompletionAI;
+      }
 
       if (isTutorial && new_game_status_for_db === GameStatus.COMPLETED) {
         response.game_result = {

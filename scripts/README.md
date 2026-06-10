@@ -72,6 +72,27 @@ psql $DATABASE_URL -f scripts/database-queries.sql
 
 ---
 
+### seed-ragnarok-saga-enemy-decks.js
+
+Creates the 14 Sagas Season 1 (Ragnarök) enemy AI decks from the Norse deck
+definitions doc (10 unique cards × 2 copies each). Optionally updates
+`saga_seasons` for `ragnarok_s1`.
+
+**Usage:**
+
+```bash
+cd myth-server
+node scripts/seed-ragnarok-saga-enemy-decks.js
+node scripts/seed-ragnarok-saga-enemy-decks.js --replace --update-season
+# or
+npm run seed:saga-ragnarok -- --replace --update-season
+```
+
+Requires `DATABASE_URL` in `.env` and Norse cards in the catalog. The boss
+deck slot **Ragnarök (Season Card)** uses **Surtr** until that season card exists.
+
+---
+
 ### setup-default-shop-config.js
 
 Sets up default daily shop configuration.

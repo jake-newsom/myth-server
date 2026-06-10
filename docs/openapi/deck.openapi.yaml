@@ -168,6 +168,11 @@ components:
           description: Array of user card instance IDs to include in the deck
           minItems: 20
           maxItems: 20
+        equipped_card_back_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional deck-level equipped card back ID
       required:
         - name
         - user_card_instance_ids
@@ -185,6 +190,11 @@ components:
           description: New array of user card instance IDs for the deck
           minItems: 20
           maxItems: 20
+        equipped_card_back_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional deck-level equipped card back ID
       minProperties: 1
 
     DeckDetailResponse:
@@ -216,6 +226,8 @@ components:
           description: Array of user card instances included in the deck
           minItems: 20
           maxItems: 20
+        equipped_card_back:
+          $ref: "#/components/schemas/EquippedCardBack"
       required:
         - deck_id
         - name
@@ -223,6 +235,27 @@ components:
         - created_at
         - last_updated
         - cards
+
+    EquippedCardBack:
+      type: object
+      properties:
+        back_id:
+          type: string
+          format: uuid
+        code_key:
+          type: string
+        name:
+          type: string
+        image_url:
+          type: string
+        animation_key:
+          type: string
+          nullable: true
+      required:
+        - back_id
+        - code_key
+        - name
+        - image_url
 
     ErrorResponse:
       type: object

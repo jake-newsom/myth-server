@@ -304,6 +304,10 @@ const MatchmakingController = {
             initialGameState.player2.deck_effect = p2DeckEffect;
             initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
           }
+          initialGameState.player1.equipped_card_back =
+            player1Deck.equipped_card_back ?? null;
+          initialGameState.player2.equipped_card_back =
+            player2Deck.equipped_card_back ?? null;
 
           // Create a new game in the database
           const gameQuery = `

@@ -86,7 +86,7 @@ const UserModel = {
   },
 
   async findById(userId: string): Promise<User | null> {
-    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, role, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, completed_feature_tutorials, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
+    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, role, in_game_currency, gems, fate_coins, card_fragments, echoes, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, completed_feature_tutorials, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
     const { rows } = await db.query(query, [userId]);
     return rows[0] || null;
   },
@@ -296,6 +296,28 @@ const UserModel = {
     const query = `SELECT card_fragments FROM "users" WHERE user_id = $1;`;
     const { rows } = await db.query(query, [userId]);
     return rows[0]?.card_fragments || 0;
+  },
+
+  async getEchoes(userId: string): Promise<number> {
+    const query = `SELECT echoes FROM "users" WHERE user_id = $1;`;
+    const { rows } = await db.query(query, [userId]);
+    return rows[0]?.echoes || 0;
+  },
+
+  async updateEchoes(
+    userId: string,
+    amount: number,
+    client?: import('../config/db.config').QueryExecutor
+  ): Promise<{ user_id: string; echoes: number } | null> {
+    const query = `
+      UPDATE "users" 
+      SET echoes = echoes + $2 
+      WHERE user_id = $1 AND echoes + $2 >= 0
+      RETURNING user_id, echoes;
+    `;
+    const executor = client ?? db;
+    const { rows } = await executor.query(query, [userId, amount]);
+    return rows[0] || null;
   },
 
   // Win streak multiplier methods

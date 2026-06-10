@@ -25,7 +25,9 @@ import dailyTaskRoutes from "./dailyTask.routes";
 import seasonRoutes from "./season.routes";
 import assetPatchRoutes from "./assetPatch.routes";
 import borderRoutes from "./border.routes";
+import cardBackRoutes from "./cardBack.routes";
 import challengeRoutes from "./challenge.routes";
+import sagaRoutes from "./saga.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -61,6 +63,8 @@ router.use("/daily-tasks", dailyTaskRoutes);
 router.use("/seasons", seasonRoutes);
 router.use("/asset-patches", assetPatchRoutes);
 router.use("/borders", borderRoutes);
+router.use("/card-backs", cardBackRoutes);
+router.use("/sagas", sagaRoutes);
 
 // Global error handler
 router.use(errorHandler);

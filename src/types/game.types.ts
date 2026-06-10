@@ -1,5 +1,6 @@
 import { GameStatus } from "../game-engine/game.logic";
 import { InGameCard, PowerValues } from "./card.types";
+import type { SagaBattleContext } from "./sagaBattle.types";
 
 // Re-export InGameCard for use in other modules
 export { InGameCard };
@@ -75,6 +76,7 @@ export interface Player {
   deck: string[];
   discard_pile: string[];
   score: number;
+  equipped_card_back?: import("./database.types").EquippedCardBack | null;
   /** Deck passive effect based on mythology composition (12+ cards of same set) */
   deck_effect?: DeckEffectType | null;
   /** State tracking for deck effect triggers */
@@ -109,6 +111,8 @@ export interface GameState {
     player2: MulliganPlayerState;
     deadline_ms?: number;
   };
+  /** Present for Sagas mode battles (Phase 4+) */
+  saga_context?: SagaBattleContext;
 }
 
 export interface GameAction {

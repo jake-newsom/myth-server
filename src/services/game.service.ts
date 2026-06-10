@@ -14,6 +14,8 @@ export interface GameRecord {
   board_layout: string;
   game_state: GameState;
   floor_number?: number | null;
+  saga_run_id?: string | null;
+  saga_node_id?: string | null;
   is_tutorial?: boolean;
   created_at: Date;
   completed_at?: Date | null;

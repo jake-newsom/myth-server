@@ -136,11 +136,20 @@ export function updateCurrentPower(card: InGameCard): PowerValues {
     });
   }
 
+  const minimumPower = card.base_card_data.base_power;
+  const hasIronBlessing = card.saga_rune_type === "iron";
+
   return {
-    top: Math.max(currentPower.top, 0),
-    bottom: Math.max(currentPower.bottom, 0),
-    left: Math.max(currentPower.left, 0),
-    right: Math.max(currentPower.right, 0),
+    top: Math.max(currentPower.top, hasIronBlessing ? minimumPower.top : 0),
+    bottom: Math.max(
+      currentPower.bottom,
+      hasIronBlessing ? minimumPower.bottom : 0,
+    ),
+    left: Math.max(currentPower.left, hasIronBlessing ? minimumPower.left : 0),
+    right: Math.max(
+      currentPower.right,
+      hasIronBlessing ? minimumPower.right : 0,
+    ),
   };
 }
 
@@ -933,6 +942,19 @@ export const setTileStatus = (
   sourceCard?: InGameCard,
   metadata?: Record<string, any>,
 ): BaseGameEvent => {
+  const isBlockedTile =
+    tile.tile_enabled === false || tile.tile_effect?.status === TileStatus.Blocked;
+  if (isBlockedTile) {
+    // Do not overwrite removed/blocked tiles with transient terrain effects.
+    return {
+      type: EVENT_TYPES.TILE_STATE_CHANGED,
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      position,
+      tile: { tile_effect: tile.tile_effect },
+    } as TileEvent;
+  }
+
   tile.tile_effect = effect;
 
   const { tile_effect } = tile;

@@ -38,6 +38,7 @@
     "reset-tower": "node scripts/reset-tower-to-2-floors.js",
     "generate-tower": "node scripts/trigger-tower-generation.js",
     "verify:env": "node scripts/verify-env.js",
+    "seed:saga-ragnarok": "node scripts/seed-ragnarok-saga-enemy-decks.js",
     "admin:characters": "ts-node scripts/admin-characters-console.ts",
     "postinstall": "npm run build"
   },

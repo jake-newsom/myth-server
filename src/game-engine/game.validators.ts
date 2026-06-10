@@ -118,6 +118,26 @@ export function isBoardFull(board: (BoardCell | null)[][]): boolean {
   return true;
 }
 
+/** Empty cell where a card can still be placed. */
+export function isPlayableEmptyCell(cell: BoardCell): boolean {
+  if (cell.card !== null) return false;
+  if (cell.tile_effect?.status === TileStatus.Blocked) return false;
+  if (cell.tile_effect?.status === TileStatus.Removed) return false;
+  return cell.tile_enabled !== false;
+}
+
+/** True when at least one open, unblocked tile remains. */
+export function hasPlayableEmptyTiles(board: (BoardCell | null)[][]): boolean {
+  const size = board.length;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < (board[y]?.length ?? size); x++) {
+      const cell = board[y][x];
+      if (cell && isPlayableEmptyCell(cell)) return true;
+    }
+  }
+  return false;
+}
+
 export function calculateScores(
   board: (BoardCell | null)[][],
   player1Id: string,

@@ -1,5 +1,5 @@
 /**
- * Frontend API contracts for achievements + borders.
+ * Frontend API contracts for achievements + borders + card backs.
  *
  * Source of truth: current runtime controllers/services in myth-server.
  * Base URL prefix for all routes below: /api
@@ -62,6 +62,30 @@ export interface CharacterEligibleBorder extends CardBorder {
 
 export interface EquippedBorder {
   border_id: UUID;
+  name: string;
+  image_url: string;
+  animation_key?: string | null;
+}
+
+export interface CardBack {
+  back_id: UUID;
+  code_key: string;
+  name: string;
+  description?: string | null;
+  image_url: string;
+  animation_key?: string | null;
+  is_active: boolean;
+  created_at?: ISODateString;
+  updated_at?: ISODateString;
+}
+
+export interface OwnedCardBack extends CardBack {
+  acquired_at: ISODateString;
+}
+
+export interface EquippedCardBack {
+  back_id: UUID;
+  code_key: string;
   name: string;
   image_url: string;
   animation_key?: string | null;
@@ -185,6 +209,8 @@ export const ApiRoutes = {
   // Border catalog + ownership (user)
   borders: "/borders",
   ownedBorders: "/borders/owned",
+  cardBacks: "/card-backs",
+  ownedCardBacks: "/card-backs/owned",
 
   // Card border equip operations (user)
   setCardBorder: (userCardInstanceId: UUID) =>
@@ -202,6 +228,10 @@ export const ApiRoutes = {
   adminBorderById: (borderId: UUID) => `/admin/borders/${borderId}`,
   adminGrantBorder: "/admin/borders/grant",
   adminRevokeBorder: "/admin/borders/revoke",
+  adminCardBacks: "/admin/card-backs",
+  adminCardBackById: (backId: UUID) => `/admin/card-backs/${backId}`,
+  adminGrantCardBack: "/admin/card-backs/grant",
+  adminRevokeCardBack: "/admin/card-backs/revoke",
 } as const;
 
 // ============================================================================

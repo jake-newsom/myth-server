@@ -65,6 +65,8 @@ tags:
     description: Client asset patch manifest and static ZIP hosting
   - name: Borders
     description: Card border catalog, ownership, and equip / unequip endpoints
+  - name: Card Backs
+    description: Deck-level card back catalog and ownership endpoints
 
 paths:
   # Static Pages (Root-level, no /api prefix)
@@ -176,6 +178,13 @@ paths:
 
   /api/borders/owned:
     $ref: "./border.openapi.yaml#/paths/~1api~1borders~1owned"
+
+  # Card Back Catalog Endpoints
+  /api/card-backs:
+    $ref: "./cardBack.openapi.yaml#/paths/~1api~1card-backs"
+
+  /api/card-backs/owned:
+    $ref: "./cardBack.openapi.yaml#/paths/~1api~1card-backs~1owned"
 
   # XP System Endpoints
   /api/xp/level-config:

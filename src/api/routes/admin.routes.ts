@@ -96,4 +96,14 @@ router.delete("/borders/:borderId", AdminController.deactivateBorder);
 router.post("/borders/grant", AdminController.grantBorderToUser);
 router.post("/borders/revoke", AdminController.revokeBorderFromUser);
 
+// ============================================================================
+// CARD BACK MANAGEMENT ENDPOINTS
+// ============================================================================
+router.get("/card-backs", AdminController.listCardBacks);
+router.post("/card-backs", AdminController.createCardBack);
+router.patch("/card-backs/:backId", AdminController.updateCardBack);
+router.delete("/card-backs/:backId", AdminController.deactivateCardBack);
+router.post("/card-backs/grant", AdminController.grantCardBackToUser);
+router.post("/card-backs/revoke", AdminController.revokeCardBackFromUser);
+
 export default router;

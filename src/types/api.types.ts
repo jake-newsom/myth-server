@@ -25,6 +25,7 @@ export interface AuthResponse {
     username: string;
     email: string;
     in_game_currency: number;
+    echoes?: number;
   };
 }
 
@@ -40,6 +41,7 @@ export interface UserProfile {
   gems: number;
   fate_coins: number;
   card_fragments: number;
+  echoes: number;
   total_xp: number;
   pack_count: number;
   tutorial_completed_at?: string | null;
@@ -107,6 +109,7 @@ export interface DeckSummary {
   created_at: string;
   last_updated: string;
   card_count: number;
+  equipped_card_back?: import("./database.types").EquippedCardBack | null;
 }
 
 export interface DeckDetailResponse {
@@ -116,16 +119,19 @@ export interface DeckDetailResponse {
   created_at: string;
   last_updated: string;
   cards: CardResponse[];
+  equipped_card_back?: import("./database.types").EquippedCardBack | null;
 }
 
 export interface CreateDeckRequest {
   name: string;
   user_card_instance_ids: string[]; // Array of UserCardInstance IDs
+  equipped_card_back_id?: string | null;
 }
 
 export interface UpdateDeckRequest {
   name?: string;
   user_card_instance_ids?: string[]; // Array of UserCardInstance IDs
+  equipped_card_back_id?: string | null;
 }
 
 // Monthly Login Rewards API Types

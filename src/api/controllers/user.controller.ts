@@ -566,6 +566,14 @@ const UserController = {
           `DELETE FROM "user_owned_cards" WHERE user_id = $1`,
           [targetUserId]
         );
+        await client.query(
+          `DELETE FROM "user_owned_borders" WHERE user_id = $1`,
+          [targetUserId]
+        );
+        await client.query(
+          `DELETE FROM "user_owned_card_backs" WHERE user_id = $1`,
+          [targetUserId]
+        );
 
         // Reset user currencies and tower progress to default values
         await client.query(
@@ -573,6 +581,7 @@ const UserController = {
            SET gems = 0, 
                fate_coins = 2, 
                card_fragments = 0, 
+               echoes = 0,
                total_xp = 0, 
                pack_count = 0,
                in_game_currency = 0,
@@ -604,6 +613,7 @@ const UserController = {
             gems: updatedUser?.gems,
             fate_coins: updatedUser?.fate_coins,
             card_fragments: updatedUser?.card_fragments,
+            echoes: updatedUser?.echoes,
             total_xp: updatedUser?.total_xp,
             pack_count: updatedUser?.pack_count,
           },
@@ -794,6 +804,13 @@ const UserController = {
         // Delete user owned cards (user_card_power_ups will cascade)
         await client.query(
           `DELETE FROM "user_owned_cards" WHERE user_id = $1`,
+          [userId]
+        );
+        await client.query(`DELETE FROM "user_owned_borders" WHERE user_id = $1`, [
+          userId,
+        ]);
+        await client.query(
+          `DELETE FROM "user_owned_card_backs" WHERE user_id = $1`,
           [userId]
         );
 

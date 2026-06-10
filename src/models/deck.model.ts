@@ -7,6 +7,7 @@ import {
   Card as BaseCard,
   SpecialAbility,
   EquippedBorder,
+  EquippedCardBack,
 } from "../types/database.types";
 import { DeckDetailResponse, CardResponse } from "../types/api.types"; // For formatting output
 import CardModel from "./card.model"; // For fetching base card details for validation
@@ -57,20 +58,36 @@ function rowToEquippedBorder(row: any): EquippedBorder | null {
   };
 }
 
+function rowToEquippedCardBack(row: any): EquippedCardBack | null {
+  if (!row.cbk_back_id) return null;
+  return {
+    back_id: row.cbk_back_id,
+    code_key: row.cbk_code_key,
+    name: row.cbk_name,
+    image_url: row.cbk_image_url,
+    animation_key: row.cbk_animation_key ?? null,
+  };
+}
+
 const DeckModel = {
   // Creates a deck and its cards within a transaction using a provided client
   async createWithClient(
     client: PoolClient,
     userId: string,
     deckName: string,
-    userCardInstanceIds: string[]
+    userCardInstanceIds: string[],
+    equippedCardBackId?: string | null
   ): Promise<DeckDetailResponse> {
     const deckQuery = `
-      INSERT INTO "decks" (user_id, name, created_at, last_updated)
-      VALUES ($1, $2, NOW(), NOW())
-      RETURNING deck_id, name, user_id, created_at, last_updated;
+      INSERT INTO "decks" (user_id, name, equipped_card_back_id, created_at, last_updated)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      RETURNING deck_id, name, user_id, equipped_card_back_id, created_at, last_updated;
     `;
-    const deckResult = await client.query(deckQuery, [userId, deckName]);
+    const deckResult = await client.query(deckQuery, [
+      userId,
+      deckName,
+      equippedCardBackId ?? null,
+    ]);
     const deck = deckResult.rows[0];
 
     if (userCardInstanceIds && userCardInstanceIds.length > 0) {
@@ -98,10 +115,14 @@ const DeckModel = {
   async findAllByUserId(userId: string): Promise<DeckDetailResponse[]> {
     // Query all decks first (preserve current ordering by last_updated DESC)
     const decksQuery = `
-      SELECT deck_id, name, user_id, created_at, last_updated
-      FROM "decks"
-      WHERE user_id = $1
-      ORDER BY last_updated DESC;
+      SELECT d.deck_id, d.name, d.user_id, d.created_at, d.last_updated,
+             cbk.back_id as cbk_back_id, cbk.code_key as cbk_code_key,
+             cbk.name as cbk_name, cbk.image_url as cbk_image_url,
+             cbk.animation_key as cbk_animation_key
+      FROM "decks" d
+      LEFT JOIN "card_backs" cbk ON d.equipped_card_back_id = cbk.back_id
+      WHERE d.user_id = $1
+      ORDER BY d.last_updated DESC;
     `;
     const deckResult = await db.query(decksQuery, [userId]);
     if (deckResult.rows.length === 0) {
@@ -206,6 +227,7 @@ const DeckModel = {
     return deckResult.rows.map((deckRow) => ({
       ...deckRow,
       cards: cardsByDeckId.get(deckRow.deck_id) || [],
+      equipped_card_back: rowToEquippedCardBack(deckRow),
     })) as DeckDetailResponse[];
   },
 
@@ -215,9 +237,13 @@ const DeckModel = {
     client: PoolClient | typeof db = db
   ): Promise<DeckDetailResponse | null> {
     const deckQuery = `
-      SELECT deck_id, name, user_id, created_at, last_updated
-      FROM "decks"
-      WHERE deck_id = $1 AND user_id = $2;
+      SELECT d.deck_id, d.name, d.user_id, d.created_at, d.last_updated,
+             cbk.back_id as cbk_back_id, cbk.code_key as cbk_code_key,
+             cbk.name as cbk_name, cbk.image_url as cbk_image_url,
+             cbk.animation_key as cbk_animation_key
+      FROM "decks" d
+      LEFT JOIN "card_backs" cbk ON d.equipped_card_back_id = cbk.back_id
+      WHERE d.deck_id = $1 AND d.user_id = $2;
     `;
     const deckResult = await client.query(deckQuery, [deckId, userId]);
     if (deckResult.rows.length === 0) {
@@ -310,7 +336,11 @@ const DeckModel = {
       return formatDeckCardInstanceResponse(baseCard, instance, ability, rowToEquippedBorder(row));
     });
 
-    return { ...deckInfo, cards: cardDetails };
+    return {
+      ...deckInfo,
+      cards: cardDetails,
+      equipped_card_back: rowToEquippedCardBack(deckInfo),
+    };
   },
 
   async updateWithClient(
@@ -318,7 +348,8 @@ const DeckModel = {
     deckId: string,
     userId: string,
     deckName: string | undefined,
-    userCardInstanceIds: string[] | undefined
+    userCardInstanceIds: string[] | undefined,
+    equippedCardBackId: string | null | undefined
   ): Promise<DeckDetailResponse | null> {
     const ownerCheck = await client.query(
       'SELECT user_id FROM "decks" WHERE deck_id = $1;',
@@ -332,10 +363,22 @@ const DeckModel = {
       throw error;
     }
 
-    if (deckName !== undefined) {
+    if (deckName !== undefined || equippedCardBackId !== undefined) {
       await client.query(
-        'UPDATE "decks" SET name = $1, last_updated = NOW() WHERE deck_id = $2;',
-        [deckName, deckId]
+        `UPDATE "decks"
+         SET name = COALESCE($1, name),
+             equipped_card_back_id = CASE
+               WHEN $2::boolean THEN $3::uuid
+               ELSE equipped_card_back_id
+             END,
+             last_updated = NOW()
+         WHERE deck_id = $4;`,
+        [
+          deckName ?? null,
+          equippedCardBackId !== undefined,
+          equippedCardBackId ?? null,
+          deckId,
+        ]
       );
     } else {
       await client.query(

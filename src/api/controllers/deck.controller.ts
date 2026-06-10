@@ -10,6 +10,7 @@ import {
 } from "../../types";
 import { RarityUtils } from "../../types/card.types";
 import { DECK_CONFIG, USER_LIMITS } from "../../config/constants";
+import CardBackService from "../../services/cardBack.service";
 
 /**
  * Validates deck composition based on game rules:
@@ -120,7 +121,8 @@ const DeckController = {
   ): Promise<void> {
     const client: PoolClient = await db.getClient();
     try {
-      const { name, user_card_instance_ids } = req.body as CreateDeckRequest;
+      const { name, user_card_instance_ids, equipped_card_back_id } =
+        req.body as CreateDeckRequest;
       const userId = req.user!.user_id;
 
       if (!name || !user_card_instance_ids) {
@@ -146,11 +148,19 @@ const DeckController = {
 
       await client.query("BEGIN");
       await validateDeckComposition(userId, user_card_instance_ids, client); // Pass client for DB queries
+      const selection = await CardBackService.validateDeckCardBackSelection(
+        userId,
+        equipped_card_back_id
+      );
+      if (!selection.valid) {
+        throw { statusCode: 400, message: selection.error };
+      }
       const newDeck = await DeckModel.createWithClient(
         client,
         userId,
         name,
-        user_card_instance_ids
+        user_card_instance_ids,
+        equipped_card_back_id
       );
       await client.query("COMMIT");
 
@@ -184,10 +194,15 @@ const DeckController = {
     const client: PoolClient = await db.getClient();
     try {
       const { deckId } = req.params;
-      const { name, user_card_instance_ids } = req.body as UpdateDeckRequest;
+      const { name, user_card_instance_ids, equipped_card_back_id } =
+        req.body as UpdateDeckRequest;
       const userId = req.user!.user_id;
 
-      if (name === undefined && user_card_instance_ids === undefined) {
+      if (
+        name === undefined &&
+        user_card_instance_ids === undefined &&
+        equipped_card_back_id === undefined
+      ) {
         res.status(400).json({
           error: {
             message: "Either name or user_card_instance_ids must be provided.",
@@ -201,12 +216,20 @@ const DeckController = {
         // Validate only if instances are being updated
         await validateDeckComposition(userId, user_card_instance_ids, client);
       }
+      const selection = await CardBackService.validateDeckCardBackSelection(
+        userId,
+        equipped_card_back_id
+      );
+      if (!selection.valid) {
+        throw { statusCode: 400, message: selection.error };
+      }
       const updatedDeck = await DeckModel.updateWithClient(
         client,
         deckId,
         userId,
         name,
-        user_card_instance_ids
+        user_card_instance_ids,
+        equipped_card_back_id
       );
       await client.query("COMMIT");
 
