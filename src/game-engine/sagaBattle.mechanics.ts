@@ -10,7 +10,7 @@ import { GameState, TileStatus } from "../types/game.types";
 import { EffectType, InGameCard, PowerValues } from "../types/card.types";
 import type { SagaBattleContext } from "../types/sagaBattle.types";
 import { createBoardCell } from "./game.utils";
-import { updateCurrentPower } from "./ability.utils";
+import { isImmuneToNegativeEffects, updateCurrentPower } from "./ability.utils";
 
 function totalPower(power: PowerValues): number {
   return power.top + power.right + power.bottom + power.left;
@@ -407,7 +407,7 @@ export function applyFirstBlessingOnPlace(
   };
 }
 
-/** Thorns Blessing: when defeated, debuff the defeating card by -2 all sides. */
+/** Thorns Blessing: when defeated, debuff the defeating card by -2 all sides (unless the attacker is immune to negative effects). */
 export function applyThornsOnFlips(
   state: GameState,
   flips: BaseGameEvent[]
@@ -430,6 +430,21 @@ export function applyThornsOnFlips(
     if (!flipped.sourceCardId) continue;
     const attacker = findBoardCardById(state, flipped.sourceCardId);
     if (!attacker) continue;
+
+    if (isImmuneToNegativeEffects(attacker.card)) {
+      events.push({
+        type: EVENT_TYPES.CARD_POWER_CHANGED,
+        eventId: uuidv4(),
+        timestamp: Date.now(),
+        cardId: attacker.card.user_card_instance_id,
+        position: { x: attacker.x, y: attacker.y },
+        powerDelta: 0,
+        animation: "protected",
+        effectName: "Thorns Blessing",
+        sourcePlayerId: flipped.sourcePlayerId,
+      } as CardPowerChangedEvent);
+      continue;
+    }
 
     attacker.card.temporary_effects.push({
       type: EffectType.Debuff,

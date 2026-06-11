@@ -136,21 +136,20 @@ export function updateCurrentPower(card: InGameCard): PowerValues {
     });
   }
 
-  const minimumPower = card.base_card_data.base_power;
-  const hasIronBlessing = card.saga_rune_type === "iron";
-
   return {
-    top: Math.max(currentPower.top, hasIronBlessing ? minimumPower.top : 0),
-    bottom: Math.max(
-      currentPower.bottom,
-      hasIronBlessing ? minimumPower.bottom : 0,
-    ),
-    left: Math.max(currentPower.left, hasIronBlessing ? minimumPower.left : 0),
-    right: Math.max(
-      currentPower.right,
-      hasIronBlessing ? minimumPower.right : 0,
-    ),
+    top: Math.max(currentPower.top, 0),
+    bottom: Math.max(currentPower.bottom, 0),
+    left: Math.max(currentPower.left, 0),
+    right: Math.max(currentPower.right, 0),
   };
+}
+
+/**
+ * Iron Blessing (Saga rune): a card with this blessing is immune to
+ * negative effects (debuffs). Defeat/Destroy mechanics are unaffected.
+ */
+export function isImmuneToNegativeEffects(card: InGameCard): boolean {
+  return card.saga_rune_type === "iron";
 }
 
 export function getOpponentId(playerId: string, gameState: GameState): string {
@@ -280,6 +279,19 @@ export function addTempDebuff(
   power: number | Partial<PowerValues>,
   options: PowerChangeEventOptions,
 ): BaseGameEvent {
+  if (isImmuneToNegativeEffects(card)) {
+    return {
+      type: EVENT_TYPES.CARD_POWER_CHANGED,
+      animation: "protected",
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      cardId: card.user_card_instance_id,
+      powerDelta: 0,
+      effectName: options.name,
+      position: options.position,
+    } as CardPowerChangedEvent;
+  }
+
   if (!card.temporary_effects) {
     card.temporary_effects = [];
   }
