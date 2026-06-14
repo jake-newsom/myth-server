@@ -26,6 +26,7 @@ import SagaRunModel from "../models/sagaRun.model";
 import SagaCardModel from "../models/sagaCard.model";
 import SagaMapService from "./sagaMap.service";
 import { isSagaNodeMapData } from "./sagaMapGeneration.service";
+import CardBackModel from "../models/cardBack.model";
 import DeckService from "./deck.service";
 import { clientSupportsMulligan } from "../utils/clientVersion";
 import { GameState, Player } from "../types/game.types";
@@ -218,11 +219,14 @@ const SagaBattleService = {
       throw httpError(500, "Failed to hydrate saga deck");
     }
 
-    const aiCache = await hydrateEnemyDeckForSaga(
-      enemyDeckId,
-      AI_PLAYER_ID,
-      floorConfig.enemy_stat_bonus
-    );
+    const [aiCache, enemyCardBack] = await Promise.all([
+      hydrateEnemyDeckForSaga(
+        enemyDeckId,
+        AI_PLAYER_ID,
+        floorConfig.enemy_stat_bonus
+      ),
+      CardBackModel.resolveEquippedBackForDeck(enemyDeckId),
+    ]);
     aiInstanceIds = [...aiCache.keys()];
     const shouldForceBossOpeningPlay = node.type === "boss" && run.current_floor === 3;
     const forcedAiOpeningCardInstanceId = shouldForceBossOpeningPlay
@@ -238,6 +242,7 @@ const SagaBattleService = {
       preDestroyed,
       { forcedAiOpeningCardInstanceId: forcedAiOpeningCardInstanceId ?? undefined }
     );
+    gameState.player2.equipped_card_back = enemyCardBack;
 
     const worldsEndThreshold =
       bossExtras.worlds_end_threshold ??
