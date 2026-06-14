@@ -511,24 +511,11 @@ export class GameLogic {
         }
       }
 
-      if (!validators.hasPlayableEmptyTiles(newState.board)) {
-        // Board is full or every remaining empty tile is blocked — resolve scores.
-        const winnerId = validators.determineGameOutcome(
-          newState.player1.score,
-          newState.player2.score,
-          newState.player1.user_id,
-          newState.player2.user_id
-        );
-
-        newState.status = GameStatus.COMPLETED;
-        newState.winner = winnerId;
-      } else {
-        // Switch turn to opponent
-
-        const endTurnResult = await GameLogic.endTurn(newState, playerId);
-        newState = endTurnResult.state;
-        events.push(...endTurnResult.events);
-      }
+      // Switch turn to opponent. endTurn() checks for full-board game over
+      // as its final step, after turn effects have ticked down.
+      const endTurnResult = await GameLogic.endTurn(newState, playerId);
+      newState = endTurnResult.state;
+      events.push(...endTurnResult.events);
 
       return { state: newState, events };
     } catch (error) {
@@ -713,6 +700,36 @@ export class GameLogic {
     }
 
     newState.turn_number++;
+
+    // Final step: if no playable empty tiles remain, the game is over.
+    // Run this last so tile effects (e.g. heimdall_block) have already
+    // ticked down and cleared before we check for a full board.
+    if (!validators.hasPlayableEmptyTiles(newState.board)) {
+      const scores = validators.calculateScores(
+        newState.board,
+        newState.player1.user_id,
+        newState.player2.user_id
+      );
+      newState.player1.score = scores.player1Score;
+      newState.player2.score = scores.player2Score;
+
+      const winnerId = validators.determineGameOutcome(
+        newState.player1.score,
+        newState.player2.score,
+        newState.player1.user_id,
+        newState.player2.user_id
+      );
+
+      newState.status = GameStatus.COMPLETED;
+      newState.winner = winnerId;
+
+      events.push({
+        type: EVENT_TYPES.GAME_OVER,
+        eventId: uuidv4(),
+        timestamp: Date.now(),
+        sourcePlayerId: playerId,
+      });
+    }
 
     return { state: newState, events };
   }

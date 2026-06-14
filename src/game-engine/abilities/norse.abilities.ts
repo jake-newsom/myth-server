@@ -340,7 +340,7 @@ export const norseAbilities: AbilityMap = {
     });
 
     for (const pos of emptyAdjacentTiles) {
-      const event = blockTile(pos, board, 1, "heimdall_gate");
+      const event = blockTile(pos, board, 2, "heimdall_gate");
       if (event) {
         gameEvents.push(event);
       }

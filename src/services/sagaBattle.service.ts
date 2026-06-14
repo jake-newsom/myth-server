@@ -388,11 +388,14 @@ const SagaBattleService = {
           : game.game_state;
       await this.applyFuryRuneProgress(run.run_id, userId, gameState as GameState);
       await this.applySlayerSteals(run.run_id, userId, gameState as GameState);
-      pendingReward = await SagaRewardService.startBattleRewardNode(
-        run.run_id,
-        userId,
-        game.saga_node_id
-      );
+      const isFinalBoss = node.type === "boss" && run.current_floor === 3;
+      if (!isFinalBoss) {
+        pendingReward = await SagaRewardService.startBattleRewardNode(
+          run.run_id,
+          userId,
+          game.saga_node_id
+        );
+      }
     } else if (run.status === "active") {
       const defeat = await SagaDefeatService.processDefeat(
         run.run_id,
