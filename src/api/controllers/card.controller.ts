@@ -124,7 +124,10 @@ const CardController = {
             "Cache-Control": "public, max-age=3600, s-maxage=3600",
             ETag: `"cards-all-${dataHash}"`,
             "Last-Modified": new Date().toUTCString(),
-            Vary: "Accept-Encoding",
+            // Origin must stay in Vary alongside Accept-Encoding so HTTP
+            // caches don't replay a response (with its CORS headers) cached
+            // for one origin to a request from a different origin.
+            Vary: "Accept-Encoding, Origin",
             "X-Cache": "HIT", // Indicate cache hit
           });
 
@@ -161,7 +164,10 @@ const CardController = {
           "Cache-Control": "public, max-age=3600, s-maxage=3600",
           ETag: `"cards-all-${dataHash}"`, // ETag based on actual data content
           "Last-Modified": new Date().toUTCString(),
-          Vary: "Accept-Encoding", // Important for compressed responses
+          // Origin must stay in Vary alongside Accept-Encoding so HTTP
+          // caches don't replay a response (with its CORS headers) cached
+          // for one origin to a request from a different origin.
+          Vary: "Accept-Encoding, Origin", // Important for compressed responses
           "X-Cache": "MISS", // Indicate cache miss
         });
       }
