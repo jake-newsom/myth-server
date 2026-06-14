@@ -2,9 +2,10 @@ import type { SagaRuneType } from "./saga.types";
 import type { CardResponse } from "./api.types";
 
 export type SagaBattleRewardKind =
-  | "side_plus_2"
   | "card_plus_1_all"
   | "card_plus_2_all"
+  | "side_plus_2_weakest"
+  | "side_plus_4_weakest"
   | "blessing_offer";
 
 export interface SagaBattleRewardOption {
@@ -12,7 +13,7 @@ export interface SagaBattleRewardOption {
   kind: SagaBattleRewardKind;
   label: string;
   description: string;
-  /** For precision: player picks card + side via follow-up */
+  /** Amount applied to all sides, or to the auto-selected weakest side */
   buff_amount?: number;
   rune_type?: SagaRuneType;
 }
@@ -37,7 +38,6 @@ export interface SagaBattleRewardClaimInput {
   node_id: string;
   option_id: string;
   saga_card_id?: string;
-  side?: "top" | "left" | "right" | "bottom";
   rune_type?: SagaRuneType;
 }
 

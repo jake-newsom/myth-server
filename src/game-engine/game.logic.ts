@@ -417,12 +417,12 @@ export class GameLogic {
       let sightBlessingTriggered = false;
       if (newState.saga_context) {
         const {
-          applySlayerOnPlace,
-          applyFirstBlessingOnPlace,
+          applyFirstProtectionOnPlace,
+          applyUnderdogOnPlace,
           refreshDynamicBlessings,
           hasSightBlessingOnPlacedCard,
         } = await import("./sagaBattle.mechanics");
-        const firstResult = applyFirstBlessingOnPlace(newState, position, playerId);
+        const firstResult = applyFirstProtectionOnPlace(newState, position, playerId);
         newState = firstResult.state;
         events.push(...firstResult.events);
 
@@ -430,9 +430,9 @@ export class GameLogic {
         newState = preCombatBlessings.state;
         events.push(...preCombatBlessings.events);
 
-        const slayerResult = applySlayerOnPlace(newState, position, playerId);
-        newState = slayerResult.state;
-        events.push(...slayerResult.events);
+        const underdogResult = applyUnderdogOnPlace(newState, position, playerId);
+        newState = underdogResult.state;
+        events.push(...underdogResult.events);
         sightBlessingTriggered = hasSightBlessingOnPlacedCard(
           newState,
           position,
@@ -452,11 +452,16 @@ export class GameLogic {
 
       if (newState.saga_context) {
         const {
+          applySlayerOnDefeat,
           applyThornsOnFlips,
           applyWorldsEndAfterFlips,
           countFlipEvents,
           refreshDynamicBlessings,
         } = await import("./sagaBattle.mechanics");
+        const slayerResult = applySlayerOnDefeat(newState, combatResult.events, playerId);
+        newState = slayerResult.state;
+        events.push(...slayerResult.events);
+
         const thorns = applyThornsOnFlips(newState, combatResult.events);
         newState = thorns.state;
         events.push(...thorns.events);

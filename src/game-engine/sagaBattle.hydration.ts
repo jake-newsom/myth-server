@@ -104,6 +104,12 @@ export function buildSagaInGameCard(
   };
 
   const currentPower = computeSagaCardPower(basePower, sagaCard);
+  const enhancements: PowerValues = {
+    top: currentPower.top - basePower.top,
+    right: currentPower.right - basePower.right,
+    bottom: currentPower.bottom - basePower.bottom,
+    left: currentPower.left - basePower.left,
+  };
 
   const ability: SpecialAbility | null = dbRow.ability_name
     ? {
@@ -127,7 +133,7 @@ export function buildSagaInGameCard(
       tags: [...dbRow.tags, "saga"],
       rarity: dbRow.rarity as Rarity,
       image_url: dbRow.image_url,
-      base_power: { ...currentPower },
+      base_power: { ...basePower },
       set_id: dbRow.set_id,
       special_ability: ability,
       ...(dbRow.attack_animation && { attack_animation: dbRow.attack_animation }),
@@ -135,12 +141,7 @@ export function buildSagaInGameCard(
     level: 1,
     xp: 0,
     is_locked: false,
-    power_enhancements: {
-      top: sagaCard.top_buff,
-      right: sagaCard.right_buff,
-      bottom: sagaCard.bottom_buff,
-      left: sagaCard.left_buff,
-    },
+    power_enhancements: enhancements,
     card_modifiers_positive: { top: 0, right: 0, bottom: 0, left: 0 },
     card_modifiers_negative: { top: 0, right: 0, bottom: 0, left: 0 },
     temporary_effects: [],

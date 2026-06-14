@@ -67,11 +67,12 @@ test("addTempDebuff applies normally to a non-iron card", () => {
   }
 });
 
-test("Thorns retaliation is blocked when the attacker is iron-blessed", () => {
+test("Thorns destroys the attacker that defeated it, even if the attacker is iron-blessed", () => {
   const board = createEmptyBoard();
 
   const thornsCard = createTestCard({ id: "thorns-card", owner: "p2" });
   thornsCard.saga_rune_type = "thorns";
+  thornsCard.saga_card_id = "saga-thorns-card";
 
   const attacker = createTestCard({ id: "iron-attacker", owner: "p1" });
   attacker.saga_rune_type = "iron";
@@ -80,6 +81,17 @@ test("Thorns retaliation is blocked when the attacker is iron-blessed", () => {
   placeCardOnBoard(board, { x: 1, y: 1 }, attacker);
 
   const state = createTestGameState({ board, player1Id: "p1", player2Id: "p2" });
+  state.saga_context = {
+    run_id: "run-1",
+    node_id: "node-1",
+    season_id: "season-1",
+    floor: 1,
+    floor_difficulty: "normal",
+    battle_difficulty: "easy",
+    enemy_stat_bonus: 0,
+    ai_profile: "basic",
+    worlds_end: { defeats_per_destroy: 1, defeats_since_destroy: 0 },
+  };
 
   const flips = [
     {
@@ -93,20 +105,21 @@ test("Thorns retaliation is blocked when the attacker is iron-blessed", () => {
     } as any,
   ];
 
-  const { events } = applyThornsOnFlips(state, flips);
+  const { state: after, events } = applyThornsOnFlips(state, flips);
 
-  assert.equal(attacker.temporary_effects.length, 0);
+  assert.equal(after.board[1][1].card, null);
   assert.equal(events.length, 1);
-  assert.equal((events[0] as any).powerDelta, 0);
-  assert.equal((events[0] as any).animation, "protected");
-  assert.equal((events[0] as any).effectName, "Thorns Blessing");
+  assert.equal(events[0].type, EVENT_TYPES.CARD_REMOVED_FROM_BOARD);
+  assert.equal((events[0] as any).cardId, "iron-attacker");
+  assert.equal(after.saga_context?.thorns_used?.["saga-thorns-card"], true);
 });
 
-test("Thorns retaliation still applies to a non-iron attacker", () => {
+test("Thorns only triggers once per battle", () => {
   const board = createEmptyBoard();
 
   const thornsCard = createTestCard({ id: "thorns-card", owner: "p2" });
   thornsCard.saga_rune_type = "thorns";
+  thornsCard.saga_card_id = "saga-thorns-card";
 
   const attacker = createTestCard({ id: "plain-attacker", owner: "p1" });
 
@@ -114,6 +127,18 @@ test("Thorns retaliation still applies to a non-iron attacker", () => {
   placeCardOnBoard(board, { x: 1, y: 1 }, attacker);
 
   const state = createTestGameState({ board, player1Id: "p1", player2Id: "p2" });
+  state.saga_context = {
+    run_id: "run-1",
+    node_id: "node-1",
+    season_id: "season-1",
+    floor: 1,
+    floor_difficulty: "normal",
+    battle_difficulty: "easy",
+    enemy_stat_bonus: 0,
+    ai_profile: "basic",
+    worlds_end: { defeats_per_destroy: 1, defeats_since_destroy: 0 },
+    thorns_used: { "saga-thorns-card": true },
+  };
 
   const flips = [
     {
@@ -127,14 +152,10 @@ test("Thorns retaliation still applies to a non-iron attacker", () => {
     } as any,
   ];
 
-  const { events } = applyThornsOnFlips(state, flips);
+  const { state: after, events } = applyThornsOnFlips(state, flips);
 
-  assert.equal(attacker.temporary_effects.length, 1);
-  assert.equal(attacker.temporary_effects[0].type, "debuff");
-  assert.equal(attacker.temporary_effects[0].power.top, -2);
-  assert.equal(events.length, 1);
-  assert.equal((events[0] as any).powerDelta, -2);
-  assert.equal((events[0] as any).effectName, "Thorns Blessing");
+  assert.equal(events.length, 0);
+  assert.notEqual(after.board[1][1].card, null);
 });
 
 test("updateCurrentPower no longer floors iron-blessed cards at base power", () => {

@@ -1175,7 +1175,12 @@ export function getEmptyAdjacentTiles(
 
   for (const pos of adjacentPositions) {
     const tile = getTileAtPosition(pos, board);
-    if (tile && !tile.card) {
+    if (
+      tile &&
+      !tile.card &&
+      tile.tile_enabled !== false &&
+      tile.tile_effect?.status !== TileStatus.Blocked
+    ) {
       emptyTiles.push({ position: pos, tile });
     }
   }
@@ -1281,6 +1286,29 @@ export function getCardHighestPower(card: InGameCard): {
 
   return { key: maxKey, value: maxValue };
 }
+
+export function getCardLowestPower(card: InGameCard): {
+  key: "top" | "bottom" | "left" | "right";
+  value: number;
+} {
+  const keys: Array<"top" | "bottom" | "left" | "right"> = [
+    "top",
+    "bottom",
+    "left",
+    "right",
+  ];
+  let minKey: "top" | "bottom" | "left" | "right" = "top";
+  let minValue = card.current_power.top;
+
+  for (const key of keys) {
+    if (card.current_power[key] < minValue) {
+      minValue = card.current_power[key];
+      minKey = key;
+    }
+  }
+
+  return { key: minKey, value: minValue };
+}
 /**
  * Applies tile effects to a card when it moves to a new position
  * Returns events for any tile effects that were applied
@@ -1358,11 +1386,15 @@ export function pushCardAway(
   const newPosition = { x: newX, y: newY };
 
   // Check if new position is valid and empty
+  const destinationTile = getTileAtPosition(newPosition, board);
   if (
     !isValidPosition(newPosition, board.length) ||
-    getTileAtPosition(newPosition, board)?.card
+    destinationTile?.card ||
+    destinationTile?.tile_enabled === false ||
+    destinationTile?.tile_effect?.status === TileStatus.Blocked ||
+    destinationTile?.tile_effect?.status === TileStatus.Removed
   ) {
-    return events; // Can't push if destination is invalid or occupied
+    return events; // Can't push if destination is invalid, occupied, or blocked
   }
 
   // Move the card
@@ -1429,10 +1461,15 @@ export function pullCardsIn(
       continue; // No card or it's our own card
     }
 
-    // Check if intermediate position is empty
+    // Check if intermediate position is empty and not blocked
     const intermediateTile = getTileAtPosition(intermediatePosition, board);
-    if (intermediateTile?.card) {
-      continue; // Can't pull if there's a card in the way
+    if (
+      intermediateTile?.card ||
+      intermediateTile?.tile_enabled === false ||
+      intermediateTile?.tile_effect?.status === TileStatus.Blocked ||
+      intermediateTile?.tile_effect?.status === TileStatus.Removed
+    ) {
+      continue; // Can't pull into an occupied or blocked tile
     }
 
     // Move the enemy card to the intermediate position
@@ -1481,6 +1518,12 @@ export function moveCardToPosition(
   const newTile = getTileAtPosition(toPosition, board);
 
   if (!currentTile || !newTile) throw new Error("Invalid positions");
+
+  if (
+    newTile.tile_enabled === false ||
+    newTile.tile_effect?.status === TileStatus.Blocked
+  )
+    throw new Error("Cannot move to a blocked tile");
 
   newTile.card = currentTile.card;
   currentTile.card = null;

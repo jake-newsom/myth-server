@@ -7,6 +7,10 @@ import { getSagaCardRewardPickRarityWeights } from "../config/sagaDraft.config";
 import SagaDraftService from "./sagaDraft.service";
 import SagaService from "./saga.service";
 import { isSagaNodeMapData } from "./sagaMapGeneration.service";
+import {
+  computeSagaCardPower,
+  fetchCardRowsByVariantIds,
+} from "../game-engine/sagaBattle.hydration";
 import type { SagaMapNode } from "../types/sagaMap.types";
 import type { SagaRuneType } from "../types/saga.types";
 import type { SagaPendingNodeReward } from "../types/sagaReward.types";
@@ -18,6 +22,7 @@ import type {
   SagaRewardStatusResponse,
 } from "../types/sagaReward.types";
 import { CardResponse } from "../types/api.types";
+import type { PowerValues } from "../types/card.types";
 
 function httpError(statusCode: number, message: string): Error & { statusCode: number } {
   const err = new Error(message) as Error & { statusCode: number };
@@ -58,48 +63,47 @@ const ALL_BLESSINGS: SagaRuneType[] = [
   "underdog",
 ];
 
-type WeightedRewardKind = {
-  kind: SagaBattleRewardOption["kind"];
-  weight: number;
-};
-
-const NORMAL_REWARD_WEIGHTS: WeightedRewardKind[] = [
-  { kind: "side_plus_2", weight: 40 },
-  { kind: "card_plus_1_all", weight: 40 },
-  { kind: "card_plus_2_all", weight: 10 },
-  { kind: "blessing_offer", weight: 10 },
-];
-
-const HARD_REWARD_WEIGHTS: WeightedRewardKind[] = [
-  { kind: "side_plus_2", weight: 5 },
-  { kind: "card_plus_1_all", weight: 20 },
-  { kind: "card_plus_2_all", weight: 25 },
-  { kind: "blessing_offer", weight: 50 },
-];
-
 const BLESSING_DESCRIPTION_BY_TYPE: Record<SagaRuneType, string> = {
   fury: "Gain +1 to all sides for every battle this card is played in.",
-  slayer: "Gain +2 to all sides when placed adjacent to a stronger enemy.",
+  slayer:
+    "When this card defeats an enemy, permanently steal +1 from the enemy's highest side and add it to this card's lowest side.",
   iron: "Cannot drop below original power values.",
   sight: "Draw 1 additional card when played.",
-  thorns: "When defeated, inflict -2 to all sides on the defeating card.",
-  first: "Gain +2 to all sides if this is your first card played this battle.",
-  bonds: "Gain +1 to all sides for each adjacent ally.",
-  underdog: "Gain +3 to all sides while controlling fewer tiles than your opponent.",
+  thorns: "When defeated, destroy the card that defeated it. Once per battle.",
+  first:
+    "The first time this card enters play each battle, it cannot be defeated for 2 rounds.",
+  bonds: "This card cannot be defeated while adjacent to an ally.",
+  underdog:
+    "When placed adjacent to a stronger enemy, reduce that enemy's highest side by 2.",
 };
-
-function rollWeightedKind(weights: WeightedRewardKind[]): SagaBattleRewardOption["kind"] {
-  const totalWeight = weights.reduce((sum, entry) => sum + entry.weight, 0);
-  let roll = Math.random() * totalWeight;
-  for (const entry of weights) {
-    roll -= entry.weight;
-    if (roll < 0) return entry.kind;
-  }
-  return weights[weights.length - 1].kind;
-}
 
 function randomBlessing(): SagaRuneType {
   return ALL_BLESSINGS[Math.floor(Math.random() * ALL_BLESSINGS.length)];
+}
+
+function randomDistinctBlessings(count: number): SagaRuneType[] {
+  const pool = [...ALL_BLESSINGS];
+  const picked: SagaRuneType[] = [];
+  for (let i = 0; i < count && pool.length > 0; i++) {
+    const index = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(index, 1)[0]);
+  }
+  return picked;
+}
+
+function rollEqual<T>(options: T[]): T {
+  return options[Math.floor(Math.random() * options.length)];
+}
+
+function buildBlessingOption(blessing: SagaRuneType): SagaBattleRewardOption {
+  const blessingName = `${blessing.charAt(0).toUpperCase()}${blessing.slice(1)}`;
+  return {
+    id: uuidv4(),
+    kind: "blessing_offer",
+    label: `${blessingName} Blessing`,
+    description: BLESSING_DESCRIPTION_BY_TYPE[blessing],
+    rune_type: blessing,
+  };
 }
 
 const SagaRewardService = {
@@ -171,53 +175,63 @@ const SagaRewardService = {
 
   buildBattleRewardOptions(node: SagaMapNode): SagaBattleRewardOption[] {
     const isBoss = node.type === "boss";
-    const isHard = node.battle_difficulty === "hard" || isBoss;
-    const weights = isHard ? HARD_REWARD_WEIGHTS : NORMAL_REWARD_WEIGHTS;
-    const options: SagaBattleRewardOption[] = [];
-    const pickedKinds = new Set<SagaBattleRewardOption["kind"]>();
-    for (let i = 0; i < 3; i++) {
-      const availableWeights = weights.filter((entry) => !pickedKinds.has(entry.kind));
-      if (availableWeights.length === 0) break;
-      const kind = rollWeightedKind(availableWeights);
-      pickedKinds.add(kind);
-      if (kind === "side_plus_2") {
-        options.push({
-          id: uuidv4(),
-          kind,
-          label: "Side Power +2",
-          description: "Grant +2 to one side of a card.",
-          buff_amount: 2,
-        });
-      } else if (kind === "card_plus_1_all") {
-        options.push({
-          id: uuidv4(),
-          kind,
-          label: "Card Power +1",
-          description: "Grant +1 to all sides of a card.",
-          buff_amount: 1,
-        });
-      } else if (kind === "card_plus_2_all") {
-        options.push({
-          id: uuidv4(),
-          kind,
-          label: "Card Power +2",
-          description: "Grant +2 to all sides of a card.",
-          buff_amount: 2,
-        });
-      } else {
-        const blessing = randomBlessing();
-        const blessingName = `${blessing.charAt(0).toUpperCase()}${blessing.slice(1)}`;
-        options.push({
-          id: uuidv4(),
-          kind: "blessing_offer",
-          label: `${blessingName} Blessing`,
-          description: BLESSING_DESCRIPTION_BY_TYPE[blessing],
-          rune_type: blessing,
-        });
-      }
+    const isHard = node.battle_difficulty === "hard";
+
+    const CARD_PLUS_1_ALL: SagaBattleRewardOption = {
+      id: uuidv4(),
+      kind: "card_plus_1_all",
+      label: "Card Power +1",
+      description: "Grant +1 to all sides of a card.",
+      buff_amount: 1,
+    };
+    const CARD_PLUS_2_ALL: SagaBattleRewardOption = {
+      id: uuidv4(),
+      kind: "card_plus_2_all",
+      label: "Card Power +2",
+      description: "Grant +2 to all sides of a card.",
+      buff_amount: 2,
+    };
+    const SIDE_PLUS_2_WEAKEST: SagaBattleRewardOption = {
+      id: uuidv4(),
+      kind: "side_plus_2_weakest",
+      label: "Weakest Side +2",
+      description: "Grant +2 to a card's weakest side.",
+      buff_amount: 2,
+    };
+    const SIDE_PLUS_4_WEAKEST: SagaBattleRewardOption = {
+      id: uuidv4(),
+      kind: "side_plus_4_weakest",
+      label: "Weakest Side +4",
+      description: "Grant +4 to a card's weakest side.",
+      buff_amount: 4,
+    };
+
+    if (isBoss) {
+      return randomDistinctBlessings(3).map(buildBlessingOption);
     }
 
-    return options;
+    if (isHard) {
+      const options = [CARD_PLUS_2_ALL, SIDE_PLUS_4_WEAKEST];
+      const blessingCount = Math.random() < 0.5 ? 1 : 2;
+      for (const blessing of randomDistinctBlessings(blessingCount)) {
+        options.push(buildBlessingOption(blessing));
+      }
+      return options;
+    }
+
+    const rolledKind = rollEqual<SagaBattleRewardOption["kind"]>([
+      "blessing_offer",
+      "card_plus_2_all",
+      "side_plus_4_weakest",
+    ]);
+    const rolledOption =
+      rolledKind === "blessing_offer"
+        ? buildBlessingOption(randomBlessing())
+        : rolledKind === "card_plus_2_all"
+          ? CARD_PLUS_2_ALL
+          : SIDE_PLUS_4_WEAKEST;
+
+    return [CARD_PLUS_1_ALL, SIDE_PLUS_2_WEAKEST, rolledOption];
   },
 
   async startBattleRewardNode(
@@ -294,17 +308,36 @@ const SagaRewardService = {
     return card.saga_card_id;
   },
 
-  async applyPrecisionBuff(
+  async applyWeakestSideBuff(
     sagaCardId: string,
     playerId: string,
-    side: "top" | "left" | "right" | "bottom",
     amount: number,
     floor: number
   ): Promise<void> {
     const card = await SagaCardModel.findById(sagaCardId);
     if (!card) throw httpError(404, "Saga card not found");
     await SagaService.assertRunOwnership(card.run_id, playerId);
-    const field = `${side}_buff` as "top_buff" | "left_buff" | "right_buff" | "bottom_buff";
+
+    const rows = await fetchCardRowsByVariantIds([card.base_card_id]);
+    const dbRow = rows.get(card.base_card_id);
+    if (!dbRow) throw httpError(404, "Base card not found");
+
+    const basePower: PowerValues = {
+      top: parseInt(dbRow.base_power_top, 10),
+      right: parseInt(dbRow.base_power_right, 10),
+      bottom: parseInt(dbRow.base_power_bottom, 10),
+      left: parseInt(dbRow.base_power_left, 10),
+    };
+    const effective = computeSagaCardPower(basePower, card);
+
+    let weakestSide: keyof PowerValues = "top";
+    for (const side of ["top", "left", "right", "bottom"] as const) {
+      if (effective[side] < effective[weakestSide]) {
+        weakestSide = side;
+      }
+    }
+
+    const field = `${weakestSide}_buff` as "top_buff" | "left_buff" | "right_buff" | "bottom_buff";
     await SagaCardModel.update(sagaCardId, {
       [field]: card[field] + amount,
     });
@@ -428,15 +461,14 @@ const SagaRewardService = {
 
     const floor = run.current_floor;
 
-    if (option.kind === "side_plus_2") {
-      if (!input.saga_card_id || !input.side) {
-        throw httpError(400, "Choose a card and side for this buff");
+    if (option.kind === "side_plus_2_weakest" || option.kind === "side_plus_4_weakest") {
+      if (!input.saga_card_id) {
+        throw httpError(400, "Choose a card for this buff");
       }
-      await this.applyPrecisionBuff(
+      await this.applyWeakestSideBuff(
         input.saga_card_id,
         playerId,
-        input.side,
-        option.buff_amount ?? 2,
+        option.buff_amount ?? (option.kind === "side_plus_2_weakest" ? 2 : 4),
         floor
       );
     } else if (option.kind === "card_plus_1_all") {

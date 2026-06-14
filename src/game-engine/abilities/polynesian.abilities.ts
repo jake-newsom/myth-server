@@ -75,7 +75,7 @@ const countActiveLavaTiles = (board: GameBoard): number => {
 export const polynesianCombatResolvers: CombatResolverMap = {
   // Ocean's Shield: Cannot be defeated by enemies with lower total power.
   kamohoalii_oceans_shield: (context) => {
-    const { triggerCard, flippedCard } = context;
+    const { triggerCard, flippedCard, flippedBy } = context;
 
     // Only protect the card that actually has Ocean's Shield (self-protection only)
     if (
@@ -86,7 +86,11 @@ export const polynesianCombatResolvers: CombatResolverMap = {
     )
       return { preventDefeat: false };
 
-    const enemyTotalPower = getCardTotalPower(triggerCard);
+    // When invoked via ally protection, triggerCard is the protecting ally
+    // (not the attacker) — the actual attacker is flippedBy.
+    const attacker = flippedBy ?? triggerCard;
+
+    const enemyTotalPower = getCardTotalPower(attacker);
     const myTotalPower = getCardTotalPower(flippedCard);
 
     if (enemyTotalPower >= myTotalPower) return { preventDefeat: false };

@@ -41,7 +41,9 @@ const SEASON_BOSS_CARD = {
   character_name: "Ragnarök",
   type: "boss",
   base_power: { top: 9, right: 9, bottom: 9, left: 9 },
-  tags: ["event"],
+  // "boss" lets findBossOpeningCardInstanceId (sagaBattle.service.ts) identify
+  // this card to guarantee it's in the AI's opening hand and played first.
+  tags: ["event", "boss"],
   rarity: "legendary++",
   image_url: "ragnarok/ragnarok.webp",
   attack_animation: "fire",
@@ -595,16 +597,24 @@ But Ragnarök is not only a story about destruction. After the world is ruined, 
   const existingVariant = await client.query(
     `SELECT card_variant_id
      FROM card_variants
-     WHERE character_id = $1 AND image_url = $2
+     WHERE character_id = $1 AND is_exclusive = true
      LIMIT 1`,
-    [characterId, SEASON_BOSS_CARD.image_url]
+    [characterId]
   );
   if (existingVariant.rows.length > 0) {
     await client.query(
       `UPDATE card_variants
-       SET is_exclusive = true
+       SET rarity = $2,
+           image_url = $3,
+           attack_animation = $4,
+           is_exclusive = true
        WHERE card_variant_id = $1`,
-      [existingVariant.rows[0].card_variant_id]
+      [
+        existingVariant.rows[0].card_variant_id,
+        SEASON_BOSS_CARD.rarity,
+        SEASON_BOSS_CARD.image_url,
+        SEASON_BOSS_CARD.attack_animation,
+      ]
     );
     return loadCardVariantShopRow(
       client,
@@ -646,17 +656,25 @@ async function ensureSeasonVariants(client) {
     const existing = await client.query(
       `SELECT card_variant_id
        FROM card_variants
-       WHERE character_id = $1 AND image_url = $2
+       WHERE character_id = $1 AND is_exclusive = true
        LIMIT 1`,
-      [character.character_id, variantDef.image_url]
+      [character.character_id]
     );
 
     if (existing.rows.length > 0) {
       await client.query(
         `UPDATE card_variants
-         SET is_exclusive = true
+         SET rarity = $2,
+             image_url = $3,
+             attack_animation = $4,
+             is_exclusive = true
          WHERE card_variant_id = $1`,
-        [existing.rows[0].card_variant_id]
+        [
+          existing.rows[0].card_variant_id,
+          variantDef.rarity,
+          variantDef.image_url,
+          variantDef.attack_animation ?? null,
+        ]
       );
       variantIds.push(
         await loadCardVariantShopRow(client, existing.rows[0].card_variant_id)

@@ -582,8 +582,11 @@ export function triggerIndirectAbilities(
 
   // Collect all cards that need to be triggered BEFORE processing any of them.
   // This prevents cards from being processed multiple times if they move during iteration.
-  const cardsToTrigger: Array<{ card: InGameCard; position: BoardPosition }> =
-    [];
+  const cardsToTrigger: Array<{
+    card: InGameCard;
+    position: BoardPosition;
+    triggerMoment: TriggerMoment;
+  }> = [];
   const processedCardIds = new Set<string>();
 
   for (let y = 0; y < state.board.length; y++) {
@@ -596,15 +599,19 @@ export function triggerIndirectAbilities(
 
         const ability = cell.card.base_card_data.special_ability;
 
-        const hasAnyTrigger = hasTrigger(
-          ability,
-          `Any${trigger}` as TriggerMoment
-        );
-        const hasLifecycleTrigger =
-          lifecycleTriggers.includes(trigger) && hasTrigger(ability, trigger);
+        const isLifecycleTrigger = lifecycleTriggers.includes(trigger);
+        const matches = isLifecycleTrigger
+          ? hasTrigger(ability, trigger)
+          : hasTrigger(ability, `Any${trigger}` as TriggerMoment);
 
-        if (hasAnyTrigger || hasLifecycleTrigger) {
-          cardsToTrigger.push({ card: cell.card, position: { x, y } });
+        if (matches) {
+          cardsToTrigger.push({
+            card: cell.card,
+            position: { x, y },
+            triggerMoment: isLifecycleTrigger
+              ? trigger
+              : (`Any${trigger}` as TriggerMoment),
+          });
           processedCardIds.add(cardId);
         }
       }
@@ -612,14 +619,14 @@ export function triggerIndirectAbilities(
   }
 
   // Now process all collected cards
-  for (const { card, position } of cardsToTrigger) {
+  for (const { card, position, triggerMoment } of cardsToTrigger) {
     const ability = card.base_card_data.special_ability;
     if (!ability) continue; // Safety check (shouldn't happen, but TypeScript needs it)
 
     const anyContext: TriggerContext = {
       ...context,
       triggerCard: card,
-      triggerMoment: `Any${trigger}` as TriggerMoment,
+      triggerMoment,
       position,
     };
 

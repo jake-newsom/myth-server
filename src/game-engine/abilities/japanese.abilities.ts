@@ -38,7 +38,7 @@ import {
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { flipCard } from "../game.utils";
-import { getPositionOfCardById } from "../ability.utils";
+import { getPositionOfCardById, getCardHighestPower } from "../ability.utils";
 import { randomInt } from "../simulation.rng";
 import { v4 as uuidv4 } from "uuid";
 
@@ -75,12 +75,7 @@ export const japaneseAbilities: AbilityMap = {
         state.board,
       );
       if (enemyPosition) {
-        const maxSidePower = Math.max(
-          strongestEnemy.current_power.top,
-          strongestEnemy.current_power.right,
-          strongestEnemy.current_power.bottom,
-          strongestEnemy.current_power.left,
-        );
+        const maxSidePower = getCardHighestPower(strongestEnemy).value;
         gameEvents.push(
           debuff(strongestEnemy, -1, {
             name: "Moon's Balance",

@@ -10,7 +10,13 @@ import { GameState, TileStatus } from "../types/game.types";
 import { EffectType, InGameCard, PowerValues } from "../types/card.types";
 import type { SagaBattleContext } from "../types/sagaBattle.types";
 import { createBoardCell } from "./game.utils";
-import { isImmuneToNegativeEffects, updateCurrentPower } from "./ability.utils";
+import {
+  destroyCardAtPosition,
+  getCardHighestPower,
+  getCardLowestPower,
+  protectFromDefeat,
+  updateCurrentPower,
+} from "./ability.utils";
 
 function totalPower(power: PowerValues): number {
   return power.top + power.right + power.bottom + power.left;
@@ -121,83 +127,65 @@ export function getBossBattleExtras(
   };
 }
 
-/** Slayer: +2 all sides when placed adjacent to a higher-power enemy card */
-export function applySlayerOnPlace(
+const ADJACENT_DIRS = [
+  { dx: 0, dy: -1 },
+  { dx: 1, dy: 0 },
+  { dx: 0, dy: 1 },
+  { dx: -1, dy: 0 },
+];
+
+/** Underdog: when placed adjacent to a stronger enemy, reduce that enemy's highest side by 2. */
+export function applyUnderdogOnPlace(
   state: GameState,
   position: { x: number; y: number },
   playerId: string
 ): { state: GameState; events: BaseGameEvent[] } {
-  const ctx = state.saga_context;
-  if (!ctx) return { state, events: [] };
-
   const cell = state.board[position.y]?.[position.x];
   const placed = cell?.card;
-  if (!placed) return { state, events: [] };
-
-  const sagaCardId = (placed as InGameCard & { saga_card_id?: string }).saga_card_id;
-  if (!sagaCardId || placed.owner !== playerId) return { state, events: [] };
+  if (!placed || placed.owner !== playerId) return { state, events: [] };
 
   const cacheEntry = state.hydrated_card_data_cache?.[placed.user_card_instance_id];
   const cached = cacheEntry ?? placed;
   const runeType = (cached as InGameCard & { saga_rune_type?: string }).saga_rune_type;
-  if (runeType !== "slayer") return { state, events: [] };
-
-  if (ctx.slayer_applied?.[sagaCardId]) return { state, events: [] };
-
-  const dirs = [
-    { dx: 0, dy: -1 },
-    { dx: 1, dy: 0 },
-    { dx: 0, dy: 1 },
-    { dx: -1, dy: 0 },
-  ];
+  if (runeType !== "underdog") return { state, events: [] };
 
   const placedTotal = totalPower(placed.current_power);
-  let triggered = false;
+  const events: BaseGameEvent[] = [];
 
-  for (const { dx, dy } of dirs) {
+  for (const { dx, dy } of ADJACENT_DIRS) {
     const nx = position.x + dx;
     const ny = position.y + dy;
     const adj = state.board[ny]?.[nx];
-    if (!adj?.card || adj.card.owner === playerId) continue;
-    if (totalPower(adj.card.current_power) > placedTotal) {
-      triggered = true;
-      break;
-    }
+    const enemy = adj?.card;
+    if (!enemy || enemy.owner === playerId) continue;
+    if (totalPower(enemy.current_power) <= placedTotal) continue;
+
+    const { key: highestKey, value: highestValue } = getCardHighestPower(enemy);
+    const reduction = Math.min(2, highestValue);
+    if (reduction <= 0) continue;
+
+    enemy.temporary_effects.push({
+      type: EffectType.Debuff,
+      duration: 1000,
+      name: "Underdog Blessing",
+      power: { [highestKey]: -reduction },
+    });
+    enemy.current_power = updateCurrentPower(enemy);
+    syncCurrentPowerToCache(state, enemy);
+
+    events.push({
+      type: EVENT_TYPES.CARD_POWER_CHANGED,
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      cardId: enemy.user_card_instance_id,
+      position: { x: nx, y: ny },
+      powerDelta: -reduction,
+      effectName: "Underdog Blessing",
+      sourcePlayerId: playerId,
+    } as CardPowerChangedEvent);
   }
 
-  if (!triggered) return { state, events: [] };
-
-  const bonus = 2;
-  placed.current_power = {
-    top: placed.current_power.top + bonus,
-    right: placed.current_power.right + bonus,
-    bottom: placed.current_power.bottom + bonus,
-    left: placed.current_power.left + bonus,
-  };
-
-  if (state.hydrated_card_data_cache?.[placed.user_card_instance_id]) {
-    state.hydrated_card_data_cache[placed.user_card_instance_id].current_power = {
-      ...placed.current_power,
-    };
-  }
-
-  ctx.slayer_applied = { ...ctx.slayer_applied, [sagaCardId]: true };
-
-  return {
-    state,
-    events: [
-      {
-        type: EVENT_TYPES.CARD_POWER_CHANGED,
-        eventId: uuidv4(),
-        timestamp: Date.now(),
-        cardId: placed.user_card_instance_id,
-        position,
-        powerDelta: bonus,
-        effectName: "Slayer Blessing",
-        sourcePlayerId: playerId,
-      } as CardPowerChangedEvent,
-    ],
-  };
+  return { state, events };
 }
 
 /** Sight Blessing: draw an additional card after this card is placed. */
@@ -217,7 +205,6 @@ export function hasSightBlessingOnPlacedCard(
 }
 
 const BLESSING_BONDS_EFFECT = "Bonds Blessing";
-const BLESSING_UNDERDOG_EFFECT = "Underdog Blessing";
 const BLESSING_FIRST_EFFECT = "First Blessing";
 
 function syncCurrentPowerToCache(state: GameState, card: InGameCard): void {
@@ -240,41 +227,13 @@ function findBoardCardById(
   return null;
 }
 
-function setBlessingEffect(
-  card: InGameCard,
-  effectName: string,
-  amount: number
-): { changed: boolean; previousAmount: number } {
-  const existing = card.temporary_effects.find((e) => e.name === effectName);
-  const previousAmount = existing?.power?.top ?? 0;
-  const normalized = Math.max(0, amount);
-  if (previousAmount === normalized) return { changed: false, previousAmount };
-
-  card.temporary_effects = card.temporary_effects.filter((e) => e.name !== effectName);
-  if (normalized > 0) {
-    card.temporary_effects.push({
-      type: EffectType.Buff,
-      duration: 1000,
-      name: effectName,
-      power: { top: normalized, right: normalized, bottom: normalized, left: normalized },
-    });
-  }
-  return { changed: true, previousAmount };
-}
-
 function countAdjacentAllies(
   state: GameState,
   position: { x: number; y: number },
   owner: string
 ): number {
-  const dirs = [
-    { dx: 0, dy: -1 },
-    { dx: 1, dy: 0 },
-    { dx: 0, dy: 1 },
-    { dx: -1, dy: 0 },
-  ];
   let allies = 0;
-  for (const { dx, dy } of dirs) {
+  for (const { dx, dy } of ADJACENT_DIRS) {
     const nx = position.x + dx;
     const ny = position.y + dy;
     const adjacent = state.board[ny]?.[nx]?.card;
@@ -283,76 +242,29 @@ function countAdjacentAllies(
   return allies;
 }
 
-function controlledTileCounts(state: GameState): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const row of state.board) {
-    for (const cell of row) {
-      const owner = cell.card?.owner;
-      if (!owner) continue;
-      counts[owner] = (counts[owner] ?? 0) + 1;
-    }
-  }
-  return counts;
-}
-
-/** Dynamic blessings (Bonds/Underdog) are refreshed around each placement/combat. */
+/** Bonds: this card cannot be defeated while adjacent to an ally. Refreshed around each placement/combat. */
 export function refreshDynamicBlessings(state: GameState): { state: GameState; events: BaseGameEvent[] } {
   const events: BaseGameEvent[] = [];
-  const tileCounts = controlledTileCounts(state);
 
   for (let y = 0; y < state.board.length; y++) {
     for (let x = 0; x < state.board[y].length; x++) {
       const card = state.board[y][x]?.card;
-      if (!card) continue;
+      if (!card || card.saga_rune_type !== "bonds") continue;
 
-      if (card.saga_rune_type === "bonds") {
-        const amount = countAdjacentAllies(state, { x, y }, card.owner);
-        const { changed, previousAmount } = setBlessingEffect(
-          card,
-          BLESSING_BONDS_EFFECT,
-          amount
-        );
-        if (changed) {
-          card.current_power = updateCurrentPower(card);
-          syncCurrentPowerToCache(state, card);
-          events.push({
-            type: EVENT_TYPES.CARD_POWER_CHANGED,
-            eventId: uuidv4(),
-            timestamp: Date.now(),
-            cardId: card.user_card_instance_id,
-            position: { x, y },
-            powerDelta: amount - previousAmount,
-            effectName: BLESSING_BONDS_EFFECT,
-            sourcePlayerId: card.owner,
-          } as CardPowerChangedEvent);
-        }
-      }
+      const hasAlly = countAdjacentAllies(state, { x, y }, card.owner) > 0;
+      const hasEffect = card.temporary_effects.some((e) => e.name === BLESSING_BONDS_EFFECT);
 
-      if (card.saga_rune_type === "underdog") {
-        const own = tileCounts[card.owner] ?? 0;
-        const opponentsBest = Object.entries(tileCounts)
-          .filter(([owner]) => owner !== card.owner)
-          .reduce((max, [, count]) => Math.max(max, count), 0);
-        const amount = own < opponentsBest ? 3 : 0;
-        const { changed, previousAmount } = setBlessingEffect(
-          card,
-          BLESSING_UNDERDOG_EFFECT,
-          amount
+      if (hasAlly && !hasEffect) {
+        card.temporary_effects.push({
+          type: EffectType.BlockDefeat,
+          duration: 1000,
+          name: BLESSING_BONDS_EFFECT,
+          power: { top: 0, right: 0, bottom: 0, left: 0 },
+        });
+      } else if (!hasAlly && hasEffect) {
+        card.temporary_effects = card.temporary_effects.filter(
+          (e) => e.name !== BLESSING_BONDS_EFFECT
         );
-        if (changed) {
-          card.current_power = updateCurrentPower(card);
-          syncCurrentPowerToCache(state, card);
-          events.push({
-            type: EVENT_TYPES.CARD_POWER_CHANGED,
-            eventId: uuidv4(),
-            timestamp: Date.now(),
-            cardId: card.user_card_instance_id,
-            position: { x, y },
-            powerDelta: amount - previousAmount,
-            effectName: BLESSING_UNDERDOG_EFFECT,
-            sourcePlayerId: card.owner,
-          } as CardPowerChangedEvent);
-        }
       }
     }
   }
@@ -360,8 +272,8 @@ export function refreshDynamicBlessings(state: GameState): { state: GameState; e
   return { state, events };
 }
 
-/** First Blessing (+2 all sides) if this is the player's first placement this battle. */
-export function applyFirstBlessingOnPlace(
+/** First Blessing: the first time this card enters play each battle, it cannot be defeated for 2 rounds. */
+export function applyFirstProtectionOnPlace(
   state: GameState,
   position: { x: number; y: number },
   playerId: string
@@ -387,31 +299,23 @@ export function applyFirstBlessingOnPlace(
     return { state, events: [] };
   }
 
-  const { previousAmount } = setBlessingEffect(card, BLESSING_FIRST_EFFECT, 2);
-  card.current_power = updateCurrentPower(card);
-  syncCurrentPowerToCache(state, card);
-  return {
-    state,
-    events: [
-      {
-        type: EVENT_TYPES.CARD_POWER_CHANGED,
-        eventId: uuidv4(),
-        timestamp: Date.now(),
-        cardId: card.user_card_instance_id,
-        position,
-        powerDelta: 2 - previousAmount,
-        effectName: BLESSING_FIRST_EFFECT,
-        sourcePlayerId: playerId,
-      } as CardPowerChangedEvent,
-    ],
-  };
+  // 2 full rounds = 4 turn-ends (both players act each round).
+  const event = protectFromDefeat(card, 4, position, {
+    name: BLESSING_FIRST_EFFECT,
+    sourcePlayerId: playerId,
+  });
+  return { state, events: [event] };
 }
 
-/** Thorns Blessing: when defeated, debuff the defeating card by -2 all sides (unless the attacker is immune to negative effects). */
+/**
+ * Thorns Blessing: when defeated, destroy the card that defeated it. Once per battle.
+ * This bypasses defeat-prevention (Bonds/First/lockedTurns) on the attacker.
+ */
 export function applyThornsOnFlips(
   state: GameState,
   flips: BaseGameEvent[]
 ): { state: GameState; events: BaseGameEvent[] } {
+  const ctx = state.saga_context;
   const events: BaseGameEvent[] = [];
   for (const event of flips) {
     if (event.type !== EVENT_TYPES.CARD_FLIPPED) continue;
@@ -427,44 +331,120 @@ export function applyThornsOnFlips(
     const defeatedCard = state.board[pos.y]?.[pos.x]?.card;
     if (!defeatedCard || defeatedCard.saga_rune_type !== "thorns") continue;
 
+    const sagaCardId = defeatedCard.saga_card_id;
+    if (sagaCardId && ctx?.thorns_used?.[sagaCardId]) continue;
+
     if (!flipped.sourceCardId) continue;
     const attacker = findBoardCardById(state, flipped.sourceCardId);
     if (!attacker) continue;
 
-    if (isImmuneToNegativeEffects(attacker.card)) {
+    const destroyEvent = destroyCardAtPosition(
+      { x: attacker.x, y: attacker.y },
+      state.board,
+      "thorns",
+      flipped.sourcePlayerId,
+      defeatedCard
+    );
+    if (destroyEvent) {
+      events.push(destroyEvent);
+      if (ctx && sagaCardId) {
+        ctx.thorns_used = { ...ctx.thorns_used, [sagaCardId]: true };
+      }
+    }
+  }
+  return { state, events };
+}
+
+const BLESSING_SLAYER_EFFECT = "Slayer Blessing";
+
+/**
+ * Slayer Blessing: when a Slayer-blessed card defeats an enemy, immediately
+ * reduce the enemy's highest power side by 1 and add that power to the
+ * Slayer card's own currently-lowest side. Both changes are visible
+ * immediately (in-battle). The Slayer card's gain is also tracked as a
+ * pending steal so it can be made permanent on the saga card at battle end.
+ */
+export function applySlayerOnDefeat(
+  state: GameState,
+  flips: BaseGameEvent[],
+  playerId: string
+): { state: GameState; events: BaseGameEvent[] } {
+  const ctx = state.saga_context;
+  if (!ctx) return { state, events: [] };
+
+  const events: BaseGameEvent[] = [];
+
+  for (const event of flips) {
+    if (event.type !== EVENT_TYPES.CARD_FLIPPED) continue;
+    const flipped = event as BaseGameEvent & {
+      sourceCardId?: string;
+      sourcePlayerId?: string;
+      position?: { x: number; y: number };
+    };
+    if (flipped.sourcePlayerId !== playerId || !flipped.sourceCardId) continue;
+
+    const attacker = findBoardCardById(state, flipped.sourceCardId);
+    if (!attacker || attacker.card.saga_rune_type !== "slayer") continue;
+
+    const sagaCardId = attacker.card.saga_card_id;
+    if (!sagaCardId) continue;
+
+    const enemyPos = flipped.position;
+    const enemy = enemyPos ? state.board[enemyPos.y]?.[enemyPos.x]?.card : null;
+    if (!enemy) continue;
+
+    const { key: highestKey, value: highestValue } = getCardHighestPower(enemy);
+    if (highestValue > 0) {
+      enemy.temporary_effects.push({
+        type: EffectType.Debuff,
+        duration: 1000,
+        name: BLESSING_SLAYER_EFFECT,
+        power: { [highestKey]: -1 },
+      });
+      enemy.current_power = updateCurrentPower(enemy);
+      syncCurrentPowerToCache(state, enemy);
+
       events.push({
         type: EVENT_TYPES.CARD_POWER_CHANGED,
         eventId: uuidv4(),
         timestamp: Date.now(),
-        cardId: attacker.card.user_card_instance_id,
-        position: { x: attacker.x, y: attacker.y },
-        powerDelta: 0,
-        animation: "protected",
-        effectName: "Thorns Blessing",
-        sourcePlayerId: flipped.sourcePlayerId,
+        cardId: enemy.user_card_instance_id,
+        position: enemyPos,
+        powerDelta: -1,
+        effectName: BLESSING_SLAYER_EFFECT,
+        sourcePlayerId: playerId,
       } as CardPowerChangedEvent);
-      continue;
     }
 
-    attacker.card.temporary_effects.push({
-      type: EffectType.Debuff,
+    const slayer = attacker.card;
+    const { key: lowestKey } = getCardLowestPower(slayer);
+    slayer.temporary_effects.push({
+      type: EffectType.Buff,
       duration: 1000,
-      name: "Thorns Blessing",
-      power: { top: -2, right: -2, bottom: -2, left: -2 },
+      name: BLESSING_SLAYER_EFFECT,
+      power: { [lowestKey]: 1 },
     });
-    attacker.card.current_power = updateCurrentPower(attacker.card);
-    syncCurrentPowerToCache(state, attacker.card);
+    slayer.current_power = updateCurrentPower(slayer);
+    syncCurrentPowerToCache(state, slayer);
+
     events.push({
       type: EVENT_TYPES.CARD_POWER_CHANGED,
       eventId: uuidv4(),
       timestamp: Date.now(),
-      cardId: attacker.card.user_card_instance_id,
+      cardId: slayer.user_card_instance_id,
       position: { x: attacker.x, y: attacker.y },
-      powerDelta: -2,
-      effectName: "Thorns Blessing",
-      sourcePlayerId: flipped.sourcePlayerId,
+      powerDelta: 1,
+      effectName: BLESSING_SLAYER_EFFECT,
+      sourcePlayerId: playerId,
     } as CardPowerChangedEvent);
+
+    const pending = ctx.slayer_pending_steals ?? {};
+    ctx.slayer_pending_steals = {
+      ...pending,
+      [sagaCardId]: (pending[sagaCardId] ?? 0) + 1,
+    };
   }
+
   return { state, events };
 }
 

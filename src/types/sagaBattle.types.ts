@@ -30,6 +30,14 @@ export interface SagaBattleContext {
    */
   forced_ai_opening_card_instance_id?: string;
   ai_opening_play_pending?: boolean;
+  /**
+   * saga_card_id -> count of pending +1 steals earned by Slayer Blessing
+   * cards this battle. Applied to the card's currently-lowest power side
+   * (one at a time) at battle end, similar to Fury rune stack progression.
+   */
+  slayer_pending_steals?: Record<string, number>;
+  /** saga_card_id -> true if Thorns Blessing has already destroyed an attacker this battle */
+  thorns_used?: Record<string, boolean>;
 }
 
 export interface SagaBattleStartResponse {

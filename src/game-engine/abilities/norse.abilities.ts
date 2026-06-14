@@ -56,7 +56,7 @@ import AchievementService from "../../services/achievement.service";
 export const norseCombatResolvers: CombatResolverMap = {
   // Titan Shell: Can only be defeated by Thor.
   jormungandr_shell: (context) => {
-    const { triggerCard, flippedCard } = context;
+    const { triggerCard, flippedCard, flippedBy } = context;
 
     // Only protect the card that actually has Titan Shell (self-protection only)
     if (
@@ -68,7 +68,11 @@ export const norseCombatResolvers: CombatResolverMap = {
       return { preventDefeat: false };
     }
 
-    if (triggerCard.base_card_data.name !== "Thor") {
+    // When invoked via ally protection, triggerCard is the protecting ally
+    // (not the attacker) — the actual attacker is flippedBy.
+    const attacker = flippedBy ?? triggerCard;
+
+    if (attacker.base_card_data.name !== "Thor") {
       if (!simulationContext.isInSimulation()) {
         AchievementService.triggerAchievementEvent({
           userId: flippedCard.owner,
@@ -111,7 +115,9 @@ export const norseAbilities: AbilityMap = {
                 turns_left: 2, // Lasts through one full round (both players' turns)
                 terrain: TileTerrain.Lava,
                 animation_label: "lava",
-                effect_duration: 2,
+                effect_duration: 1000,
+                applies_to_user: getOpponentId(triggerCard.owner, state), // Only affect enemy cards
+                power: { top: -1, bottom: -1, left: -1, right: -1 },
               },
               triggerCard.owner,
               triggerCard,
@@ -132,7 +138,7 @@ export const norseAbilities: AbilityMap = {
         if (!handCard) continue;
         const tags = handCard.base_card_data.tags ?? [];
         const isGodCard = tags.some(
-          (tag) => String(tag).toLowerCase() === "god"
+          (tag) => String(tag).toLowerCase() === "god" || String(tag).toLowerCase() === "goddess"
         );
         if (!isGodCard) continue;
 
@@ -334,7 +340,7 @@ export const norseAbilities: AbilityMap = {
     });
 
     for (const pos of emptyAdjacentTiles) {
-      const event = blockTile(pos, board, 2, "heimdall_gate");
+      const event = blockTile(pos, board, 1, "heimdall_gate");
       if (event) {
         gameEvents.push(event);
       }

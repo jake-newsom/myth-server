@@ -10,8 +10,6 @@ export interface SagaEnemyNodePreview {
   preview_rarity: string;
 }
 
-const previewByDeckId = new Map<string, Promise<SagaEnemyNodePreview | null>>();
-
 function rarityRank(rarity: string): number {
   if (RarityUtils.isLegendary(rarity as import("../types/card.types").Rarity)) {
     return 3;
@@ -64,15 +62,6 @@ async function loadEnemyDeckPreview(
   };
 }
 
-function getPreview(deckId: string): Promise<SagaEnemyNodePreview | null> {
-  let pending = previewByDeckId.get(deckId);
-  if (!pending) {
-    pending = loadEnemyDeckPreview(deckId);
-    previewByDeckId.set(deckId, pending);
-  }
-  return pending;
-}
-
 function attachPreviewToNode(
   node: SagaMapNode,
   preview: SagaEnemyNodePreview | null
@@ -96,7 +85,7 @@ export async function enrichMapWithEnemyPreviews(
   }
 
   const entries = await Promise.all(
-    [...deckIds].map(async (id) => [id, await getPreview(id)] as const)
+    [...deckIds].map(async (id) => [id, await loadEnemyDeckPreview(id)] as const)
   );
   const previews = new Map(entries);
 

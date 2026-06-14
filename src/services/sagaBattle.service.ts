@@ -14,6 +14,8 @@ import {
   parseWorldsEndThreshold,
 } from "../game-engine/sagaBattle.mechanics";
 import {
+  computeSagaCardPower,
+  fetchCardRowsByVariantIds,
   hydrateEnemyDeckForSaga,
   hydrateSagaDeckForBattle,
   sagaInstanceId,
@@ -27,6 +29,7 @@ import { isSagaNodeMapData } from "./sagaMapGeneration.service";
 import DeckService from "./deck.service";
 import { clientSupportsMulligan } from "../utils/clientVersion";
 import { GameState, Player } from "../types/game.types";
+import type { PowerValues } from "../types/card.types";
 import {
   SAGA_FLOOR_BATTLE_CONFIG,
   SagaBattleCompletionResult,
@@ -384,6 +387,7 @@ const SagaBattleService = {
           ? JSON.parse(game.game_state)
           : game.game_state;
       await this.applyFuryRuneProgress(run.run_id, userId, gameState as GameState);
+      await this.applySlayerSteals(run.run_id, userId, gameState as GameState);
       pendingReward = await SagaRewardService.startBattleRewardNode(
         run.run_id,
         userId,
@@ -466,6 +470,77 @@ const SagaBattleService = {
       if (!playedSagaCardIds.has(card.saga_card_id)) continue;
       await SagaCardModel.update(card.saga_card_id, {
         rune_stacks: card.rune_stacks + 1,
+      });
+    }
+  },
+
+  async applySlayerSteals(
+    runId: string,
+    playerId: string,
+    gameState: GameState
+  ): Promise<void> {
+    const pendingSteals = gameState.saga_context?.slayer_pending_steals ?? {};
+    const sagaCardIds = Object.keys(pendingSteals).filter(
+      (id) => pendingSteals[id] > 0
+    );
+    if (!sagaCardIds.length) return;
+
+    await SagaService.assertRunOwnership(runId, playerId);
+
+    const cards = await SagaCardModel.findActiveByRunId(runId);
+    const cardsById = new Map(cards.map((c) => [c.saga_card_id, c]));
+
+    const baseRows = await fetchCardRowsByVariantIds(
+      sagaCardIds
+        .map((id) => cardsById.get(id)?.base_card_id)
+        .filter((id): id is string => !!id)
+    );
+
+    for (const sagaCardId of sagaCardIds) {
+      const card = cardsById.get(sagaCardId);
+      if (!card) continue;
+      const dbRow = baseRows.get(card.base_card_id);
+      if (!dbRow) continue;
+
+      const basePower: PowerValues = {
+        top: parseInt(dbRow.base_power_top, 10),
+        right: parseInt(dbRow.base_power_right, 10),
+        bottom: parseInt(dbRow.base_power_bottom, 10),
+        left: parseInt(dbRow.base_power_left, 10),
+      };
+
+      const buffs = {
+        top: card.top_buff,
+        right: card.right_buff,
+        bottom: card.bottom_buff,
+        left: card.left_buff,
+      };
+
+      const steals = pendingSteals[sagaCardId];
+      for (let i = 0; i < steals; i++) {
+        const effective = computeSagaCardPower(basePower, {
+          ...card,
+          top_buff: buffs.top,
+          right_buff: buffs.right,
+          bottom_buff: buffs.bottom,
+          left_buff: buffs.left,
+        });
+
+        let weakestSide: keyof PowerValues = "top";
+        for (const side of ["top", "left", "right", "bottom"] as const) {
+          if (effective[side] < effective[weakestSide]) {
+            weakestSide = side;
+          }
+        }
+
+        buffs[weakestSide] += 1;
+      }
+
+      await SagaCardModel.update(sagaCardId, {
+        top_buff: buffs.top,
+        left_buff: buffs.left,
+        right_buff: buffs.right,
+        bottom_buff: buffs.bottom,
       });
     }
   },
