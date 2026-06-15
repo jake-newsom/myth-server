@@ -10,7 +10,7 @@ import { GameState, BoardPosition, InGameCard } from "./game.types";
 export interface SocketUser {
   user_id: string;
   username: string;
-  email: string;
+  email?: string | null;
   in_game_currency: number;
 }
 

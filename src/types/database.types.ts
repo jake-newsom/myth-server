@@ -8,7 +8,7 @@ import { PowerValues, Rarity, TriggerMoment } from "./card.types";
 export interface User {
   user_id: string;
   username: string;
-  email: string;
+  email?: string | null;
   password_hash?: string;
   facebook_id?: string;
   apple_id?: string;

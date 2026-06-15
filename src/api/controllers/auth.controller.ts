@@ -93,12 +93,14 @@ const AuthController = {
   register: async (req: Request, res: Response, next: NextFunction) => {
     const client = await db.getClient();
     try {
-      const { username, email, password } = req.body;
+      const username =
+        typeof req.body.username === "string" ? req.body.username.trim() : "";
+      const { password } = req.body;
 
-      // Validate input
-      if (!username || !email || !password) {
+      // Validate input. Email is no longer collected at registration.
+      if (!username || !password) {
         return res.status(400).json({
-          error: { message: "Username, email, and password are required." },
+          error: { message: "Username and password are required." },
         });
       }
 
@@ -116,14 +118,7 @@ const AuthController = {
         });
       }
 
-      // Check if user already exists
-      const existingUserByEmail = await UserModel.findByEmail(email);
-      if (existingUserByEmail) {
-        return res.status(409).json({
-          error: { message: "Email already in use." },
-        });
-      }
-
+      // Check if username is already taken
       const existingUserByUsername = await UserModel.findByUsername(username);
       if (existingUserByUsername) {
         return res.status(409).json({
@@ -133,8 +128,8 @@ const AuthController = {
 
       await client.query("BEGIN");
 
-      // Create user
-      const newUser = await UserModel.create({ username, email, password });
+      // Create user (no email)
+      const newUser = await UserModel.create({ username, password });
 
       // Grant starter content (cards and deck)
       await StarterService.grantStarterContent(newUser.user_id);
@@ -174,20 +169,24 @@ const AuthController = {
 
   login: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { email, password } = req.body;
+      // Accept `username` (preferred) or legacy `email` as the identifier.
+      const { password } = req.body;
+      const rawIdentifier = req.body.username || req.body.email;
+      const identifier =
+        typeof rawIdentifier === "string" ? rawIdentifier.trim() : "";
 
       // Validate input
-      if (!email || !password) {
+      if (!identifier || !password) {
         return res.status(400).json({
-          error: { message: "Email and password are required." },
+          error: { message: "Username and password are required." },
         });
       }
 
-      // Find user by email
-      const user = await UserModel.findByEmail(email);
+      // Find user by username, falling back to email for legacy accounts
+      const user = await UserModel.findByUsernameOrEmail(identifier);
       if (!user) {
         return res.status(401).json({
-          error: { message: "Invalid email or password." },
+          error: { message: "Invalid username or password." },
         });
       }
 
@@ -205,7 +204,7 @@ const AuthController = {
       );
       if (!isPasswordValid) {
         return res.status(401).json({
-          error: { message: "Invalid email or password." },
+          error: { message: "Invalid username or password." },
         });
       }
 

@@ -5,7 +5,7 @@ import { User } from "../types/database.types";
 
 interface UserCreateInput {
   username: string;
-  email: string;
+  email?: string | null;
   password?: string;
   facebook_id?: string;
   apple_id?: string;
@@ -36,7 +36,7 @@ const UserModel = {
 
     const values = [
       username,
-      email,
+      email ?? null,
       hashedPassword,
       facebook_id,
       apple_id,
@@ -61,9 +61,25 @@ const UserModel = {
     return rows[0] || null;
   },
 
+  // Username matching is case-insensitive so "Jake" and "jake" are treated as
+  // the same account (matches user expectations now that login is by username).
   async findByUsername(username: string): Promise<User | null> {
-    const query = `SELECT * FROM "users" WHERE username = $1;`;
+    const query = `SELECT * FROM "users" WHERE lower(username) = lower($1);`;
     const { rows } = await db.query(query, [username]);
+    return rows[0] || null;
+  },
+
+  // Used for login: accepts either a username or (for legacy accounts) an
+  // email address in a single identifier field. Both are matched
+  // case-insensitively; username matches take precedence over email matches.
+  async findByUsernameOrEmail(identifier: string): Promise<User | null> {
+    const query = `
+      SELECT * FROM "users"
+      WHERE lower(username) = lower($1) OR lower(email) = lower($1)
+      ORDER BY (lower(username) = lower($1)) DESC
+      LIMIT 1;
+    `;
+    const { rows } = await db.query(query, [identifier]);
     return rows[0] || null;
   },
 
