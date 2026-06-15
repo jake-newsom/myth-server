@@ -26,11 +26,16 @@ class ChallengeController {
 
     ChallengeService.setPresenceEmitter((userId, event, payload) => {
       const socketCount = getPresenceSocketCountForUser(userId);
-      logger.debug("[challenge] presence emit", {
+      // INFO (not debug) so this is visible on prod, where LOG_LEVEL
+      // defaults to INFO. socketCount === 0 means the target user has no
+      // connected /presence socket, so the emit goes to an empty room and
+      // is silently dropped (i.e. the recipient never gets the popup).
+      logger.info("[challenge] presence emit", {
         userId,
         event,
         room: userRoom(userId),
         socketCount,
+        connectedUsers: getPresenceConnectedUserIds(),
       });
       io.of("/presence").to(userRoom(userId)).emit(event, payload);
     });

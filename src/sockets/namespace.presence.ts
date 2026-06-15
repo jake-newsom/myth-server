@@ -65,7 +65,10 @@ export function setupPresenceNamespace(io: Server): void {
     // track socket ids themselves.
     socket.join(userRoom(userId));
 
-    logger.debug("[/presence] Connected", {
+    // INFO so prod (LOG_LEVEL=INFO) shows which users actually have a live
+    // /presence socket. A recipient who never appears here can't receive a
+    // challenge:incoming emit.
+    logger.info("[/presence] Connected", {
       userId,
       socketId: socket.id,
       uniqueUsers: getUniqueUserCount(),
@@ -80,7 +83,7 @@ export function setupPresenceNamespace(io: Server): void {
     broadcastPlayerCount();
 
     socket.on("disconnect", (reason) => {
-      logger.debug("[/presence] Disconnect", {
+      logger.info("[/presence] Disconnect", {
         userId,
         socketId: socket.id,
         reason,
