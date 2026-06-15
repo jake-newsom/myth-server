@@ -51,6 +51,15 @@ const io = new Server(httpServer, {
 
 initializeSocketManager(io); // Pass the 'io' instance to your socket manager
 
+// Make the Socket.IO server reachable from HTTP controllers via
+// `req.app.get("io")`. The dev entrypoint (ts-node src/app.ts) sets this
+// inside app.ts's `require.main === module` block, but in production the
+// entrypoint is THIS file — app.ts is only imported, so that block never
+// runs. Without this line, ChallengeController.attachPresenceEmitter() can't
+// find `io`, the challenge presence emitter is never set, and every
+// challenge:incoming / accepted / ready emit is a silent no-op (no popup).
+app.set("io", io);
+
 // Store the automation scheduler interval IDs
 let automationSchedulerInterval = null;
 let dailyRewardsSchedulerInterval = null;

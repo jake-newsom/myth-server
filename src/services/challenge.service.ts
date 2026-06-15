@@ -360,7 +360,16 @@ class ChallengeService {
     event: PresenceNamespaceEvent,
     payload: Record<string, unknown>
   ): void {
-    if (!this.presenceEmitter) return;
+    if (!this.presenceEmitter) {
+      // Loud, because this means every challenge socket event is being
+      // dropped. The usual cause is `io` not being registered on the
+      // Express app (app.set("io", io)) in the active entrypoint.
+      logger.warn("[challenge] emit skipped: no presenceEmitter set", {
+        userId,
+        event,
+      });
+      return;
+    }
     this.presenceEmitter(userId, event, payload);
   }
 
