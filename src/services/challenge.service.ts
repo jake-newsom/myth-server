@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { PresenceNamespaceEvent } from "../types/socket.types";
+import logger from "../utils/logger";
 
 type ChallengeStatus =
   | "pending"
@@ -131,6 +132,16 @@ class ChallengeService {
     this.challenges.set(challenge.challengeId, challenge);
     this.setActiveChallengeUsers(challenge);
     this.scheduleExpiry(challenge.challengeId);
+
+    // INFO so prod surfaces the created challenge and, crucially, the
+    // opponentId we're about to target — cross-check this against the
+    // connectedUsers list in the "[challenge] presence emit" line to see
+    // whether the recipient actually has a live /presence socket.
+    logger.info("[challenge] created", {
+      challengeId: challenge.challengeId,
+      challengerId: challenge.challengerId,
+      opponentId: challenge.opponentId,
+    });
 
     this.emit(challenge.opponentId, PresenceNamespaceEvent.CHALLENGE_INCOMING, {
       challengeId: challenge.challengeId,

@@ -87,6 +87,15 @@ class ChallengeController {
 
   async sendChallenge(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
+      // Entry log BEFORE any validation — proves the HTTP request actually
+      // reached this controller. If a challenge produces no "[challenge]
+      // sendChallenge entry" line, the POST /challenges/send never arrived
+      // (routing, base URL, auth middleware, or it's being sent elsewhere).
+      logger.info("[challenge] sendChallenge entry", {
+        userId: req.user?.user_id,
+        body: req.body,
+      });
+
       const challengerId = this.getUserId(req, res);
       if (!challengerId) return;
 
