@@ -28,6 +28,7 @@ async function loadEnemyDeckPreview(
     `SELECT d.name AS deck_name,
             cv.card_variant_id,
             ch.name AS card_name,
+            ch.type AS card_type,
             cv.image_url,
             cv.rarity
      FROM deck_cards dc
@@ -42,14 +43,18 @@ async function loadEnemyDeckPreview(
   if (!rows.length) return null;
 
   const deckName = String(rows[0].deck_name ?? "Enemy deck");
-  let best = rows[0];
-  let bestRank = rarityRank(String(best.rarity ?? "common"));
 
-  for (const row of rows) {
-    const rank = rarityRank(String(row.rarity ?? "common"));
-    if (rank > bestRank) {
-      best = row;
-      bestRank = rank;
+  // A deck's boss card (type "boss") always wins the preview slot. Falls back
+  // to the highest-rarity card for normal battle decks that have no boss card.
+  let best = rows.find((row) => row.card_type === "boss") ?? rows[0];
+  if (best.card_type !== "boss") {
+    let bestRank = rarityRank(String(best.rarity ?? "common"));
+    for (const row of rows) {
+      const rank = rarityRank(String(row.rarity ?? "common"));
+      if (rank > bestRank) {
+        best = row;
+        bestRank = rank;
+      }
     }
   }
 
