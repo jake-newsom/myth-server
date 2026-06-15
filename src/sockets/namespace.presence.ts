@@ -22,6 +22,10 @@ export function getPresenceConnectedUserIds(): string[] {
   return Array.from(userSocketsMap.keys());
 }
 
+export function getPresenceSocketCountForUser(userId: string): number {
+  return userSocketsMap.get(userId)?.size ?? 0;
+}
+
 /**
  * Set up the `/presence` Socket.IO namespace. Tracks unique connected users
  * and broadcasts the live player count to all clients when anyone connects or disconnects.

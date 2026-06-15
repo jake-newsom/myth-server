@@ -8,7 +8,12 @@ import DeckService from "../../services/deck.service";
 import GameService from "../../services/game.service";
 import { GameLogic } from "../../game-engine/game.logic";
 import { DECK_CONFIG } from "../../config/constants";
-import { getPresenceConnectedUserIds, userRoom } from "../../sockets/namespace.presence";
+import {
+  getPresenceConnectedUserIds,
+  getPresenceSocketCountForUser,
+  userRoom,
+} from "../../sockets/namespace.presence";
+import logger from "../../utils/logger";
 import { getGameNamespaceConnectedUserIds } from "../../sockets/namespace.game";
 import { isUserInMatchmakingQueue } from "./matchmaking.controller";
 
@@ -20,6 +25,13 @@ class ChallengeController {
     }
 
     ChallengeService.setPresenceEmitter((userId, event, payload) => {
+      const socketCount = getPresenceSocketCountForUser(userId);
+      logger.debug("[challenge] presence emit", {
+        userId,
+        event,
+        room: userRoom(userId),
+        socketCount,
+      });
       io.of("/presence").to(userRoom(userId)).emit(event, payload);
     });
   }
