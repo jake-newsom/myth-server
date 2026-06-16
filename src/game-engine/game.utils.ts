@@ -816,19 +816,18 @@ export async function hydrateGameStateCards(
     }
   }
 
-  // Hydrate all missing cards
-  const hydrationPromises = Array.from(missingCardIds).map(async (cardId) => {
-    try {
-      const cardData = (await GameLogic.hydrateCardInstances([cardId])).get(
-        cardId
-      );
-      if (cardData) {
-        gameState.hydrated_card_data_cache![cardId] = cardData;
-      }
-    } catch (error) {
-      console.error(`Failed to hydrate card ${cardId}:`, error);
-    }
-  });
+  // Hydrate all missing cards in a single batched query
+  const ids = Array.from(missingCardIds);
+  if (ids.length === 0) {
+    return;
+  }
 
-  await Promise.all(hydrationPromises);
+  try {
+    const hydratedMap = await GameLogic.hydrateCardInstances(ids);
+    for (const [cardId, cardData] of hydratedMap) {
+      gameState.hydrated_card_data_cache![cardId] = cardData;
+    }
+  } catch (error) {
+    console.error(`Failed to hydrate cards ${ids.join(", ")}:`, error);
+  }
 }

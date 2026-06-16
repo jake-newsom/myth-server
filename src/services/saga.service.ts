@@ -43,19 +43,16 @@ const SagaService = {
       : await SagaSeasonModel.findActive();
     if (!season) throw httpError(404, "No saga season found");
 
-    const balance = await SagaCurrencyService.getBalance(
-      playerId,
-      season.season_id
-    );
-    await this.expireStaleInstanceRun(playerId, season.season_id);
-    const active = await SagaRunModel.findActiveByPlayerAndSeason(
-      playerId,
-      season.season_id
-    );
-    const completed = await SagaRunModel.findLatestCompletedByPlayerAndSeason(
-      playerId,
-      season.season_id
-    );
+    // expireStaleInstanceRun returns the still-active run (or null if it just
+    // expired one), so we reuse it instead of re-querying for the active run.
+    const [balance, active, completed] = await Promise.all([
+      SagaCurrencyService.getBalance(playerId, season.season_id),
+      this.expireStaleInstanceRun(playerId, season.season_id, season),
+      SagaRunModel.findLatestCompletedByPlayerAndSeason(
+        playerId,
+        season.season_id
+      ),
+    ]);
 
     const draftComplete = (run: SagaRun) => {
       if (run.draft_state?.phase === "complete") return true;
@@ -141,24 +138,27 @@ const SagaService = {
 
   async getRunDetail(runId: string, playerId: string): Promise<SagaRunDetail> {
     const run = await this.assertRunOwnership(runId, playerId);
-    const balance = await SagaCurrencyService.getBalance(
-      playerId,
-      run.season_id
-    );
+    const [balance, deck, collection] = await Promise.all([
+      SagaCurrencyService.getBalance(playerId, run.season_id),
+      SagaDeckModel.findWithActiveCardsByRunId(runId),
+      SagaCollectionModel.findWithBenchCardsByRunId(runId),
+    ]);
     if (run.currency_earned !== balance) {
       await SagaRunModel.update(runId, { currency_earned: balance });
       run.currency_earned = balance;
     }
-    const deck = await SagaDeckModel.findWithActiveCardsByRunId(runId);
-    const collection = await SagaCollectionModel.findWithBenchCardsByRunId(runId);
     return { ...run, deck, collection };
   },
 
   async expireStaleInstanceRun(
     playerId: string,
-    seasonId: string
+    seasonId: string,
+    preloadedSeason?: SagaSeason
   ): Promise<SagaRun | null> {
-    const season = await SagaSeasonModel.findById(seasonId);
+    const season =
+      preloadedSeason && preloadedSeason.season_id === seasonId
+        ? preloadedSeason
+        : await SagaSeasonModel.findById(seasonId);
     if (!season) return null;
 
     const run = await SagaRunModel.findActiveByPlayerAndSeason(

@@ -477,8 +477,13 @@ export class AbilityAnalyzer {
       // Cannot be defeated by enemies with lower total power
       score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * 1.5;
     } else if (abilityName === "kaahupahau_harbor_guardian") {
-      // Sacrifices power to protect allies - high utility
-      score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * (allAllies.length > 2 ? 1.5 : 0.8);
+      // Sacrifices power to protect allies - high utility, but only when Ka'ah itself survives.
+      // Bonus scales with ally count. Extra bonus when placed away from enemies (fortress value).
+      const baseMultiplier = allAllies.length > 2 ? 1.5 : 0.8;
+      score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * baseMultiplier;
+      if (adjacentEnemies.length === 0) {
+        score += AI_CONFIG.MOVE_EVALUATION.PROTECTION_VALUE * 0.5;
+      }
     }
 
     // === GLOBAL BUFF/DEBUFF ABILITIES ===
@@ -785,8 +790,17 @@ export class AbilityAnalyzer {
 
     // === SPECIAL MECHANICS ===
     else if (abilityName === "loki_flip") {
-      // 50% chance to flip 4 random cards
-      score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 0.8; // High risk/reward
+      // 50% chance to flip 4 random cards — only valuable when significantly behind.
+      const boardPos = this.detectBoardPosition(gameState, aiPlayerId);
+      const cardDiff = allEnemies.length - allAllies.length;
+      if (boardPos === 'losing' && cardDiff >= 3) {
+        score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 1.4;
+      } else if (boardPos === 'losing' && cardDiff >= 2) {
+        score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 0.8;
+      } else {
+        // Not losing badly — Loki is a liability (could flip AI's own winning cards)
+        score -= AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 0.4;
+      }
     } else if (abilityName === "yamabiko_echo_power") {
       // Matches highest adjacent card power this turn
       score += adjacentCards.length > 0 ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5 : 20;
@@ -1086,6 +1100,22 @@ export class AbilityAnalyzer {
       const totalCardsPlayed = [...gameState.board.flat()].filter(cell => cell?.card).length;
       if (totalCardsPlayed < 8) {
         holdValue += 120; // Hold until condition might be met
+      }
+    }
+
+    // === LOKI: Hold until significantly losing ===
+    if (abilityName === "loki_flip") {
+      const boardPos = this.detectBoardPosition(gameState, aiPlayerId);
+      const allEnemiesOnBoard = getCardsByCondition(gameState.board, (c) => c.owner !== aiPlayerId);
+      const allAlliesOnBoard = getAllAlliesOnBoard(gameState.board, aiPlayerId);
+      const cardDiff = allEnemiesOnBoard.length - allAlliesOnBoard.length;
+      if (boardPos === 'losing' && cardDiff >= 3) {
+        holdValue -= 100; // Desperate — play it now
+      } else if (boardPos === 'losing' && cardDiff >= 2) {
+        holdValue -= 30; // Behind enough to consider it
+      } else {
+        // Not losing badly: keep holding, Loki hurts winning positions
+        holdValue += 120;
       }
     }
 

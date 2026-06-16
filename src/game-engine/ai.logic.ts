@@ -66,6 +66,48 @@ export class AILogic {
       : gameState.player1;
   }
 
+  /**
+   * Detects whether the opponent has Ka'ahupahau in a fortress position:
+   * on the board with no adjacent AI cards (unreachable or nearly so).
+   * Returns the board position of Ka'ah if in fortress, null otherwise.
+   */
+  private findEnemyKaahFortress(
+    gameState: GameState,
+    aiPlayerId: string
+  ): BoardPosition | null {
+    for (let y = 0; y < GAME_CONFIG.BOARD_SIZE; y++) {
+      for (let x = 0; x < GAME_CONFIG.BOARD_SIZE; x++) {
+        const cell = gameState.board[y]?.[x];
+        if (!cell?.card || cell.card.owner === aiPlayerId) continue;
+        const abilityId =
+          cell.card.base_card_data.special_ability?.id ??
+          cell.card.base_card_data.special_ability?.ability_id ??
+          "";
+        if (abilityId !== "kaahupahau_harbor_guardian") continue;
+
+        // Check if any adjacent cell has an AI card (meaning Ka'ah is already contested)
+        const directions = [
+          { dx: 0, dy: -1 }, { dx: 1, dy: 0 },
+          { dx: 0, dy: 1 }, { dx: -1, dy: 0 },
+        ];
+        const adjacentAICard = directions.some(({ dx, dy }) => {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || nx >= GAME_CONFIG.BOARD_SIZE || ny < 0 || ny >= GAME_CONFIG.BOARD_SIZE) {
+            return false;
+          }
+          const neighbor = gameState.board[ny]?.[nx];
+          return neighbor?.card?.owner === aiPlayerId;
+        });
+
+        if (!adjacentAICard) {
+          return { x, y }; // Ka'ah is in fortress
+        }
+      }
+    }
+    return null;
+  }
+
   private scoreArchetypeSignals(
     card: InGameCard,
     buckets: ArchetypeScoreBuckets
@@ -289,6 +331,55 @@ export class AILogic {
       default:
         return 0;
     }
+  }
+
+  /**
+   * Extra score bonus when the opponent has Ka'ahupahau in a fortress position.
+   * We want to prioritise moves that land adjacent to Ka'ah so we can drain her
+   * power pool, or high-power cards that can survive her protection retaliation.
+   */
+  private getKaahFortressCounterBonus(
+    gameState: GameState,
+    cardToPlay: InGameCard,
+    position: BoardPosition,
+    aiPlayerId: string
+  ): number {
+    const kaahPos = this.findEnemyKaahFortress(gameState, aiPlayerId);
+    if (!kaahPos) return 0;
+
+    const distToKaah =
+      Math.abs(position.x - kaahPos.x) + Math.abs(position.y - kaahPos.y);
+    const cardPowerTotal =
+      cardToPlay.current_power.top +
+      cardToPlay.current_power.right +
+      cardToPlay.current_power.bottom +
+      cardToPlay.current_power.left;
+
+    let bonus = 0;
+
+    if (distToKaah === 1) {
+      // Landing directly adjacent — ideal to start draining Ka'ah's power pool.
+      // Only worth it if the card is strong enough to withstand her protection ability.
+      if (cardPowerTotal >= 16) {
+        bonus += 30;
+      } else {
+        bonus -= 20; // Weak card sacrificed to Ka'ah's protection
+      }
+    } else if (distToKaah === 2) {
+      // One step away — setting up to reach Ka'ah next turn.
+      bonus += 12;
+    }
+
+    // Cards with destroy/defeat abilities are ideal for dismantling a Ka'ah fortress.
+    const abilityText = [
+      cardToPlay.base_card_data.special_ability?.id ?? "",
+      cardToPlay.base_card_data.special_ability?.description ?? "",
+    ].join(" ").toLowerCase();
+    if (/(destroy|defeat|devour|banish)/.test(abilityText) && distToKaah <= 2) {
+      bonus += 18;
+    }
+
+    return bonus;
   }
 
   /**
@@ -634,7 +725,13 @@ export class AILogic {
               { x, y },
               aiPlayerId
             );
-            const adjustedScore = baseScore - holdValue * 0.5 + archetypeAdjustment;
+            const kaahCounterBonus = this.getKaahFortressCounterBonus(
+              currentGameState,
+              cardData as InGameCard,
+              { x, y },
+              aiPlayerId
+            );
+            const adjustedScore = baseScore - holdValue * 0.5 + archetypeAdjustment + kaahCounterBonus;
 
             possibleMoves.push({
               user_card_instance_id: instanceIdInHand,

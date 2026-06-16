@@ -21,22 +21,33 @@ const rules: Record<string, AbilityRule> = {
     timing: "late",
     riskProfile: "swingy",
     preferWhen: [
+      // Only worth playing when significantly behind (enemy owns majority of board)
       { metric: "enemyOwnedOccupiedRatio", operator: ">=", value: 0.6, score: 45 },
       {
         metric: "enemyOwnedCountMinusPlayerOwnedCount",
         operator: ">=",
-        value: 2,
-        score: 35,
+        value: 3,
+        score: 40,
       },
       { metric: "turnsRemaining", operator: "<=", value: 3, score: 15 },
     ],
     avoidWhen: [
+      // Strong suppression when not clearly losing — Loki is a desperation play
       { metric: "playerOwnedOccupiedRatio", operator: ">=", value: 0.55, score: -60 },
       {
         metric: "playerOwnedCountMinusEnemyOwnedCount",
         operator: ">=",
         value: 2,
         score: -50,
+      },
+      // Suppress when board is still mostly empty (early game)
+      { metric: "totalCardsOnBoard", operator: "<=", value: 6, score: -80 },
+      // Suppress when score is close (within 1 card): not losing badly enough
+      {
+        metric: "enemyOwnedCountMinusPlayerOwnedCount",
+        operator: "<=",
+        value: 1,
+        score: -45,
       },
     ],
     placementPriorities: [{ metric: "safePlacementScore", score: 0.35 }],
@@ -549,9 +560,21 @@ const rules: Record<string, AbilityRule> = {
     cardId: "kaahupahau_harbor_guardian",
     timing: "mid",
     riskProfile: "anchor",
-    preferWhen: [{ metric: "adjacentAllyCount", operator: ">=", value: 1, score: 18 }],
-    avoidWhen: [{ metric: "adjacentAllyCount", operator: "==", value: 0, score: -12 }],
-    placementPriorities: [{ metric: "safePlacementScore", score: 0.28 }],
+    preferWhen: [
+      { metric: "adjacentAllyCount", operator: ">=", value: 1, score: 18 },
+      // Ka'ah is most valuable when unreachable — corners and edges limit attack vectors
+      { metric: "isCornerPlacement", operator: "==", value: 1, score: 22 },
+      { metric: "isEdgePlacement", operator: "==", value: 1, score: 12 },
+    ],
+    avoidWhen: [
+      { metric: "adjacentAllyCount", operator: "==", value: 0, score: -12 },
+      // Don't place Ka'ah where enemies can immediately attack it
+      { metric: "adjacentEnemyCount", operator: ">=", value: 1, score: -20 },
+    ],
+    placementPriorities: [
+      { metric: "safePlacementScore", score: 0.28 },
+      { metric: "isCornerPlacement", score: 0.15 },
+    ],
   }),
   jormungandr_shell: makeRule({
     cardId: "jormungandr_shell",

@@ -241,7 +241,7 @@ export class StrategicEvaluator {
       }
     }
 
-    // === DEFENSIVE ANCHOR POSITIONING (Invincibility) ===
+    // === DEFENSIVE ANCHOR POSITIONING (Invincibility / Protection) ===
     else if (
       abilityId === "jormungandr_shell" ||
       abilityId === "baldr_immune" ||
@@ -252,6 +252,26 @@ export class StrategicEvaluator {
         score += 140; // Lock down center
       } else if (x === 1 || x === 2 || y === 1 || y === 2) {
         score += 80; // Near-center positions
+      }
+    }
+
+    // === KA'AHUPAHAU FORTRESS POSITIONING ===
+    // Ka'ah's value comes from being unreachable so she can protect allies
+    // indefinitely. Corners minimise attack vectors (only 2 adjacent cells);
+    // edges give 3. Being adjacent to enemies immediately risks her power pool.
+    else if (abilityId === "kaahupahau_harbor_guardian") {
+      if (isCorner) {
+        score += 180; // Only 2 sides exposed — hardest to reach
+      } else if (isEdge) {
+        score += 100; // 3 sides exposed — still good
+      } else if (isCenter) {
+        score -= 60; // All 4 sides exposed — Ka'ah drains fast here
+      }
+      if (adjacentEnemies.length > 0) {
+        score -= adjacentEnemies.length * 80; // Each adjacent enemy threatens the power pool
+      }
+      if (adjacentAllies.length >= 2) {
+        score += 50; // More allies to protect = more value
       }
     }
 
@@ -499,6 +519,47 @@ export class StrategicEvaluator {
         const enemyPower = this.calculateTotalPower(enemy.current_power);
         if (enemyPower > cardPower) {
           penalty -= 180;
+        }
+      }
+
+      // Jörmungandr can only be defeated by Thor. Placing any card adjacent to
+      // an enemy Jörmungandr is a wasted slot unless this card IS Thor.
+      if (enemyAbilityId === "jormungandr_shell") {
+        const cardIsThor = card.base_card_data.name === "Thor";
+        if (!cardIsThor) {
+          // Heavy penalty — this card cannot flip Jörmungandr and just feeds
+          // the enemy board position.
+          penalty -= 160;
+        }
+      }
+    }
+
+    // Also penalize attempting to play adjacent to an enemy Ka'ahupahau that
+    // has no adjacent enemies (fortress stance). The ally-protection ability
+    // makes any combat against Ka'ah's neighbors much harder to win.
+    for (const enemy of adjacentEnemies) {
+      const enemyAbilityId =
+        enemy.base_card_data.special_ability?.id ??
+        enemy.base_card_data.special_ability?.ability_id ??
+        "";
+      if (enemyAbilityId === "kaahupahau_harbor_guardian") {
+        // Find Ka'ah's position to check whether it has enemies adjacent to it.
+        // If Ka'ah is in fortress (no adjacent enemy cards), its protection is active.
+        const allEnemiesOnBoard = gameState.board
+          .flat()
+          .filter((cell) => cell.card && cell.card.owner !== aiPlayerId)
+          .map((cell) => cell.card!);
+        const kaahIsProtected = allEnemiesOnBoard.every((ec) => {
+          const ecAbility =
+            ec.base_card_data.special_ability?.id ??
+            ec.base_card_data.special_ability?.ability_id ??
+            "";
+          if (ecAbility !== "kaahupahau_harbor_guardian") return true;
+          // Check if this Ka'ah has any adjacent AI cards (meaning she's already contested)
+          return false; // conservatively assume fortress is active
+        });
+        if (kaahIsProtected) {
+          penalty -= 60;
         }
       }
     }

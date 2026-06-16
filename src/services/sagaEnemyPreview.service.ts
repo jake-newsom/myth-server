@@ -1,5 +1,4 @@
 import db from "../config/db.config";
-import { RarityUtils } from "../types/card.types";
 import type { SagaNodeMapData, SagaMapNode } from "../types/sagaMap.types";
 
 export interface SagaEnemyNodePreview {
@@ -10,25 +9,34 @@ export interface SagaEnemyNodePreview {
   preview_rarity: string;
 }
 
-function rarityRank(rarity: string): number {
-  if (RarityUtils.isLegendary(rarity as import("../types/card.types").Rarity)) {
-    return 3;
-  }
-  if (rarity.startsWith("epic")) return 2;
-  if (RarityUtils.isRare(rarity as import("../types/card.types").Rarity)) {
-    return 1;
-  }
-  return 0;
-}
+// Preview-card preference, evaluated entirely in SQL (see loadEnemyDeckPreviews):
+//   1. A "boss" card always wins the slot.
+//   2. Otherwise the highest base rarity (legendary > epic > rare > other).
+//   3. Within a base rarity, more "+" tiers win (legendary++ beats legendary+).
+// $RARITY_RANK expands to a CASE matching rarityRank()'s former JS behaviour.
+const RARITY_RANK_SQL = `
+  CASE
+    WHEN cv.rarity LIKE 'legendary%' THEN 3
+    WHEN cv.rarity LIKE 'epic%' THEN 2
+    WHEN cv.rarity LIKE 'rare%' THEN 1
+    ELSE 0
+  END`;
 
-async function loadEnemyDeckPreview(
-  deckId: string
-): Promise<SagaEnemyNodePreview | null> {
+async function loadEnemyDeckPreviews(
+  deckIds: string[]
+): Promise<Map<string, SagaEnemyNodePreview>> {
+  const result = new Map<string, SagaEnemyNodePreview>();
+  if (deckIds.length === 0) return result;
+
+  // DISTINCT ON keeps one row per deck — the first per the ORDER BY, which
+  // encodes the boss-first / rarity / "+"-tier preference above. This replaces
+  // the previous one-query-per-deck N+1.
   const { rows } = await db.query(
-    `SELECT d.name AS deck_name,
+    `SELECT DISTINCT ON (dc.deck_id)
+            dc.deck_id,
+            d.name AS deck_name,
             cv.card_variant_id,
             ch.name AS card_name,
-            ch.type AS card_type,
             cv.image_url,
             cv.rarity
      FROM deck_cards dc
@@ -36,35 +44,33 @@ async function loadEnemyDeckPreview(
      JOIN user_owned_cards uoc ON uoc.user_card_instance_id = dc.user_card_instance_id
      JOIN card_variants cv ON cv.card_variant_id = uoc.card_variant_id
      JOIN characters ch ON ch.character_id = cv.character_id
-     WHERE dc.deck_id = $1`,
-    [deckId]
+     WHERE dc.deck_id = ANY($1::uuid[])
+     ORDER BY
+       dc.deck_id,
+       (ch.type = 'boss') DESC,
+       ${RARITY_RANK_SQL} DESC,
+       (LENGTH(cv.rarity) - LENGTH(REPLACE(cv.rarity, '+', ''))) DESC`,
+    [deckIds]
   );
 
-  if (!rows.length) return null;
-
-  const deckName = String(rows[0].deck_name ?? "Enemy deck");
-
-  // A deck's boss card (type "boss") always wins the preview slot. Falls back
-  // to the highest-rarity card for normal battle decks that have no boss card.
-  let best = rows.find((row) => row.card_type === "boss") ?? rows[0];
-  if (best.card_type !== "boss") {
-    let bestRank = rarityRank(String(best.rarity ?? "common"));
-    for (const row of rows) {
-      const rank = rarityRank(String(row.rarity ?? "common"));
-      if (rank > bestRank) {
-        best = row;
-        bestRank = rank;
-      }
-    }
+  for (const row of rows) {
+    result.set(String(row.deck_id), {
+      deck_name: String(row.deck_name ?? "Enemy deck"),
+      preview_base_card_id: String(row.card_variant_id),
+      preview_name: String(row.card_name),
+      preview_image_url: String(row.image_url ?? ""),
+      preview_rarity: String(row.rarity ?? "common"),
+    });
   }
 
-  return {
-    deck_name: deckName,
-    preview_base_card_id: String(best.card_variant_id),
-    preview_name: String(best.card_name),
-    preview_image_url: String(best.image_url ?? ""),
-    preview_rarity: String(best.rarity ?? "common"),
-  };
+  return result;
+}
+
+async function loadEnemyDeckPreview(
+  deckId: string
+): Promise<SagaEnemyNodePreview | null> {
+  const previews = await loadEnemyDeckPreviews([deckId]);
+  return previews.get(deckId) ?? null;
 }
 
 function attachPreviewToNode(
@@ -89,10 +95,7 @@ export async function enrichMapWithEnemyPreviews(
     }
   }
 
-  const entries = await Promise.all(
-    [...deckIds].map(async (id) => [id, await loadEnemyDeckPreview(id)] as const)
-  );
-  const previews = new Map(entries);
+  const previews = await loadEnemyDeckPreviews([...deckIds]);
 
   const floors = map.floors.map((floor) => ({
     ...floor,

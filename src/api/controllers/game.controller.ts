@@ -861,8 +861,11 @@ class GameController {
               updated_currencies: { gems: 0, total_xp: 0 },
             };
           } else {
-          const [gameRewardsResult, floorNumberAI] = await Promise.all([
-            GameRewardsService.processGameCompletion(
+          // floor_number is already on the raw game record fetched above;
+          // no need for a separate getGameFloorNumber query.
+          const floorNumberAI = gameRecord.floor_number ?? null;
+          gameCompletionResult =
+            await GameRewardsService.processGameCompletion(
               userId,
               updatedGameState,
               gameRecord.game_mode as "solo" | "pvp",
@@ -874,11 +877,7 @@ class GameController {
               false,
               gameRecord.game_mode === "solo" ? gameRecord.player2_deck_id ?? undefined : undefined,
               isTowerGameAI
-            ),
-            GameService.getGameFloorNumber(gameId),
-          ]);
-
-          gameCompletionResult = gameRewardsResult;
+            );
 
           if (floorNumberAI !== null && gameCompletionResult) {
             try {
