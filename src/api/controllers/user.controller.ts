@@ -815,7 +815,7 @@ const UserController = {
         );
 
         // Delete sessions (should be cleared already, but ensure)
-        await client.query(`DELETE FROM "sessions" WHERE user_id = $1`, [userId]);
+        await client.query(`DELETE FROM "user_sessions" WHERE user_id = $1`, [userId]);
 
         // Finally, delete the user record itself
         await client.query(`DELETE FROM "users" WHERE user_id = $1`, [userId]);

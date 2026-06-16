@@ -167,7 +167,7 @@ class SessionService {
   async validateAccessToken(token: string): Promise<SessionData | null> {
     try {
       // First verify JWT structure and extract payload
-      const decoded = jwt.verify(token, this.JWT_SECRET) as any;
+      const decoded = jwt.verify(token, this.JWT_SECRET, { algorithms: ["HS256"] }) as any;
       if (
         !decoded ||
         !decoded.userId ||

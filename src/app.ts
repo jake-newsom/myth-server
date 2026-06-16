@@ -128,8 +128,8 @@ app.use(
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   }),
 );
-app.use(express.json()); // Parse JSON request bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded request bodies
+app.use(express.json({ limit: "1mb" })); // Parse JSON request bodies
+app.use(express.urlencoded({ extended: true, limit: "1mb" })); // Parse URL-encoded request bodies
 app.use(queryMetricsMiddleware);
 
 // Add server version to all responses

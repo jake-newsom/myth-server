@@ -40,7 +40,7 @@ export const presenceAuthMiddleware = async (
       );
     }
 
-    const decoded = jwt.verify(token, config.jwtSecret) as JwtPayload;
+    const decoded = jwt.verify(token, config.jwtSecret, { algorithms: ["HS256"] }) as JwtPayload;
     logger.debug("JWT token verified successfully for presence", {
       socketId: socket.id,
       userId: decoded.userId,

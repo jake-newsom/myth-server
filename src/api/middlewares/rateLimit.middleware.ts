@@ -36,6 +36,14 @@ class RateLimitStore {
         this.store.delete(key);
       }
     }
+    // Evict oldest entries if store grows too large (e.g. flood of unique IPs)
+    if (this.store.size > 100_000) {
+      const oldest = [...this.store.entries()]
+        .sort((a, b) => a[1].firstRequest - b[1].firstRequest)
+        .slice(0, 10_000)
+        .map(([k]) => k);
+      for (const key of oldest) this.store.delete(key);
+    }
   }
 
   hit(key: string, windowMs: number): RateLimitRecord {

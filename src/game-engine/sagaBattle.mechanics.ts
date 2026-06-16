@@ -282,20 +282,26 @@ export function applyFirstProtectionOnPlace(
   const card = state.board[position.y]?.[position.x]?.card;
   if (!ctx || !card || card.owner !== playerId) return { state, events: [] };
 
-  const played = ctx.player_cards_played ?? {};
-  const previousCount = played[playerId] ?? 0;
-  ctx.player_cards_played = { ...played, [playerId]: previousCount + 1 };
-
   const playedInstanceIds = ctx.player_card_instance_ids_played ?? {};
   const priorIds = playedInstanceIds[playerId] ?? [];
-  if (!priorIds.includes(card.user_card_instance_id)) {
+  const isFirstEntryThisBattle = !priorIds.includes(card.user_card_instance_id);
+
+  if (isFirstEntryThisBattle) {
     ctx.player_card_instance_ids_played = {
       ...playedInstanceIds,
       [playerId]: [...priorIds, card.user_card_instance_id],
     };
   }
 
-  if (card.saga_rune_type !== "first" || previousCount !== 0) {
+  const played = ctx.player_cards_played ?? {};
+  const previousCount = played[playerId] ?? 0;
+  ctx.player_cards_played = { ...played, [playerId]: previousCount + 1 };
+
+  const cacheEntry = state.hydrated_card_data_cache?.[card.user_card_instance_id];
+  const cached = cacheEntry ?? card;
+  const runeType = (cached as InGameCard & { saga_rune_type?: string }).saga_rune_type;
+
+  if (runeType !== "first" || !isFirstEntryThisBattle) {
     return { state, events: [] };
   }
 
