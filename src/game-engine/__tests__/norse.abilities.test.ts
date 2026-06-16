@@ -10,6 +10,93 @@ import {
   placeCardOnBoard,
 } from "./ai.test-utils";
 
+test("njord_sea buffs when adjacent to a sea-tagged card", () => {
+  simulationContext.enterSimulation();
+  try {
+    const board = createEmptyBoard();
+
+    const njord = createTestCard({
+      id: "njord",
+      owner: "p1",
+      abilityId: "njord_sea",
+    });
+    njord.base_card_data.tags = ["norse", "god", "sea"];
+
+    const seaAlly = createTestCard({
+      id: "sea-ally",
+      owner: "p1",
+    });
+    seaAlly.base_card_data.tags = ["norse", "human", "sea"];
+
+    placeCardOnBoard(board, { x: 1, y: 1 }, seaAlly);
+    placeCardOnBoard(board, { x: 1, y: 0 }, njord);
+
+    const state = createTestGameState({
+      board,
+      player1Id: "p1",
+      player2Id: "p2",
+    });
+
+    const events = norseAbilities.njord_sea({
+      state,
+      triggerCard: njord,
+      triggerMoment: TriggerMoment.OnPlace,
+      position: { x: 1, y: 0 },
+    });
+
+    assert.equal(events.length, 1);
+    assert.equal(njord.temporary_effects.length, 1);
+    assert.equal(njord.temporary_effects[0].power.top, 3);
+    assert.equal(
+      (events[0] as unknown as { effectName: string }).effectName,
+      "Nóatún’s Guard",
+    );
+  } finally {
+    simulationContext.exitSimulation();
+  }
+});
+
+test("njord_sea does not buff without an adjacent sea-tagged card", () => {
+  simulationContext.enterSimulation();
+  try {
+    const board = createEmptyBoard();
+
+    const njord = createTestCard({
+      id: "njord",
+      owner: "p1",
+      abilityId: "njord_sea",
+    });
+    njord.base_card_data.tags = ["norse", "god", "sea"];
+
+    const nonSeaAlly = createTestCard({
+      id: "ally",
+      owner: "p1",
+    });
+    nonSeaAlly.base_card_data.tags = ["norse", "human", "warrior"];
+
+    placeCardOnBoard(board, { x: 1, y: 1 }, nonSeaAlly);
+    placeCardOnBoard(board, { x: 1, y: 0 }, njord);
+
+    const state = createTestGameState({
+      board,
+      player1Id: "p1",
+      player2Id: "p2",
+    });
+
+    const events = norseAbilities.njord_sea({
+      state,
+      triggerCard: njord,
+      triggerMoment: TriggerMoment.OnPlace,
+      position: { x: 1, y: 0 },
+    });
+
+    assert.equal(events.length, 0);
+    assert.equal(njord.temporary_effects.length, 0);
+  } finally {
+    simulationContext.exitSimulation();
+  }
+});
+
 test("vidar_vengeance buffs only Vidar when Odin has been defeated", () => {
   simulationContext.enterSimulation();
   try {

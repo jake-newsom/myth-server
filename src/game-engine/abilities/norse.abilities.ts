@@ -466,7 +466,7 @@ export const norseAbilities: AbilityMap = {
     if (!position) return [];
 
     const adjacentSeaCards = getAdjacentCards(position, board, {
-      tag: "Sea",
+      tag: "sea",
     });
     if (adjacentSeaCards.length > 0) {
       gameEvents.push(
@@ -762,7 +762,7 @@ export const norseAbilities: AbilityMap = {
     if (!position) return [];
 
     const adjacentGoddessCards = getAdjacentCards(position, board, {
-      tag: "Goddess",
+      tag: "goddess",
     });
     if (adjacentGoddessCards.length > 0) {
       gameEvents.push(
@@ -825,7 +825,7 @@ export const norseAbilities: AbilityMap = {
     if (!position) return [];
 
     const adjacentValkyrieCards = getAdjacentCards(position, board, {
-      tag: "Valkyrie",
+      tag: "valkyrie",
     });
 
     if (adjacentValkyrieCards.length > 0) {
