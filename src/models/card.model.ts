@@ -29,9 +29,10 @@ const USER_CARD_SELECT_COLUMNS = `
   ch.base_power->>'left' as base_power_left,
   ch.special_ability_id, ch.set_id, ch.tags,
   cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
+  COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
   sa.name as ability_name, sa.description as ability_description,
   sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
-  sa.id as ability_id_string,
+  sa.id as ability_id_string, sa.sound_effect as ability_sound_effect,
   cb.border_id as cb_border_id, cb.name as cb_name,
   cb.image_url as cb_image_url, cb.animation_key as cb_animation_key
 `;
@@ -83,11 +84,13 @@ function formatUserCardInstanceResponse(
           description: ability.description,
           triggerMoments: ability.triggerMoments,
           parameters: ability.parameters,
+          ...(ability.sound_effect && { sound_effect: ability.sound_effect }),
         }
       : null,
     ...(baseCard.attack_animation && {
       attack_animation: baseCard.attack_animation,
     }),
+    ...(baseCard.sound_effect && { sound_effect: baseCard.sound_effect }),
     ...(baseCard.is_exclusive !== undefined && {
       is_exclusive: baseCard.is_exclusive,
     }),
@@ -98,12 +101,14 @@ function formatUserCardInstanceResponse(
 // Helper to format static card response
 function formatStaticCardResponse(
   baseCard: BaseCard & {
+    sound_effect?: string;
     special_ability?: {
       ability_id: string;
       name: string;
       description: string;
       triggerMoments: string[];
       parameters: any;
+      sound_effect?: string | null;
     } | null;
   }
 ): Omit<
@@ -115,6 +120,7 @@ function formatStaticCardResponse(
     card_id,
     character_id,
     attack_animation,
+    sound_effect,
     description,
     ...rest
   } = baseCard;
@@ -132,6 +138,7 @@ function formatStaticCardResponse(
         }
       : null,
     ...(attack_animation && { attack_animation: attack_animation }),
+    ...(sound_effect && { sound_effect }),
   };
 }
 
@@ -178,6 +185,7 @@ const CardModel = {
         set_id: row.set_id,
         tags: row.tags,
         ...(row.attack_animation && { attack_animation: row.attack_animation }),
+        ...(row.sound_effect && { sound_effect: row.sound_effect }),
       is_exclusive: row.is_exclusive ?? false,
       };
 
@@ -210,6 +218,7 @@ const CardModel = {
             description: row.ability_description,
             triggerMoments: row.ability_trigger_moments || [],
             parameters: row.ability_parameters,
+            sound_effect: row.ability_sound_effect ?? null,
           }
         : null;
 
@@ -264,6 +273,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      ...(row.sound_effect && { sound_effect: row.sound_effect }),
       is_exclusive: row.is_exclusive ?? false,
     };
   },
@@ -330,6 +340,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      ...(row.sound_effect && { sound_effect: row.sound_effect }),
       is_exclusive: row.is_exclusive ?? false,
     };
 
@@ -341,6 +352,7 @@ const CardModel = {
           description: row.ability_description,
           triggerMoments: row.ability_trigger_moments || [],
           parameters: row.ability_parameters,
+          sound_effect: row.ability_sound_effect ?? null,
         }
       : null;
 
@@ -447,10 +459,11 @@ const CardModel = {
               ch.base_power->>'bottom' as base_power_bottom, 
               ch.base_power->>'left' as base_power_left, 
               ch.special_ability_id, ch.set_id, ch.tags,
-              sa.ability_id as sa_ability_id, sa.name as sa_name, 
+              COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
+              sa.ability_id as sa_ability_id, sa.name as sa_name,
               sa.description as sa_description,
-              sa.trigger_moments as sa_trigger_moments, 
-              sa.parameters as sa_parameters
+              sa.trigger_moments as sa_trigger_moments,
+              sa.parameters as sa_parameters, sa.sound_effect as sa_sound_effect
         FROM "card_variants" cv
         JOIN "characters" ch ON cv.character_id = ch.character_id
         LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
@@ -490,10 +503,11 @@ const CardModel = {
                   ch.base_power->>'bottom' as base_power_bottom, 
                   ch.base_power->>'left' as base_power_left, 
                   ch.special_ability_id, ch.set_id, ch.tags,
-                  sa.ability_id as sa_ability_id, sa.name as sa_name, 
+                  COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
+                  sa.ability_id as sa_ability_id, sa.name as sa_name,
                   sa.description as sa_description,
-                  sa.trigger_moments as sa_trigger_moments, 
-                  sa.parameters as sa_parameters
+                  sa.trigger_moments as sa_trigger_moments,
+                  sa.parameters as sa_parameters, sa.sound_effect as sa_sound_effect
             FROM "card_variants" cv
             JOIN "characters" ch ON cv.character_id = ch.character_id
             LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
@@ -546,6 +560,7 @@ const CardModel = {
                 ...(row.attack_animation && {
                   attack_animation: row.attack_animation,
                 }),
+                ...(row.sound_effect && { sound_effect: row.sound_effect }),
                 is_exclusive: row.is_exclusive ?? false,
                 special_ability: row.sa_ability_id
                   ? {
@@ -554,6 +569,7 @@ const CardModel = {
                       description: row.sa_description,
                       triggerMoments: row.sa_trigger_moments || [],
                       parameters: row.sa_parameters,
+                      sound_effect: row.sa_sound_effect ?? null,
                     }
                   : null,
               };
@@ -587,6 +603,7 @@ const CardModel = {
           ...(row.attack_animation && {
             attack_animation: row.attack_animation,
           }),
+          ...(row.sound_effect && { sound_effect: row.sound_effect }),
           is_exclusive: row.is_exclusive ?? false,
           base_power: {
             top: parseInt(row.base_power_top, 10),
@@ -604,6 +621,7 @@ const CardModel = {
                 description: row.sa_description,
                 triggerMoments: row.sa_trigger_moments || [],
                 parameters: row.sa_parameters,
+                sound_effect: row.sa_sound_effect ?? null,
               }
             : null,
         };
@@ -641,8 +659,10 @@ const CardModel = {
         ch.base_power->>'bottom' as base_power_bottom, 
         ch.base_power->>'left' as base_power_left,
         ch.special_ability_id, ch.set_id, ch.tags,
+        COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
         sa.ability_id as sa_ability_id, sa.name as sa_name, sa.description as sa_description,
-        sa.trigger_moments as sa_trigger_moments, sa.parameters as sa_parameters
+        sa.trigger_moments as sa_trigger_moments, sa.parameters as sa_parameters,
+        sa.sound_effect as sa_sound_effect
       FROM "card_variants" cv
       JOIN "characters" ch ON cv.character_id = ch.character_id
       LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
@@ -674,6 +694,7 @@ const CardModel = {
         left: parseInt(row.base_power_left, 10),
       },
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      ...(row.sound_effect && { sound_effect: row.sound_effect }),
       is_exclusive: row.is_exclusive ?? false,
       special_ability_id: row.special_ability_id,
       set_id: row.set_id,
@@ -685,6 +706,7 @@ const CardModel = {
             description: row.sa_description,
             triggerMoments: row.sa_trigger_moments || [],
             parameters: row.sa_parameters,
+            sound_effect: row.sa_sound_effect ?? null,
           }
         : null,
     };
@@ -729,6 +751,7 @@ const CardModel = {
         set_id: row.set_id,
         tags: row.tags,
         ...(row.attack_animation && { attack_animation: row.attack_animation }),
+        ...(row.sound_effect && { sound_effect: row.sound_effect }),
       is_exclusive: row.is_exclusive ?? false,
       };
 
@@ -761,6 +784,7 @@ const CardModel = {
             description: row.ability_description,
             triggerMoments: row.ability_trigger_moments || [],
             parameters: row.ability_parameters,
+            sound_effect: row.ability_sound_effect ?? null,
           }
         : null;
 
@@ -814,6 +838,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      ...(row.sound_effect && { sound_effect: row.sound_effect }),
       is_exclusive: row.is_exclusive ?? false,
     };
   },
@@ -861,6 +886,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      ...(row.sound_effect && { sound_effect: row.sound_effect }),
       is_exclusive: row.is_exclusive ?? false,
     }));
   },
@@ -997,6 +1023,7 @@ const CardModel = {
               description: row.ability_description,
               triggerMoments: row.ability_trigger_moments || [],
               parameters: row.ability_parameters,
+              sound_effect: row.ability_sound_effect ?? null,
             }
           : null;
 
@@ -1293,6 +1320,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      ...(row.sound_effect && { sound_effect: row.sound_effect }),
       is_exclusive: row.is_exclusive ?? false,
     }));
   },
@@ -1336,6 +1364,7 @@ const CardModel = {
       set_id: row.set_id,
       tags: row.tags,
       ...(row.attack_animation && { attack_animation: row.attack_animation }),
+      ...(row.sound_effect && { sound_effect: row.sound_effect }),
       is_exclusive: row.is_exclusive ?? false,
     }));
   },

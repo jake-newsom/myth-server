@@ -53,8 +53,10 @@ export class GameLogic {
           ch.base_power->>'top' as base_power_top, ch.base_power->>'right' as base_power_right, 
           ch.base_power->>'bottom' as base_power_bottom, ch.base_power->>'left' as base_power_left, 
           ch.tags, ch.special_ability_id, ch.set_id, cv.attack_animation,
-          sa.id as ability_key, sa.name as ability_name, sa.description as ability_description, 
+          COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
+          sa.id as ability_key, sa.name as ability_name, sa.description as ability_description,
           sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
+          sa.sound_effect as ability_sound_effect,
           cb.border_id as cb_border_id, cb.name as cb_name,
           cb.image_url as cb_image_url, cb.animation_key as cb_animation_key
         FROM "user_owned_cards" uci
@@ -123,11 +125,13 @@ export class GameLogic {
                 triggerMoments:
                   (row.ability_triggers as TriggerMoment[]) || [],
                 parameters: row.ability_parameters,
+                sound_effect: row.ability_sound_effect ?? null,
               }
               : null,
             ...(row.attack_animation && {
               attack_animation: row.attack_animation,
             }),
+            ...(row.sound_effect && { sound_effect: row.sound_effect }),
             equipped_border: row.cb_border_id
               ? {
                   border_id: row.cb_border_id,

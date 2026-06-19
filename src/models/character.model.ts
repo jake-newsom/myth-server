@@ -13,6 +13,7 @@ export interface CharacterVariantSummary {
   image_url: string;
   description: string | null;
   attack_animation: string | null;
+  sound_effect: string | null;
   is_exclusive: boolean;
   released_at: Date | null;
   created_at: Date | null;
@@ -37,6 +38,10 @@ function mapCharacterRow(row: Record<string, unknown>): Character {
     special_ability_id: row.special_ability_id as string | null,
     set_id: row.set_id as string | null,
     tags: (row.tags as string[]) || [],
+    sound_effect:
+      (row.character_sound_effect as string | null | undefined) ??
+      (row.sound_effect as string | null | undefined) ??
+      null,
     released_at: row.released_at as Date,
     created_at: row.created_at as Date,
     updated_at: row.updated_at as Date,
@@ -49,7 +54,7 @@ const CHARACTER_SELECT = `
   base_power->>'right' as base_power_right,
   base_power->>'bottom' as base_power_bottom,
   base_power->>'left' as base_power_left,
-  special_ability_id, set_id, tags,
+  special_ability_id, set_id, tags, sound_effect,
   released_at, created_at, updated_at
 `;
 
@@ -125,10 +130,11 @@ const CharacterModel = {
         ch.base_power->>'bottom' as base_power_bottom,
         ch.base_power->>'left' as base_power_left,
         ch.special_ability_id, ch.set_id, ch.tags,
+        ch.sound_effect as character_sound_effect,
         ch.released_at, ch.created_at, ch.updated_at,
         cv.card_variant_id, cv.rarity, cv.image_url,
         cv.description as variant_description,
-        cv.attack_animation, cv.is_exclusive,
+        cv.attack_animation, cv.sound_effect as variant_sound_effect, cv.is_exclusive,
         cv.released_at as variant_released_at,
         cv.created_at as variant_created_at
       FROM characters ch
@@ -159,6 +165,7 @@ const CharacterModel = {
           image_url: row.image_url,
           description: row.variant_description,
           attack_animation: row.attack_animation,
+          sound_effect: row.variant_sound_effect ?? null,
           is_exclusive: row.is_exclusive ?? false,
           released_at: row.variant_released_at,
           created_at: row.variant_created_at,

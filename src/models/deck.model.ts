@@ -42,8 +42,10 @@ const formatDeckCardInstanceResponse = (
           description: ability.description,
           triggerMoments: ability.triggerMoments,
           parameters: ability.parameters,
+          ...(ability.sound_effect && { sound_effect: ability.sound_effect }),
         }
       : null,
+    ...(baseCard.sound_effect && { sound_effect: baseCard.sound_effect }),
     equipped_border: equippedBorder,
   };
 };
@@ -141,9 +143,10 @@ const DeckModel = {
         ch.base_power->>'bottom' as base_power_bottom,
         ch.base_power->>'left' as base_power_left,
         ch.special_ability_id, ch.set_id, ch.tags,
+        COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
         sa.name as ability_name, sa.description as ability_description,
         sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
-        sa.id as ability_id_string,
+        sa.id as ability_id_string, sa.sound_effect as ability_sound_effect,
         cb.border_id as cb_border_id, cb.name as cb_name,
         cb.image_url as cb_image_url, cb.animation_key as cb_animation_key
       FROM "deck_cards" dc
@@ -179,6 +182,7 @@ const DeckModel = {
         special_ability_id: row.special_ability_id,
         set_id: row.set_id,
         tags: row.tags,
+        ...(row.sound_effect && { sound_effect: row.sound_effect }),
       };
 
       const powerUp = powerUpsMap.get(row.user_card_instance_id);
@@ -209,6 +213,7 @@ const DeckModel = {
             description: row.ability_description,
             triggerMoments: row.ability_triggers || [],
             parameters: row.ability_parameters,
+            sound_effect: row.ability_sound_effect ?? null,
           }
         : null;
 
@@ -261,9 +266,10 @@ const DeckModel = {
         ch.base_power->>'bottom' as base_power_bottom, 
         ch.base_power->>'left' as base_power_left,
         ch.special_ability_id, ch.set_id, ch.tags,
-        sa.name as ability_name, sa.description as ability_description, 
+        COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
+        sa.name as ability_name, sa.description as ability_description,
         sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
-        sa.id as ability_id_string,
+        sa.id as ability_id_string, sa.sound_effect as ability_sound_effect,
         cb.border_id as cb_border_id, cb.name as cb_name,
         cb.image_url as cb_image_url, cb.animation_key as cb_animation_key
       FROM "deck_cards" dc
@@ -301,6 +307,7 @@ const DeckModel = {
         special_ability_id: row.special_ability_id,
         set_id: row.set_id,
         tags: row.tags,
+        ...(row.sound_effect && { sound_effect: row.sound_effect }),
       };
 
       // Get power up data for this instance
@@ -331,6 +338,7 @@ const DeckModel = {
             description: row.ability_description,
             triggerMoments: row.ability_triggers || [],
             parameters: row.ability_parameters,
+            sound_effect: row.ability_sound_effect ?? null,
           }
         : null;
       return formatDeckCardInstanceResponse(baseCard, instance, ability, rowToEquippedBorder(row));

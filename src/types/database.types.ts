@@ -74,6 +74,8 @@ export interface SpecialAbility {
   description: string;
   triggerMoments: TriggerMoment[];
   parameters: Record<string, any>;
+  /** Asset filename/path played when this ability resolves (e.g. "growl.aac"). */
+  sound_effect?: string | null;
 }
 
 /**
@@ -89,6 +91,8 @@ export interface Character {
   special_ability_id: string | null;
   set_id?: string | null;
   tags: string[];
+  /** Default placement sound for the character (e.g. "growl.aac"). */
+  sound_effect?: string | null;
   /** When this character becomes visible in the public catalog. */
   released_at?: Date;
   created_at?: Date;
@@ -106,6 +110,8 @@ export interface CardVariant {
   image_url: string;
   description?: string | null; // Variant-specific lore/art description
   attack_animation?: string;
+  /** Per-variant override of the character's placement sound. */
+  sound_effect?: string | null;
   is_exclusive?: boolean;
   /** When this variant becomes visible in the public catalog. */
   released_at?: Date;
@@ -149,6 +155,8 @@ export interface Card {
   set_id?: string | null;
   tags: string[];
   attack_animation?: string;
+  /** Resolved placement sound: variant override else character default. */
+  sound_effect?: string;
   is_exclusive?: boolean;
 }
 

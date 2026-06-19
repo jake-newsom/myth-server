@@ -44,6 +44,9 @@ export interface BaseGameEvent {
   delayAfterMs?: number;
   sourcePlayerId?: string;
   animation?: string;
+  /** Asset filename/path to play when the client processes this event,
+   *  stamped from the triggering ability's sound_effect (see triggerAbilities). */
+  soundEffect?: string;
   position?: BoardPosition;
 }
 

@@ -19,6 +19,7 @@ import { simulationContext } from "./simulation.context";
 import {
   BaseGameEvent,
   CardEvent,
+  CardPowerChangedEvent,
   EVENT_TYPES,
   TriggerContext,
   COMBAT_TYPES,
@@ -442,6 +443,12 @@ export function flipCard(
   const attackAnimation =
     customAttackAnimation || source.base_card_data.attack_animation;
 
+  // The flipping card's ability sound (e.g. Hel's hel_flip.aac) plays in place
+  // of the generic attack sound. Sourced from the attacker's ability rather
+  // than stamped via triggerAbilities, because flip-on-combat abilities (like
+  // hel_soul) emit no events of their own — the flip is produced here.
+  const flipSound = source.base_card_data.special_ability?.sound_effect;
+
   events.push({
     type: EVENT_TYPES.CARD_FLIPPED,
     eventId: uuidv4(),
@@ -451,6 +458,7 @@ export function flipCard(
     cardId: target.user_card_instance_id,
     position: targetPosition,
     animation: attackAnimation || "attack",
+    ...(flipSound && { soundEffect: flipSound }),
   } as CardEvent);
 
   events.push(
@@ -501,6 +509,31 @@ export function flipCard(
   return events;
 }
 
+/**
+ * Stamp DB-sourced ability metadata onto the events an ability just produced:
+ *   • soundEffect – fill from the ability's sound_effect when the event doesn't
+ *     already carry one, so the client can play it. Filled (not overwritten) so
+ *     an ability that sets a per-event sound wins.
+ *   • effectName  – on CARD_POWER_CHANGED events ONLY, overwrite with the
+ *     ability's DB name so floating-text labels always reflect the database
+ *     (abilities set hardcoded options.name strings that can drift).
+ *
+ * Mutates the events in place. No-op fields are left untouched.
+ */
+function stampAbilityMetadata(
+  events: BaseGameEvent[],
+  ability: { name?: string; sound_effect?: string | null }
+): void {
+  for (const event of events) {
+    if (ability.sound_effect && !event.soundEffect) {
+      event.soundEffect = ability.sound_effect;
+    }
+    if (event.type === EVENT_TYPES.CARD_POWER_CHANGED && ability.name) {
+      (event as CardPowerChangedEvent).effectName = ability.name;
+    }
+  }
+}
+
 export function triggerAbilities(
   trigger: TriggerMoment,
   context: Omit<TriggerContext, "triggerCard"> & { triggerCard?: InGameCard }
@@ -521,7 +554,9 @@ export function triggerAbilities(
           triggerCard,
           triggerMoment: trigger,
         };
-        events.push(...abilityFunction(contextWithTrigger));
+        const abilityEvents = abilityFunction(contextWithTrigger);
+        stampAbilityMetadata(abilityEvents, ability);
+        events.push(...abilityEvents);
         updateAllBoardCards(state);
       }
     }
@@ -563,7 +598,9 @@ export function triggerIndirectAbilities(
           if (triggerCard) {
             contextWithTrigger.originalTriggerCard = triggerCard;
           }
-          events.push(...abilityFunction(contextWithTrigger));
+          const handAbilityEvents = abilityFunction(contextWithTrigger);
+          stampAbilityMetadata(handAbilityEvents, ability);
+          events.push(...handAbilityEvents);
         }
       }
     }
@@ -636,6 +673,7 @@ export function triggerIndirectAbilities(
 
     const abilityEvents = getAbilityHandler(ability)?.(anyContext);
     if (abilityEvents) {
+      stampAbilityMetadata(abilityEvents, ability);
       events.push(...abilityEvents);
     }
   }

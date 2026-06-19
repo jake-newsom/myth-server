@@ -107,9 +107,10 @@ const DailyShopModel = {
         ch.base_power->>'bottom' as card_power_bottom, 
         ch.base_power->>'left' as card_power_left,
         ch.special_ability_id as card_special_ability_id,
-        sa.name as ability_name, sa.description as ability_description, 
+        COALESCE(cv.sound_effect, ch.sound_effect) as card_sound_effect,
+        sa.name as ability_name, sa.description as ability_description,
         sa.trigger_moments as ability_trigger_moments, sa.parameters as ability_parameters,
-        sa.id as ability_id_string
+        sa.id as ability_id_string, sa.sound_effect as ability_sound_effect
       FROM daily_shop_offerings dso
       LEFT JOIN card_variants cv ON dso.card_id = cv.card_variant_id
       LEFT JOIN characters ch ON cv.character_id = ch.character_id
@@ -160,8 +161,14 @@ const DailyShopModel = {
                   description: row.ability_description,
                   trigger_moments: row.ability_trigger_moments || [],
                   parameters: row.ability_parameters,
+                  ...(row.ability_sound_effect && {
+                    sound_effect: row.ability_sound_effect,
+                  }),
                 }
               : null,
+            ...(row.card_sound_effect && {
+              sound_effect: row.card_sound_effect,
+            }),
           }
         : undefined,
     }));

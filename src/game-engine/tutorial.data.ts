@@ -44,7 +44,9 @@ interface DbCardRow {
   ability_description: string | null;
   ability_triggers: TriggerMoment[] | null;
   ability_parameters: Record<string, unknown> | null;
+  ability_sound_effect: string | null;
   attack_animation: string | null;
+  sound_effect: string | null;
 }
 
 async function fetchCardsByName(names: string[]): Promise<Map<string, DbCardRow>> {
@@ -53,8 +55,10 @@ async function fetchCardsByName(names: string[]): Promise<Map<string, DbCardRow>
     `SELECT
        cv.card_variant_id, ch.name, cv.rarity, cv.image_url,
        ch.set_id, ch.tags, ch.special_ability_id, cv.attack_animation,
+       COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
        sa.id as ability_key, sa.name as ability_name, sa.description as ability_description,
-       sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters
+       sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
+       sa.sound_effect as ability_sound_effect
      FROM "card_variants" cv
      JOIN "characters" ch ON cv.character_id = ch.character_id
      LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
@@ -85,6 +89,7 @@ function buildInGameCard(
       description: dbRow.ability_description ?? "",
       triggerMoments: dbRow.ability_triggers ?? [],
       parameters: dbRow.ability_parameters ?? {},
+      sound_effect: dbRow.ability_sound_effect ?? null,
     }
     : null;
 
@@ -101,6 +106,7 @@ function buildInGameCard(
       set_id: dbRow.set_id,
       special_ability: ability,
       ...(dbRow.attack_animation && { attack_animation: dbRow.attack_animation }),
+      ...(dbRow.sound_effect && { sound_effect: dbRow.sound_effect }),
     },
     level: 1,
     xp: 0,

@@ -137,6 +137,8 @@ export interface BaseCardData {
   special_ability_id: string | null;
   tags: string[];
   attack_animation?: string;
+  /** Resolved placement sound: variant override else character default. */
+  sound_effect?: string;
   is_exclusive?: boolean;
 }
 
@@ -179,6 +181,8 @@ export interface BaseCard {
   set_id: string | null;
   special_ability: SpecialAbility | null;
   attack_animation?: string;
+  /** Resolved placement sound: variant override else character default. */
+  sound_effect?: string;
   is_exclusive?: boolean;
   equipped_border?: import("./database.types").EquippedBorder | null;
 }
