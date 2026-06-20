@@ -391,6 +391,8 @@ export class AILogic {
     aiPlayerId: string,
     _difficulty: string = "medium"
   ): number {
+    // Difficulty is intentionally pinned to HARD here too (see makeAIMove); the
+    // `_difficulty` parameter is ignored on purpose.
     const effectiveDifficulty = AI_CONFIG.DIFFICULTY_LEVELS.HARD;
     const weights = this.getDifficultyWeights(effectiveDifficulty);
 
@@ -425,10 +427,7 @@ export class AILogic {
       v2Breakdown.board_control * (weights.POSITIONAL - 0.5);
 
     // Difficulty-specific stochasticity.
-    if (weights.RANDOMNESS > 0) {
-      const randomFactor = (randomFloat() - 0.5) * 2; // -1 to 1
-      v2Score += randomFactor * v2Score * weights.RANDOMNESS;
-    }
+    v2Score = this.applyRandomness(v2Score, weights.RANDOMNESS);
 
     // Shadow mode keeps legacy behavior but logs v2 drift.
     if (shadowMode) {
@@ -536,12 +535,24 @@ export class AILogic {
     score += futureScore * weights.FUTURE_POTENTIAL;
 
     // 8. Add randomness factor for lower difficulties
-    if (weights.RANDOMNESS > 0) {
-      const randomFactor = (randomFloat() - 0.5) * 2; // -1 to 1
-      score += randomFactor * score * weights.RANDOMNESS;
-    }
+    score = this.applyRandomness(score, weights.RANDOMNESS);
 
     return score;
+  }
+
+  /**
+   * Applies difficulty randomness as additive noise on a fixed reference scale
+   * (a fraction of FLIP_BONUS) rather than as a multiplier on the move's own
+   * score. The old proportional form (randomFactor * score * RANDOMNESS) gave
+   * near-zero jitter to weak moves, huge jitter to strong ones, and could flip
+   * the sign of negative scores — so the same RANDOMNESS value softened moves
+   * inconsistently. Additive noise is a uniform softener across all moves.
+   */
+  private applyRandomness(score: number, randomness: number): number {
+    if (randomness <= 0) return score;
+    const randomFactor = (randomFloat() - 0.5) * 2; // -1 to 1
+    const noiseScale = AI_CONFIG.MOVE_EVALUATION.FLIP_BONUS * randomness;
+    return score + randomFactor * noiseScale;
   }
 
   /**
@@ -648,6 +659,10 @@ export class AILogic {
     position: BoardPosition;
   } | null> {
     const startTime = Date.now();
+    // NOTE: difficulty is intentionally pinned to HARD for now. The resolved
+    // `_aiDifficulty` arg (from tower floor / saga profile) is deliberately
+    // ignored here and in `evaluateMove`; the EASY/MEDIUM tuning in AI_CONFIG
+    // is retained but currently dormant. Revisit if per-difficulty AI returns.
     const effectiveDifficulty = AI_CONFIG.DIFFICULTY_LEVELS.HARD;
 
     // Determine which player to make a move for
@@ -776,14 +791,29 @@ export class AILogic {
     // Phase 3: Select move based on difficulty
     possibleMoves.sort((a, b) => b.score - a.score);
 
-    const topN = Math.min(
-      possibleMoves.length,
-      effectiveDifficulty === AI_CONFIG.DIFFICULTY_LEVELS.HARD
-        ? AI_CONFIG.MOVE_SELECTION.HARD_TOP_MOVES
-        : effectiveDifficulty === AI_CONFIG.DIFFICULTY_LEVELS.MEDIUM
-        ? AI_CONFIG.MOVE_SELECTION.MEDIUM_TOP_MOVES
-        : AI_CONFIG.MOVE_SELECTION.EASY_TOP_MOVES
-    );
+    let topN: number;
+    if (effectiveDifficulty === AI_CONFIG.DIFFICULTY_LEVELS.HARD) {
+      // HARD is deterministic (RANDOMNESS = 0), so to avoid a perfectly scripted
+      // line we sample only among moves that tie the best within TIE_MARGIN.
+      // This keeps the strongest play while varying between genuinely-equal options.
+      const bestScore = possibleMoves[0].score;
+      let tied = 0;
+      while (
+        tied < possibleMoves.length &&
+        tied < AI_CONFIG.MOVE_SELECTION.MAX_TIE_CANDIDATES &&
+        bestScore - possibleMoves[tied].score <= AI_CONFIG.MOVE_SELECTION.TIE_MARGIN
+      ) {
+        tied++;
+      }
+      topN = Math.max(1, tied);
+    } else {
+      topN = Math.min(
+        possibleMoves.length,
+        effectiveDifficulty === AI_CONFIG.DIFFICULTY_LEVELS.MEDIUM
+          ? AI_CONFIG.MOVE_SELECTION.MEDIUM_TOP_MOVES
+          : AI_CONFIG.MOVE_SELECTION.EASY_TOP_MOVES
+      );
+    }
 
     const chosenMove = possibleMoves[randomInt(topN)];
 

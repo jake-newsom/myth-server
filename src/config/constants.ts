@@ -117,6 +117,13 @@ export const AI_CONFIG = {
     EASY_TOP_MOVES: 5,
     MEDIUM_TOP_MOVES: 3,
     HARD_TOP_MOVES: 1,
+    // On HARD (deterministic, top-1) the AI otherwise plays an identical line
+    // against the same board, so players learn one script. When several moves
+    // score within this margin of the best, treat them as tied and pick one at
+    // random — this only fires when the choice is near-equal, so play strength
+    // is preserved while games stop being perfectly scripted.
+    TIE_MARGIN: 15,
+    MAX_TIE_CANDIDATES: 4,
   },
   LOOKAHEAD: {
     EASY_DEPTH: 0, // No lookahead, immediate evaluation only
