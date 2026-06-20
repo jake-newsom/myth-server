@@ -1,7 +1,6 @@
 import { GameLogic } from "./game.logic";
 import { GameState, BoardPosition } from "../types/game.types";
 import { InGameCard } from "../types/card.types";
-import * as _ from "lodash";
 import * as validators from "./game.validators";
 import { GAME_CONFIG, AI_CONFIG } from "../config/constants";
 import { AbilityAnalyzer } from "./ai.ability-analyzer";
@@ -394,13 +393,24 @@ export class AILogic {
   ): number {
     const effectiveDifficulty = AI_CONFIG.DIFFICULTY_LEVELS.HARD;
     const weights = this.getDifficultyWeights(effectiveDifficulty);
-    const legacyScore = this.evaluateMoveLegacy(
-      gameState,
-      cardToPlay,
-      position,
-      aiPlayerId,
-      effectiveDifficulty
-    );
+
+    const v2Enabled = AI_CONFIG.FEATURE_FLAGS.ENGINE_V2_ENABLED;
+    const shadowMode =
+      !v2Enabled && AI_CONFIG.FEATURE_FLAGS.ENGINE_V2_SHADOW_MODE;
+
+    // The legacy path runs eight sub-evaluators. Only compute it when its result
+    // is actually used (V2 disabled) or needed for shadow-mode drift logging.
+    // When V2 is enabled and shadow mode is off, this would be pure waste.
+    const needLegacy = !v2Enabled || shadowMode;
+    const legacyScore = needLegacy
+      ? this.evaluateMoveLegacy(
+          gameState,
+          cardToPlay,
+          position,
+          aiPlayerId,
+          effectiveDifficulty
+        )
+      : 0;
 
     const v2Breakdown = this.unifiedScoreV2.scoreMove(
       gameState,
@@ -421,10 +431,7 @@ export class AILogic {
     }
 
     // Shadow mode keeps legacy behavior but logs v2 drift.
-    if (
-      !AI_CONFIG.FEATURE_FLAGS.ENGINE_V2_ENABLED &&
-      AI_CONFIG.FEATURE_FLAGS.ENGINE_V2_SHADOW_MODE
-    ) {
+    if (shadowMode) {
       const delta = v2Score - legacyScore;
       AITelemetry.logDecision({
         engineVersion: "v1",
@@ -446,7 +453,7 @@ export class AILogic {
       });
     }
 
-    if (AI_CONFIG.FEATURE_FLAGS.ENGINE_V2_ENABLED) {
+    if (v2Enabled) {
       return v2Score;
     }
 
@@ -707,8 +714,11 @@ export class AILogic {
           });
 
           if (placeResult.canPlace) {
+            // evaluateMove (and the scoring engines beneath it) only read from
+            // game state and never mutate it, so no defensive clone is needed
+            // here — cloning the whole state per candidate was pure overhead.
             const baseScore = this.evaluateMove(
-              _.cloneDeep(currentGameState),
+              currentGameState,
               cardData as InGameCard,
               { x, y },
               aiPlayerId,

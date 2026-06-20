@@ -181,7 +181,7 @@ export const norseAbilities: AbilityMap = {
       const removeEvent = destroyCardAtPosition(
         position,
         board,
-        "blast-up-2",
+        "baldr-return",
         triggerCard.owner,
       );
       if (removeEvent) {

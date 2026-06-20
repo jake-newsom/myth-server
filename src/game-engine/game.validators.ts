@@ -23,13 +23,12 @@ export function canPlaceOnTile(
   }
 
   if (isBoardPositionOccupied(gameState, position)) {
+    // Keep the message cheap: the AI move generators call this for every tile
+    // (most of which are occupied as the board fills) and only read `canPlace`,
+    // so serializing the occupying card here was pure wasted work on the hot path.
     return {
       canPlace: false,
-      errorMessage: `Board position ${position.x},${position.y
-        } is occupied: ${JSON.stringify(
-          gameState.board[position.y][position.x].card,
-          (key, value) => (key === "sourceCard" ? "[circular]" : value)
-        )}`,
+      errorMessage: `Board position ${position.x},${position.y} is occupied.`,
     };
   }
 

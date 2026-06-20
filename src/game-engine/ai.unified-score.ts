@@ -3,6 +3,7 @@ import { InGameCard } from "../types/card.types";
 import { BoardPosition, GameState } from "../types/game.types";
 import { AbilityAnalyzer } from "./ai.ability-analyzer";
 import { AbilityRuleEngine } from "./ai.rules.engine";
+import { AbilityRuleEvaluation } from "./ai.rule-types";
 import { StrategicEvaluator } from "./ai.strategic-evaluator";
 
 export interface UnifiedScoreBreakdown {
@@ -48,6 +49,15 @@ export class UnifiedScoreV2 {
     const abilityId = getAbilityId(cardToPlay);
     const phase = getGamePhase(gameState);
 
+    // Evaluate the ability rules once and share across the denial/combo/risk
+    // sub-scores; each call rebuilds the full metric map, so this avoids 3x work.
+    const ruleEval = this.abilityRuleEngine.evaluate({
+      gameState,
+      card: cardToPlay,
+      position,
+      aiPlayerId,
+    });
+
     const immediateFlips = this.evaluateImmediateFlips(
       gameState,
       cardToPlay,
@@ -72,7 +82,8 @@ export class UnifiedScoreV2 {
       gameState,
       cardToPlay,
       position,
-      aiPlayerId
+      aiPlayerId,
+      ruleEval
     );
     const boardControl = this.evaluateBoardControl(
       gameState,
@@ -84,13 +95,15 @@ export class UnifiedScoreV2 {
       gameState,
       cardToPlay,
       position,
-      aiPlayerId
+      aiPlayerId,
+      ruleEval
     );
     const risk = this.evaluateRisk(
       gameState,
       cardToPlay,
       position,
-      aiPlayerId
+      aiPlayerId,
+      ruleEval
     );
 
     const total =
@@ -220,15 +233,9 @@ export class UnifiedScoreV2 {
     gameState: GameState,
     card: InGameCard,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
+    ruleEval: AbilityRuleEvaluation
   ): number {
-    const ruleEval = this.abilityRuleEngine.evaluate({
-      gameState,
-      card,
-      position,
-      aiPlayerId,
-    });
-
     const abilityImpact = this.abilityAnalyzer.evaluateAbilityImpact(
       gameState,
       card,
@@ -265,7 +272,8 @@ export class UnifiedScoreV2 {
     gameState: GameState,
     card: InGameCard,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
+    ruleEval: AbilityRuleEvaluation
   ): number {
     const chainScore = this.abilityAnalyzer.evaluateAbilityChains(
       gameState,
@@ -273,12 +281,6 @@ export class UnifiedScoreV2 {
       position,
       aiPlayerId
     );
-    const ruleEval = this.abilityRuleEngine.evaluate({
-      gameState,
-      card,
-      position,
-      aiPlayerId,
-    });
     return chainScore + ruleEval.placementScore + ruleEval.timingScore;
   }
 
@@ -286,15 +288,9 @@ export class UnifiedScoreV2 {
     gameState: GameState,
     card: InGameCard,
     position: BoardPosition,
-    aiPlayerId: string
+    aiPlayerId: string,
+    ruleEval: AbilityRuleEvaluation
   ): number {
-    const ruleEval = this.abilityRuleEngine.evaluate({
-      gameState,
-      card,
-      position,
-      aiPlayerId,
-    });
-
     const adjacentEnemyPower = [
       gameState.board[position.y - 1]?.[position.x]?.card,
       gameState.board[position.y]?.[position.x + 1]?.card,
