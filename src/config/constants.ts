@@ -141,6 +141,13 @@ export const AI_CONFIG = {
       MEDIUM: 2,
       HARD: 3,
     },
+    // When at most this many placeable tiles remain, the search switches to an
+    // exact deterministic minimax to the end of the game (no heuristic leaf, no
+    // stochastic sampling). The remaining game tree is tiny here, so the AI
+    // plays the endgame perfectly — the phase where players most often exploit
+    // heuristic mistakes. Kept conservative to bound worst-case branching;
+    // raise only if profiling shows headroom.
+    EXACT_ENDGAME_MAX_EMPTY: 6,
   },
   DIFFICULTY_WEIGHTS: {
     EASY: {

@@ -86,36 +86,50 @@ function calculateMaxPowerups(level: number, isAI: boolean = true): number {
   return Math.max(0, (level - 1) * multiplier);
 }
 
+// Milestone floors (every 100) act as soft-cap "gates": the AI level is
+// spiked so they read as a wall players grind against, with easier stretches
+// between. See MILESTONE_SPIKE.
+const MILESTONE_INTERVAL = 100;
+const MILESTONE_SPIKE = 1.3; // +30% AI level on every 100th floor
+
 /**
- * Calculate target average card level for a given floor using gradual scaling
- * This ensures sustainable long-term progression
+ * Calculate target average card level for a given floor.
+ *
+ * Scaling philosophy (tuned 2026-06, see david-tower analysis):
+ * - Early floors (1-50) start meaningfully above level 1 so they are NOT a
+ *   free walk even for a fresh deck (previously floors 1-50 had a ~96% win
+ *   rate; target ~75%).
+ * - Deep floors stay only modestly above the old curve on purpose: the bigger
+ *   deep-floor difficulty win comes from removing commons from AI decks (which
+ *   were the entire base-power gap), so we avoid stacking two large buffs.
+ * - Every 100th floor is a soft-cap gate spiked by MILESTONE_SPIKE.
  */
 function calculateTargetAverageLevel(floorNumber: number): number {
-  // Base level is 1.0
-  let baseLevel = 1.0;
-
-  // Progressive scaling based on floor ranges
   if (floorNumber <= 1) {
-    return 1.0;
-  } else if (floorNumber <= 50) {
-    // Floors 1-50: Very slow progression (1.0 -> 2.0)
-    // ~0.02 per floor
-    return baseLevel + (floorNumber - 1) * 0.03;
-  } else if (floorNumber <= 100) {
-    // Floors 51-100: Slightly faster (2.0 -> 3.5)
-    // ~0.03 per floor
-    const previousLevel = 2.0;
-    return previousLevel + (floorNumber - 50) * 0.04;
-  } else if (floorNumber <= 200) {
-    // Floors 101-200: Steady progression (3.5 -> 6.5)
-    // ~0.03 per floor
-    const previousLevel = 3.5;
-    return previousLevel + (floorNumber - 100) * 0.04;
-  } else {
-    // Floors 201+: Moderate scaling (~0.04 per floor)
-    const previousLevel = 6.5;
-    return previousLevel + (floorNumber - 200) * 0.05;
+    return 2.0;
   }
+
+  let baseLevel: number;
+  if (floorNumber <= 50) {
+    // Floors 1-50: 2.0 -> ~4.5
+    baseLevel = 2.0 + (floorNumber - 1) * 0.05;
+  } else if (floorNumber <= 100) {
+    // Floors 51-100: 4.5 -> ~6.5
+    baseLevel = 4.5 + (floorNumber - 50) * 0.04;
+  } else if (floorNumber <= 200) {
+    // Floors 101-200: 6.5 -> ~10.5
+    baseLevel = 6.5 + (floorNumber - 100) * 0.04;
+  } else {
+    // Floors 201+: ~10.5 -> grows ~0.045/floor (floor 500 ~24 before spike)
+    baseLevel = 10.5 + (floorNumber - 200) * 0.045;
+  }
+
+  // Soft-cap gate spike on milestone floors
+  if (floorNumber % MILESTONE_INTERVAL === 0) {
+    baseLevel *= MILESTONE_SPIKE;
+  }
+
+  return baseLevel;
 }
 
 class TowerGenerationService {
@@ -404,31 +418,34 @@ POWERUP RULES (IMPORTANT):
 
 DIFFICULTY SCALING STRATEGY:
 - Scale difficulty primarily through AVERAGE CARD LEVEL
-- Use VERY GRADUAL scaling for long-term progression:
-  * Floors 1-50: Stay mostly at level 1-2 (increase ~0.02 per floor)
-  * Floors 51-100: Slowly reach level 3-4 (increase ~0.03 per floor)
-  * Floors 101-200: Progress to level 5-7 (increase ~0.03 per floor)
-  * After floor 200: Can scale slightly faster (increase ~0.04 per floor)
-- Target average levels as reference:
-  * Floor 1: avg 1.0
-  * Floor 10: avg 1.2
-  * Floor 25: avg 1.5
-  * Floor 50: avg 2.0
-  * Floor 100: avg 3.5
-  * Floor 200: avg 6.5
+- Use the TARGET AVERAGE LEVELS above as the source of truth for these floors
+- General shape of the curve (for context only — trust the targets above):
+  * Floor 1: avg ~2.0
+  * Floor 50: avg ~4.5
+  * Floor 100: avg ~8.5 (milestone gate, intentionally harder)
+  * Floor 200: avg ~13.5 (milestone gate)
+  * Floor 500: avg ~31 (milestone gate)
+  * Every 100th floor is a difficulty GATE and is spiked ~30% higher
 - For the current floors (${startingFloor}-${startingFloor + count - 1}):
-  * Match or slightly exceed the reference deck's average level
-  * Keep progression gradual and sustainable
+  * Match the target average levels above as closely as you can
+  * If a floor number is a multiple of 100, lean into the higher target
 - Vary individual card levels for interesting deck composition:
   * Some cards at higher levels (powerhouses)
   * Some cards at lower levels (support/filler)
   * Higher rarity cards can be higher level
 - Powerups are automatically determined by level, so focus on level distribution
 
+CARD RARITY FLOOR (IMPORTANT):
+- ${startingFloor > 50
+        ? "These are deep floors (>50): use ZERO common and uncommon cards. Build the deck ENTIRELY from rare, epic, and legendary cards. Commons have roughly half the base power of epics and make the deck too weak regardless of level."
+        : "These are early floors (<=50): commons and uncommons are acceptable as filler, but still prefer rare/epic where possible."}
+
 DECK DESIGN TIPS:
 - Create synergistic decks with varied power levels
 - Use higher-level legendary/epic cards as anchors
-- Balance the deck with lower-level commons/uncommons
+${startingFloor > 50
+        ? "- Fill remaining slots with rare/epic cards, NOT commons/uncommons"
+        : "- Balance the deck with lower-level commons/uncommons"}
 - Consider card abilities when choosing levels
 - Make each floor feel unique and challenging
 
@@ -726,21 +743,52 @@ FLOOR NAMING REQUIREMENTS (CRITICAL):
         usedNames.set(card.name, (usedNames.get(card.name) || 0) + 1);
       }
 
-      // Fill remaining with common/uncommon (slightly lower level)
-      const commonCards = this.shuffleArray([
-        ...(cardsByRarity["common"] || []),
-        ...(cardsByRarity["uncommon"] || []),
+      // Fill remaining slots. Past floor 50 the AI should run almost no
+      // commons/uncommons — those cards have ~half the base power of epics and
+      // were the entire base-power gap that let strong player decks out-card a
+      // heavily over-leveled AI. So at depth we backfill with more epic/rare
+      // (re-shuffled, respecting the per-name cap) and only fall back to
+      // commons if the higher-rarity pools are genuinely exhausted.
+      const allowCommons = floorNumber <= 50;
+      const fillerPool = this.shuffleArray([
+        ...(cardsByRarity["epic"] || []),
+        ...(cardsByRarity["rare"] || []),
+        ...(allowCommons
+          ? [
+              ...(cardsByRarity["common"] || []),
+              ...(cardsByRarity["uncommon"] || []),
+            ]
+          : []),
       ]);
-      for (const card of commonCards) {
+      for (const card of fillerPool) {
         if (deckCards.length >= CARDS_PER_DECK) break;
         if ((usedNames.get(card.name) || 0) >= AI_MAX_SAME_NAME_CARDS) continue;
-        const lowerLevel = Math.max(1, roundedLevel - 1);
         deckCards.push({
           card_name: card.name,
-          level: lowerLevel,
-          power_ups: distributePowerups(lowerLevel),
+          level: roundedLevel,
+          power_ups: distributePowerups(roundedLevel),
         });
         usedNames.set(card.name, (usedNames.get(card.name) || 0) + 1);
+      }
+
+      // Last-resort backfill if even the high-rarity pools couldn't fill 20
+      // (very small card sets) — only then accept commons/uncommons.
+      if (deckCards.length < CARDS_PER_DECK) {
+        const lastResort = this.shuffleArray([
+          ...(cardsByRarity["common"] || []),
+          ...(cardsByRarity["uncommon"] || []),
+        ]);
+        for (const card of lastResort) {
+          if (deckCards.length >= CARDS_PER_DECK) break;
+          if ((usedNames.get(card.name) || 0) >= AI_MAX_SAME_NAME_CARDS) continue;
+          const lowerLevel = Math.max(1, roundedLevel - 1);
+          deckCards.push({
+            card_name: card.name,
+            level: lowerLevel,
+            power_ups: distributePowerups(lowerLevel),
+          });
+          usedNames.set(card.name, (usedNames.get(card.name) || 0) + 1);
+        }
       }
 
       // Calculate average card level

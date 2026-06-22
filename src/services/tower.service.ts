@@ -28,8 +28,8 @@ import {
 import { clientSupportsMulligan } from "../utils/clientVersion";
 
 // Constants for reward calculation
-const GROWTH_RATE = 1.06; // +6% every 10 floors
-const FRAGMENT_GROWTH_RATE = 1.03; // Gentler scaling for fragments
+const GROWTH_SLOPE = 0.05; // linear: +5% of base value per band (every 10 floors)
+const FRAGMENT_GROWTH_RATE = 1.03; // Gentler (exponential) scaling for fragments
 
 // Base gem value per tier (at band 0)
 const BASE_GEM_VALUE_BY_TIER: Record<TowerTier, number> = {
@@ -65,8 +65,8 @@ class TowerService {
     // Band: 0 = floors 1-10, 1 = 11-20, etc.
     const band = Math.floor((floor - 1) / 10);
 
-    // Growth multiplier
-    const m = Math.pow(GROWTH_RATE, band);
+    // Growth multiplier (linear with a steep slope, not exponential)
+    const m = 1 + band * GROWTH_SLOPE;
 
     // Tier detection (highest wins)
     const tier: TowerTier =
@@ -105,12 +105,12 @@ class TowerService {
       // Every 1000 floors: rare art + legendary equivalent fragments
       reward_rare_art_card = 1;
       reward_card_fragments += 100; // 1 legendary card worth
-      reward_gems += gemValue;
+      reward_gems += Math.floor(gemValue * 0.75);
     } else if (floor % 50 === 0) {
       // Every 500 floors: legendary card
       reward_legendary_card = 1;
       reward_card_fragments += 100;
-      reward_gems += Math.floor(gemValue * 0.5);
+      reward_gems += Math.floor(gemValue * 0.4);
     } else if (floor % 25 === 0) {
       // Every 250 floors: epic card
       reward_epic_card = 1;

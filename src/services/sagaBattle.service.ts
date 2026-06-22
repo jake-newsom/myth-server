@@ -394,7 +394,15 @@ const SagaBattleService = {
       await this.applyFuryRuneProgress(run.run_id, userId, gameState as GameState);
       await this.applySlayerSteals(run.run_id, userId, gameState as GameState);
       const isFinalBoss = node.type === "boss" && run.current_floor === 3;
-      if (!isFinalBoss) {
+      if (isFinalBoss) {
+        // Final boss: no reward node (no further battles to spend a buff on).
+        // Complete the run directly so it locks instead of staying replayable.
+        await SagaMapService.completeNode(
+          run.run_id,
+          userId,
+          game.saga_node_id
+        );
+      } else {
         pendingReward = await SagaRewardService.startBattleRewardNode(
           run.run_id,
           userId,

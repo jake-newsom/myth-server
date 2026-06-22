@@ -5,3 +5,4 @@ coverage/
 dist/
 *.log 
 graphify-out/
+scripts/tower-out/

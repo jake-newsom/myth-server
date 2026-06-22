@@ -69,7 +69,7 @@ export interface SagaFloorBattleConfig {
 }
 
 export const SAGA_FLOOR_BATTLE_CONFIG: Record<number, SagaFloorBattleConfig> = {
-  1: { enemy_stat_bonus: 1, pre_destroyed_tiles: 0, ai_profile: "basic" },
-  2: { enemy_stat_bonus: 3, pre_destroyed_tiles: 1, ai_profile: "intermediate" },
-  3: { enemy_stat_bonus: 4, pre_destroyed_tiles: 2, ai_profile: "advanced" },
+  1: { enemy_stat_bonus: 1, pre_destroyed_tiles: 0, ai_profile: "advanced" },
+  2: { enemy_stat_bonus: 3, pre_destroyed_tiles: 1, ai_profile: "advanced" },
+  3: { enemy_stat_bonus: 5, pre_destroyed_tiles: 2, ai_profile: "advanced" },
 };
