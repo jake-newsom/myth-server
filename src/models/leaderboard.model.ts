@@ -254,27 +254,35 @@ const LeaderboardModel = {
 
     // Calculate ranks dynamically instead of relying on stored current_rank
     // This avoids the expensive updateAllRanks operation during game completion
+    // Page the rankings via an ordered (rating DESC, wins DESC) index scan and
+    // LIMIT/OFFSET *before* joining users or computing rank/win_rate, so we
+    // only touch one page's worth of rows. The previous form ran ROW_NUMBER()
+    // over the entire season (joining every user, computing every win_rate)
+    // just to return 100 rows. Rank is the offset + the page's row position,
+    // which is identical to the global ROW_NUMBER() since the ordering matches.
     const query = `
-      WITH ranked AS (
-        SELECT 
-          ur.*,
-          u.username,
-          ROW_NUMBER() OVER (ORDER BY ur.rating DESC, ur.wins DESC) as calculated_rank,
-          (ur.wins + ur.losses + ur.draws) as total_games,
-          CASE 
-            WHEN (ur.wins + ur.losses + ur.draws) > 0 
-            THEN ROUND((ur.wins::DECIMAL / (ur.wins + ur.losses + ur.draws) * 100), 2)
-            ELSE 0 
-          END as win_rate
+      WITH page AS (
+        SELECT ur.*
         FROM user_rankings ur
-        JOIN users u ON ur.user_id = u.user_id
         WHERE ur.season = $1
           AND ur.user_id != '00000000-0000-0000-0000-000000000000'
+        ORDER BY ur.rating DESC, ur.wins DESC
+        LIMIT $2 OFFSET $3
       )
-      SELECT *, calculated_rank as current_rank
-      FROM ranked
-      ORDER BY calculated_rank
-      LIMIT $2 OFFSET $3;
+      SELECT
+        page.*,
+        u.username,
+        ($3 + ROW_NUMBER() OVER (ORDER BY page.rating DESC, page.wins DESC))::int AS calculated_rank,
+        ($3 + ROW_NUMBER() OVER (ORDER BY page.rating DESC, page.wins DESC))::int AS current_rank,
+        (page.wins + page.losses + page.draws) as total_games,
+        CASE
+          WHEN (page.wins + page.losses + page.draws) > 0
+          THEN ROUND((page.wins::DECIMAL / (page.wins + page.losses + page.draws) * 100), 2)
+          ELSE 0
+        END as win_rate
+      FROM page
+      JOIN users u ON page.user_id = u.user_id
+      ORDER BY calculated_rank;
     `;
 
     const { rows } = await db.query(query, [currentSeason, limit, offset]);
@@ -287,20 +295,27 @@ const LeaderboardModel = {
   async getUserRank(userId: string, season?: string): Promise<number | null> {
     const currentSeason = season || this.getCurrentSeason();
 
+    // Rank = (number of players ranked strictly ahead) + 1. Computing it as a
+    // COUNT over a (rating, wins) tuple comparison lets Postgres use an index
+    // range scan instead of ROW_NUMBER()-sorting the entire season's players
+    // just to read one row's position.
     const query = `
-      WITH ranked_users AS (
-        SELECT 
-          user_id,
-          ROW_NUMBER() OVER (ORDER BY rating DESC, wins DESC) as rank
+      WITH me AS (
+        SELECT rating, wins
         FROM user_rankings
-        WHERE season = $1
-          AND user_id != '00000000-0000-0000-0000-000000000000'
+        WHERE season = $1 AND user_id = $2
       )
-      SELECT rank FROM ranked_users WHERE user_id = $2;
+      SELECT (
+        SELECT COUNT(*) FROM user_rankings ur, me
+        WHERE ur.season = $1
+          AND ur.user_id != '00000000-0000-0000-0000-000000000000'
+          AND (ur.rating, ur.wins) > (me.rating, me.wins)
+      ) + 1 AS rank
+      WHERE EXISTS (SELECT 1 FROM me);
     `;
 
     const { rows } = await db.query(query, [currentSeason, userId]);
-    return rows.length > 0 ? rows[0].rank : null;
+    return rows.length > 0 ? Number(rows[0].rank) : null;
   },
 
   /**
@@ -371,6 +386,44 @@ const LeaderboardModel = {
   },
 
   /**
+   * Batched: fetch a user's ranking rows for many seasons at once, with each
+   * row's rank computed as a COUNT of players ranked ahead (index range scan)
+   * rather than ROW_NUMBER()-sorting every season's full player set. Replaces
+   * an N+1 over getUserRankingInfo in the rank-history endpoint.
+   */
+  async getUserRankingInfoForSeasons(
+    userId: string,
+    seasons: string[]
+  ): Promise<UserRankingWithUser[]> {
+    if (seasons.length === 0) return [];
+
+    const query = `
+      SELECT
+        ur.*,
+        u.username,
+        (ur.wins + ur.losses + ur.draws) as total_games,
+        CASE
+          WHEN (ur.wins + ur.losses + ur.draws) > 0
+          THEN ROUND((ur.wins::DECIMAL / (ur.wins + ur.losses + ur.draws) * 100), 2)
+          ELSE 0
+        END as win_rate,
+        (
+          SELECT COUNT(*) FROM user_rankings o
+          WHERE o.season = ur.season
+            AND o.user_id != '00000000-0000-0000-0000-000000000000'
+            AND (o.rating, o.wins) > (ur.rating, ur.wins)
+        )::int + 1 AS current_rank
+      FROM user_rankings ur
+      JOIN users u ON ur.user_id = u.user_id
+      WHERE ur.user_id = $1
+        AND ur.season = ANY($2::text[]);
+    `;
+
+    const { rows } = await db.query(query, [userId, seasons]);
+    return rows;
+  },
+
+  /**
    * Get recent game results for a user
    */
   async getUserGameHistory(
@@ -378,19 +431,41 @@ const LeaderboardModel = {
     limit: number = 20,
     offset: number = 0
   ): Promise<GameResultWithPlayers[]> {
+    // Split the player1_id/player2_id OR into a UNION ALL so each branch can
+    // use its (player_id, completed_at) composite index for an ordered index
+    // scan. The OR form forces a bitmap-OR + full sort that ignores those
+    // indexes' ordering. Each branch fetches limit+offset rows; we merge,
+    // sort, and page once, then attach usernames on the small paged set.
     const query = `
-      SELECT 
+      WITH paged AS (
+        SELECT * FROM (
+          (
+            SELECT gr.* FROM game_results gr
+            WHERE gr.player1_id = $1
+            ORDER BY gr.completed_at DESC
+            LIMIT ($2 + $3)
+          )
+          UNION ALL
+          (
+            SELECT gr.* FROM game_results gr
+            WHERE gr.player2_id = $1
+            ORDER BY gr.completed_at DESC
+            LIMIT ($2 + $3)
+          )
+        ) merged
+        ORDER BY completed_at DESC
+        LIMIT $2 OFFSET $3
+      )
+      SELECT
         gr.*,
         u1.username as player1_username,
         u2.username as player2_username,
         uw.username as winner_username
-      FROM game_results gr
+      FROM paged gr
       JOIN users u1 ON gr.player1_id = u1.user_id
       JOIN users u2 ON gr.player2_id = u2.user_id
       LEFT JOIN users uw ON gr.winner_id = uw.user_id
-      WHERE gr.player1_id = $1 OR gr.player2_id = $1
-      ORDER BY gr.completed_at DESC
-      LIMIT $2 OFFSET $3;
+      ORDER BY gr.completed_at DESC;
     `;
 
     const { rows } = await db.query(query, [userId, limit, offset]);

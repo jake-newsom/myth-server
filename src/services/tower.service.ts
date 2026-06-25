@@ -3,7 +3,6 @@
  */
 
 import db from "../config/db.config";
-import { PoolClient } from "pg";
 import {
   TowerReward,
   TowerTier,
@@ -270,18 +269,12 @@ class TowerService {
       };
     });
 
-    // Add preview cards for each floor
-    const client = await db.getClient();
-    try {
-      for (const floor of floors) {
-        floor.preview_cards = await this.getTopCardsFromDeck(
-          client,
-          floor.ai_deck_id,
-          3
-        );
-      }
-    } finally {
-      client.release();
+    // Add preview cards for each floor in a single batched query (was one
+    // query per floor — an N+1 over the tower-list endpoint).
+    const deckIds = floors.map((f) => f.ai_deck_id);
+    const previewsByDeck = await this.getTopCardsForDecks(deckIds, 3);
+    for (const floor of floors) {
+      floor.preview_cards = previewsByDeck.get(floor.ai_deck_id) ?? [];
     }
 
     const maxAvailable = await this.getMaxFloorNumber();
@@ -296,46 +289,71 @@ class TowerService {
   /**
    * Get top N cards from a deck for preview
    */
-  private async getTopCardsFromDeck(
-    client: PoolClient,
-    deckId: string,
+  /**
+   * Batched top-N preview cards for many decks at once.
+   *
+   * Returns a map of deck_id -> ordered card_variant_id[] (best first, by
+   * rarity then total base power). The rarity priority and per-deck top-N
+   * selection are done in SQL via a window function partitioned by deck, so
+   * this is a single round-trip regardless of how many decks are requested.
+   */
+  private async getTopCardsForDecks(
+    deckIds: string[],
     limit: number = 3
-  ): Promise<string[]> {
-    const result = await client.query(
+  ): Promise<Map<string, string[]>> {
+    const result = new Map<string, string[]>();
+    if (deckIds.length === 0) return result;
+
+    const { rows } = await db.query(
       `
-      SELECT 
-        cv.card_variant_id as card_id,
-        cv.rarity,
-        COALESCE((ch.base_power->>'top')::integer, 0) +
-        COALESCE((ch.base_power->>'right')::integer, 0) +
-        COALESCE((ch.base_power->>'bottom')::integer, 0) +
-        COALESCE((ch.base_power->>'left')::integer, 0) as total_power
-      FROM deck_cards dc
-      JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
-      JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
-      JOIN characters ch ON cv.character_id = ch.character_id
-      WHERE dc.deck_id = $1
-      GROUP BY cv.card_variant_id, cv.rarity, ch.base_power
+      WITH deck_cards_power AS (
+        SELECT DISTINCT ON (dc.deck_id, cv.card_variant_id)
+          dc.deck_id,
+          cv.card_variant_id AS card_id,
+          CASE cv.rarity
+            WHEN 'legendary' THEN 4
+            WHEN 'epic' THEN 3
+            WHEN 'rare' THEN 2
+            WHEN 'uncommon' THEN 1
+            ELSE 0
+          END AS rarity_rank,
+          COALESCE((ch.base_power->>'top')::integer, 0) +
+          COALESCE((ch.base_power->>'right')::integer, 0) +
+          COALESCE((ch.base_power->>'bottom')::integer, 0) +
+          COALESCE((ch.base_power->>'left')::integer, 0) AS total_power
+        FROM deck_cards dc
+        JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
+        JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN characters ch ON cv.character_id = ch.character_id
+        WHERE dc.deck_id = ANY($1::uuid[])
+      ),
+      ranked AS (
+        SELECT
+          deck_id,
+          card_id,
+          ROW_NUMBER() OVER (
+            PARTITION BY deck_id
+            ORDER BY rarity_rank DESC, total_power DESC, card_id
+          ) AS rn
+        FROM deck_cards_power
+      )
+      SELECT deck_id, card_id
+      FROM ranked
+      WHERE rn <= $2
+      ORDER BY deck_id, rn;
     `,
-      [deckId]
+      [deckIds, limit]
     );
 
-    const rarityPriority: Record<string, number> = {
-      legendary: 4,
-      epic: 3,
-      rare: 2,
-      uncommon: 1,
-      common: 0,
-    };
-
-    const sortedCards = result.rows.sort((a, b) => {
-      const aRarity = rarityPriority[a.rarity] || 0;
-      const bRarity = rarityPriority[b.rarity] || 0;
-      if (aRarity !== bRarity) return bRarity - aRarity;
-      return b.total_power - a.total_power;
-    });
-
-    return [...new Set(sortedCards.map((c) => c.card_id))].slice(0, limit);
+    for (const row of rows) {
+      const list = result.get(row.deck_id);
+      if (list) {
+        list.push(row.card_id);
+      } else {
+        result.set(row.deck_id, [row.card_id]);
+      }
+    }
+    return result;
   }
 
   /**

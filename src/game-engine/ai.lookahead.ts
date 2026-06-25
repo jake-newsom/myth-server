@@ -111,15 +111,22 @@ export class LookaheadEngine {
     return [...player.hand].sort().join(",");
   }
 
-  private evaluateBoardState(gameState: GameState, aiPlayerId: string): number {
+  /**
+   * Static board evaluation, relative to the SIDE TO MOVE (`playerId`) — never
+   * hardcoded to the AI. The negamax search negates once per ply, which is only
+   * correct when each leaf is scored from the perspective of the player to move
+   * at that node. Passing `aiPlayerId` here instead would flip the sign on
+   * odd-ply leaves and corrupt move ranking.
+   */
+  private evaluateBoardState(gameState: GameState, playerId: string): number {
     if (gameState.status !== "active") {
-      return this.evaluateEndState(gameState, aiPlayerId);
+      return this.evaluateEndState(gameState, playerId);
     }
 
-    let aiCards = 0;
-    let enemyCards = 0;
-    let aiPower = 0;
-    let enemyPower = 0;
+    let myCards = 0;
+    let theirCards = 0;
+    let myPower = 0;
+    let theirPower = 0;
     let positional = 0;
 
     for (let y = 0; y < gameState.board.length; y++) {
@@ -136,9 +143,10 @@ export class LookaheadEngine {
 
         // Ability-aware positional term: how well the card sits for its owner.
         // Summing the real strategic evaluator over each side's placed cards
-        // lets the search prefer leaves where the AI's ability cards are well
-        // positioned and enemy threats are not — the previous material-only
-        // leaf was ability-blind and disagreed with the 1-ply root evaluator.
+        // lets the search prefer leaves where the side-to-move's ability cards
+        // are well positioned and the opponent's threats are not — the previous
+        // material-only leaf was ability-blind and disagreed with the 1-ply
+        // root evaluator.
         const placement = this.strategicEvaluator.evaluateStrategicPosition(
           gameState,
           card,
@@ -146,21 +154,21 @@ export class LookaheadEngine {
           card.owner
         );
 
-        if (card.owner === aiPlayerId) {
-          aiCards++;
-          aiPower += cardPower;
+        if (card.owner === playerId) {
+          myCards++;
+          myPower += cardPower;
           positional += placement;
         } else {
-          enemyCards++;
-          enemyPower += cardPower;
+          theirCards++;
+          theirPower += cardPower;
           positional -= placement;
         }
       }
     }
 
     return (
-      (aiCards - enemyCards) * LookaheadEngine.LEAF_CARD_WEIGHT +
-      (aiPower - enemyPower) * LookaheadEngine.LEAF_POWER_WEIGHT +
+      (myCards - theirCards) * LookaheadEngine.LEAF_CARD_WEIGHT +
+      (myPower - theirPower) * LookaheadEngine.LEAF_POWER_WEIGHT +
       positional * LookaheadEngine.LEAF_POSITIONAL_WEIGHT
     );
   }
@@ -370,8 +378,13 @@ export class LookaheadEngine {
     }
   }
 
-  private evaluateEndState(gameState: GameState, aiPlayerId: string): number {
-    if (gameState.winner === aiPlayerId) {
+  /**
+   * Terminal evaluation, relative to the SIDE TO MOVE (`playerId`) — never
+   * hardcoded to the AI. Like evaluateBoardState, negamax's per-ply negation
+   * depends on this being scored from the perspective of the player to move.
+   */
+  private evaluateEndState(gameState: GameState, playerId: string): number {
+    if (gameState.winner === playerId) {
       return 10000; // Winning is highest value
     } else if (gameState.winner === null) {
       return 0; // Draw
@@ -404,11 +417,11 @@ export class LookaheadEngine {
   ): Promise<number> {
     this.nodesEvaluated++;
     if (this.timedOut()) {
-      return this.evaluateBoardState(gameState, aiPlayerId);
+      return this.evaluateBoardState(gameState, currentPlayerId);
     }
 
     if (gameState.status !== "active") {
-      return this.evaluateEndState(gameState, aiPlayerId);
+      return this.evaluateEndState(gameState, currentPlayerId);
     }
 
     // Endgame: when few tiles remain the full game tree is small enough to solve
@@ -448,13 +461,13 @@ export class LookaheadEngine {
           true
         );
       }
-      return this.evaluateBoardState(gameState, aiPlayerId);
+      return this.evaluateBoardState(gameState, currentPlayerId);
     }
 
     let bestValue = -Infinity;
     let orderedMoves = this.generateMoves(gameState, currentPlayerId);
     if (orderedMoves.length === 0) {
-      return this.evaluateBoardState(gameState, aiPlayerId);
+      return this.evaluateBoardState(gameState, currentPlayerId);
     }
 
     orderedMoves = this.orderMoves(gameState, currentPlayerId, orderedMoves);
@@ -490,7 +503,7 @@ export class LookaheadEngine {
     }
 
     if (bestValue === -Infinity) {
-      bestValue = this.evaluateBoardState(gameState, aiPlayerId);
+      bestValue = this.evaluateBoardState(gameState, currentPlayerId);
     }
     this.transpositionTable.set(hash, { value: bestValue, depth });
     return bestValue;
@@ -533,7 +546,7 @@ export class LookaheadEngine {
     this.nodesEvaluated++;
 
     if (gameState.status !== "active") {
-      return this.evaluateEndState(gameState, aiPlayerId);
+      return this.evaluateEndState(gameState, currentPlayerId);
     }
 
     // Safety net: if the "small" endgame is somehow still expensive (e.g. an
@@ -541,7 +554,7 @@ export class LookaheadEngine {
     // blow the latency budget. Correctness of the overall move is preserved
     // because the caller still has the heuristic-scored candidates.
     if (this.timedOut()) {
-      return this.evaluateBoardState(gameState, aiPlayerId);
+      return this.evaluateBoardState(gameState, currentPlayerId);
     }
 
     const moves = this.generateMoves(gameState, currentPlayerId);
@@ -551,7 +564,7 @@ export class LookaheadEngine {
       const opponentId = this.getOpponentId(gameState, currentPlayerId);
       const opponentMoves = this.generateMoves(gameState, opponentId);
       if (opponentMoves.length === 0) {
-        return this.evaluateEndState(gameState, aiPlayerId);
+        return this.evaluateEndState(gameState, currentPlayerId);
       }
       return -(await this.exactEndgameSearch(
         gameState,
@@ -587,7 +600,7 @@ export class LookaheadEngine {
     }
 
     if (bestValue === -Infinity) {
-      return this.evaluateBoardState(gameState, aiPlayerId);
+      return this.evaluateBoardState(gameState, currentPlayerId);
     }
     return bestValue;
   }

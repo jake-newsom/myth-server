@@ -462,15 +462,23 @@ export class GameLogic {
           countFlipEvents,
           refreshDynamicBlessings,
         } = await import("./sagaBattle.mechanics");
-        const slayerResult = applySlayerOnDefeat(newState, combatResult.events, playerId);
+
+        // Defeat-driven blessings must see every flip this placement caused,
+        // not just standard combat. Special abilities (e.g. ryujin_tidal_sweep)
+        // fire during the OnPlace trigger above and flip enemies via flipCard,
+        // emitting CARD_FLIPPED events with sourceCardId/sourcePlayerId set.
+        // Include those so Slayer/Thorns/World's End trigger on ability defeats.
+        const defeatEvents = [...abilityEvents, ...combatResult.events];
+
+        const slayerResult = applySlayerOnDefeat(newState, defeatEvents, playerId);
         newState = slayerResult.state;
         events.push(...slayerResult.events);
 
-        const thorns = applyThornsOnFlips(newState, combatResult.events);
+        const thorns = applyThornsOnFlips(newState, defeatEvents);
         newState = thorns.state;
         events.push(...thorns.events);
 
-        const flipCount = countFlipEvents(combatResult.events);
+        const flipCount = countFlipEvents(defeatEvents);
         const worldsEnd = applyWorldsEndAfterFlips(newState, flipCount);
         newState = worldsEnd.state;
         events.push(...worldsEnd.events);

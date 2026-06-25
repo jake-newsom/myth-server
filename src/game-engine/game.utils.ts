@@ -443,12 +443,6 @@ export function flipCard(
   const attackAnimation =
     customAttackAnimation || source.base_card_data.attack_animation;
 
-  // The flipping card's ability sound (e.g. Hel's hel_flip.aac) plays in place
-  // of the generic attack sound. Sourced from the attacker's ability rather
-  // than stamped via triggerAbilities, because flip-on-combat abilities (like
-  // hel_soul) emit no events of their own — the flip is produced here.
-  const flipSound = source.base_card_data.special_ability?.sound_effect;
-
   events.push({
     type: EVENT_TYPES.CARD_FLIPPED,
     eventId: uuidv4(),
@@ -458,7 +452,6 @@ export function flipCard(
     cardId: target.user_card_instance_id,
     position: targetPosition,
     animation: attackAnimation || "attack",
-    ...(flipSound && { soundEffect: flipSound }),
   } as CardEvent);
 
   events.push(

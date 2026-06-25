@@ -3,7 +3,6 @@ import CardModel from "../models/card.model";
 import SagaSeasonModel from "../models/sagaSeason.model";
 import SagaRunModel from "../models/sagaRun.model";
 import SagaDeckModel from "../models/sagaDeck.model";
-import SagaCollectionModel from "../models/sagaCollection.model";
 import SagaCardModel from "../models/sagaCard.model";
 import SagaService from "./saga.service";
 import SagaMapService from "./sagaMap.service";
@@ -85,6 +84,16 @@ const SagaDraftService = {
   async getCatalogPoolIds(): Promise<string[]> {
     const { data } = await CardModel.findAllStatic({}, 1, 0);
     return data.map((c) => c.base_card_id);
+  },
+
+  /** Map of base_card_id -> character_id for the full catalog. */
+  async getCharacterIdByBaseCardId(): Promise<Map<string, string>> {
+    const { data } = await CardModel.findAllStatic({}, 1, 0);
+    return new Map(
+      data
+        .filter((c) => Boolean(c.character_id))
+        .map((c) => [c.base_card_id, c.character_id])
+    );
   },
 
   /** Cards eligible for weighted core draft picks. */
@@ -274,17 +283,35 @@ const SagaDraftService = {
     count = 3
   ): Promise<string[]> {
     const pools = await this.getDraftRarityPools();
+    const characterByBaseCard = await this.getCharacterIdByBaseCardId();
     const excluded = new Set(excludedIds);
     const picked = new Set<string>();
+
+    // A character is "taken" once any of its variants is already drafted or
+    // offered in this batch, so a single draft never shows the same base
+    // character twice (regardless of variant).
+    const excludedCharacters = new Set<string>();
+    for (const id of excluded) {
+      const charId = characterByBaseCard.get(id);
+      if (charId) excludedCharacters.add(charId);
+    }
+    const pickedCharacters = new Set<string>();
     const options: string[] = [];
 
+    const isAvailable = (id: string): boolean => {
+      if (excluded.has(id) || picked.has(id)) return false;
+      const charId = characterByBaseCard.get(id);
+      if (charId && (excludedCharacters.has(charId) || pickedCharacters.has(charId))) {
+        return false;
+      }
+      return true;
+    };
+
     const poolForRarity = (rarity: keyof DraftRarityPools): string[] =>
-      pools[rarity].filter((id) => !excluded.has(id) && !picked.has(id));
+      pools[rarity].filter(isAvailable);
 
     const fallbackPool = (): string[] =>
-      [...pools.legendary, ...pools.epic, ...pools.rare].filter(
-        (id) => !excluded.has(id) && !picked.has(id)
-      );
+      [...pools.legendary, ...pools.epic, ...pools.rare].filter(isAvailable);
 
     let attempts = 0;
     while (options.length < count && attempts < 100) {
@@ -295,6 +322,8 @@ const SagaDraftService = {
       if (pool.length === 0) break;
       const choice = shuffle(pool)[0];
       picked.add(choice);
+      const charId = characterByBaseCard.get(choice);
+      if (charId) pickedCharacters.add(charId);
       options.push(choice);
     }
 

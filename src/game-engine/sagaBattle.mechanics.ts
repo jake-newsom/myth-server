@@ -395,31 +395,35 @@ export function applySlayerOnDefeat(
     const sagaCardId = attacker.card.saga_card_id;
     if (!sagaCardId) continue;
 
+    // Debuff the defeated enemy if it's still on the board. Some defeats
+    // remove the enemy before this runs (e.g. Baldr returns to hand via
+    // baldr_immune), so the enemy may be gone — that's fine, the Slayer's
+    // own gain below still applies.
     const enemyPos = flipped.position;
     const enemy = enemyPos ? state.board[enemyPos.y]?.[enemyPos.x]?.card : null;
-    if (!enemy) continue;
+    if (enemy) {
+      const { key: highestKey, value: highestValue } = getCardHighestPower(enemy);
+      if (highestValue > 0) {
+        enemy.temporary_effects.push({
+          type: EffectType.Debuff,
+          duration: 1000,
+          name: BLESSING_SLAYER_EFFECT,
+          power: { [highestKey]: -1 },
+        });
+        enemy.current_power = updateCurrentPower(enemy);
+        syncCurrentPowerToCache(state, enemy);
 
-    const { key: highestKey, value: highestValue } = getCardHighestPower(enemy);
-    if (highestValue > 0) {
-      enemy.temporary_effects.push({
-        type: EffectType.Debuff,
-        duration: 1000,
-        name: BLESSING_SLAYER_EFFECT,
-        power: { [highestKey]: -1 },
-      });
-      enemy.current_power = updateCurrentPower(enemy);
-      syncCurrentPowerToCache(state, enemy);
-
-      events.push({
-        type: EVENT_TYPES.CARD_POWER_CHANGED,
-        eventId: uuidv4(),
-        timestamp: Date.now(),
-        cardId: enemy.user_card_instance_id,
-        position: enemyPos,
-        powerDelta: -1,
-        effectName: BLESSING_SLAYER_EFFECT,
-        sourcePlayerId: playerId,
-      } as CardPowerChangedEvent);
+        events.push({
+          type: EVENT_TYPES.CARD_POWER_CHANGED,
+          eventId: uuidv4(),
+          timestamp: Date.now(),
+          cardId: enemy.user_card_instance_id,
+          position: enemyPos,
+          powerDelta: -1,
+          effectName: BLESSING_SLAYER_EFFECT,
+          sourcePlayerId: playerId,
+        } as CardPowerChangedEvent);
+      }
     }
 
     const slayer = attacker.card;

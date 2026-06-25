@@ -258,19 +258,26 @@ class GameService {
    * Get all active games for a user (both solo and PvP)
    */
   async getActiveGamesForUser(userId: string): Promise<SanitizedGame[]> {
+    // Isolate the player1_id/player2_id OR into a UNION ALL so each branch can
+    // use a per-player index (esp. a partial index on game_status='active')
+    // instead of a bitmap-OR. DISTINCT guards the rare row matching both.
     const query = `
+      WITH mine AS (
+        SELECT g.* FROM "games" g
+        WHERE g.player1_id = $1 AND g.game_status = 'active' AND g.is_tutorial = false
+        UNION
+        SELECT g.* FROM "games" g
+        WHERE g.player2_id = $1 AND g.game_status = 'active' AND g.is_tutorial = false
+      )
       SELECT g.*,
              p1.username as player1_username,
-             CASE WHEN g.player2_id = $2 THEN 'AI Opponent' 
-                  WHEN p2.username IS NULL THEN 'Unknown Opponent' 
-                  ELSE p2.username 
+             CASE WHEN g.player2_id = $2 THEN 'AI Opponent'
+                  WHEN p2.username IS NULL THEN 'Unknown Opponent'
+                  ELSE p2.username
              END as player2_username
-      FROM "games" g
+      FROM mine g
       LEFT JOIN "users" p1 ON g.player1_id = p1.user_id
       LEFT JOIN "users" p2 ON g.player2_id = p2.user_id AND g.player2_id != $2
-      WHERE (g.player1_id = $1 OR g.player2_id = $1) 
-        AND g.game_status = 'active'
-        AND g.is_tutorial = false
       ORDER BY g.created_at DESC;
     `;
     const { rows } = await db.query(query, [userId, AI_PLAYER_ID]);
@@ -295,21 +302,29 @@ class GameService {
       turn_number: number;
     }[]
   > {
+    // See getActiveGamesForUser: UNION ALL the per-player branches so each can
+    // use a per-player (ideally active-partial) index instead of a bitmap-OR.
     const query = `
+      WITH mine AS (
+        SELECT g.game_id, g.game_mode, g.game_status, g.created_at, g.game_state, g.player2_id
+        FROM "games" g
+        WHERE g.player1_id = $1 AND g.game_status = 'active' AND g.is_tutorial = false
+        UNION
+        SELECT g.game_id, g.game_mode, g.game_status, g.created_at, g.game_state, g.player2_id
+        FROM "games" g
+        WHERE g.player2_id = $1 AND g.game_status = 'active' AND g.is_tutorial = false
+      )
       SELECT g.game_id,
              g.game_mode,
              g.game_status,
              g.created_at,
              g.game_state,
-             CASE WHEN g.player2_id = $2 THEN 'AI Opponent' 
-                  WHEN p2.username IS NULL THEN 'Unknown Opponent' 
-                  ELSE p2.username 
+             CASE WHEN g.player2_id = $2 THEN 'AI Opponent'
+                  WHEN p2.username IS NULL THEN 'Unknown Opponent'
+                  ELSE p2.username
              END as opponent_name
-      FROM "games" g
+      FROM mine g
       LEFT JOIN "users" p2 ON g.player2_id = p2.user_id AND g.player2_id != $2
-      WHERE (g.player1_id = $1 OR g.player2_id = $1) 
-        AND g.game_status = 'active'
-        AND g.is_tutorial = false
       ORDER BY g.created_at DESC;
     `;
     const { rows } = await db.query(query, [userId, AI_PLAYER_ID]);

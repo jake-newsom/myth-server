@@ -881,8 +881,8 @@ export const polynesianAbilities: AbilityMap = {
       1000,
       { [randomSide]: -2 },
       {
-        name: "Split SKy",
-        animation: "lightning",
+        name: "Thunderous Omen",
+        animation: "lightning-2",
         position: enemyPosition,
         data: {
           actingPlayerId: triggerCard.owner,

@@ -326,13 +326,16 @@ const LeaderboardService = {
       }
     }
 
-    const rankHistory = [];
+    // Fetch all seasons in one query (was an N+1 over getUserRankingInfo).
+    const rankings = await LeaderboardModel.getUserRankingInfoForSeasons(
+      userId,
+      seasons
+    );
+    const rankingBySeason = new Map(rankings.map((r) => [r.season, r]));
 
+    const rankHistory = [];
     for (const season of seasons) {
-      const userRanking = await LeaderboardModel.getUserRankingInfo(
-        userId,
-        season
-      );
+      const userRanking = rankingBySeason.get(season);
       if (userRanking) {
         rankHistory.push({
           season,

@@ -10,6 +10,16 @@ const pool = new Pool({
     process.env.NODE_ENV === "production"
       ? { rejectUnauthorized: false }
       : false,
+  // Pool sizing — cap concurrent connections (default pg max is only 10).
+  // Keep headroom under Postgres' max_connections for migrations/admin tools.
+  max: Number(process.env.PG_POOL_MAX) || 20,
+  // Release idle clients so we don't hold connections open unnecessarily.
+  idleTimeoutMillis: 30_000,
+  // Fail fast if the pool is exhausted instead of queueing forever.
+  connectionTimeoutMillis: 5_000,
+  // Kill runaway queries so a single slow query can't pin a connection.
+  statement_timeout: 15_000,
+  query_timeout: 15_000,
 });
 
 pool.on("error", (err: Error) => {
