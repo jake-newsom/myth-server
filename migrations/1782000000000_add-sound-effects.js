@@ -37,18 +37,21 @@ exports.up = (pgm) => {
 
   // Fenrir growls on placement. His Devourer's Surge runs every round (not an
   // on-play ability), so the placement sound lives on the character.
+  // Character placement sounds (played when the card is put on the board).
+  // Hel's sound is a placement sound: her ability (hel_soul) emits no events,
+  // and we no longer play sounds on flips — so her sound lives on the character.
   pgm.sql(`
-    UPDATE "characters"
-    SET sound_effect = 'growl.aac'
-    WHERE name = 'Fenrir';
+    UPDATE "characters" SET sound_effect = 'growl.aac'    WHERE name = 'Fenrir';
+    UPDATE "characters" SET sound_effect = 'hel_flip.aac' WHERE name = 'Hel';
   `);
 
-  // Ability sounds, keyed by ability slug (special_abilities.id).
+  // Ability sounds, keyed by ability slug (special_abilities.id). Played when
+  // the ability triggers and emits events (Bragi on play, Thor's push,
+  // Fenrir's end-of-round Devourer's Surge).
   pgm.sql(`
-    UPDATE "special_abilities" SET sound_effect = 'lyre.aac'    WHERE id = 'bragi_inspire';
-    UPDATE "special_abilities" SET sound_effect = 'hel_flip.aac' WHERE id = 'hel_soul';
-    UPDATE "special_abilities" SET sound_effect = 'thunder.aac'  WHERE id = 'thor_push';
-    UPDATE "special_abilities" SET sound_effect = 'growl.aac'    WHERE id = 'fenrir_devourer_surge';
+    UPDATE "special_abilities" SET sound_effect = 'lyre.aac'   WHERE id = 'bragi_inspire';
+    UPDATE "special_abilities" SET sound_effect = 'thunder.aac' WHERE id = 'thor_push';
+    UPDATE "special_abilities" SET sound_effect = 'growl.aac'   WHERE id = 'fenrir_devourer_surge';
   `);
 };
 

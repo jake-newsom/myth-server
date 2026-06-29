@@ -7,6 +7,7 @@ export interface CardBackInput {
   description?: string | null;
   image_url: string;
   animation_key?: string | null;
+  min_app_version?: string | null;
 }
 
 export interface CardBackUpdate {
@@ -16,6 +17,7 @@ export interface CardBackUpdate {
   image_url?: string;
   animation_key?: string | null;
   is_active?: boolean;
+  min_app_version?: string | null;
 }
 
 export interface OwnedCardBackRow extends CardBack {
@@ -31,6 +33,7 @@ function rowToCardBack(row: any): CardBack {
     image_url: row.image_url,
     animation_key: row.animation_key ?? null,
     is_active: row.is_active,
+    min_app_version: row.min_app_version ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -40,7 +43,7 @@ const CardBackModel = {
   async listActive(): Promise<CardBack[]> {
     const { rows } = await db.query(
       `SELECT back_id, code_key, name, description, image_url, animation_key,
-              is_active, created_at, updated_at
+              is_active, min_app_version, created_at, updated_at
        FROM "card_backs"
        WHERE is_active = true
        ORDER BY name ASC;`
@@ -51,7 +54,7 @@ const CardBackModel = {
   async listAll(): Promise<CardBack[]> {
     const { rows } = await db.query(
       `SELECT back_id, code_key, name, description, image_url, animation_key,
-              is_active, created_at, updated_at
+              is_active, min_app_version, created_at, updated_at
        FROM "card_backs"
        ORDER BY is_active DESC, name ASC;`
     );
@@ -61,7 +64,7 @@ const CardBackModel = {
   async findById(backId: string): Promise<CardBack | null> {
     const { rows } = await db.query(
       `SELECT back_id, code_key, name, description, image_url, animation_key,
-              is_active, created_at, updated_at
+              is_active, min_app_version, created_at, updated_at
        FROM "card_backs"
        WHERE back_id = $1
        LIMIT 1;`,
@@ -73,7 +76,7 @@ const CardBackModel = {
   async findByCodeKey(codeKey: string): Promise<CardBack | null> {
     const { rows } = await db.query(
       `SELECT back_id, code_key, name, description, image_url, animation_key,
-              is_active, created_at, updated_at
+              is_active, min_app_version, created_at, updated_at
        FROM "card_backs"
        WHERE code_key = $1
        LIMIT 1;`,
@@ -85,16 +88,17 @@ const CardBackModel = {
   async create(input: CardBackInput): Promise<CardBack> {
     const { rows } = await db.query(
       `INSERT INTO "card_backs"
-         (code_key, name, description, image_url, animation_key, is_active)
-       VALUES ($1, $2, $3, $4, $5, true)
+         (code_key, name, description, image_url, animation_key, is_active, min_app_version)
+       VALUES ($1, $2, $3, $4, $5, true, $6)
        RETURNING back_id, code_key, name, description, image_url, animation_key,
-                 is_active, created_at, updated_at;`,
+                 is_active, min_app_version, created_at, updated_at;`,
       [
         input.code_key,
         input.name,
         input.description ?? null,
         input.image_url,
         input.animation_key ?? null,
+        input.min_app_version ?? null,
       ]
     );
     return rowToCardBack(rows[0]);
@@ -121,6 +125,8 @@ const CardBackModel = {
     if (updates.animation_key !== undefined)
       assign("animation_key", updates.animation_key);
     if (updates.is_active !== undefined) assign("is_active", updates.is_active);
+    if (updates.min_app_version !== undefined)
+      assign("min_app_version", updates.min_app_version);
 
     if (sets.length === 0) return this.findById(backId);
     sets.push("updated_at = NOW()");
@@ -130,7 +136,7 @@ const CardBackModel = {
        SET ${sets.join(", ")}
        WHERE back_id = $1
        RETURNING back_id, code_key, name, description, image_url, animation_key,
-                 is_active, created_at, updated_at;`,
+                 is_active, min_app_version, created_at, updated_at;`,
       values
     );
     return rows[0] ? rowToCardBack(rows[0]) : null;
@@ -176,7 +182,8 @@ const CardBackModel = {
   async listOwnedWithDetails(userId: string): Promise<OwnedCardBackRow[]> {
     const { rows } = await db.query(
       `SELECT cb.back_id, cb.code_key, cb.name, cb.description, cb.image_url,
-              cb.animation_key, cb.is_active, cb.created_at, cb.updated_at,
+              cb.animation_key, cb.is_active, cb.min_app_version,
+              cb.created_at, cb.updated_at,
               uob.acquired_at
        FROM "user_owned_card_backs" uob
        JOIN "card_backs" cb ON uob.back_id = cb.back_id

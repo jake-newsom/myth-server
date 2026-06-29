@@ -1,4 +1,5 @@
 import LeaderboardModel from "../models/leaderboard.model";
+import { redisCache } from "./redis.cache.service";
 import {
   UserRanking,
   UserRankingWithUser,
@@ -150,16 +151,34 @@ const LeaderboardService = {
     const currentSeason = season || LeaderboardModel.getCurrentSeason();
     const offset = (page - 1) * limit;
 
-    // Get leaderboard data
-    const leaderboard = await LeaderboardModel.getLeaderboard(
-      currentSeason,
-      limit,
-      offset
-    );
+    // The standings page (rows + pagination) is identical for every viewer, so
+    // we cache it per season/page/limit with a short TTL. The user-specific
+    // fields (user_rank / user_info) are computed fresh below and never cached,
+    // so this key stays user-independent and shareable across all viewers.
+    const standingsCacheKey = `leaderboard:${currentSeason}:${page}:${limit}`;
+    let standings = await redisCache.get<{
+      leaderboard: UserRankingWithUser[];
+      totalPages: number;
+      totalPlayers: number;
+    }>(standingsCacheKey);
 
-    // Get total players for pagination
-    const stats = await LeaderboardModel.getLeaderboardStats(currentSeason);
-    const totalPages = Math.ceil(stats.total_players / limit);
+    if (!standings) {
+      const leaderboard = await LeaderboardModel.getLeaderboard(
+        currentSeason,
+        limit,
+        offset
+      );
+      const stats = await LeaderboardModel.getLeaderboardStats(currentSeason);
+      standings = {
+        leaderboard,
+        totalPages: Math.ceil(stats.total_players / limit),
+        totalPlayers: stats.total_players,
+      };
+      // 5-minute TTL — standings can lag slightly behind the latest games.
+      await redisCache.set(standingsCacheKey, standings, 300);
+    }
+
+    const { leaderboard, totalPages } = standings;
 
     // Get user-specific data if userId provided
     let userRank: number | undefined;
@@ -188,7 +207,7 @@ const LeaderboardService = {
       pagination: {
         current_page: page,
         total_pages: totalPages,
-        total_players: stats.total_players,
+        total_players: standings.totalPlayers,
         per_page: limit,
       },
       season_info: {

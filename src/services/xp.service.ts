@@ -1001,6 +1001,16 @@ const XpService = {
 
       await client.query("COMMIT");
 
+      // This mutates owned cards' xp/level, so the user's cached collection
+      // ({userId}:cards:all) is now stale. This is the post-game XP path, so
+      // it runs after essentially every game the user's cards are played in.
+      // Best-effort: a cache miss is never worth failing the XP award.
+      try {
+        await cacheInvalidation.invalidateUserCards(userId);
+      } catch (error) {
+        console.warn("Error invalidating card cache after XP award:", error);
+      }
+
       // Step 6: Track daily task progress for level ups (after transaction)
       // Batch the level up tracking - call once with count instead of N times
       if (levelUpCount > 0) {

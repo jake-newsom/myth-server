@@ -1,4 +1,4 @@
-import { TemporaryEffect, TriggerMoment } from "../../types/card.types";
+import { PowerValues, TemporaryEffect, TriggerMoment } from "../../types/card.types";
 import {
   AbilityMap,
   CardPowerChangedEvent,
@@ -37,6 +37,7 @@ import {
   moveCardToPosition,
   isSameCard,
   protectFromDefeat,
+  resetTile,
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { resolveCombat } from "../game.utils";
@@ -226,8 +227,14 @@ export const polynesianAbilities: AbilityMap = {
       triggerCard.owner,
     );
     for (const ally of adjacentAllies) {
+      const allyPosition = getPositionOfCardById(
+        ally.user_card_instance_id,
+        board,
+      );
+      if (!allyPosition) continue;
+
       gameEvents.push(
-        protectFromDefeat(ally, 3, position, {
+        protectFromDefeat(ally, 3, allyPosition, {
           actingPlayerId: triggerCard.owner,
           sourceCard: triggerCard,
           sourcePlayerId: triggerCard.owner,
@@ -286,7 +293,6 @@ export const polynesianAbilities: AbilityMap = {
             effect.data?.sourceCardId === triggerCard.user_card_instance_id,
         ),
       );
-      console.log("Tide Ward cards", tideWardCards);
 
       //buff kanaloa
       if (tideWardCards.length > 0 && position) {
@@ -328,7 +334,7 @@ export const polynesianAbilities: AbilityMap = {
     let bloodAltarBuff = triggerCard.temporary_effects.find(
       (effect) => effect.name === label,
     );
-    const belowMaxPower = (bloodAltarBuff?.power.top ?? 0) < 5;
+    const belowMaxPower = (bloodAltarBuff?.power.top ?? 0) < 6;
 
     if (
       originalTriggerCard?.owner !== triggerCard.owner &&
@@ -336,7 +342,7 @@ export const polynesianAbilities: AbilityMap = {
       belowMaxPower
     ) {
       gameEvents.push(
-        createOrUpdateBuff(triggerCard, 1000, 1, label, position, {
+        createOrUpdateBuff(triggerCard, 1000, 2, label, position, {
           actingPlayerId: triggerCard.owner,
           sourceCard: triggerCard,
           sourcePlayerId: triggerCard.owner,
@@ -353,7 +359,7 @@ export const polynesianAbilities: AbilityMap = {
     }
 
     // check buff for max value & unused attack
-    const atMaxPower = (bloodAltarBuff?.power.top ?? 0) >= 5;
+    const atMaxPower = (bloodAltarBuff?.power.top ?? 0) >= 6;
     const usedAttack = bloodAltarBuff?.data?.usedAttack || false;
     if (bloodAltarBuff && atMaxPower && !usedAttack) {
       const triggerPosition = getPositionOfCardById(
@@ -418,10 +424,12 @@ export const polynesianAbilities: AbilityMap = {
         );
         if (allyPosition) {
           gameEvents.push(
-            addTempBuff(ally, 3, 1, {
-              name: "Makahiki Bounty",
+            createOrUpdateBuff(ally, 1000, 1, "Makahiki Bounty", allyPosition, {
               animation: "nature-swirl",
-              position: allyPosition,
+              actingPlayerId: ally.owner,
+              sourceCard: ally,
+              sourcePlayerId: ally.owner,
+              turnNumber: context.state.turn_number,
             }),
           );
         }
@@ -452,16 +460,24 @@ export const polynesianAbilities: AbilityMap = {
       );
       // triggerCard.current_power = updateCurrentPower(triggerCard);
     } else if (context.triggerMoment === TriggerMoment.AfterCombat) {
-      // Calculate power being removed
+      // The Sun Trick buff is symmetric (+1/side/round). Report the per-side
+      // magnitude (e.g. "-2") rather than the four-side total (e.g. "-8"), since
+      // a card's power reads per side. powerBySide carries the signed per-side
+      // delta so the client shows the "all directions" indicator.
       const sunTrickBuff = triggerCard.temporary_effects.find(
         (effect) => effect.name === label,
       );
-      const powerRemoved = sunTrickBuff
-        ? (sunTrickBuff.power.top || 0) +
-          (sunTrickBuff.power.bottom || 0) +
-          (sunTrickBuff.power.left || 0) +
-          (sunTrickBuff.power.right || 0)
-        : 0;
+      const removedBySide: Partial<PowerValues> = {};
+      let maxSideRemoved = 0;
+      if (sunTrickBuff) {
+        for (const side of ["top", "bottom", "left", "right"] as const) {
+          const v = sunTrickBuff.power[side] || 0;
+          if (v !== 0) {
+            removedBySide[side] = -v;
+            maxSideRemoved = Math.max(maxSideRemoved, Math.abs(v));
+          }
+        }
+      }
 
       //after combat, remove the buff
       triggerCard.temporary_effects = triggerCard.temporary_effects.filter(
@@ -475,7 +491,8 @@ export const polynesianAbilities: AbilityMap = {
         eventId: uuidv4(),
         timestamp: Date.now(),
         cardId: triggerCard.user_card_instance_id,
-        powerDelta: -powerRemoved,
+        powerDelta: -maxSideRemoved,
+        powerBySide: removedBySide,
         effectName: label,
         position,
       } as CardPowerChangedEvent);
@@ -605,35 +622,57 @@ export const polynesianAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Icy Presence: Adjacent enemies lose 1 power.
+  // Icy Presence: Before combat, remove all LAVA tiles, granting +2 to allies
+  // standing in LAVA and -1 to enemies standing in LAVA.
   poliahu_icy_presence: (context) => {
     const {
       triggerCard,
-      position,
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
 
-    if (!position) return [];
+    for (let y = 0; y < board.length; y++) {
+      for (let x = 0; x < board[y].length; x++) {
+        const tile = board[y][x];
+        if (tile.tile_effect?.terrain !== TileTerrain.Lava) continue;
 
-    const adjacentEnemies = getEnemiesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner,
-    );
-    for (const enemy of adjacentEnemies) {
-      const enemyPosition = getPositionOfCardById(
-        enemy.user_card_instance_id,
-        board,
-      );
-      if (enemyPosition) {
-        gameEvents.push(
-          debuff(enemy, -1, {
-            name: "Icy Presence",
-            animation: "icicle",
-            position: enemyPosition,
-          }),
-        );
+        const tilePosition: BoardPosition = { x, y };
+        const card = tile.card;
+
+        if (card) {
+          if (card.owner === triggerCard.owner) {
+            gameEvents.push(
+              addTempBuff(card, 1000, 2, {
+                name: "Icy Presence",
+                animation: "icicle",
+                position: tilePosition,
+                data: {
+                  actingPlayerId: triggerCard.owner,
+                  sourceCard: triggerCard,
+                  sourcePlayerId: triggerCard.owner,
+                  turnNumber: context.state.turn_number,
+                },
+              }),
+            );
+          } else {
+            gameEvents.push(
+              debuff(card, -1, {
+                name: "Icy Presence",
+                animation: "icicle",
+                position: tilePosition,
+                data: {
+                  actingPlayerId: triggerCard.owner,
+                  sourceCard: triggerCard,
+                  sourcePlayerId: triggerCard.owner,
+                  turnNumber: context.state.turn_number,
+                },
+              }),
+            );
+          }
+        }
+
+        // Remove the lava tile.
+        gameEvents.push(resetTile(tile, tilePosition));
       }
     }
 
@@ -744,7 +783,7 @@ export const polynesianAbilities: AbilityMap = {
       );
       if (flippedByPosition) {
         return [
-          debuff(flippedBy, -2, {
+          debuff(flippedBy, -5, {
             name: "Spirit Bind",
             animation: "smoke-shrink",
             position: flippedByPosition,
@@ -873,13 +912,12 @@ export const polynesianAbilities: AbilityMap = {
 
     if (!enemyPosition) return [];
 
-    const randomSide = getRandomSide();
     const batchId = uuidv4();
 
     const event = addTempDebuff(
       randomEnemy,
       1000,
-      { [randomSide]: -2 },
+      -1,
       {
         name: "Thunderous Omen",
         animation: "lightning-2",
@@ -925,7 +963,7 @@ export const polynesianAbilities: AbilityMap = {
       );
       if (enemyPosition) {
         gameEvents.push(
-          addTempDebuff(randomEnemy, 1000, -1, {
+          addTempDebuff(randomEnemy, 1000, -2, {
             name: "Dual Aspect",
             animation: "water-circles-few",
             position: enemyPosition,

@@ -10,6 +10,10 @@ import { cacheInvalidation } from "./cache.invalidation.service";
 import logger from "../utils/logger";
 import { QueryExecutor } from "../config/db.config";
 import CharacterModel from "../models/character.model";
+import {
+  meetsMinAppVersion,
+  VersionGateOptions,
+} from "../utils/catalogVersion";
 
 /**
  * Border Service
@@ -47,17 +51,27 @@ const BorderService = {
   // CATALOG (cached)
   // ============================================================================
 
-  async getActiveCatalog(): Promise<CardBorder[]> {
-    const cached = await redisCache.get<CardBorder[]>(ACTIVE_CATALOG_CACHE_KEY);
-    if (cached) return cached;
-
-    const borders = await BorderModel.listActive();
-    await redisCache.set(
-      ACTIVE_CATALOG_CACHE_KEY,
-      borders,
-      CATALOG_CACHE_TTL_SECONDS
+  /**
+   * Returns the active border catalog, gated by the requesting client's app
+   * version. The cache stores the full active list (version-agnostic) so one
+   * caller's version never poisons it for others; min_app_version filtering is
+   * applied per-request after the cache read.
+   */
+  async getActiveCatalog(
+    versionOptions: VersionGateOptions = {}
+  ): Promise<CardBorder[]> {
+    let borders = await redisCache.get<CardBorder[]>(ACTIVE_CATALOG_CACHE_KEY);
+    if (!borders) {
+      borders = await BorderModel.listActive();
+      await redisCache.set(
+        ACTIVE_CATALOG_CACHE_KEY,
+        borders,
+        CATALOG_CACHE_TTL_SECONDS
+      );
+    }
+    return borders.filter((b) =>
+      meetsMinAppVersion(b.min_app_version, versionOptions)
     );
-    return borders;
   },
 
   async getFullCatalog(): Promise<CardBorder[]> {
@@ -291,6 +305,26 @@ const BorderService = {
     }
     if (!owns) {
       return { success: false, error: "User does not own this border" };
+    }
+    // If the border has an application cap, check whether it's already met
+    // (excluding the card being targeted, mirroring the equip UPDATE).
+    if (border.max_equipped != null) {
+      const equippedCount = await BorderModel.countEquippedForBorder(
+        userId,
+        borderId
+      );
+      // The targeted card may already wear this border; if so the equip is a
+      // no-op rather than cap-blocked, so only report the cap when the count of
+      // *other* cards meets it. We don't know here whether this instance is one
+      // of them, so conservatively report the cap when the total meets it.
+      if (equippedCount >= border.max_equipped) {
+        return {
+          success: false,
+          error: `This border can only be applied to ${border.max_equipped} card${
+            border.max_equipped === 1 ? "" : "s"
+          } at once.`,
+        };
+      }
     }
     // At this point, either the card doesn't belong to the user or the
     // restriction failed. Both produce the same generic message; the client

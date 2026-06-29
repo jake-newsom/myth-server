@@ -87,6 +87,7 @@ import {
   updateCurrentPower,
   transferTileEffectToCard,
   getCardsByCondition,
+  isSilenced,
 } from "./ability.utils";
 import { batchEvents } from "./game-events";
 
@@ -294,11 +295,27 @@ export function flipCard(
 
   // Helper to build the events emitted when a flip is prevented. Includes
   // CARD_DEFENDED + OnDefend trigger so all prevention paths behave consistently.
+  // protectingCard is the card whose ability prevented the defeat (e.g. the ally
+  // Harbor Guardian, or the target itself for self-defense). When provided, its
+  // ability sound_effect is stamped onto the CARD_DEFENDED event so the client
+  // can play it — the defend event is born outside triggerAbilities, so the
+  // normal sound-stamping path never reaches it.
   const buildDefendedEvents = (
-    preventionEvents: BaseGameEvent[] = []
+    preventionEvents: BaseGameEvent[] = [],
+    protectingCard?: InGameCard
   ): BaseGameEvent[] => {
     const out: BaseGameEvent[] = [...preventionEvents];
     if (!targetPosition) return out;
+    // Prefer the explicit protector's ability sound; otherwise fall back to a
+    // sound stashed on a BlockDefeat effect (e.g. Kane's Pure Waters applies the
+    // protection earlier and records its sound on the effect).
+    const blockDefeatSound = target.temporary_effects.find(
+      (effect) => effect.type === EffectType.BlockDefeat
+    )?.data?.soundEffect as string | undefined | null;
+    const defendSoundEffect =
+      protectingCard?.base_card_data?.special_ability?.sound_effect ??
+      blockDefeatSound ??
+      undefined;
     out.push({
       type: EVENT_TYPES.CARD_DEFENDED,
       eventId: uuidv4(),
@@ -307,6 +324,7 @@ export function flipCard(
       cardId: target.user_card_instance_id,
       position: targetPosition,
       animation: "defend",
+      ...(defendSoundEffect ? { soundEffect: defendSoundEffect } : {}),
     } as CardEvent);
     out.push(
       ...triggerAbilities(TriggerMoment.OnDefend, {
@@ -360,9 +378,9 @@ export function flipCard(
     // Self-resolvers may emit side-effect events even when they don't prevent
     // defeat (matching prior resolveCombat behavior), so collect them and
     // only surface them once we know whether the flip proceeds.
-    const selfResolver = getCombatResolver(
-      target.base_card_data.special_ability ?? undefined
-    );
+    const selfResolver = isSilenced(target)
+      ? undefined
+      : getCombatResolver(target.base_card_data.special_ability ?? undefined);
     if (selfResolver) {
       const selfResult = selfResolver({
         flippedCard: target,
@@ -376,11 +394,11 @@ export function flipCard(
         preFlipEvents.push(...selfResult.events);
       }
       if (selfResult.preventDefeat) {
-        return buildDefendedEvents(preFlipEvents);
+        return buildDefendedEvents(preFlipEvents, target);
       }
     }
 
-    // 2. Ally protection (e.g. Harbor Guardian).
+    // 2. Ally protection (e.g. Harbor Guardian). A silenced ally cannot protect.
     const allyCombatResolvers = getCardsByCondition(
       state.board,
       (card: InGameCard) => {
@@ -388,6 +406,7 @@ export function flipCard(
           return false;
         }
         if (card.owner !== target.owner) return false;
+        if (isSilenced(card)) return false;
         return !!getCombatResolver(
           card.base_card_data.special_ability ?? undefined
         );
@@ -412,7 +431,7 @@ export function flipCard(
 
       if (allyResult.preventDefeat) {
         const allyEvents = allyResult.events ?? [];
-        return buildDefendedEvents([...preFlipEvents, ...allyEvents]);
+        return buildDefendedEvents([...preFlipEvents, ...allyEvents], ally);
       }
     }
   }
@@ -535,7 +554,7 @@ export function triggerAbilities(
   const { state } = context;
 
   // check the specific card
-  if (context.triggerCard) {
+  if (context.triggerCard && !isSilenced(context.triggerCard)) {
     const triggerCard = context.triggerCard;
     if (triggerCard.base_card_data.special_ability) {
       const ability = triggerCard.base_card_data.special_ability;
@@ -622,7 +641,11 @@ export function triggerIndirectAbilities(
   for (let y = 0; y < state.board.length; y++) {
     for (let x = 0; x < state.board[y].length; x++) {
       const cell = state.board[y][x];
-      if (cell.card && cell.card.base_card_data.special_ability) {
+      if (
+        cell.card &&
+        cell.card.base_card_data.special_ability &&
+        !isSilenced(cell.card)
+      ) {
         const cardId = cell.card.user_card_instance_id;
         // Skip if we've already collected this card (prevents duplicates)
         if (processedCardIds.has(cardId)) continue;

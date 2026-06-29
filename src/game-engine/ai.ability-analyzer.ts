@@ -1,4 +1,4 @@
-import { GameState, BoardPosition } from "../types/game.types";
+import { GameState, BoardPosition, TileTerrain } from "../types/game.types";
 import { InGameCard } from "../types/card.types";
 import { TriggerMoment } from "../types/card.types";
 import { AI_CONFIG } from "../config/constants";
@@ -33,6 +33,7 @@ import {
   getAllAlliesOnBoard,
   getCardsByCondition,
   getCardTotalPower,
+  getCardTotalPowerAtPlay,
 } from "./ability.utils";
 import { AbilityRuleEngine } from "./ai.rules.engine";
 
@@ -491,19 +492,22 @@ export class AbilityAnalyzer {
       // Permanent +1 to all allies
       score += allAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2; // Permanent buff
     } else if (abilityName === "thor_push") {
-      // Temporary -2 to TOP side only on every enemy. Most useful when
-      // multiple enemies have a vulnerable top edge that the AI's own cards
-      // (or future placements) attack.
-      const enemiesAttackedFromBelow = allEnemies.filter(
-        (e) => e.current_power.top >= 4
-      ).length;
+      // Temporary -2 to each enemy's STRONGEST side. Because it always lands on
+      // the best side, it reliably weakens the edge an enemy is most likely to
+      // defend/attack with, scaling straightforwardly with the enemy count.
       score +=
-        allEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.6 +
-        enemiesAttackedFromBelow * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.4;
+        allEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
     } else if (abilityName === "tyr_binding_justice") {
-      // Equalizes power - great when opponent has strong cards
-      const hasStrongEnemies = allEnemies.some((e) => getCardTotalPower(e) > 20);
-      score += hasStrongEnemies ? AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 2 : 50;
+      // Each of your turns: -2 to the strongest enemy AND +2 to the weakest
+      // ally on the board. A recurring two-sided swing, so value both a strong
+      // enemy worth suppressing and having an ally on board to receive the buff.
+      const enemyDebuffValue = allEnemies.length > 0
+        ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5
+        : 20;
+      const allyBuffValue = allAllies.length > 0
+        ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5
+        : 0;
+      score += enemyDebuffValue + allyBuffValue;
     } else if (abilityName === "heimdall_block") {
       // Watchman's Gate: when placed, blocks every adjacent EMPTY tile for 2
       // turns so the opponent cannot use those slots. Value scales with the
@@ -546,16 +550,22 @@ export class AbilityAnalyzer {
       // does not over-prioritise Vali based on the design intent.
       score += 0;
     } else if (abilityName === "ku_war_stance") {
-      // Gains +1 per ally defeated (max 5), then attacks again
-      score += defeatedAlliesCount * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
-      if (defeatedAlliesCount >= 3) score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE; // Double attack value
+      // Gains +2 per ally defeated; at +6 (3 defeats) it re-attacks adjacent enemies.
+      score += defeatedAlliesCount * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 3;
+      if (defeatedAlliesCount >= 3) score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE; // Re-attack value
     } else if (abilityName === "urd_past_weaves") {
       // +1 to all stats per destroyed ally
       score += defeatedAlliesCount * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
     } else if (abilityName === "vidar_vengeance") {
-      // +3 to all stats if Odin defeated - conditional powerhouse
-      // TODO: Check if Odin is defeated
-      score += 50; // Base value, would be much higher if condition met
+      // +5 to all sides if Odin has been defeated - conditional powerhouse.
+      // The handler checks for an Odin on the board that has flipped at least
+      // one card (defeats.length > 0); mirror that to value the condition.
+      const odinDefeated = [...allAllies, ...allEnemies].some(
+        (c) => c.base_card_data.name === "Odin" && c.defeats.length > 0
+      );
+      score += odinDefeated
+        ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 5
+        : 30; // Big swing when met, modest otherwise
     }
 
     // === ADJACENCY-BASED BUFFS (Permanent) ===
@@ -640,11 +650,16 @@ export class AbilityAnalyzer {
 
     // === DEBUFF ABILITIES ===
     else if (abilityName === "yuki_onna_frost_row") {
-      // Enemies in row lose 1 temporarily
-      score += cardsInRow.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
+      // Enemies in row lose 3 temporarily
+      score += cardsInRow.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 3;
     } else if (abilityName === "tawara_piercing_shot") {
-      // Enemies in column permanently lose 1
-      score += cardsInColumn.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 2;
+      // Defeats one enemy weaker than Tawara, anywhere on the board (no
+      // adjacency/column requirement). Worth a flip whenever such a target exists.
+      const tawaraPower = getCardTotalPowerAtPlay(card);
+      const hasWeakerEnemy = allEnemies.some(
+        (e) => getCardTotalPower(e) < tawaraPower
+      );
+      score += hasWeakerEnemy ? AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE : 10;
     } else if (abilityName === "yamata_many_heads") {
       // -1 to enemies in row or column
       score += (cardsInRow.length + cardsInColumn.length) * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.5;
@@ -652,8 +667,21 @@ export class AbilityAnalyzer {
       // Adjacent enemies lose 1
       score += adjacentEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
     } else if (abilityName === "poliahu_icy_presence") {
-      // Adjacent enemies permanently lose 1
-      score += adjacentEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 2;
+      // Removes all LAVA tiles: allies standing on lava gain +2, enemies on
+      // lava lose 1. Value tracks who currently sits on lava, plus a small
+      // bonus for clearing lava that threatens our side. No lava => near no-op.
+      const lavaCells = board
+        .flat()
+        .filter((cell) => cell.tile_effect?.terrain === TileTerrain.Lava);
+      const alliesOnLava = lavaCells.filter(
+        (cell) => cell.card && cell.card.owner === aiPlayerId
+      ).length;
+      const enemiesOnLava = lavaCells.filter(
+        (cell) => cell.card && cell.card.owner !== aiPlayerId
+      ).length;
+      score +=
+        alliesOnLava * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2 +
+        enemiesOnLava * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
     } else if (abilityName === "fafnir_venom") {
       // Strongest adjacent enemy loses 2
       score += adjacentEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 2 : 0;
@@ -664,12 +692,12 @@ export class AbilityAnalyzer {
 
     // === TERRAIN/TILE MANIPULATION ===
     else if (abilityName === "skadi_freeze") {
-      // Winter's Grasp: temporary -3 to every enemy in the same column for
+      // Winter's Grasp: temporary -2 to every enemy in the same column for
       // ~3 turns. Value scales with how many enemies share Skadi's column,
       // not with empty adjacent tiles. (`cardsInColumn` already excludes the
       // AI player's own cards.)
       score +=
-        cardsInColumn.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5;
+        cardsInColumn.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
     } else if (abilityName === "jorogumo_web_curse") {
       // Curse adjacent tiles, drain power for 1 round
       score += emptyAdjacent * AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 2;
@@ -707,8 +735,15 @@ export class AbilityAnalyzer {
       // Remove all buffs from adjacent enemies
       score += adjacentEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.8;
     } else if (abilityName === "urashima_time_shift") {
-      // Remove temporary buffs from enemy in column
-      score += cardsInColumn.length > 0 ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE : 20;
+      // Silences any one enemy's special ability for 2 turns, regardless of
+      // position. Most valuable when an enemy with an actual ability exists to
+      // target; the AI picks the strongest enemy when no explicit target is given.
+      const enemiesWithAbility = allEnemies.filter(
+        (e) => !!e.base_card_data.special_ability
+      ).length;
+      score += enemiesWithAbility > 0
+        ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5
+        : 15;
     }
 
     // === POSITIONAL MANIPULATION ===
@@ -722,14 +757,21 @@ export class AbilityAnalyzer {
 
     // === REACTIVE/TRIGGER ABILITIES ===
     else if (abilityName === "okuriinu_hunters_mark") {
-      // When ally defeated, drain -1 from attacker
-      score += allAllies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.5;
+      // When ally defeated, drain -2 from attacker
+      score += allAllies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
     } else if (abilityName === "milu_spirit_bind") {
-      // If defeated, attacker loses 1 permanently
-      score += AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5;
+      // If defeated, attacker loses 5 permanently
+      score += AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 3;
     } else if (abilityName === "amaterasu_radiant_blessing") {
-      // When ally defeated, +1 to random ally
-      score += AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.8;
+      // When an ally is defeated, +1 to a random card in the owner's HAND.
+      // Value depends on having cards in hand to receive the buff, not board allies.
+      const amaterasuPlayer =
+        gameState.player1.user_id === aiPlayerId
+          ? gameState.player1
+          : gameState.player2;
+      score += amaterasuPlayer.hand.length > 0
+        ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.8
+        : 10;
     } else if (abilityName === "hel_soul") {
       // Soul Lock: every enemy Hel flips is locked (cannot be flipped back).
       // Locks only unwind if Hel is DESTROYED (removed from the board), which
@@ -767,22 +809,30 @@ export class AbilityAnalyzer {
       );
       score += alliesInRow.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
     } else if (abilityName === "tsukuyomi_moons_balance") {
-      // Each round: permanent -1 to strongest enemy on the board AND temp +1
-      // to the weakest card currently in the AI's HAND (not on the board).
+      // Each round: siphons 2 power from the strongest enemy on the board to a
+      // random card in the AI's HAND (-2 enemy / +2 hand card). A two-sided swing
+      // that needs both an enemy to drain and a hand card to receive the power.
       const aiPlayerForMoon =
         gameState.player1.user_id === aiPlayerId
           ? gameState.player1
           : gameState.player2;
       const handBuffValue = aiPlayerForMoon.hand.length > 0
-        ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.6
+        ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE
         : 0;
       const enemyDebuffValue = allEnemies.length > 0
         ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5
         : 30;
       score += handBuffValue + enemyDebuffValue;
     } else if (abilityName === "lono_fertile_ground") {
-      // Each round grant +1 to allies with blessings
-      score += allAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 0.5;
+      // Each round grant a PERMANENT +1 to allies that already have a buff.
+      // Only allies with an existing positive effect qualify, and the buff
+      // sticks, so value the count of currently-buffed allies highly.
+      const buffedAllies = allAllies.filter((a) =>
+        a.temporary_effects.some((e) =>
+          Object.values(e.power).reduce((s, v) => s + (v || 0), 0) > 0
+        )
+      ).length;
+      score += buffedAllies * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2;
     } else if (abilityName === "nurarihyon_slipstream") {
       // Each round steal blessing from random enemy
       score += allEnemies.length > 0 ? 60 : 20;
@@ -808,8 +858,8 @@ export class AbilityAnalyzer {
       // Enemy abilities disabled next turn
       score += allEnemies.length * 30;
     } else if (abilityName === "kanehekili_thunderous_omen") {
-      // Random enemy loses random power
-      score += allEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 0.5 : 20;
+      // Each round: -1 to ALL sides of a random enemy (a -4 total swing).
+      score += allEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 1.5 : 20;
     }
 
     // === HAND-SCALING ABILITIES (These should often be HELD, not played immediately) ===
@@ -1132,13 +1182,15 @@ export class AbilityAnalyzer {
         holdValue -= 70; // Target available, play it!
       }
     } else if (abilityName === "tyr_binding_justice") {
-      // Equalizes power - best when opponent has very strong cards
+      // Recurring per-turn -2 strongest enemy / +2 weakest ally. It's an engine:
+      // the earlier it lands, the more turns it ticks, so play it once there is
+      // anything on the board to act on rather than holding for a big target.
       const allEnemies = getCardsByCondition(gameState.board, (c) => c.owner !== aiPlayerId);
-      const hasStrongEnemies = allEnemies.some((e) => getCardTotalPower(e) > 24);
-      if (!hasStrongEnemies) {
-        holdValue += 70; // Hold until strong enemies appear
+      const allAlliesForTyr = getAllAlliesOnBoard(gameState.board, aiPlayerId);
+      if (allEnemies.length === 0 && allAlliesForTyr.length === 0) {
+        holdValue += 40; // Nothing to act on yet, brief hold
       } else {
-        holdValue -= 60; // Strong enemies present, play it!
+        holdValue -= 60; // Targets exist, deploy the engine
       }
     }
 

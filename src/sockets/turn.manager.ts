@@ -52,9 +52,18 @@ export class TurnManager {
   /**
    * Start a new turn for the given player.
    * If isFirstTurn is true, the timer starts immediately.
-   * Otherwise, there's an automatic animation delay before the timer starts.
+   * Otherwise, there's an animation delay before the timer starts.
+   *
+   * `animationDelayMs`, when provided, overrides the default delay for this
+   * turn — callers derive it from the actual emitted events (sum of
+   * `delayAfterMs` + buffer) so the timer waits exactly as long as the client
+   * needs to animate, rather than a flat default.
    */
-  public startTurn(playerId: string, isFirstTurn: boolean = false): void {
+  public startTurn(
+    playerId: string,
+    isFirstTurn: boolean = false,
+    animationDelayMs?: number
+  ): void {
     this.clearAllTimers();
     this.currentPlayerId = playerId;
 
@@ -66,10 +75,14 @@ export class TurnManager {
       this.emitStartTurnAndArmTimer(playerId, timeAllowed);
     } else {
       // Delay for animations, then start the turn timer
+      const delay =
+        typeof animationDelayMs === "number" && animationDelayMs >= 0
+          ? animationDelayMs
+          : this.animationDelay;
       this.animationDelayHandle = setTimeout(() => {
         this.animationDelayHandle = null;
         this.emitStartTurnAndArmTimer(playerId, timeAllowed);
-      }, this.animationDelay);
+      }, delay);
     }
   }
 

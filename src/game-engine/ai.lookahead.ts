@@ -20,7 +20,13 @@ interface TranspositionEntry {
 
 export class LookaheadEngine {
   private static readonly SEARCH_CANDIDATE_CAP = 24;
-  private static readonly ROOT_CANDIDATE_CAP = 20;
+  // Search every realistic root candidate. Previously capped at 20, but the
+  // function returns ALL candidates and makeAIMove ranks them together — so any
+  // unsearched candidate kept its raw (un-blended) base score and could beat a
+  // correctly-searched move on a different scale. A 4x4 board yields at most
+  // 16 cells x hand size, comfortably covered; measured search cost is ~20ms
+  // (vs a 1000ms budget), and timedOut() remains the hard safety net.
+  private static readonly ROOT_CANDIDATE_CAP = 80;
   private static readonly SEARCH_SCORE_WEIGHT = 0.85;
   private startTime = 0;
   private maxTimeMs: number = AI_CONFIG.LOOKAHEAD.MAX_TIME_MS;
@@ -166,8 +172,18 @@ export class LookaheadEngine {
       }
     }
 
+    // Turn-order correction: players place cards alternately, so right after a
+    // move the side to move is transiently "behind" by one card simply because
+    // it is their turn to act next — not because they are losing. Counting that
+    // raw deficit made every first placement look bad (a +302 base move scored
+    // ~-330 in search). If the side to move still has a card in hand, credit
+    // their pending placement so material reflects standing, not turn parity.
+    const mover = this.getPlayer(gameState, playerId);
+    const pendingPlacement = mover.hand.length > 0 ? 1 : 0;
+    const cardDiff = myCards + pendingPlacement - theirCards;
+
     return (
-      (myCards - theirCards) * LookaheadEngine.LEAF_CARD_WEIGHT +
+      cardDiff * LookaheadEngine.LEAF_CARD_WEIGHT +
       (myPower - theirPower) * LookaheadEngine.LEAF_POWER_WEIGHT +
       positional * LookaheadEngine.LEAF_POSITIONAL_WEIGHT
     );
@@ -631,8 +647,6 @@ export class LookaheadEngine {
     for (let depth = 1; depth <= maxDepth; depth++) {
       if (this.timedOut()) break;
       this.maxDepthReached = Math.max(this.maxDepthReached, depth);
-      let alpha = -Infinity;
-      let beta = Infinity;
 
       const orderedRoots = [...rootCandidates].sort((a, b) => {
         const aKey = `${a.user_card_instance_id}:${a.position.x}:${a.position.y}`;
@@ -642,6 +656,12 @@ export class LookaheadEngine {
 
       for (const rootMove of orderedRoots) {
         if (this.timedOut()) break;
+        // Each root candidate must be scored with a FULL, independent window.
+        // We keep and rank *every* candidate's score (not just the best move),
+        // so we cannot share alpha/beta across siblings: alpha-beta pruning
+        // returns a cut-off bound rather than the true value for moves that
+        // fail outside a tightened window, which silently corrupted the scores
+        // of all-but-the-first candidate and made move selection order-dependent.
         const rootScore = await this.simulateMoveWithSampling(
           gameState,
           rootMove,
@@ -655,8 +675,8 @@ export class LookaheadEngine {
                 opponentId,
                 aiPlayerId,
                 depth - 1,
-                -beta,
-                -alpha,
+                -Infinity,
+                Infinity,
                 difficulty
               )
             );
@@ -667,7 +687,6 @@ export class LookaheadEngine {
           rootScore * LookaheadEngine.SEARCH_SCORE_WEIGHT +
           rootMove.score * (1 - LookaheadEngine.SEARCH_SCORE_WEIGHT);
         bestByDepth.set(key, blendedScore);
-        alpha = Math.max(alpha, rootScore);
       }
     }
 

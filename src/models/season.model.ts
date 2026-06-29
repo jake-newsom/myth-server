@@ -88,6 +88,28 @@ const SeasonModel = {
     return (rows[0] as SeasonDefinitionRow) || null;
   },
 
+  /** Seasons whose window has closed and are awaiting reward payout. */
+  async getFinalizingSeasons(): Promise<SeasonDefinitionRow[]> {
+    const query = `
+      SELECT season_id, name, start_at, end_at, status, generated_by, generation_rule_version, created_at, updated_at
+      FROM season_definitions
+      WHERE status = 'finalizing'
+      ORDER BY end_at ASC;
+    `;
+    const { rows } = await db.query(query);
+    return rows as SeasonDefinitionRow[];
+  },
+
+  /** Advance a season to finalized once payouts have been written. */
+  async markFinalized(seasonId: string): Promise<void> {
+    await db.query(
+      `UPDATE season_definitions
+         SET status = 'finalized', updated_at = NOW()
+       WHERE season_id = $1 AND status = 'finalizing';`,
+      [seasonId]
+    );
+  },
+
   async getNextSeason(now: Date = new Date()): Promise<SeasonDefinitionRow | null> {
     const query = `
       SELECT season_id, name, start_at, end_at, status, generated_by, generation_rule_version, created_at, updated_at

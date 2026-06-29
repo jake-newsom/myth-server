@@ -7,7 +7,9 @@ import DailyRewardsService from "../../services/dailyRewards.service";
 import BorderService from "../../services/border.service";
 import CardBackService from "../../services/cardBack.service";
 import AchievementService from "../../services/achievement.service";
+import { cacheInvalidation } from "../../services/cache.invalidation.service";
 import logger from "../../utils/logger";
+import { normalizeMinAppVersion } from "../../utils/catalogVersion";
 
 /**
  * Admin Controller
@@ -21,6 +23,26 @@ import logger from "../../utils/logger";
  * - All actions are logged for audit purposes
  * - Admin middleware enforces role-based access control
  */
+
+/**
+ * Normalize and validate a border max_equipped value from request input.
+ * Accepts: null / "" / undefined (→ null = unlimited) or a positive integer.
+ */
+function normalizeMaxEquipped(
+  value: unknown
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (value === null || value === undefined || value === "") {
+    return { ok: true, value: null };
+  }
+  const n = typeof value === "string" ? Number(value) : value;
+  if (typeof n !== "number" || !Number.isInteger(n) || n < 1) {
+    return {
+      ok: false,
+      error: "max_equipped must be a positive integer or blank for unlimited",
+    };
+  }
+  return { ok: true, value: n };
+}
 
 const AdminController = {
   // ============================================================================
@@ -574,8 +596,16 @@ const AdminController = {
    */
   async createBorder(req: AuthenticatedRequest, res: Response) {
     try {
-      const { name, description, image_url, animation_key, character_id, set_id } =
-        req.body || {};
+      const {
+        name,
+        description,
+        image_url,
+        animation_key,
+        character_id,
+        set_id,
+        min_app_version,
+        max_equipped,
+      } = req.body || {};
 
       if (!name || typeof name !== "string") {
         return res
@@ -588,6 +618,20 @@ const AdminController = {
           .json({ status: "error", message: "image_url is required" });
       }
 
+      const minVersion = normalizeMinAppVersion(min_app_version);
+      if (!minVersion.ok) {
+        return res
+          .status(400)
+          .json({ status: "error", message: minVersion.error });
+      }
+
+      const maxEq = normalizeMaxEquipped(max_equipped);
+      if (!maxEq.ok) {
+        return res
+          .status(400)
+          .json({ status: "error", message: maxEq.error });
+      }
+
       const border = await BorderService.createBorder({
         name,
         image_url,
@@ -595,6 +639,8 @@ const AdminController = {
         animation_key: animation_key ?? null,
         character_id: character_id ?? null,
         set_id: set_id ?? null,
+        min_app_version: minVersion.value,
+        max_equipped: maxEq.value,
       });
 
       logger.info("Admin created border", {
@@ -630,7 +676,25 @@ const AdminController = {
           .json({ status: "error", message: "borderId is required" });
       }
 
-      const updates = req.body || {};
+      const updates = { ...(req.body || {}) };
+      if ("min_app_version" in updates) {
+        const minVersion = normalizeMinAppVersion(updates.min_app_version);
+        if (!minVersion.ok) {
+          return res
+            .status(400)
+            .json({ status: "error", message: minVersion.error });
+        }
+        updates.min_app_version = minVersion.value;
+      }
+      if ("max_equipped" in updates) {
+        const maxEq = normalizeMaxEquipped(updates.max_equipped);
+        if (!maxEq.ok) {
+          return res
+            .status(400)
+            .json({ status: "error", message: maxEq.error });
+        }
+        updates.max_equipped = maxEq.value;
+      }
       const border = await BorderService.updateBorder(borderId, updates);
       if (!border) {
         return res
@@ -804,7 +868,8 @@ const AdminController = {
 
   async createCardBack(req: AuthenticatedRequest, res: Response) {
     try {
-      const { code_key, name, description, image_url, animation_key } = req.body || {};
+      const { code_key, name, description, image_url, animation_key, min_app_version } =
+        req.body || {};
       if (!code_key || typeof code_key !== "string") {
         return res
           .status(400)
@@ -821,12 +886,20 @@ const AdminController = {
           .json({ status: "error", message: "image_url is required" });
       }
 
+      const minVersion = normalizeMinAppVersion(min_app_version);
+      if (!minVersion.ok) {
+        return res
+          .status(400)
+          .json({ status: "error", message: minVersion.error });
+      }
+
       const cardBack = await CardBackService.createCardBack({
         code_key,
         name,
         description: description ?? null,
         image_url,
         animation_key: animation_key ?? null,
+        min_app_version: minVersion.value,
       });
 
       return res.status(201).json({ data: cardBack });
@@ -850,7 +923,17 @@ const AdminController = {
           .status(400)
           .json({ status: "error", message: "backId is required" });
       }
-      const cardBack = await CardBackService.updateCardBack(backId, req.body || {});
+      const updates = { ...(req.body || {}) };
+      if ("min_app_version" in updates) {
+        const minVersion = normalizeMinAppVersion(updates.min_app_version);
+        if (!minVersion.ok) {
+          return res
+            .status(400)
+            .json({ status: "error", message: minVersion.error });
+        }
+        updates.min_app_version = minVersion.value;
+      }
+      const cardBack = await CardBackService.updateCardBack(backId, updates);
       if (!cardBack) {
         return res
           .status(404)
@@ -951,6 +1034,40 @@ const AdminController = {
       return res
         .status(500)
         .json({ status: "error", message: "Failed to revoke card back" });
+    }
+  },
+
+  // ============================================================================
+  // CACHE MANAGEMENT ENDPOINTS
+  // ============================================================================
+
+  /**
+   * Clear the global card catalog cache.
+   * POST /api/admin/cache/cards/clear
+   *
+   * The `cards:all` catalog is cached for 24h. Call this after releasing new
+   * cards so the new catalog is served immediately instead of waiting for the
+   * TTL to lapse.
+   */
+  clearCardsCache: async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      await cacheInvalidation.invalidateGlobalCards();
+      logger.info("Admin cleared global cards cache", {
+        adminId: req.user?.user_id,
+      });
+      return res.status(200).json({
+        status: "success",
+        message: "Global cards cache cleared",
+      });
+    } catch (error) {
+      logger.error(
+        "Admin clear cards cache error",
+        { adminId: req.user?.user_id },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to clear cards cache" });
     }
   },
 };

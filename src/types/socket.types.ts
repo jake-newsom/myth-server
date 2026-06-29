@@ -136,6 +136,9 @@ export interface GameActionPayload {
   actionType: "placeCard" | "endTurn" | "surrender" | "forcePass" | "mulligan";
   user_card_instance_id?: string;
   position?: BoardPosition;
+  // Player-chosen target for abilities that require selecting a board card
+  // (e.g. urashima_time_shift, tawara_piercing_shot). Validated server-side.
+  targetPosition?: BoardPosition;
   replaced_card_instance_ids?: string[];
 }
 

@@ -5,6 +5,10 @@ import CardBackModel, {
 } from "../models/cardBack.model";
 import { CardBack } from "../types/database.types";
 import logger from "../utils/logger";
+import {
+  meetsMinAppVersion,
+  VersionGateOptions,
+} from "../utils/catalogVersion";
 
 const ACTIVE_CACHE_KEY = "card-backs:active";
 const ACTIVE_CACHE_TTL_SECONDS = 60 * 30;
@@ -13,12 +17,23 @@ const ACTIVE_CACHE_TTL_SECONDS = 60 * 30;
 import { redisCache } from "./redis.cache.service";
 
 const CardBackService = {
-  async getActiveCatalog(): Promise<CardBack[]> {
-    const cached = await redisCache.get<CardBack[]>(ACTIVE_CACHE_KEY);
-    if (cached) return cached;
-    const backs = await CardBackModel.listActive();
-    await redisCache.set(ACTIVE_CACHE_KEY, backs, ACTIVE_CACHE_TTL_SECONDS);
-    return backs;
+  /**
+   * Active card-back catalog gated by the requesting client's app version. The
+   * cache holds the full active list (version-agnostic); min_app_version
+   * filtering is applied per-request after the cache read so one client's
+   * version never poisons the shared cache.
+   */
+  async getActiveCatalog(
+    versionOptions: VersionGateOptions = {}
+  ): Promise<CardBack[]> {
+    let backs = await redisCache.get<CardBack[]>(ACTIVE_CACHE_KEY);
+    if (!backs) {
+      backs = await CardBackModel.listActive();
+      await redisCache.set(ACTIVE_CACHE_KEY, backs, ACTIVE_CACHE_TTL_SECONDS);
+    }
+    return backs.filter((b) =>
+      meetsMinAppVersion(b.min_app_version, versionOptions)
+    );
   },
 
   async getFullCatalog(): Promise<CardBack[]> {

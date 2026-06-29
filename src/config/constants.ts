@@ -40,6 +40,10 @@ export const RARITY_MULTIPLIERS = {
   "legendary+++": 6,
 } as const;
 
+// Season rewards: minimum souls a player must accrue (within their chosen
+// mythology) to be eligible for end-of-season reward tiers.
+export const MIN_SOULS_FOR_REWARDS = 1000;
+
 // AI Configuration
 export const AI_CONFIG = {
   PLAYER_ID: "00000000-0000-0000-0000-000000000000",

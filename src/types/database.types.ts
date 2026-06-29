@@ -95,6 +95,8 @@ export interface Character {
   sound_effect?: string | null;
   /** When this character becomes visible in the public catalog. */
   released_at?: Date;
+  /** Minimum client app version required to be served this character (null = all). */
+  min_app_version?: string | null;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -191,6 +193,12 @@ export interface CardBorder {
   character_id?: string | null;
   set_id?: string | null;
   is_active: boolean;
+  min_app_version?: string | null;
+  /**
+   * Maximum number of a user's cards that may have this border equipped at once.
+   * NULL means unlimited. Semantics are "in use" — unequipping frees a slot.
+   */
+  max_equipped?: number | null;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -222,6 +230,7 @@ export interface CardBack {
   image_url: string;
   animation_key?: string | null;
   is_active: boolean;
+  min_app_version?: string | null;
   created_at?: Date;
   updated_at?: Date;
 }

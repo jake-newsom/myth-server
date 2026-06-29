@@ -37,9 +37,43 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const readline = require("readline");
+const { spawnSync } = require("child_process");
 const { Pool } = require("pg");
 
 const newUuid = () => crypto.randomUUID();
+
+// ---------------------------------------------------------------------------
+// Clipboard (macOS pbcopy/pbpaste). Falls back to files elsewhere / on error.
+// ---------------------------------------------------------------------------
+function clipboardCopy(text) {
+  try {
+    const r = spawnSync("pbcopy", { input: text });
+    return r.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+function clipboardPaste() {
+  try {
+    const r = spawnSync("pbpaste", { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    if (r.status === 0) return r.stdout;
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
+function waitForEnter(promptText) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(promptText, () => {
+      rl.close();
+      resolve();
+    });
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Constants — kept in sync with towerGeneration.service.ts
@@ -49,7 +83,10 @@ const CARDS_PER_DECK = 20;
 const AI_MAX_LEGENDARY_CARDS = 4;
 const AI_MAX_SAME_NAME_CARDS = 4;
 const AI_POWERUPS_PER_LEVEL = 3;
-const DEFAULT_BATCH = 5;
+const DEFAULT_BATCH = 25;
+
+// When set, the sql step writes output even if some floors are missing/short.
+const ALLOW_PARTIAL = process.argv.includes("--allow-partial");
 
 const MILESTONE_INTERVAL = 100;
 const MILESTONE_SPIKE = 1.3;
@@ -195,6 +232,34 @@ async function fetchReferenceDeck(pool, referenceFloor) {
 }
 
 // ---------------------------------------------------------------------------
+// Short codes — Claude returns a code per card instead of re-stating its name
+// and base power (the script looks those up). Codes are deterministic and
+// unique so a typo can't silently map to a different card.
+//   <up-to-5 alnum from name><rarity initial>[-N on collision]
+//   e.g. "Zeus" legendary -> "zeusL"; "Anubis" epic -> "anubiE"
+// ---------------------------------------------------------------------------
+function rarityInitial(rarity) {
+  const base = String(rarity).replace(/\++$/, "").toLowerCase();
+  return (base[0] || "x").toUpperCase();
+}
+
+/** Mutates cardPool: assigns a unique `.code` to each card. Returns codeMap. */
+function assignCardCodes(cardPool) {
+  const used = new Map(); // base code -> count
+  const codeMap = new Map(); // code -> card
+  for (const c of cardPool) {
+    const slug = c.name.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "card";
+    let code = `${slug}${rarityInitial(c.rarity)}`;
+    const n = used.get(code) || 0;
+    used.set(code, n + 1);
+    if (n > 0) code = `${code}-${n + 1}`; // disambiguate collisions
+    c.code = code;
+    codeMap.set(code, c);
+  }
+  return codeMap;
+}
+
+// ---------------------------------------------------------------------------
 // Prompt building — mirrors buildGeminiPrompt
 // ---------------------------------------------------------------------------
 function buildPrompt(cardPool, referenceDeck, startFloor, count) {
@@ -219,7 +284,8 @@ function buildPrompt(cardPool, referenceDeck, startFloor, count) {
         .map((c) => {
           const p = `[${c.base_power.top}/${c.base_power.right}/${c.base_power.bottom}/${c.base_power.left}]`;
           const ab = c.ability ? ` - ${c.ability.name}: ${c.ability.description}` : "";
-          return `  - ${c.name} ${p}${ab}`;
+          // Lead with the CODE — that's what the reply uses.
+          return `  ${c.code}  ${c.name} ${p}${ab}`;
         })
         .join("\n");
       return `${rarity.toUpperCase()}:\n${lines}`;
@@ -253,7 +319,8 @@ ${referenceDeck.cards
 
   return `You are a game designer for a card battle game. Generate ${count} AI opponent decks for tower floors ${startFloor} to ${startFloor + count - 1}.
 
-AVAILABLE CARDS:
+AVAILABLE CARDS (format: CODE  Name [top/right/bottom/left] - Ability):
+Use the CODE (first token on each line) to refer to a card in your reply.
 ${cardListText}
 
 ${referenceBlock}
@@ -283,19 +350,20 @@ DECK DESIGN TIPS:
 - Consider card abilities when choosing levels
 - Give each floor a creative, evocative name (3-6 words), never "Floor X"
 
-OUTPUT FORMAT — output ONLY a JSON array, no other text:
+OUTPUT FORMAT — output ONLY a JSON array, no other text.
+Refer to each card by its CODE. Do NOT include base power (the tool fills it in).
 [
   {
     "floor_number": ${startFloor},
     "floor_name": "The Frozen Wastes",
     "deck_name": "Frost Giants Deck",
     "cards": [
-      { "card_name": "Exact Card Name", "level": 5, "power_ups": {"top": 2, "right": 4, "bottom": 0, "left": 0} }
+      { "code": "zeusL", "level": 5, "power_ups": {"top": 2, "right": 4, "bottom": 0, "left": 0} }
     ]
   }
 ]
 
-Use EXACT card names from the list above. Output exactly ${count} floors (${startFloor}..${startFloor + count - 1}).`;
+Use ONLY codes from the list above. Output exactly ${count} floors (${startFloor}..${startFloor + count - 1}).`;
 }
 
 // ---------------------------------------------------------------------------
@@ -400,23 +468,29 @@ function buildFloorSql(floor, preparedCards, uuidFn) {
 // ---------------------------------------------------------------------------
 // Response validation / normalization
 // ---------------------------------------------------------------------------
-function prepareFloor(floor, cardByName, deepFloors) {
+function prepareFloor(floor, cardByName, codeMap, deepFloors) {
   const warnings = [];
   const prepared = [];
   const usedNames = new Map();
 
   for (const card of floor.cards || []) {
-    const key = (card.card_name || card.name || "").toLowerCase();
-    const match = cardByName.get(key);
+    // Primary: match by code. Fallback: name (resilience if a reply still
+    // uses names). An unrecognized code/name is a warning + skip, which the
+    // completeness gate then turns into a hard failure for the batch.
+    const rawCode = (card.code || "").trim();
+    const rawName = (card.card_name || card.name || "").trim();
+    let match = rawCode ? codeMap.get(rawCode) : undefined;
+    if (!match && rawName) match = cardByName.get(rawName.toLowerCase());
     if (!match) {
-      warnings.push(`card not found: "${card.card_name || card.name}" (skipped)`);
+      warnings.push(`unknown card ref: "${rawCode || rawName}" (skipped)`);
       continue;
     }
     if (deepFloors && /^(common|uncommon)/i.test(match.rarity)) {
       warnings.push(`common/uncommon "${match.name}" on deep floor (skipped)`);
       continue;
     }
-    const n = usedNames.get(key) || 0;
+    const nameKey = match.name.toLowerCase();
+    const n = usedNames.get(nameKey) || 0;
     if (n >= AI_MAX_SAME_NAME_CARDS) {
       warnings.push(`>${AI_MAX_SAME_NAME_CARDS} copies of "${match.name}" (extra skipped)`);
       continue;
@@ -443,7 +517,7 @@ function prepareFloor(floor, cardByName, deepFloors) {
       warnings.push(`"${match.name}" lvl ${level} powerups ${total}>${maxPU}, scaled down`);
     }
 
-    usedNames.set(key, n + 1);
+    usedNames.set(nameKey, n + 1);
     prepared.push({ cardVariantId: match.card_id, level, powerUps: pu });
   }
 
@@ -453,34 +527,38 @@ function prepareFloor(floor, cardByName, deepFloors) {
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
-async function cmdPrompt(startFloor, count) {
+/**
+ * Build the prompt for a batch, write it to file, and (on macOS) copy it to
+ * the clipboard. Returns the prompt text.
+ */
+async function makeBatchPrompt(startFloor, count) {
   const pool = makePool();
   try {
     const cardPool = await fetchCardPool(pool);
-    // Reference = the floor just below this batch, if it exists.
+    assignCardCodes(cardPool); // deterministic codes used by prompt + reply
     const referenceDeck = await fetchReferenceDeck(pool, startFloor - 1);
     const prompt = buildPrompt(cardPool, referenceDeck, startFloor, count);
     fs.mkdirSync(OUT_DIR, { recursive: true });
     fs.writeFileSync(PROMPT_PATH, prompt);
-    console.log(`Wrote prompt for floors ${startFloor}-${startFloor + count - 1} -> ${PROMPT_PATH}`);
+    const copied = clipboardCopy(prompt);
+    console.log(
+      `Prompt for floors ${startFloor}-${startFloor + count - 1}: ` +
+        `${copied ? "COPIED TO CLIPBOARD" : "written to " + PROMPT_PATH}`
+    );
     console.log(`Card pool: ${cardPool.length} characters` +
       (startFloor > 50 ? " (commons/uncommons excluded from prompt)" : ""));
     if (!referenceDeck) {
       console.log(`Note: no reference deck at floor ${startFloor - 1} (ok for the first batch).`);
     }
-    console.log(`\nNext: paste ${PROMPT_PATH} into Claude, save the reply to ${RESPONSE_PATH}, then run:`);
-    console.log(`  node scripts/gen-tower-floors.js sql ${startFloor} ${count}`);
+    return prompt;
   } finally {
     await pool.end();
   }
 }
 
-async function cmdSql(startFloor, count) {
-  if (!fs.existsSync(RESPONSE_PATH)) {
-    throw new Error(`Missing ${RESPONSE_PATH}. Paste Claude's JSON reply there first.`);
-  }
-  let raw = fs.readFileSync(RESPONSE_PATH, "utf8").trim();
-  // Tolerate markdown fences / surrounding prose.
+/** Extract the JSON floor array from a raw reply (tolerates fences/prose). */
+function parseFloorsFromReply(raw) {
+  raw = (raw || "").trim();
   const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence) raw = fence[1].trim();
   const arr = raw.match(/\[[\s\S]*\]/);
@@ -490,94 +568,213 @@ async function cmdSql(startFloor, count) {
   try {
     floors = JSON.parse(raw);
   } catch (e) {
-    throw new Error(`response.json is not valid JSON: ${e.message}`);
+    throw new Error(`reply is not valid JSON: ${e.message}`);
   }
-  if (!Array.isArray(floors)) throw new Error("Response is not a JSON array");
+  if (!Array.isArray(floors)) throw new Error("reply is not a JSON array");
+  return floors;
+}
 
+async function cmdPrompt(startFloor, count) {
+  await makeBatchPrompt(startFloor, count);
+  console.log(`\nNext: paste into Claude, save the reply to ${RESPONSE_PATH}, then run:`);
+  console.log(`  node scripts/gen-tower-floors.js sql ${startFloor} ${count}`);
+}
+
+/**
+ * Validate a parsed floors array against the DB card pool and (if complete)
+ * write floors.sql. Returns { ok, written, missing }.
+ * - ok: true if every batch floor produced a full 20-card deck (or partial allowed)
+ * - written: whether floors.sql was written
+ */
+async function floorsToSql(floors, startFloor, count, pool) {
+  const cardPool = await fetchCardPool(pool);
+  const codeMap = assignCardCodes(cardPool); // SAME deterministic codes as the prompt
+  const cardByName = new Map(cardPool.map((c) => [c.name.toLowerCase(), c]));
+
+  const sqlChunks = [
+    `-- Tower floors ${startFloor}-${startFloor + count - 1}`,
+    `-- Generated ${new Date().toISOString()}`,
+    `-- Idempotent: existing floors are skipped. Run inside a transaction.`,
+    `BEGIN;`,
+    ``,
+  ];
+
+  let emitted = 0;
+  const goodFloors = new Set();
+  const badFloors = [];
+  for (const floor of floors) {
+    const fn = floor.floor_number;
+    if (typeof fn !== "number") {
+      console.warn(`Skipping a floor with no numeric floor_number`);
+      continue;
+    }
+    if (fn < startFloor || fn >= startFloor + count) {
+      console.warn(`Floor ${fn} is outside batch ${startFloor}-${startFloor + count - 1}, skipping`);
+      continue;
+    }
+    const deepFloors = fn > 50;
+    const { prepared, warnings } = prepareFloor(floor, cardByName, codeMap, deepFloors);
+
+    console.log(`\nFloor ${fn} (${floor.floor_name || "?"}): ${prepared.length} cards`);
+    warnings.forEach((w) => console.log(`  ⚠️  ${w}`));
+    if (prepared.length !== CARDS_PER_DECK) {
+      console.log(`  ⚠️  expected ${CARDS_PER_DECK} cards, got ${prepared.length}`);
+      badFloors.push({ fn, reason: `${prepared.length}/${CARDS_PER_DECK} cards` });
+    }
+    if (prepared.length === 0) {
+      console.log(`  ✗ no valid cards, floor skipped in SQL`);
+      continue;
+    }
+    if (prepared.length === CARDS_PER_DECK) goodFloors.add(fn);
+
+    const totalLevel = prepared.reduce((s, c) => s + c.level, 0);
+    const avgLevel = Math.round((totalLevel / prepared.length) * 10) / 10;
+    sqlChunks.push(
+      buildFloorSql(
+        {
+          floor_number: fn,
+          floor_name: floor.floor_name || `Floor ${fn}`,
+          deck_name: floor.deck_name || `${floor.floor_name || "Floor " + fn} Deck`,
+          average_card_level: avgLevel,
+        },
+        prepared,
+        newUuid
+      )
+    );
+    emitted++;
+  }
+
+  // Completeness gate (see --allow-partial).
+  const expected = [];
+  for (let f = startFloor; f < startFloor + count; f++) expected.push(f);
+  const missing = expected.filter((f) => !goodFloors.has(f));
+  const incomplete = missing.length > 0 || badFloors.length > 0;
+
+  if (incomplete && !ALLOW_PARTIAL) {
+    console.error(`\n✗ Batch incomplete — SQL NOT written.`);
+    if (missing.length > 0) console.error(`  Missing/short floors: ${missing.join(", ")}`);
+    console.error(
+      `  Likely a truncated or malformed reply. Re-copy Claude's full reply ` +
+        `and retry. To write anyway: add --allow-partial`
+    );
+    return { ok: false, written: false, missing };
+  }
+
+  sqlChunks.push(`COMMIT;`);
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  fs.writeFileSync(SQL_PATH, sqlChunks.join("\n"));
+  console.log(`\nWrote ${emitted} floor(s) of SQL -> ${SQL_PATH}`);
+  if (incomplete) {
+    console.log(`⚠️  --allow-partial: wrote anyway despite incomplete floors (${missing.join(", ") || "short decks"})`);
+  }
+  return { ok: true, written: true, missing };
+}
+
+async function cmdSql(startFloor, count) {
+  if (!fs.existsSync(RESPONSE_PATH)) {
+    throw new Error(`Missing ${RESPONSE_PATH}. Paste Claude's JSON reply there first.`);
+  }
+  const floors = parseFloorsFromReply(fs.readFileSync(RESPONSE_PATH, "utf8"));
   const pool = makePool();
   try {
-    const cardPool = await fetchCardPool(pool);
-    const cardByName = new Map(cardPool.map((c) => [c.name.toLowerCase(), c]));
-
-    const sqlChunks = [
-      `-- Tower floors ${startFloor}-${startFloor + count - 1}`,
-      `-- Generated ${new Date().toISOString()}`,
-      `-- Idempotent: existing floors are skipped. Run inside a transaction.`,
-      `BEGIN;`,
-      ``,
-    ];
-
-    let emitted = 0;
-    for (const floor of floors) {
-      const fn = floor.floor_number;
-      if (typeof fn !== "number") {
-        console.warn(`Skipping a floor with no numeric floor_number`);
-        continue;
-      }
-      if (fn < startFloor || fn >= startFloor + count) {
-        console.warn(`Floor ${fn} is outside batch ${startFloor}-${startFloor + count - 1}, skipping`);
-        continue;
-      }
-      const deepFloors = fn > 50;
-      const { prepared, warnings } = prepareFloor(floor, cardByName, deepFloors);
-
-      console.log(`\nFloor ${fn} (${floor.floor_name || "?"}): ${prepared.length} cards`);
-      warnings.forEach((w) => console.log(`  ⚠️  ${w}`));
-      if (prepared.length !== CARDS_PER_DECK) {
-        console.log(`  ⚠️  expected ${CARDS_PER_DECK} cards, got ${prepared.length} — fix response.json and re-run, or accept.`);
-      }
-      if (prepared.length === 0) {
-        console.log(`  ✗ no valid cards, floor skipped in SQL`);
-        continue;
-      }
-
-      const totalLevel = prepared.reduce((s, c) => s + c.level, 0);
-      const avgLevel = Math.round((totalLevel / prepared.length) * 10) / 10;
-      sqlChunks.push(
-        buildFloorSql(
-          {
-            floor_number: fn,
-            floor_name: floor.floor_name || `Floor ${fn}`,
-            deck_name: floor.deck_name || `${floor.floor_name || "Floor " + fn} Deck`,
-            average_card_level: avgLevel,
-          },
-          prepared,
-          newUuid
-        )
-      );
-      emitted++;
+    const res = await floorsToSql(floors, startFloor, count, pool);
+    if (!res.ok) process.exitCode = 1;
+    else {
+      console.log(`Review it, then run it against your DB. Next batch:`);
+      console.log(`  node scripts/gen-tower-floors.js prompt ${startFloor + count} ${count}`);
     }
-
-    sqlChunks.push(`COMMIT;`);
-    fs.mkdirSync(OUT_DIR, { recursive: true });
-    fs.writeFileSync(SQL_PATH, sqlChunks.join("\n"));
-    console.log(`\nWrote ${emitted} floor(s) of SQL -> ${SQL_PATH}`);
-    console.log(`Review it, then run it against your DB. Next batch:`);
-    console.log(`  node scripts/gen-tower-floors.js prompt ${startFloor + count} ${count}`);
   } finally {
     await pool.end();
   }
 }
 
+/**
+ * Interactive single-batch loop: copy prompt to clipboard, wait for the user
+ * to paste Claude's reply back (read from clipboard via pbpaste), validate,
+ * and write floors.sql. No file juggling.
+ */
+async function cmdRun(startFloor, count) {
+  await makeBatchPrompt(startFloor, count);
+
+  console.log(`\n→ The prompt is on your clipboard. Paste it into Claude.`);
+  console.log(`→ When Claude replies, SELECT ALL of its reply and COPY it (Cmd+C).`);
+
+  // Loop so a bad/short paste can be retried without restarting the batch.
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    await waitForEnter(`\nPress ENTER once Claude's reply is copied (or Ctrl+C to abort)… `);
+
+    const clip = clipboardPaste();
+    if (clip == null) {
+      console.error(`Could not read clipboard (pbpaste unavailable). ` +
+        `Save the reply to ${RESPONSE_PATH} and run: sql ${startFloor} ${count}`);
+      process.exitCode = 1;
+      return;
+    }
+    // Stash what we read so a failed batch is inspectable / re-runnable.
+    fs.mkdirSync(OUT_DIR, { recursive: true });
+    fs.writeFileSync(RESPONSE_PATH, clip);
+
+    let floors;
+    try {
+      floors = parseFloorsFromReply(clip);
+    } catch (e) {
+      console.error(`✗ ${e.message}`);
+      console.error(`  Make sure you copied Claude's FULL reply, then press ENTER to retry.`);
+      continue;
+    }
+
+    const pool = makePool();
+    let res;
+    try {
+      res = await floorsToSql(floors, startFloor, count, pool);
+    } finally {
+      await pool.end();
+    }
+
+    if (res.ok) {
+      // Copy a single chained command: apply THIS batch's SQL, then start the
+      // next batch only if the apply succeeded (&&). One paste advances you.
+      const applyCmd = `psql "$DATABASE_URL" -f ${SQL_PATH}`;
+      const nextCmd = `node scripts/gen-tower-floors.js run ${startFloor + count} ${count}`;
+      const chained = `${applyCmd} && ${nextCmd}`;
+      const copied = clipboardCopy(chained);
+
+      console.log(`\n✓ Batch ${startFloor}-${startFloor + count - 1} ready.`);
+      console.log(
+        copied
+          ? `→ Next command COPIED TO CLIPBOARD (applies this batch, then starts the next):\n    ${chained}`
+          : `Run it:   ${applyCmd}\nNext:     ${nextCmd}`
+      );
+      return;
+    }
+    console.error(`  Re-copy Claude's full reply and press ENTER to retry, or Ctrl+C to abort.`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 async function main() {
-  const [cmd, startArg, countArg] = process.argv.slice(2);
+  // Positional args only (flags like --allow-partial are handled separately).
+  const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+  const [cmd, startArg, countArg] = positional;
   const startFloor = parseInt(startArg, 10);
   const count = countArg ? parseInt(countArg, 10) : DEFAULT_BATCH;
 
-  if (!cmd || !["prompt", "sql"].includes(cmd) || !Number.isInteger(startFloor)) {
+  if (!cmd || !["prompt", "sql", "run"].includes(cmd) || !Number.isInteger(startFloor)) {
     console.log(`Usage:
-  node scripts/gen-tower-floors.js prompt <startFloor> [count=${DEFAULT_BATCH}]
-  node scripts/gen-tower-floors.js sql    <startFloor> [count=${DEFAULT_BATCH}]
+  node scripts/gen-tower-floors.js run    <startFloor> [count=${DEFAULT_BATCH}]   # interactive: clipboard in/out
+  node scripts/gen-tower-floors.js prompt <startFloor> [count=${DEFAULT_BATCH}]   # write+copy prompt only
+  node scripts/gen-tower-floors.js sql    <startFloor> [count=${DEFAULT_BATCH}]   # convert response.json -> SQL
 
 Files (in scripts/tower-out/):
-  prompt.txt    <- generated; paste into Claude
-  response.json <- you save Claude's JSON reply here
+  prompt.txt    <- generated prompt (also copied to clipboard)
+  response.json <- Claude's reply (auto-saved in run mode)
   floors.sql    <- generated; you run it against the DB`);
     process.exit(1);
   }
 
   if (cmd === "prompt") await cmdPrompt(startFloor, count);
+  else if (cmd === "run") await cmdRun(startFloor, count);
   else await cmdSql(startFloor, count);
 }
 

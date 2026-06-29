@@ -28,6 +28,10 @@ import {
   matchmakingQueue,
 } from "../api/controllers/matchmaking.controller";
 import { sanitizeGameStateForPlayer } from "../utils/sanitize";
+import {
+  pacePowerEvents,
+  sumAnimationDelay,
+} from "../game-engine/game-events";
 import logger from "../utils/logger";
 
 // Users with an active /game namespace socket connection.
@@ -200,6 +204,10 @@ export function setupGameNamespace(io: Server): void {
           currentState.winner ?? null
         );
 
+        // Merge/space consecutive power-change floaters before broadcasting, and
+        // derive the turn timer's animation delay from the (now paced) events.
+        events = pacePowerEvents(events);
+
         await emitGameStateSanitized(gameNs, roomName, currentState, {
           events,
           aiMove: aiMoveUsed,
@@ -212,7 +220,11 @@ export function setupGameNamespace(io: Server): void {
             clearActiveMatch(meta.playerIds[0]);
             clearActiveMatch(meta.playerIds[1]);
           } else {
-            meta.turnManager.startTurn(currentState.current_player_id);
+            meta.turnManager.startTurn(
+              currentState.current_player_id,
+              false,
+              sumAnimationDelay(events)
+            );
           }
         }
       } catch (err) {
@@ -556,7 +568,7 @@ export function setupGameNamespace(io: Server): void {
     socket.on(
       GameNamespaceEvent.CLIENT_ACTION,
       async (actionPayload: GameActionPayload) => {
-        const { gameId, actionType, user_card_instance_id, position } =
+        const { gameId, actionType, user_card_instance_id, position, targetPosition } =
           actionPayload;
 
         if (!gameId || !actionType) {
@@ -663,7 +675,8 @@ export function setupGameNamespace(io: Server): void {
                 nextState,
                 userId,
                 user_card_instance_id,
-                position
+                position,
+                targetPosition
               );
               nextState = result.state;
               events = result.events;
@@ -720,6 +733,10 @@ export function setupGameNamespace(io: Server): void {
             console.error("[namespace.game] DB update error", err);
           }
 
+          // Merge/space consecutive power-change floaters before broadcasting so
+          // the turn timer (below) can derive its delay from the paced events.
+          events = pacePowerEvents(events);
+
           // Broadcast events & new state to both players
           if (actionType !== "surrender") {
             await emitGameStateSanitized(gameNs, roomName, nextState, {
@@ -757,7 +774,11 @@ export function setupGameNamespace(io: Server): void {
               clearActiveMatch(roomMeta.playerIds[0]);
               clearActiveMatch(roomMeta.playerIds[1]);
             } else {
-              roomMeta.turnManager.startTurn(nextState.current_player_id);
+              roomMeta.turnManager.startTurn(
+                nextState.current_player_id,
+                false,
+                sumAnimationDelay(events)
+              );
             }
           }
 

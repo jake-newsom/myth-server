@@ -146,8 +146,11 @@ const CardController = {
 
       // Cache the result if applicable
       if (shouldCache) {
-        // Cache for 1 hour (3600 seconds)
-        await redisCache.set(cacheKey, result, 3600);
+        // The global card catalog only changes on a card release, so cache it
+        // for 24h as a safety net. It is cleared instantly by the admin
+        // endpoint (POST /admin/cache/cards/clear -> invalidateGlobalCards)
+        // when new cards are released, and is naturally empty after a restart.
+        await redisCache.set(cacheKey, result, 86400);
       }
 
       // Add caching headers when returning all cards (limit=0)

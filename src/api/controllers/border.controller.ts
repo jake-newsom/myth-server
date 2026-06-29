@@ -2,6 +2,7 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../../types";
 import BorderService from "../../services/border.service";
 import logger from "../../utils/logger";
+import { catalogOptionsFromRequest } from "../../utils/catalogRelease";
 
 /**
  * Border Controller
@@ -18,9 +19,11 @@ const BorderController = {
    *
    * Returns the active border catalog. Cached at the service layer.
    */
-  async listActiveBorders(_req: AuthenticatedRequest, res: Response) {
+  async listActiveBorders(req: AuthenticatedRequest, res: Response) {
     try {
-      const borders = await BorderService.getActiveCatalog();
+      const borders = await BorderService.getActiveCatalog(
+        catalogOptionsFromRequest(req)
+      );
       return res.status(200).json({ data: borders });
     } catch (error) {
       logger.error(

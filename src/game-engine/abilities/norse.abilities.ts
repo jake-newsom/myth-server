@@ -244,7 +244,7 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Thunderous Push: Strike all enemies with lightning granting -2 to their top power
+  // Thunderous Push: Strike all enemies with lightning granting -2 to their strongest side
   thor_push: (context) => {
     const {
       triggerCard,
@@ -267,11 +267,12 @@ export const norseAbilities: AbilityMap = {
         board,
       );
       if (enemyPosition) {
+        const strongestSide = getCardHighestPower(enemy).key;
         gameEvents.push(
           addTempDebuff(
             enemy,
             1000,
-            { top: -2 },
+            { [strongestSide]: -2 },
             {
               name: "Thunderous Push",
               animation: "lightning-6",
@@ -425,7 +426,7 @@ export const norseAbilities: AbilityMap = {
       );
       if (triggerCardPosition) {
         gameEvents.push(
-          buff(triggerCard, 3, {
+          buff(triggerCard, 5, {
             name: "The Iron Shoe",
             animation: "triangle-shield",
             position: triggerCardPosition,
@@ -558,7 +559,7 @@ export const norseAbilities: AbilityMap = {
       if (!enemyPosition) continue;
 
       gameEvents.push(
-        addTempDebuff(enemy, 3, -3, {
+        addTempDebuff(enemy, 3, -2, {
           name: "Winter's Step",
           animation: "winter-grasp",
           position: enemyPosition,
@@ -715,7 +716,7 @@ export const norseAbilities: AbilityMap = {
         const destroyedEvent = destroyCardAtPosition(
           strongestEnemyPosition,
           board,
-          "flames-pillar",
+          "flame-pillar",
           triggerCard.owner,
           triggerCard,
         );
@@ -951,7 +952,8 @@ export const norseAbilities: AbilityMap = {
     return [];
   },
 
-  //Equalize all cards highest power
+  // Binding Justice: At the start of your turn, grant -2 to the strongest enemy
+  // and +2 to the weakest ally on the board.
   tyr_binding_justice: (context) => {
     const {
       triggerCard,
@@ -959,55 +961,59 @@ export const norseAbilities: AbilityMap = {
     } = context;
     const gameEvents: BaseGameEvent[] = [];
 
-    const allCards = getCardsByCondition(
+    const enemies = getCardsByCondition(
       board,
-      (card) =>
-        card.user_card_instance_id !== triggerCard.user_card_instance_id,
+      (card) => card.owner !== triggerCard.owner,
     );
-    const cardsHighestPowers = allCards.map(
-      (card) => getCardHighestPower(card).value,
-    );
-    const meanHighestPower = Math.floor(
-      cardsHighestPowers.reduce((a, b) => a + b, 0) / cardsHighestPowers.length,
-    );
-
-    for (const card of allCards) {
-      const highestPower = getCardHighestPower(card);
-      const diff = meanHighestPower - highestPower.value;
-      const cardPosition = getPositionOfCardById(
-        card.user_card_instance_id,
+    if (enemies.length > 0) {
+      const strongestEnemy = enemies.reduce((strongest, current) =>
+        getCardTotalPower(current) > getCardTotalPower(strongest)
+          ? current
+          : strongest,
+      );
+      const enemyPosition = getPositionOfCardById(
+        strongestEnemy.user_card_instance_id,
         board,
       );
-      if (!cardPosition) continue;
-
-      if (diff > 0) {
+      if (enemyPosition) {
         gameEvents.push(
-          addTempBuff(
-            card,
-            1000,
-            { [highestPower.key]: diff },
-            {
-              name: "Binding Justice",
-              animation: "triangle-shield",
-              position: cardPosition,
+          debuff(strongestEnemy, -2, {
+            name: "Binding Justice",
+            animation: "triangle-shield-down",
+            position: enemyPosition,
+            data: {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              turnNumber: context.state.turn_number,
             },
-          ),
-        );
-      } else {
-        gameEvents.push(
-          addTempDebuff(
-            card,
-            1000,
-            { [highestPower.key]: diff },
-            {
-              name: "Binding Justice",
-              animation: "triangle-shield-down",
-              position: cardPosition,
-            },
-          ),
+          }),
         );
       }
     }
+
+    const allies = getAllAlliesOnBoard(board, triggerCard.owner);
+    if (allies.length > 0) {
+      const weakestAlly = allies.reduce((weakest, current) =>
+        getCardTotalPower(current) < getCardTotalPower(weakest)
+          ? current
+          : weakest,
+      );
+      const allyPosition = getPositionOfCardById(
+        weakestAlly.user_card_instance_id,
+        board,
+      );
+      if (allyPosition) {
+        gameEvents.push(
+          buff(weakestAlly, 2, {
+            name: "Binding Justice",
+            animation: "triangle-shield",
+            position: allyPosition,
+          }),
+        );
+      }
+    }
+
     return gameEvents;
   },
 

@@ -38,7 +38,7 @@ import GameRewardsService, {
 } from "../../services/gameRewards.service";
 import TowerService from "../../services/tower.service";
 import SagaBattleService from "../../services/sagaBattle.service";
-import { BaseGameEvent } from "../../game-engine/game-events";
+import { BaseGameEvent, pacePowerEvents } from "../../game-engine/game-events";
 import { sanitizeGameStateForPlayer } from "../../utils/sanitize";
 import {
   buildTutorialGameState,
@@ -402,7 +402,8 @@ class GameController {
             currentGameState,
             userId,
             action.user_card_instance_id,
-            action.position
+            action.position,
+            action.targetPosition
           );
 
           updatedGameState = placeCardResult.state;
@@ -575,6 +576,10 @@ class GameController {
         typeof updatedGameResponse.game_state === "string"
           ? JSON.parse(updatedGameResponse.game_state)
           : updatedGameResponse.game_state;
+
+      // Merge/space consecutive power-change floaters so their floating text
+      // doesn't flood a tile in one frame (client paces by delayAfterMs).
+      events = pacePowerEvents(events);
 
       const response: any = {
         game_id: updatedGameResponse.game_id,
@@ -918,6 +923,10 @@ class GameController {
         typeof updatedGameResponse.game_state === "string"
           ? JSON.parse(updatedGameResponse.game_state)
           : updatedGameResponse.game_state;
+
+      // Merge/space consecutive power-change floaters so their floating text
+      // doesn't flood a tile in one frame (client paces by delayAfterMs).
+      events = pacePowerEvents(events);
 
       const response: any = {
         game_id: updatedGameResponse.game_id,

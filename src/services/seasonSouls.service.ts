@@ -1,10 +1,57 @@
 import SeasonSoulsModel, { SeasonOverallLeaderboardEntry } from "../models/seasonSouls.model";
+import SeasonRewardTierModel, {
+  SeasonRewardBundle,
+  SeasonRewardTierRow,
+  ResolvedRewardAssets,
+  ResolvedRewardCard,
+  ResolvedRewardBorder,
+  ResolvedRewardCardBack,
+} from "../models/seasonRewardTier.model";
 import SetModel from "../models/set.model";
 import SeasonService from "./season.service";
+import { MIN_SOULS_FOR_REWARDS } from "../config/constants";
 import logger from "../utils/logger";
 
-const MIN_SOULS_FOR_REWARDS = 1000;
 const SOUL_FLUSH_INTERVAL_MS = 10000;
+
+interface SeasonRewardTierView {
+  tier_key: string;
+  label: string;
+  threshold_kind: "exact_rank" | "percentile";
+  threshold_value: number;
+  bundle: SeasonRewardBundle;
+  /** Display data for the bundle's asset IDs (empty arrays until ids assigned). */
+  resolved: ResolvedRewardAssets;
+}
+
+function toTierView(
+  t: SeasonRewardTierRow,
+  lookups: {
+    cards: Map<string, ResolvedRewardCard>;
+    borders: Map<string, ResolvedRewardBorder>;
+    cardBacks: Map<string, ResolvedRewardCardBack>;
+  }
+): SeasonRewardTierView {
+  const b = t.bundle_json;
+  return {
+    tier_key: t.tier_key,
+    label: t.label,
+    threshold_kind: t.threshold_kind,
+    threshold_value: t.threshold_value,
+    bundle: b,
+    resolved: {
+      cards: b.card_variant_ids
+        .map((id) => lookups.cards.get(id))
+        .filter((x): x is ResolvedRewardCard => !!x),
+      borders: b.border_ids
+        .map((id) => lookups.borders.get(id))
+        .filter((x): x is ResolvedRewardBorder => !!x),
+      card_backs: b.card_back_ids
+        .map((id) => lookups.cardBacks.get(id))
+        .filter((x): x is ResolvedRewardCardBack => !!x),
+    },
+  };
+}
 
 class SeasonSoulsServiceClass {
   private pendingByUser = new Map<string, number>();
@@ -241,6 +288,44 @@ class SeasonSoulsServiceClass {
     };
   }
 
+  /**
+   * Reward tiers for the active season on both axes (season overrides, else
+   * template), in prestige order. The `overall` axis is evaluated against a
+   * player's rank across all players; the `pantheon` axis against their chosen
+   * pantheon's placement in the faction race. The client highlights the
+   * matching tier in each section.
+   */
+  async getRewardTiers(): Promise<{
+    off_season: boolean;
+    season_id: string | null;
+    overall: SeasonRewardTierView[];
+    pantheon: SeasonRewardTierView[];
+  }> {
+    const activeSeason = await SeasonService.getCurrentActiveSeason();
+    if (!activeSeason) {
+      return { off_season: true, season_id: null, overall: [], pantheon: [] };
+    }
+
+    const [overallRows, pantheonRows] = await Promise.all([
+      SeasonRewardTierModel.getTiersForSeason(activeSeason.season_id, "overall"),
+      SeasonRewardTierModel.getTiersForSeason(activeSeason.season_id, "pantheon"),
+    ]);
+
+    // Resolve all referenced asset ids (cards/borders/backs) to display data
+    // so the modal can render real card/border/back previews.
+    const lookups = await SeasonRewardTierModel.resolveAssetsForBundles([
+      ...overallRows.map((t) => t.bundle_json),
+      ...pantheonRows.map((t) => t.bundle_json),
+    ]);
+
+    return {
+      off_season: false,
+      season_id: activeSeason.season_id,
+      overall: overallRows.map((t) => toTierView(t, lookups)),
+      pantheon: pantheonRows.map((t) => toTierView(t, lookups)),
+    };
+  }
+
   async getMySeasonProgress(userId: string): Promise<{
     off_season: boolean;
     season_id: string | null;
@@ -251,6 +336,10 @@ class SeasonSoulsServiceClass {
     rank_percentile: number | null;
     eligible_for_rewards: boolean;
     minimum_souls_for_rewards: number;
+    // For the rewards modal's two axes:
+    overall_rank: number | null; // personal rank across all players
+    overall_total_ranked: number;
+    pantheon_placement: number | null; // chosen pantheon's faction-race finish
   }> {
     const activeSeason = await SeasonService.getCurrentActiveSeason();
     if (!activeSeason) {
@@ -264,6 +353,9 @@ class SeasonSoulsServiceClass {
         rank_percentile: null,
         eligible_for_rewards: false,
         minimum_souls_for_rewards: MIN_SOULS_FOR_REWARDS,
+        overall_rank: null,
+        overall_total_ranked: 0,
+        pantheon_placement: null,
       };
     }
 
@@ -281,6 +373,21 @@ class SeasonSoulsServiceClass {
       );
     }
 
+    // Overall personal rank + the player's pantheon placement (for reward axes).
+    const overall = await SeasonSoulsModel.getUserOverallRank(
+      userId,
+      activeSeason.season_id
+    );
+    let pantheonPlacement: number | null = null;
+    if (stats.choice?.set_id) {
+      const standings = await SeasonSoulsModel.getSeasonStandings(
+        activeSeason.season_id
+      );
+      pantheonPlacement =
+        standings.find((s) => s.set_id === stats.choice?.set_id)?.placement ??
+        null;
+    }
+
     return {
       off_season: false,
       season_id: activeSeason.season_id,
@@ -291,6 +398,9 @@ class SeasonSoulsServiceClass {
       rank_percentile: rankPercentile,
       eligible_for_rewards: stats.soulsTotal >= MIN_SOULS_FOR_REWARDS,
       minimum_souls_for_rewards: MIN_SOULS_FOR_REWARDS,
+      overall_rank: overall.rank,
+      overall_total_ranked: overall.total_ranked,
+      pantheon_placement: pantheonPlacement,
     };
   }
 

@@ -274,7 +274,10 @@ export class GameLogic {
     currentGameState: GameState,
     playerId: string,
     userCardInstanceId: string, // Now expects the ID of the UserCardInstance
-    position: BoardPosition
+    position: BoardPosition,
+    // Player-chosen target for targeted OnPlace abilities. Undefined for
+    // AI/timeout plays — those abilities self-select a target.
+    targetPosition?: BoardPosition
   ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
     const events: BaseGameEvent[] = [];
 
@@ -404,6 +407,7 @@ export class GameLogic {
           triggerCard: newBoardCell.card!,
           triggerMoment: TriggerMoment.OnPlace,
           position,
+          targetPosition,
         })
       );
 
@@ -562,27 +566,19 @@ export class GameLogic {
     const drawnInstanceId = player.deck.shift()!;
     player.hand.push(drawnInstanceId);
 
+    // Hydrate the drawn card if it isn't already in the cache. This is
+    // best-effort: a hydration failure shouldn't prevent the draw event.
     if (!newState.hydrated_card_data_cache?.[drawnInstanceId]) {
       try {
-        const cached = newState.hydrated_card_data_cache?.[drawnInstanceId];
-        const cardData =
-          cached ??
-          (
-            await this.hydrateCardInstances(
-              [drawnInstanceId],
-              newState.saga_context ? undefined : player.user_id
-            )
-          ).get(drawnInstanceId);
+        const cardData = (
+          await this.hydrateCardInstances(
+            [drawnInstanceId],
+            newState.saga_context ? undefined : player.user_id
+          )
+        ).get(drawnInstanceId);
         if (cardData && newState.hydrated_card_data_cache) {
           newState.hydrated_card_data_cache[drawnInstanceId] = cardData;
         }
-        events.push({
-          type: EVENT_TYPES.CARD_DRAWN,
-          eventId: uuidv4(),
-          timestamp: Date.now(),
-          sourcePlayerId: player.user_id,
-          cardId: drawnInstanceId,
-        } as CardEvent);
       } catch (err) {
         console.error(
           `[DEBUG] Error during drawn card hydration: ${err instanceof Error ? err.message : String(err)
@@ -591,6 +587,18 @@ export class GameLogic {
         // Continue even if this fails, it's not critical
       }
     }
+
+    // Always emit CARD_DRAWN, regardless of whether hydration was needed.
+    // Previously this lived inside the hydration block, so a draw of an
+    // already-cached card silently produced no event (and thus no client
+    // draw sound / animation).
+    events.push({
+      type: EVENT_TYPES.CARD_DRAWN,
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      sourcePlayerId: player.user_id,
+      cardId: drawnInstanceId,
+    } as CardEvent);
 
     return { state: newState, events: batchEvents(events, 50) };
   }

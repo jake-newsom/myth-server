@@ -386,6 +386,91 @@ const SeasonSoulsModel = {
     const { rows } = await db.query(query, [userId, seasonId]);
     return (rows[0] as SeasonRewardStatusRow) || null;
   },
+
+  /**
+   * A single user's OVERALL rank across all players for a season (one
+   * contribution row per user). Returns null rank when the user has no
+   * contribution. AI sentinel excluded from the ranking pool.
+   */
+  async getUserOverallRank(
+    userId: string,
+    seasonId: string
+  ): Promise<{ rank: number | null; total_ranked: number }> {
+    const query = `
+      WITH ranked AS (
+        SELECT
+          c.user_id,
+          ROW_NUMBER() OVER (ORDER BY c.souls_total DESC, c.updated_at ASC) AS rank,
+          COUNT(*) OVER () AS total_ranked
+        FROM season_soul_contributions c
+        WHERE c.season_id = $1
+          AND c.user_id != '00000000-0000-0000-0000-000000000000'
+      )
+      SELECT rank, total_ranked FROM ranked WHERE user_id = $2 LIMIT 1;
+    `;
+    const { rows } = await db.query(query, [seasonId, userId]);
+    const row = rows[0];
+    if (!row) {
+      // No contribution row for this user — derive total from the pool.
+      const { rows: countRows } = await db.query(
+        `SELECT COUNT(*)::int AS total_ranked
+         FROM season_soul_contributions
+         WHERE season_id = $1
+           AND user_id != '00000000-0000-0000-0000-000000000000'`,
+        [seasonId]
+      );
+      return { rank: null, total_ranked: Number(countRows[0]?.total_ranked || 0) };
+    }
+    return {
+      rank: row.rank ? Number(row.rank) : null,
+      total_ranked: Number(row.total_ranked || 0),
+    };
+  },
+
+  /**
+   * Every ranked player for a season with their OVERALL rank across all players
+   * (one contribution row per user = their chosen pantheon), plus their chosen
+   * set_id and the total number of ranked players. This is the personal ranking
+   * used for the `overall` reward axis at finalization — the same ordering as
+   * the overall leaderboard. The AI sentinel user is excluded so it never
+   * places.
+   */
+  async getAllRankedPlayersOverall(seasonId: string): Promise<
+    Array<{
+      user_id: string;
+      set_id: string;
+      souls_total: number;
+      rank: number;
+      total_ranked: number;
+    }>
+  > {
+    const query = `
+      WITH ranked AS (
+        SELECT
+          c.user_id,
+          c.set_id,
+          c.souls_total,
+          ROW_NUMBER() OVER (
+            ORDER BY c.souls_total DESC, c.updated_at ASC
+          ) AS rank,
+          COUNT(*) OVER () AS total_ranked
+        FROM season_soul_contributions c
+        WHERE c.season_id = $1
+          AND c.user_id != '00000000-0000-0000-0000-000000000000'
+      )
+      SELECT user_id, set_id, souls_total, rank, total_ranked
+      FROM ranked
+      ORDER BY rank;
+    `;
+    const { rows } = await db.query(query, [seasonId]);
+    return rows.map((row) => ({
+      user_id: row.user_id as string,
+      set_id: row.set_id as string,
+      souls_total: Number(row.souls_total || 0),
+      rank: Number(row.rank || 0),
+      total_ranked: Number(row.total_ranked || 0),
+    }));
+  },
 };
 
 export default SeasonSoulsModel;

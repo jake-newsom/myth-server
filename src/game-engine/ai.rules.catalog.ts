@@ -54,13 +54,17 @@ const rules: Record<string, AbilityRule> = {
   }),
   tyr_binding_justice: makeRule({
     cardId: "tyr_binding_justice",
-    timing: "conditional",
-    riskProfile: "comeback",
+    // Recurring per-turn -2 strongest enemy / +2 weakest ally: an engine that
+    // wants to be down early to tick for more turns, and stays useful even when
+    // ahead (it keeps propping up your weakest ally). No longer a one-shot
+    // comeback equalizer.
+    timing: "mid",
+    riskProfile: "denial",
     preferWhen: [
-      { metric: "enemyPowerAdvantage", operator: ">=", value: 6, score: 55 },
-      { metric: "isBehind", operator: "==", value: 1, score: 20 },
+      { metric: "enemyStrongestPower", operator: ">=", value: 16, score: 32 },
+      { metric: "turnsRemaining", operator: ">=", value: 4, score: 12 },
     ],
-    avoidWhen: [{ metric: "isAhead", operator: "==", value: 1, score: -35 }],
+    avoidWhen: [{ metric: "turnsRemaining", operator: "<=", value: 2, score: -18 }],
     placementPriorities: [{ metric: "safePlacementScore", score: 0.2 }],
   }),
   vali_revenge: makeRule({
@@ -86,12 +90,14 @@ const rules: Record<string, AbilityRule> = {
     cardId: "ku_war_stance",
     timing: "late",
     riskProfile: "comeback",
+    // Gains +2 per ally defeated; at +6 (3 defeats) it re-attacks adjacent
+    // enemies, so adjacency matters more once the threshold is in reach.
     preferWhen: [
-      { metric: "defeatedAlliesCount", operator: ">=", value: 3, score: 45 },
-      { metric: "adjacentEnemyCount", operator: ">=", value: 1, score: 12 },
+      { metric: "defeatedAlliesCount", operator: ">=", value: 3, score: 50 },
+      { metric: "adjacentEnemyCount", operator: ">=", value: 1, score: 14 },
     ],
     avoidWhen: [{ metric: "defeatedAlliesCount", operator: "<=", value: 1, score: -25 }],
-    placementPriorities: [{ metric: "adjacentEnemyCount", score: 10 }],
+    placementPriorities: [{ metric: "adjacentEnemyCount", score: 12 }],
   }),
   okuriinu_hunters_mark: makeRule({
     cardId: "okuriinu_hunters_mark",
@@ -167,25 +173,38 @@ const rules: Record<string, AbilityRule> = {
     cardId: "yuki_onna_frost_row",
     timing: "mid",
     riskProfile: "denial",
-    preferWhen: [{ metric: "rowEnemyCount", operator: ">=", value: 2, score: 30 }],
-    avoidWhen: [{ metric: "rowEnemyCount", operator: "<=", value: 1, score: -22 }],
-    placementPriorities: [{ metric: "rowEnemyCount", score: 16 }],
+    // -3 to all enemies in the same row (was -1): a strong row debuff, so it is
+    // worth playing even against a single row enemy.
+    preferWhen: [
+      { metric: "rowEnemyCount", operator: ">=", value: 2, score: 38 },
+      { metric: "rowEnemyCount", operator: ">=", value: 1, score: 18 },
+    ],
+    avoidWhen: [{ metric: "rowEnemyCount", operator: "==", value: 0, score: -22 }],
+    placementPriorities: [{ metric: "rowEnemyCount", score: 18 }],
   }),
   skadi_freeze: makeRule({
     cardId: "skadi_freeze",
     timing: "mid",
     riskProfile: "denial",
-    preferWhen: [{ metric: "columnEnemyCount", operator: ">=", value: 2, score: 30 }],
+    // -2 to all enemies in the same column (was -3): still strong, but needs
+    // a couple of column enemies to be worth it.
+    preferWhen: [{ metric: "columnEnemyCount", operator: ">=", value: 2, score: 28 }],
     avoidWhen: [{ metric: "columnEnemyCount", operator: "<=", value: 1, score: -22 }],
-    placementPriorities: [{ metric: "columnEnemyCount", score: 16 }],
+    placementPriorities: [{ metric: "columnEnemyCount", score: 14 }],
   }),
   tawara_piercing_shot: makeRule({
     cardId: "tawara_piercing_shot",
     timing: "mid",
     riskProfile: "denial",
-    preferWhen: [{ metric: "columnEnemyCount", operator: ">=", value: 2, score: 32 }],
-    avoidWhen: [{ metric: "columnEnemyCount", operator: "==", value: 0, score: -24 }],
-    placementPriorities: [{ metric: "columnEnemyCount", score: 18 }],
+    // Defeats one enemy weaker than Tawara anywhere on the board (no adjacency
+    // or column requirement). A beatable target is most likely when the weakest
+    // enemy on the board has low total power. Placement is no longer positional.
+    preferWhen: [
+      { metric: "enemyWeakestPower", operator: ">=", value: 1, score: 12 },
+      { metric: "enemyWeakestPower", operator: "<=", value: 14, score: 20 },
+    ],
+    avoidWhen: [{ metric: "enemyWeakestPower", operator: "==", value: 0, score: -30 }],
+    placementPriorities: [{ metric: "safePlacementScore", score: 0.2 }],
   }),
   yamata_many_heads: makeRule({
     cardId: "yamata_many_heads",
@@ -199,9 +218,11 @@ const rules: Record<string, AbilityRule> = {
     cardId: "poliahu_icy_presence",
     timing: "mid",
     riskProfile: "denial",
-    preferWhen: [{ metric: "adjacentEnemyCount", operator: ">=", value: 2, score: 26 }],
-    avoidWhen: [{ metric: "adjacentEnemyCount", operator: "==", value: 0, score: -18 }],
-    placementPriorities: [{ metric: "adjacentEnemyCount", score: 12 }],
+    // Removes all lava tiles, buffing allies on lava (+2) and debuffing enemies
+    // on lava (-1). Only worth playing when lava actually exists on the board.
+    preferWhen: [{ metric: "lavaTileCount", operator: ">=", value: 1, score: 26 }],
+    avoidWhen: [{ metric: "lavaTileCount", operator: "==", value: 0, score: -22 }],
+    placementPriorities: [{ metric: "safePlacementScore", score: 0.2 }],
   }),
   nopperabo_erase_face: makeRule({
     cardId: "nopperabo_erase_face",
@@ -215,9 +236,15 @@ const rules: Record<string, AbilityRule> = {
     cardId: "urashima_time_shift",
     timing: "conditional",
     riskProfile: "denial",
-    preferWhen: [{ metric: "columnEnemyCount", operator: ">=", value: 1, score: 10 }],
-    avoidWhen: [{ metric: "enemyBuffedCountBoard", operator: "==", value: 0, score: -18 }],
-    placementPriorities: [{ metric: "columnEnemyCount", score: 8 }],
+    // Silences any one enemy's ability for 2 turns, regardless of position.
+    // Best when the enemy board has threatening cards worth shutting down;
+    // buffed enemies are a good proxy for high-value targets. Not positional.
+    preferWhen: [
+      { metric: "enemyBuffedCountBoard", operator: ">=", value: 1, score: 18 },
+      { metric: "enemyStrongestPower", operator: ">=", value: 16, score: 10 },
+    ],
+    avoidWhen: [{ metric: "enemyOwnedCountMinusPlayerOwnedCount", operator: "<=", value: -2, score: -16 }],
+    placementPriorities: [{ metric: "safePlacementScore", score: 0.2 }],
   }),
   nurarihyon_slipstream: makeRule({
     cardId: "nurarihyon_slipstream",
@@ -296,11 +323,14 @@ const rules: Record<string, AbilityRule> = {
     cardId: "tsukuyomi_moons_balance",
     timing: "early",
     riskProfile: "safe",
+    // Each round siphons 2 power from the strongest enemy to a random hand card
+    // (-2 / +2). Stronger two-sided swing than before, so reward a high-power
+    // enemy target; still wants cards in hand to receive the siphoned power.
     preferWhen: [
-      { metric: "enemyStrongestPower", operator: ">=", value: 18, score: 28 },
-      { metric: "weakestHandPower", operator: "<=", value: 12, score: 12 },
+      { metric: "enemyStrongestPower", operator: ">=", value: 16, score: 34 },
+      { metric: "handSize", operator: ">=", value: 2, score: 12 },
     ],
-    avoidWhen: [{ metric: "lowHandSize", operator: "==", value: 1, score: -16 }],
+    avoidWhen: [{ metric: "lowHandSize", operator: "==", value: 1, score: -18 }],
     placementPriorities: [{ metric: "safePlacementScore", score: 0.28 }],
   }),
   pele_lava_field: makeRule({
@@ -697,12 +727,14 @@ const rules: Record<string, AbilityRule> = {
     cardId: "milu_spirit_bind",
     timing: "conditional",
     riskProfile: "comeback",
+    // Any card that flips Milu loses 5 power permanently (was 2): a heavy
+    // deterrent, so it's worth placing into contested spots next to enemies.
     preferWhen: [
-      { metric: "adjacentEnemyCount", operator: ">=", value: 1, score: 14 },
-      { metric: "enemyStrongestPower", operator: ">=", value: 18, score: 12 },
+      { metric: "adjacentEnemyCount", operator: ">=", value: 1, score: 20 },
+      { metric: "enemyStrongestPower", operator: ">=", value: 18, score: 14 },
     ],
     avoidWhen: [{ metric: "adjacentEnemyCount", operator: "==", value: 0, score: -8 }],
-    placementPriorities: [{ metric: "adjacentEnemyCount", score: 8 }],
+    placementPriorities: [{ metric: "adjacentEnemyCount", score: 10 }],
   }),
   yamabiko_echo_power: makeRule({
     cardId: "yamabiko_echo_power",

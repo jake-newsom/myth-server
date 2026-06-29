@@ -2,11 +2,14 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../../types";
 import CardBackService from "../../services/cardBack.service";
 import logger from "../../utils/logger";
+import { catalogOptionsFromRequest } from "../../utils/catalogRelease";
 
 const CardBackController = {
-  async listActiveCardBacks(_req: AuthenticatedRequest, res: Response) {
+  async listActiveCardBacks(req: AuthenticatedRequest, res: Response) {
     try {
-      const backs = await CardBackService.getActiveCatalog();
+      const backs = await CardBackService.getActiveCatalog(
+        catalogOptionsFromRequest(req)
+      );
       return res.status(200).json({ data: backs });
     } catch (error) {
       logger.error(

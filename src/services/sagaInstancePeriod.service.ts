@@ -1,5 +1,5 @@
 /** Biweekly saga instance window length (14 days). */
-export const SAGA_INSTANCE_PERIOD_MS = 14 * 24 * 60 * 60 * 1000;
+export const SAGA_INSTANCE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function getInstancePeriodStart(
   at: Date,

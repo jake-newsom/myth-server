@@ -23,18 +23,20 @@ import {
   setTileStatus,
   addTempDebuff,
   getCardTotalPower,
+  getCardTotalPowerAtPlay,
   getCardsInSameRow,
   getCardsInSameColumn,
   removeTemporaryBuffs,
   getOpponentId,
   getDiagonallyAdjacentCards,
-  getRandomCard,
   destroyCardAtPosition,
   createOrUpdateBuff,
   removeBuffsByCondition,
   createOrUpdateDebuff,
   updateCurrentPower,
   getEmptyAdjacentTiles,
+  resolveTargetCard,
+  disableAbilities,
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
 import { flipCard } from "../game.utils";
@@ -77,7 +79,7 @@ export const japaneseAbilities: AbilityMap = {
       if (enemyPosition) {
         const maxSidePower = getCardHighestPower(strongestEnemy).value;
         gameEvents.push(
-          debuff(strongestEnemy, -1, {
+          debuff(strongestEnemy, -2, {
             name: "Moon's Balance",
             position: enemyPosition,
             data: {
@@ -108,7 +110,7 @@ export const japaneseAbilities: AbilityMap = {
           : weakest,
       );
       gameEvents.push(
-        addTempBuff(weakestHandCard, 1000, 1, {
+        addTempBuff(weakestHandCard, 1000, 2, {
           name: "Moon's Balance",
           position: HAND_POSITION,
         }),
@@ -146,7 +148,7 @@ export const japaneseAbilities: AbilityMap = {
       );
       if (enemyPosition) {
         gameEvents.push(
-          addTempDebuff(enemy, 3, -1, {
+          addTempDebuff(enemy, 3, -3, {
             name: "Frozen Breath",
             animation: "snow-swirl",
             position: enemyPosition,
@@ -308,7 +310,7 @@ export const japaneseAbilities: AbilityMap = {
       );
       if (position) {
         return [
-          addTempDebuff(originalTriggerCard, 1000, -1, {
+          addTempDebuff(originalTriggerCard, 1000, -2, {
             name: "Hunter's Mark",
             animation: "red-strike-grow",
             position,
@@ -627,117 +629,94 @@ export const japaneseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Time Shift: Remove all temporary buffs from a random enemy in the same column.
+  // Time Shift: Nullify a chosen enemy card's special ability for 2 rounds.
+  // The player picks the target on the board (any enemy card). When played by
+  // the AI / on timeout no target is supplied, so the strongest enemy is chosen.
   urashima_time_shift: (context) => {
-    const {
-      position,
-      triggerCard,
-      state: { board },
-    } = context;
+    if (!context.position) return [];
 
-    if (!position) return [];
+    // Any enemy card is a valid target.
+    const target = resolveTargetCard(context, () => true);
+    if (!target) return [];
 
-    const enemiesInColumn = getCardsInSameColumn(
-      position,
-      board,
-      triggerCard.owner,
-    ).filter((enemy) => {
-      return enemy.temporary_effects.some((effect) => {
-        return (
-          (effect.power.top ?? 0) > 0 ||
-          (effect.power.bottom ?? 0) > 0 ||
-          (effect.power.left ?? 0) > 0 ||
-          (effect.power.right ?? 0) > 0
-        );
-      });
-    });
-
-    if (enemiesInColumn.length > 0) {
-      const randomEnemy = enemiesInColumn[randomInt(enemiesInColumn.length)];
-      const enemyPosition = getPositionOfCardById(
-        randomEnemy.user_card_instance_id,
-        board,
-      );
-      if (enemyPosition) {
-        return [
-          removeTemporaryBuffs(
-            randomEnemy,
-            enemyPosition,
-            "lightning-explode-small",
-          ),
-        ];
-      }
-    }
-
-    return [];
+    return [
+      disableAbilities(target.card, 4 /* 2 rounds */, target.position, {
+        name: "Time Shift",
+        animation: "time-shift",
+      }),
+    ];
   },
 
-  // Piercing Shot: Enemies in the same column permanently lose 1 power.
+  // Piercing Shot: Defeat (flip) a chosen enemy card whose total power is lower
+  // than Tawara-todo's. The player picks the target on the board; when played by
+  // the AI / on timeout no target is supplied, so the strongest valid enemy
+  // (still weaker than Tawara) is chosen.
   tawara_piercing_shot: (context) => {
-    const {
-      position,
-      triggerCard,
-      state: { board },
-    } = context;
-    const gameEvents: BaseGameEvent[] = [];
+    const { position, triggerCard } = context;
 
     if (!position) return [];
 
-    const enemiesInColumn = getCardsInSameColumn(
-      position,
-      board,
-      triggerCard.owner,
+    // Tawara's threshold uses his power as-played from hand (incl. hand buffs),
+    // not tile-landing bonuses applied when he hit the board.
+    const tawaraPower = getCardTotalPowerAtPlay(triggerCard);
+
+    const target = resolveTargetCard(
+      context,
+      (enemy) => getCardTotalPower(enemy) < tawaraPower,
     );
+    if (!target) return [];
 
-    for (const enemy of enemiesInColumn) {
-      const enemyPosition = getPositionOfCardById(
-        enemy.user_card_instance_id,
-        board,
-      );
-      if (enemyPosition) {
-        gameEvents.push(
-          debuff(enemy, -1, {
-            name: "Centipede Arrow",
-            animation: "flame-drop-3",
-            position: enemyPosition,
-          }),
-        );
-      }
-    }
-
-    return gameEvents;
+    // Defeat = flip the card to Tawara's owner (handles defeat-prevention,
+    // OnDefend triggers, ownership change). Not a destroy/remove.
+    return flipCard(
+      context.state,
+      target.position,
+      target.card,
+      triggerCard,
+      "magic-arrow",
+      { combatType: COMBAT_TYPES.SPECIAL },
+    );
   },
 
-  // Radiant Blessing: Grant +1 to a random ally when an ally is defeated
+  // Radiant Blessing: Grant +1 to a random card in the owner's hand when an ally is defeated
   amaterasu_radiant_blessing: (context) => {
     const { originalTriggerCard, triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
     const batchId = `${triggerCard.user_card_instance_id}:${state.turn_number}:amaterasu`;
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
 
     if (originalTriggerCard?.owner !== triggerCard.owner) {
-      const randomAlly = getRandomCard(state.board, {
-        ownerId: triggerCard.owner,
-      });
-      if (randomAlly) {
-        const allyPosition = getPositionOfCardById(
-          randomAlly.user_card_instance_id,
-          state.board,
+      const owner =
+        state.player1.user_id === triggerCard.owner
+          ? state.player1
+          : state.player2;
+      const handCards = owner.hand
+        .map((id) => state.hydrated_card_data_cache?.[id])
+        .filter((card): card is InGameCard => !!card);
+
+      if (handCards.length > 0) {
+        const randomHandCard = handCards[randomInt(handCards.length)];
+        gameEvents.push(
+          addTempBuff(randomHandCard, 1000, 1, {
+            name: "Cave's Light",
+            animation: "light-cross-spin",
+            position: HAND_POSITION,
+            data: {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              batchId,
+              turnNumber: state.turn_number,
+            },
+          }),
         );
-        if (allyPosition) {
-          gameEvents.push(
-            addTempBuff(randomAlly, 1000, 1, {
-              name: "Cave's Light",
-              animation: "light-cross-spin",
-              position: allyPosition,
-              data: {
-                actingPlayerId: triggerCard.owner,
-                sourceCard: triggerCard,
-                sourcePlayerId: triggerCard.owner,
-                batchId,
-                turnNumber: state.turn_number,
-              },
-            }),
-          );
+        randomHandCard.current_power = updateCurrentPower(randomHandCard);
+        if (
+          state.hydrated_card_data_cache?.[randomHandCard.user_card_instance_id]
+        ) {
+          state.hydrated_card_data_cache[
+            randomHandCard.user_card_instance_id
+          ] = randomHandCard;
         }
       }
     }

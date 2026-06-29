@@ -26,6 +26,8 @@ export interface CardBorderInput {
   animation_key?: string | null;
   character_id?: string | null;
   set_id?: string | null;
+  min_app_version?: string | null;
+  max_equipped?: number | null;
 }
 
 export interface CardBorderUpdate {
@@ -36,6 +38,8 @@ export interface CardBorderUpdate {
   character_id?: string | null;
   set_id?: string | null;
   is_active?: boolean;
+  min_app_version?: string | null;
+  max_equipped?: number | null;
 }
 
 export interface OwnedBorderRow extends CardBorder {
@@ -45,6 +49,8 @@ export interface OwnedBorderRow extends CardBorder {
 export interface CharacterBorderAvailabilityRow extends CardBorder {
   is_owned: boolean;
   is_locked: boolean;
+  /** How many of the user's cards currently have this border equipped. */
+  used_count: number;
 }
 
 function rowToCardBorder(row: any): CardBorder {
@@ -57,6 +63,8 @@ function rowToCardBorder(row: any): CardBorder {
     character_id: row.character_id ?? null,
     set_id: row.set_id ?? null,
     is_active: row.is_active,
+    min_app_version: row.min_app_version ?? null,
+    max_equipped: row.max_equipped ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -73,7 +81,8 @@ const BorderModel = {
   async listActive(): Promise<CardBorder[]> {
     const query = `
       SELECT border_id, name, description, image_url, animation_key,
-             character_id, set_id, is_active, created_at, updated_at
+             character_id, set_id, is_active, min_app_version, max_equipped,
+             created_at, updated_at
       FROM "card_borders"
       WHERE is_active = true
       ORDER BY name ASC;
@@ -88,7 +97,8 @@ const BorderModel = {
   async listAll(): Promise<CardBorder[]> {
     const query = `
       SELECT border_id, name, description, image_url, animation_key,
-             character_id, set_id, is_active, created_at, updated_at
+             character_id, set_id, is_active, min_app_version, max_equipped,
+             created_at, updated_at
       FROM "card_borders"
       ORDER BY is_active DESC, name ASC;
     `;
@@ -99,7 +109,8 @@ const BorderModel = {
   async findById(borderId: string): Promise<CardBorder | null> {
     const query = `
       SELECT border_id, name, description, image_url, animation_key,
-             character_id, set_id, is_active, created_at, updated_at
+             character_id, set_id, is_active, min_app_version, max_equipped,
+             created_at, updated_at
       FROM "card_borders"
       WHERE border_id = $1;
     `;
@@ -110,10 +121,11 @@ const BorderModel = {
   async create(input: CardBorderInput): Promise<CardBorder> {
     const query = `
       INSERT INTO "card_borders"
-        (name, description, image_url, animation_key, character_id, set_id, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, true)
+        (name, description, image_url, animation_key, character_id, set_id, is_active, min_app_version, max_equipped)
+      VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8)
       RETURNING border_id, name, description, image_url, animation_key,
-                character_id, set_id, is_active, created_at, updated_at;
+                character_id, set_id, is_active, min_app_version, max_equipped,
+                created_at, updated_at;
     `;
     const { rows } = await db.query(query, [
       input.name,
@@ -122,6 +134,8 @@ const BorderModel = {
       input.animation_key ?? null,
       input.character_id ?? null,
       input.set_id ?? null,
+      input.min_app_version ?? null,
+      input.max_equipped ?? null,
     ]);
     return rowToCardBorder(rows[0]);
   },
@@ -150,6 +164,10 @@ const BorderModel = {
       assign("character_id", updates.character_id);
     if (updates.set_id !== undefined) assign("set_id", updates.set_id);
     if (updates.is_active !== undefined) assign("is_active", updates.is_active);
+    if (updates.min_app_version !== undefined)
+      assign("min_app_version", updates.min_app_version);
+    if (updates.max_equipped !== undefined)
+      assign("max_equipped", updates.max_equipped);
 
     if (setClauses.length === 0) {
       return this.findById(borderId);
@@ -162,7 +180,8 @@ const BorderModel = {
       SET ${setClauses.join(", ")}
       WHERE border_id = $1
       RETURNING border_id, name, description, image_url, animation_key,
-                character_id, set_id, is_active, created_at, updated_at;
+                character_id, set_id, is_active, min_app_version, max_equipped,
+                created_at, updated_at;
     `;
     const { rows } = await db.query(query, values);
     return rows.length > 0 ? rowToCardBorder(rows[0]) : null;
@@ -280,7 +299,8 @@ const BorderModel = {
     const query = `
       SELECT DISTINCT ON (b.border_id)
              b.border_id, b.name, b.description, b.image_url, b.animation_key,
-             b.character_id, b.set_id, b.is_active, b.created_at, b.updated_at,
+             b.character_id, b.set_id, b.is_active, b.min_app_version,
+             b.max_equipped, b.created_at, b.updated_at,
              uob.acquired_at
       FROM "user_owned_borders" uob
       JOIN "card_borders" b ON uob.border_id = b.border_id
@@ -319,13 +339,19 @@ const BorderModel = {
   ): Promise<CharacterBorderAvailabilityRow[]> {
     const query = `
       SELECT b.border_id, b.name, b.description, b.image_url, b.animation_key,
-             b.character_id, b.set_id, b.is_active, b.created_at, b.updated_at,
+             b.character_id, b.set_id, b.is_active, b.min_app_version,
+             b.max_equipped, b.created_at, b.updated_at,
              EXISTS(
                SELECT 1 FROM "user_owned_borders" uob
                WHERE uob.user_id = $1
                  AND uob.border_id = b.border_id
                  AND (uob.character_id IS NULL OR uob.character_id = ch.character_id)
-             ) AS is_owned
+             ) AS is_owned,
+             (
+               SELECT COUNT(*)::int FROM "user_owned_cards" uoc
+               WHERE uoc.user_id = $1
+                 AND uoc.equipped_border_id = b.border_id
+             ) AS used_count
       FROM "characters" ch
       JOIN "card_borders" b ON b.is_active = true
         AND (b.character_id IS NULL OR b.character_id = ch.character_id)
@@ -352,11 +378,40 @@ const BorderModel = {
       ORDER BY b.name ASC;
     `;
     const { rows } = await db.query(query, [userId, characterId]);
-    return rows.map((row) => ({
-      ...rowToCardBorder(row),
-      is_owned: row.is_owned === true,
-      is_locked: row.is_owned !== true,
-    }));
+    return rows.map((row) => {
+      const isOwned = row.is_owned === true;
+      const usedCount = row.used_count ?? 0;
+      const maxEquipped = row.max_equipped ?? null;
+      // Locked if the user doesn't own it, or if it owns it but has already hit
+      // the equip cap. The cap check is "in use" — unequipping a card frees a
+      // slot. The single-card panel still allows re-selecting a border already
+      // on the viewed card (that path is a no-op, gated client-side).
+      const capReached =
+        maxEquipped !== null && usedCount >= maxEquipped;
+      return {
+        ...rowToCardBorder(row),
+        is_owned: isOwned,
+        is_locked: !isOwned || capReached,
+        used_count: usedCount,
+      };
+    });
+  },
+
+  /**
+   * Count how many of the user's card instances currently have this border
+   * equipped. Used to surface a precise "cap reached" error on the equip
+   * failure path.
+   */
+  async countEquippedForBorder(
+    userId: string,
+    borderId: string
+  ): Promise<number> {
+    const query = `
+      SELECT COUNT(*)::int AS cnt FROM "user_owned_cards"
+      WHERE user_id = $1 AND equipped_border_id = $2;
+    `;
+    const { rows } = await db.query(query, [userId, borderId]);
+    return rows[0]?.cnt ?? 0;
   },
 
   async userOwnsBorder(userId: string, borderId: string): Promise<boolean> {
@@ -403,6 +458,17 @@ const BorderModel = {
             AND uob.border_id = $3
             AND (uob.character_id IS NULL OR uob.character_id = cv.character_id)
         )
+        AND (
+          b.max_equipped IS NULL
+          OR (
+            -- Count this border's equips excluding the card being updated, so
+            -- re-equipping a border already on this card is always allowed.
+            SELECT COUNT(*) FROM "user_owned_cards" used
+            WHERE used.user_id = $2
+              AND used.equipped_border_id = $3
+              AND used.user_card_instance_id <> $1
+          ) < b.max_equipped
+        )
       RETURNING uoc.user_card_instance_id, uoc.equipped_border_id;
     `;
     const { rows } = await db.query(query, [instanceId, userId, borderId]);
@@ -439,29 +505,56 @@ const BorderModel = {
    * passes the border's restriction filter AND for which the user has
    * ownership (global or character-scoped). Single round-trip UPDATE.
    * Returns the count of rows changed.
+   *
+   * When the border defines max_equipped, only the remaining capacity worth of
+   * empty cards is filled (cards already wearing the border still count toward
+   * the cap). If the cap is already met, zero cards are changed.
    */
   async equipBorderOnAllEmpty(
     userId: string,
     borderId: string
   ): Promise<number> {
     const query = `
+      WITH border AS (
+        SELECT b.max_equipped
+        FROM "card_borders" b
+        WHERE b.border_id = $2 AND b.is_active = true
+      ),
+      already AS (
+        SELECT COUNT(*)::int AS cnt
+        FROM "user_owned_cards" uoc
+        WHERE uoc.user_id = $1 AND uoc.equipped_border_id = $2
+      ),
+      eligible AS (
+        SELECT uoc.user_card_instance_id
+        FROM "user_owned_cards" uoc
+        JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN "characters" ch ON cv.character_id = ch.character_id
+        JOIN "card_borders" b ON b.border_id = $2
+        WHERE uoc.user_id = $1
+          AND uoc.equipped_border_id IS NULL
+          AND b.is_active = true
+          AND (b.character_id IS NULL OR cv.character_id = b.character_id)
+          AND (b.set_id IS NULL OR ch.set_id = b.set_id)
+          AND EXISTS (
+            SELECT 1 FROM "user_owned_borders" uob
+            WHERE uob.user_id = $1
+              AND uob.border_id = $2
+              AND (uob.character_id IS NULL OR uob.character_id = cv.character_id)
+          )
+        -- Cap the fill to the remaining capacity when max_equipped is set.
+        LIMIT (
+          SELECT CASE
+            WHEN border.max_equipped IS NULL THEN NULL
+            ELSE GREATEST(border.max_equipped - already.cnt, 0)
+          END
+          FROM border, already
+        )
+      )
       UPDATE "user_owned_cards" uoc
       SET equipped_border_id = $2
-      FROM "card_variants" cv
-      JOIN "characters" ch ON cv.character_id = ch.character_id
-      JOIN "card_borders" b ON b.border_id = $2
-      WHERE uoc.user_id = $1
-        AND uoc.equipped_border_id IS NULL
-        AND uoc.card_variant_id = cv.card_variant_id
-        AND b.is_active = true
-        AND (b.character_id IS NULL OR cv.character_id = b.character_id)
-        AND (b.set_id IS NULL OR ch.set_id = b.set_id)
-        AND EXISTS (
-          SELECT 1 FROM "user_owned_borders" uob
-          WHERE uob.user_id = $1
-            AND uob.border_id = $2
-            AND (uob.character_id IS NULL OR uob.character_id = cv.character_id)
-        );
+      FROM eligible
+      WHERE uoc.user_card_instance_id = eligible.user_card_instance_id;
     `;
     const result = await db.query(query, [userId, borderId]);
     return result.rowCount ?? 0;

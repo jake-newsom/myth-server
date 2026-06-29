@@ -14,6 +14,7 @@ import {
 } from "../types/game.types";
 import { simulationContext } from "./simulation.context";
 import { randomInt } from "./simulation.rng";
+import { TriggerContext } from "../types/game-engine.types";
 import {
   BaseGameEvent,
   CardEvent,
@@ -260,6 +261,7 @@ export function addTempBuff(
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
     powerDelta: calculatePowerDelta(power),
+    powerBySide: buff,
     effectName: options.name,
     position: options.position,
   } as CardPowerChangedEvent;
@@ -337,6 +339,15 @@ export function addTempDebuff(
     }).catch(() => {});
   }
 
+  // `negativePower` holds positive magnitudes (negated at apply-time); the
+  // event's per-side delta is the signed (negated) value so the client renders
+  // "-N" with a down/debuff caret.
+  const negatedBySide: Partial<PowerValues> = {};
+  for (const side of ["top", "bottom", "left", "right"] as const) {
+    const v = negativePower[side];
+    if (v !== undefined) negatedBySide[side] = -v;
+  }
+
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
     animation: options.animation || "debuff",
@@ -344,6 +355,7 @@ export function addTempDebuff(
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
     powerDelta: calculatePowerDelta(power, true),
+    powerBySide: negatedBySide,
     effectName: options.name,
     position: options.position,
   } as CardPowerChangedEvent;
@@ -761,13 +773,36 @@ export const getEnemiesAdjacentTo = (
 
 export const getCardTotalPower = (card: InGameCard): number => {
   const currentPower = updateCurrentPower(card);
-  return (
-    currentPower.top +
-    currentPower.bottom +
-    currentPower.left +
-    currentPower.right
-  );
+  return sumPowerValues(currentPower);
 };
+
+/**
+ * Total power used when a card's on-play ability compares against board targets
+ * (e.g. Tawara Piercing Shot). Includes buffs the card held in hand, but
+ * excludes tile-landing bonuses applied when the card hits the board.
+ */
+export function getCardTotalPowerAtPlay(card: InGameCard): number {
+  const effects = card.temporary_effects ?? [];
+  const withoutTileLandingBonuses =
+    effects.length === 0
+      ? effects
+      : effects.filter((effect) => effect.type !== EffectType.TilePowerBonus);
+
+  if (withoutTileLandingBonuses === effects) {
+    return getCardTotalPower(card);
+  }
+
+  return sumPowerValues(
+    updateCurrentPower({
+      ...card,
+      temporary_effects: withoutTileLandingBonuses,
+    }),
+  );
+}
+
+function sumPowerValues(power: PowerValues): number {
+  return power.top + power.bottom + power.left + power.right;
+}
 
 export const isFlankedByEnemies = (
   position: BoardPosition,
@@ -819,6 +854,72 @@ export const getCardsByCondition = (
   }
   return cards;
 };
+
+/** Which side a targeted ability may select, relative to the casting card. */
+export type TargetSide = "enemy" | "ally" | "any";
+
+/**
+ * Resolves the target for a player-targeted ability. Server-side counterpart of
+ * the client target registry (see card.utils.ts) — generic over any targeted
+ * ability via the side + `isValidTarget` predicate.
+ *
+ * - If the play carried an explicit `targetPosition` (human play), the card at
+ *   that position is validated: it must exist, be on the allowed `side`, and
+ *   pass `isValidTarget`. An invalid explicit target THROWS so placeCard rejects
+ *   the whole play (server-side validation of the player's choice).
+ * - If no `targetPosition` was supplied (AI / timeout / lookahead play), a
+ *   target is auto-selected from all valid candidates via `pickFallback`
+ *   (defaults to the highest-power valid candidate). Returns null when there are
+ *   no valid targets — callers should treat that as a fizzle (place, no effect).
+ */
+export function resolveTargetCard(
+  context: TriggerContext,
+  isValidTarget: (target: InGameCard) => boolean,
+  options?: {
+    side?: TargetSide;
+    pickFallback?: (candidates: InGameCard[]) => InGameCard | undefined;
+  },
+): { card: InGameCard; position: BoardPosition } | null {
+  const {
+    triggerCard,
+    targetPosition,
+    state: { board },
+  } = context;
+
+  const side = options?.side ?? "enemy";
+  const isOnSide = (card: InGameCard) => {
+    const isAlly = card.owner === triggerCard.owner;
+    if (side === "enemy") return !isAlly;
+    if (side === "ally") return isAlly;
+    return true; // "any"
+  };
+
+  if (targetPosition) {
+    const card = cardAtPosition(targetPosition, board);
+    if (!card || !isOnSide(card) || !isValidTarget(card)) {
+      throw new Error("Invalid ability target");
+    }
+    return { card, position: targetPosition };
+  }
+
+  // AI / timeout path: self-select a valid target.
+  const candidates = getCardsByCondition(
+    board,
+    (card) => isOnSide(card) && isValidTarget(card),
+  );
+  if (candidates.length === 0) return null;
+
+  const chosen = options?.pickFallback
+    ? options.pickFallback(candidates)
+    : candidates.reduce((best, c) =>
+        getCardTotalPower(c) > getCardTotalPower(best) ? c : best,
+      );
+  if (!chosen) return null;
+
+  const position = getPositionOfCardById(chosen.user_card_instance_id, board);
+  if (!position) return null;
+  return { card: chosen, position };
+}
 
 export const countCornersControlled = (
   board: GameBoard,
@@ -1344,6 +1445,7 @@ export function applyTileEffectsToMovedCard(
         cardId: card.user_card_instance_id,
         position: newPosition,
         powerDelta,
+        powerBySide: tileEffect.power,
         effectName: tileEffect.animation_label || "Tile Effect",
       } as CardPowerChangedEvent);
     }
@@ -1555,27 +1657,51 @@ export function getAlternatingTurnEffect(
   return turnNumber % 2 === 0 ? effectA : effectB;
 }
 
+/**
+ * Returns true if the card's special ability is currently nullified by an
+ * active Silence temporary effect. Ability triggers should be skipped for
+ * silenced cards (see triggerAbilities / triggerIndirectAbilities).
+ */
+export function isSilenced(card: InGameCard | null | undefined): boolean {
+  if (!card?.temporary_effects) return false;
+  return card.temporary_effects.some(
+    (effect) => effect.type === EffectType.Silence && effect.duration > 0,
+  );
+}
+
+/**
+ * Nullifies a card's special ability for `turns` turn-ticks by attaching a
+ * Silence temporary effect. The effect carries no power change (so buff-strips
+ * leave it intact) and decrements with the normal temporary-effect lifecycle
+ * at each turn end. `name`/`data` mirror buff/debuff stamping so the source can
+ * release it on flip/destroy if desired.
+ */
 export function disableAbilities(
   card: InGameCard,
   turns: number,
   position: BoardPosition,
+  options?: { name?: string; data?: Record<string, any>; animation?: string },
 ): BaseGameEvent {
-  // TODO: Need to implement ability disabling system
-  // This would require adding a disabled_abilities field to the card or a game state system
-  // For now, we'll use a temporary effect to mark the card as disabled
-
   if (!card.temporary_effects) {
     card.temporary_effects = [];
   }
 
+  card.temporary_effects.push({
+    power: {},
+    duration: turns,
+    name: options?.name ?? "Abilities Disabled",
+    data: options?.data,
+    type: EffectType.Silence,
+  });
+
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
-    animation: "abilities-disabled",
+    animation: options?.animation ?? "abilities-disabled",
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
     powerDelta: 0,
-    effectName: "Abilities Disabled",
+    effectName: options?.name ?? "Abilities Disabled",
     position,
   } as CardPowerChangedEvent;
 }
@@ -1623,16 +1749,22 @@ export function protectFromDefeat(
     card.temporary_effects = [];
   }
 
-  card.temporary_effects.push({
-    power: { top: 0, bottom: 0, left: 0, right: 0 },
-    duration: turns,
-    type: EffectType.BlockDefeat,
-  });
-
   const actingPlayerId =
     (data?.actingPlayerId as string | undefined) ||
     (data?.sourcePlayerId as string | undefined);
   const sourceCard = data?.sourceCard as InGameCard | undefined;
+
+  card.temporary_effects.push({
+    power: { top: 0, bottom: 0, left: 0, right: 0 },
+    duration: turns,
+    type: EffectType.BlockDefeat,
+    // Remember which ability granted the protection so the CARD_DEFENDED event
+    // emitted later (in flipCard) can play that ability's sound effect.
+    data: {
+      sourceAbilityId: getAbilityIdFromCard(sourceCard),
+      soundEffect: sourceCard?.base_card_data?.special_ability?.sound_effect ?? null,
+    },
+  });
   if (actingPlayerId && !simulationContext.isInSimulation()) {
     AchievementService.triggerAchievementEvent({
       userId: actingPlayerId,

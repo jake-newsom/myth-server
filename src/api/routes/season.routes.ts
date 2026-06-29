@@ -24,6 +24,12 @@ router.get(
 );
 
 router.get(
+  "/current/rewards/tiers",
+  lenientRateLimit,
+  seasonController.getRewardTiers,
+);
+
+router.get(
   "/current/leaderboard/overall",
   lenientRateLimit,
   seasonController.getOverallLeaderboard,

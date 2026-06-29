@@ -9,13 +9,31 @@ import {
 } from "./ai.test-utils";
 
 test("Loki receives positive score when behind on occupied board control", () => {
+  // Loki is tuned as a late-game desperation play: the rule actively suppresses
+  // it early (totalCardsOnBoard <= 6) and when not significantly behind on card
+  // count (enemyOwnedCountMinusPlayerOwnedCount <= 1). So the scenario must be a
+  // genuine late-game board where the AI is clearly behind for Loki to be a good
+  // play. Fill 13 of 16 cells: 9 enemy, 4 ai, leaving (3,3),(2,3),(3,2) open.
   const board = createEmptyBoard();
-  const enemyA = createTestCard({ id: "e1", owner: "enemy" });
-  const enemyB = createTestCard({ id: "e2", owner: "enemy" });
-  const ally = createTestCard({ id: "a1", owner: "ai" });
-  placeCardOnBoard(board, { x: 0, y: 0 }, enemyA);
-  placeCardOnBoard(board, { x: 1, y: 0 }, enemyB);
-  placeCardOnBoard(board, { x: 0, y: 1 }, ally);
+  const open = new Set(["3,3", "2,3", "3,2"]);
+  let enemyPlaced = 0;
+  let aiPlaced = 0;
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      if (open.has(`${x},${y}`)) continue;
+      // 9 enemy, 4 ai (enemy leads by 5, owns ~0.69 of the board).
+      const owner = enemyPlaced < 9 ? "enemy" : "ai";
+      if (owner === "enemy") enemyPlaced++;
+      else aiPlaced++;
+      placeCardOnBoard(
+        board,
+        { x, y },
+        createTestCard({ id: `${owner}-${x}-${y}`, owner })
+      );
+    }
+  }
+  assert.equal(enemyPlaced, 9);
+  assert.equal(aiPlaced, 4);
 
   const loki = createTestCard({
     id: "loki",
@@ -28,12 +46,15 @@ test("Loki receives positive score when behind on occupied board control", () =>
   const result = engine.evaluate({
     gameState,
     card: loki,
-    position: { x: 2, y: 2 },
+    position: { x: 3, y: 3 },
     aiPlayerId: "ai",
   });
 
   assert.equal(result.ruleMatched, true);
-  assert.ok(result.totalScore > 0);
+  assert.ok(
+    result.totalScore > 0,
+    `Loki should score positive when genuinely behind late-game, got ${result.totalScore}`
+  );
 });
 
 test("Fenrir is penalized when no adjacent weaker enemy exists", () => {

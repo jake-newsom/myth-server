@@ -6,6 +6,7 @@ import {
   andCatalogReleased,
   CatalogQueryOptions,
 } from "../utils/catalogRelease";
+import { meetsMinAppVersion } from "../utils/catalogVersion";
 
 export interface CharacterVariantSummary {
   card_variant_id: string;
@@ -16,6 +17,7 @@ export interface CharacterVariantSummary {
   sound_effect: string | null;
   is_exclusive: boolean;
   released_at: Date | null;
+  min_app_version: string | null;
   created_at: Date | null;
 }
 
@@ -43,6 +45,7 @@ function mapCharacterRow(row: Record<string, unknown>): Character {
       (row.sound_effect as string | null | undefined) ??
       null,
     released_at: row.released_at as Date,
+    min_app_version: (row.min_app_version as string | null) ?? null,
     created_at: row.created_at as Date,
     updated_at: row.updated_at as Date,
   };
@@ -55,7 +58,7 @@ const CHARACTER_SELECT = `
   base_power->>'bottom' as base_power_bottom,
   base_power->>'left' as base_power_left,
   special_ability_id, set_id, tags, sound_effect,
-  released_at, created_at, updated_at
+  released_at, min_app_version, created_at, updated_at
 `;
 
 /**
@@ -112,7 +115,9 @@ const CharacterModel = {
       ORDER BY name;
     `;
     const { rows } = await db.query(query);
-    return rows.map(mapCharacterRow);
+    return rows
+      .map(mapCharacterRow)
+      .filter((c) => meetsMinAppVersion(c.min_app_version, options));
   },
 
   /**
@@ -131,11 +136,12 @@ const CharacterModel = {
         ch.base_power->>'left' as base_power_left,
         ch.special_ability_id, ch.set_id, ch.tags,
         ch.sound_effect as character_sound_effect,
-        ch.released_at, ch.created_at, ch.updated_at,
+        ch.released_at, ch.min_app_version, ch.created_at, ch.updated_at,
         cv.card_variant_id, cv.rarity, cv.image_url,
         cv.description as variant_description,
         cv.attack_animation, cv.sound_effect as variant_sound_effect, cv.is_exclusive,
         cv.released_at as variant_released_at,
+        cv.min_app_version as variant_min_app_version,
         cv.created_at as variant_created_at
       FROM characters ch
       LEFT JOIN card_variants cv ON cv.character_id = ch.character_id
@@ -158,7 +164,10 @@ const CharacterModel = {
         characterMap.set(row.character_id, character);
       }
 
-      if (row.card_variant_id) {
+      if (
+        row.card_variant_id &&
+        meetsMinAppVersion(row.variant_min_app_version ?? null, options)
+      ) {
         character.variants.push({
           card_variant_id: row.card_variant_id,
           rarity: row.rarity,
@@ -168,12 +177,15 @@ const CharacterModel = {
           sound_effect: row.variant_sound_effect ?? null,
           is_exclusive: row.is_exclusive ?? false,
           released_at: row.variant_released_at,
+          min_app_version: row.variant_min_app_version ?? null,
           created_at: row.variant_created_at,
         });
       }
     }
 
-    return Array.from(characterMap.values());
+    return Array.from(characterMap.values()).filter((c) =>
+      meetsMinAppVersion(c.min_app_version, options)
+    );
   },
 
   /**

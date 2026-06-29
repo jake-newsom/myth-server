@@ -106,4 +106,14 @@ router.delete("/card-backs/:backId", AdminController.deactivateCardBack);
 router.post("/card-backs/grant", AdminController.grantCardBackToUser);
 router.post("/card-backs/revoke", AdminController.revokeCardBackFromUser);
 
+// ============================================================================
+// CACHE MANAGEMENT ENDPOINTS
+// ============================================================================
+
+/**
+ * Clear the global card catalog cache. Call after releasing new cards.
+ * POST /api/admin/cache/cards/clear
+ */
+router.post("/cache/cards/clear", AdminController.clearCardsCache);
+
 export default router;

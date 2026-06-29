@@ -3,9 +3,16 @@
  * A row is public when released_at <= NOW(). Admins may request unreleased rows.
  */
 
+import { getClientVersionFromHeader } from "./clientVersion";
+
 export type CatalogQueryOptions = {
   /** When true, skip released_at filtering (admin catalog). */
   includeUnreleased?: boolean;
+  /**
+   * The requesting client's advertised version (X-Client-Version), used to gate
+   * rows by min_app_version. Undefined = unknown client. See catalogVersion.ts.
+   */
+  clientVersion?: string;
 };
 
 export function isAdminUser(
@@ -18,6 +25,21 @@ export function catalogOptionsFromUser(
   user: { role?: string } | null | undefined
 ): CatalogQueryOptions {
   return { includeUnreleased: isAdminUser(user) };
+}
+
+/**
+ * Builds catalog options from an Express request: admin bypass from req.user and
+ * the client version from the X-Client-Version header. Prefer this over
+ * catalogOptionsFromUser at request handlers so min_app_version gating applies.
+ */
+export function catalogOptionsFromRequest(req: {
+  user?: { role?: string } | null;
+  headers?: Record<string, string | string[] | undefined>;
+}): CatalogQueryOptions {
+  return {
+    includeUnreleased: isAdminUser(req.user),
+    clientVersion: getClientVersionFromHeader(req.headers),
+  };
 }
 
 /** SQL expression: character row is visible in the public catalog. */

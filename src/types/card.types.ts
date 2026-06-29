@@ -242,6 +242,8 @@ export enum EffectType {
   BlockBuff = "block_buff",
   BlockDefeat = "block_defeat",
   TilePowerBonus = "tile_power_bonus",
+  // Nullifies the card's special ability while active (no power change).
+  Silence = "silence",
 }
 
 export interface TemporaryEffect {

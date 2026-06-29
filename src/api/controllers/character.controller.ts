@@ -2,13 +2,13 @@ import { Response } from "express";
 import CharacterModel from "../../models/character.model";
 import BorderService from "../../services/border.service";
 import { AuthenticatedRequest } from "../../types";
-import { catalogOptionsFromUser } from "../../utils/catalogRelease";
+import { catalogOptionsFromRequest } from "../../utils/catalogRelease";
 
 const CharacterController = {
   async getAllCharacters(req: AuthenticatedRequest, res: Response) {
     try {
       const characters = await CharacterModel.findAllWithVariants(
-        catalogOptionsFromUser(req.user)
+        catalogOptionsFromRequest(req)
       );
       return res.status(200).json(characters);
     } catch (error) {

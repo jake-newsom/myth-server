@@ -114,6 +114,22 @@ export const getCurrentStandings = async (
   }
 };
 
+export const getRewardTiers = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  try {
+    const data = await SeasonSoulsService.getRewardTiers();
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error("Error getting season reward tiers:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error",
+    });
+  }
+};
+
 export const getSetLeaderboard = async (
   req: Request,
   res: Response
