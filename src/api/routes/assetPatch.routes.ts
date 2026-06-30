@@ -151,7 +151,7 @@ const PATCHES: AssetPatch[] = [
     checksum:
       "sha256:343f666f132de9e76aa280618a54eba6f51a6b614d078fedc5b3f2cf5586e55d",
     size: 15514914,
-    description: "Season 1 rewards, SFX, and flipbook VFX",
+    description: "S1 rewards, vfx & sfx updates",
   },
 
 ];

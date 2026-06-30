@@ -88,6 +88,10 @@ export type CombatContext = TriggerContext & {
 export type CombatResolverResult = {
   preventDefeat: boolean;
   events?: BaseGameEvent[];
+  // VFX label to play on the DEFENDED card's tile (the CARD_DEFENDED event).
+  // Lets an ally-protector (e.g. Harbor Guardian) show its own shield on the
+  // card it saved, separate from any power-change floater on the protector.
+  defendAnimation?: string;
 };
 
 export type CombatResolverMethod = (

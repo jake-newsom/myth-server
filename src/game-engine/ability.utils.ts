@@ -506,7 +506,10 @@ export function createOrUpdateDebuff(
 
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
-    animation: data?.animation || "debuff",
+    // Pass `data.animation: null` to emit a power/label-only event with no VFX
+    // (the floating effectName text still shows). Otherwise default to "debuff".
+    animation:
+      data?.animation === null ? undefined : data?.animation || "debuff",
     eventId: uuidv4(),
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,

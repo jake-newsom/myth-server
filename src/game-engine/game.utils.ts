@@ -302,7 +302,8 @@ export function flipCard(
   // normal sound-stamping path never reaches it.
   const buildDefendedEvents = (
     preventionEvents: BaseGameEvent[] = [],
-    protectingCard?: InGameCard
+    protectingCard?: InGameCard,
+    defendAnimation?: string
   ): BaseGameEvent[] => {
     const out: BaseGameEvent[] = [...preventionEvents];
     if (!targetPosition) return out;
@@ -323,7 +324,9 @@ export function flipCard(
       sourcePlayerId: defeatingPlayerId,
       cardId: target.user_card_instance_id,
       position: targetPosition,
-      animation: "defend",
+      // A protector can supply its own shield VFX (e.g. "harbor-protection");
+      // otherwise fall back to the generic defend animation.
+      animation: defendAnimation ?? "defend",
       ...(defendSoundEffect ? { soundEffect: defendSoundEffect } : {}),
     } as CardEvent);
     out.push(
@@ -431,7 +434,11 @@ export function flipCard(
 
       if (allyResult.preventDefeat) {
         const allyEvents = allyResult.events ?? [];
-        return buildDefendedEvents([...preFlipEvents, ...allyEvents], ally);
+        return buildDefendedEvents(
+          [...preFlipEvents, ...allyEvents],
+          ally,
+          allyResult.defendAnimation
+        );
       }
     }
   }

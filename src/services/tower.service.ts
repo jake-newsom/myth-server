@@ -27,17 +27,17 @@ import {
 import { clientSupportsMulligan } from "../utils/clientVersion";
 
 // Constants for reward calculation
-const GROWTH_SLOPE = 0.05; // linear: +5% of base value per band (every 10 floors)
-const FRAGMENT_GROWTH_RATE = 1.03; // Gentler (exponential) scaling for fragments
+// Linear growth: both gems and fragments scale by (1 + band * GROWTH_SLOPE).
+const GROWTH_SLOPE = 0.05; // +5% of base value per band (every 10 floors)
 
 // Base gem value per tier (at band 0)
 const BASE_GEM_VALUE_BY_TIER: Record<TowerTier, number> = {
-  E: 10, // normal floor
-  D: 35, // divisible by 5
-  C: 100, // divisible by 10 (1 pack baseline)
-  B: 300, // divisible by 25
-  A: 600, // divisible by 50
-  S: 1000, // divisible by 100
+  E: 5, // normal floor
+  D: 10, // divisible by 5
+  C: 25, // divisible by 10
+  B: 50, // divisible by 25
+  A: 125, // divisible by 50
+  S: 250, // divisible by 100
 };
 
 // Base fragments per tier
@@ -48,6 +48,37 @@ const BASE_FRAGMENTS_BY_TIER: Record<TowerTier, number> = {
   B: 15,
   A: 35,
   S: 75,
+};
+
+// ---------------------------------------------------------------------------
+// Milestone card rewards. Each milestone awards a full-art variant
+// (+/++/+++), never a plain base card. Weights pick the base rarity, then the
+// variant level. Tunable here.
+// ---------------------------------------------------------------------------
+type CardRarity = "rare" | "epic" | "legendary";
+type VariantLevel = "+" | "++" | "+++";
+
+interface MilestoneCardSpec {
+  rarityWeights: Partial<Record<CardRarity, number>>;
+  levelWeights: Record<VariantLevel, number>;
+}
+
+// %25 floors: rare -> legendary full-art variant
+const MILESTONE_CARD_25: MilestoneCardSpec = {
+  rarityWeights: { rare: 50, epic: 35, legendary: 15 },
+  levelWeights: { "+": 70, "++": 20, "+++": 10 },
+};
+
+// %50 floors: epic or legendary full-art variant
+const MILESTONE_CARD_50: MilestoneCardSpec = {
+  rarityWeights: { epic: 60, legendary: 40 },
+  levelWeights: { "+": 70, "++": 20, "+++": 10 },
+};
+
+// %100 floors: legendary full-art variant, skewed toward higher levels
+const MILESTONE_CARD_100: MilestoneCardSpec = {
+  rarityWeights: { legendary: 100 },
+  levelWeights: { "+": 50, "++": 30, "+++": 20 },
 };
 
 class TowerService {
@@ -88,11 +119,10 @@ class TowerService {
     let reward_packs = Math.floor(gemValue / 100);
     let reward_gems = gemValue % 100;
 
-    // Fragment calculation with gentler scaling
-    const fragMultiplier = Math.pow(FRAGMENT_GROWTH_RATE, band);
+    // Fragment calculation — same linear scaling as gems.
     let reward_card_fragments = Math.max(
       0,
-      Math.round(BASE_FRAGMENTS_BY_TIER[tier] * fragMultiplier)
+      Math.round(BASE_FRAGMENTS_BY_TIER[tier] * m)
     );
 
     // Special rewards at milestones
@@ -100,23 +130,25 @@ class TowerService {
     let reward_legendary_card = 0;
     let reward_epic_card = 0;
 
+    // Milestone card flags signal which weighted variant award to roll.
+    // The actual card (base rarity + +/++/+++ level) is chosen at award time.
     if (floor % 100 === 0) {
-      // Every 1000 floors: rare art + legendary equivalent fragments
+      // Every 100th floor: legendary full-art variant
       reward_rare_art_card = 1;
       reward_card_fragments += 100; // 1 legendary card worth
       reward_gems += Math.floor(gemValue * 0.75);
     } else if (floor % 50 === 0) {
-      // Every 500 floors: legendary card
+      // Every 50th floor: epic/legendary full-art variant
       reward_legendary_card = 1;
       reward_card_fragments += 100;
       reward_gems += Math.floor(gemValue * 0.4);
     } else if (floor % 25 === 0) {
-      // Every 250 floors: epic card
+      // Every 25th floor: rare->legendary full-art variant
       reward_epic_card = 1;
-      reward_card_fragments += 50; // 1 epic
+      reward_card_fragments += 50;
       reward_gems += Math.floor(gemValue * 0.25);
     } else if (floor % 10 === 0) {
-      // Every 100 floors: bonus fragments
+      // Every 10th floor: bonus fragments
       reward_card_fragments += 25;
       reward_gems += Math.floor(gemValue * 0.1);
     }
@@ -625,25 +657,36 @@ class TowerService {
         );
       }
 
-      // Award special cards
+      // Award milestone cards (always full-art variants, weighted).
+      // The reward flags map to milestones: rare_art -> %100, legendary -> %50,
+      // epic -> %25 (flag names are legacy; the spec decides the actual card).
       const cardsAwarded: TowerCompletionResult["cards_awarded"] = {};
 
       if (rewards.reward_rare_art_card > 0) {
-        const card = await this.awardRandomVariantCard(userId, "rare");
+        const card = await this.awardWeightedVariantCard(
+          userId,
+          MILESTONE_CARD_100
+        );
         if (card) {
           cardsAwarded.rare_art_card = card;
         }
       }
 
       if (rewards.reward_legendary_card > 0) {
-        const card = await this.awardRandomCardByRarity(userId, "legendary");
+        const card = await this.awardWeightedVariantCard(
+          userId,
+          MILESTONE_CARD_50
+        );
         if (card) {
           cardsAwarded.legendary_card = card;
         }
       }
 
       if (rewards.reward_epic_card > 0) {
-        const card = await this.awardRandomCardByRarity(userId, "epic");
+        const card = await this.awardWeightedVariantCard(
+          userId,
+          MILESTONE_CARD_25
+        );
         if (card) {
           cardsAwarded.epic_card = card;
         }
@@ -685,100 +728,71 @@ class TowerService {
   }
 
   /**
-   * Award a random variant card (+/++/+++) with minimum base rarity
+   * Weighted pick from a {key: weight} map. Returns a key, or null if empty.
    */
-  private async awardRandomVariantCard(
-    userId: string,
-    minRarity: "rare" | "epic" | "legendary"
-  ): Promise<AwardedCard | null> {
-    const rarityCandidates =
-      minRarity === "legendary"
-        ? ["legendary+", "legendary++", "legendary+++"]
-        : minRarity === "epic"
-          ? [
-              "epic+",
-              "epic++",
-              "epic+++",
-              "legendary+",
-              "legendary++",
-              "legendary+++",
-            ]
-          : [
-              "rare+",
-              "rare++",
-              "rare+++",
-              "epic+",
-              "epic++",
-              "epic+++",
-              "legendary+",
-              "legendary++",
-              "legendary+++",
-            ];
-
-    const countQuery = `
-      SELECT COUNT(*)::int as total
-      FROM card_variants cv
-      JOIN characters ch ON ch.character_id = cv.character_id
-      WHERE cv.rarity::text = ANY($1::text[])
-        AND cv.is_exclusive = false
-        AND cv.released_at <= NOW()
-        AND ch.released_at <= NOW();
-    `;
-    const { rows: countRows } = await db.query(countQuery, [rarityCandidates]);
-    const total = Number(countRows[0]?.total || 0);
-
-    if (total === 0) {
-      // Fallback to base rarity if no variants exist
-      return this.awardRandomCardByRarity(userId, minRarity);
+  private weightedPick<K extends string>(
+    weights: Partial<Record<K, number>>
+  ): K | null {
+    const entries = (Object.entries(weights) as [K, number][]).filter(
+      ([, w]) => w > 0
+    );
+    const total = entries.reduce((s, [, w]) => s + w, 0);
+    if (total <= 0) return null;
+    let roll = Math.random() * total;
+    for (const [key, w] of entries) {
+      roll -= w;
+      if (roll < 0) return key;
     }
-
-    const randomOffset = Math.floor(Math.random() * total);
-    const query = `
-      SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url
-      FROM card_variants cv
-      JOIN characters ch ON cv.character_id = ch.character_id
-      WHERE cv.rarity::text = ANY($1::text[])
-        AND cv.is_exclusive = false
-        AND cv.released_at <= NOW()
-        AND ch.released_at <= NOW()
-      ORDER BY cv.card_variant_id
-      LIMIT 1 OFFSET $2;
-    `;
-
-    const { rows } = await db.query(query, [rarityCandidates, randomOffset]);
-
-    if (rows.length === 0) {
-      return this.awardRandomCardByRarity(userId, minRarity);
-    }
-
-    const card = rows[0];
-
-    // Add to user's collection
-    const insertQuery = `
-      INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp)
-      VALUES ($1, $2, 1, 0)
-      RETURNING user_card_instance_id;
-    `;
-    const { rows: insertRows } = await db.query(insertQuery, [
-      userId,
-      card.card_id,
-    ]);
-
-    return {
-      user_card_instance_id: insertRows[0]?.user_card_instance_id,
-      card_id: card.card_id,
-      name: card.name,
-      rarity: card.rarity,
-      image_url: card.image_url,
-    };
+    return entries[entries.length - 1][0];
   }
 
   /**
-   * Award a random card of a specific rarity
+   * Award a full-art variant card chosen by weighted base rarity + variant
+   * level (e.g. "epic++"). Falls back across other levels of the chosen
+   * rarity, then other rarities in the spec, so an empty variant pool never
+   * silently drops the reward.
    */
-  private async awardRandomCardByRarity(
+  private async awardWeightedVariantCard(
     userId: string,
-    rarity: "rare" | "epic" | "legendary"
+    spec: MilestoneCardSpec
+  ): Promise<AwardedCard | null> {
+    // Build an ordered list of preferred rarities (weighted pick first, then
+    // remaining rarities by descending weight as fallback).
+    const primaryRarity = this.weightedPick(spec.rarityWeights);
+    if (!primaryRarity) return null;
+    const rarityOrder: CardRarity[] = [
+      primaryRarity,
+      ...(Object.keys(spec.rarityWeights) as CardRarity[]).filter(
+        (r) => r !== primaryRarity
+      ),
+    ];
+
+    for (const rarity of rarityOrder) {
+      // Preferred level by weight, then the other levels as fallback.
+      const primaryLevel = this.weightedPick(spec.levelWeights) ?? "+";
+      const levelOrder: VariantLevel[] = [
+        primaryLevel,
+        ...(["+", "++", "+++"] as VariantLevel[]).filter(
+          (l) => l !== primaryLevel
+        ),
+      ];
+
+      for (const level of levelOrder) {
+        const card = await this.awardSpecificVariant(userId, `${rarity}${level}`);
+        if (card) return card;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Award one random card of an exact variant rarity (e.g. "legendary++").
+   * Returns null if no such variant exists.
+   */
+  private async awardSpecificVariant(
+    userId: string,
+    variantRarity: string
   ): Promise<AwardedCard | null> {
     const countQuery = `
       SELECT COUNT(*)::int as total
@@ -789,11 +803,9 @@ class TowerService {
         AND cv.released_at <= NOW()
         AND ch.released_at <= NOW();
     `;
-    const { rows: countRows } = await db.query(countQuery, [rarity]);
+    const { rows: countRows } = await db.query(countQuery, [variantRarity]);
     const total = Number(countRows[0]?.total || 0);
-    if (total === 0) {
-      return null;
-    }
+    if (total === 0) return null;
 
     const randomOffset = Math.floor(Math.random() * total);
     const query = `
@@ -807,16 +819,10 @@ class TowerService {
       ORDER BY cv.card_variant_id
       LIMIT 1 OFFSET $2;
     `;
-
-    const { rows } = await db.query(query, [rarity, randomOffset]);
-
-    if (rows.length === 0) {
-      return null;
-    }
+    const { rows } = await db.query(query, [variantRarity, randomOffset]);
+    if (rows.length === 0) return null;
 
     const card = rows[0];
-
-    // Add to user's collection
     const insertQuery = `
       INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp)
       VALUES ($1, $2, 1, 0)

@@ -101,7 +101,7 @@ export const polynesianCombatResolvers: CombatResolverMap = {
 
   // Harbor Guardian: Sacrifices 3 power to protect allies from defeat
   kaahupahau_harbor_guardian: (context) => {
-    const { triggerCard, flippedCard, flippedBy, position } = context;
+    const { triggerCard, flippedCard, flippedBy, state } = context;
 
     // Only protect allies, not self
     if (
@@ -123,19 +123,35 @@ export const polynesianCombatResolvers: CombatResolverMap = {
       return { preventDefeat: false };
     }
 
+    // The -3 sacrifice lands on Harbor Guardian herself, so the floating text
+    // must show on HER tile — not the protected card's tile (context.position
+    // points at the flipped ally, see flipCard's ally-protection branch).
+    const guardianPosition = getPositionOfCardById(
+      triggerCard.user_card_instance_id,
+      state.board,
+    );
+    if (!guardianPosition) {
+      return { preventDefeat: true };
+    }
+
     // A defeat is already confirmed by the outer resolveCombat check before this
     // resolver is invoked, so no further power comparison is needed here.
     return {
       preventDefeat: true,
+      // Shield VFX plays on the DEFENDED ally's card (via the CARD_DEFENDED
+      // event), not on Harbor Guardian.
+      defendAnimation: "harbor-protection",
       events: [
+        // The -3 sacrifice shows as a plain floating "-3 / Harbor Protection"
+        // label on Harbor Guardian herself, with no VFX (animation: null).
         createOrUpdateDebuff(
           triggerCard,
           1000,
           3,
           "Harbor Protection",
-          position,
+          guardianPosition,
           {
-            animation: "harbor-protection",
+            animation: null,
             actingPlayerId: triggerCard.owner,
             sourceCard: triggerCard,
             sourcePlayerId: triggerCard.owner,
