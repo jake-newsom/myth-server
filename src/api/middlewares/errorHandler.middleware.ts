@@ -254,7 +254,7 @@ const errorHandler = (
       message: "Resource already exists",
       code: "DUPLICATE_RESOURCE",
       type: "ConflictError",
-      details: error.message,
+      details: process.env.NODE_ENV !== "production" ? error.message : undefined,
       timestamp: new Date().toISOString(),
       path: req.path,
       method: req.method,

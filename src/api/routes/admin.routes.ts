@@ -33,13 +33,6 @@ router.post("/set-pack-quantity", AdminController.setUserPackQuantity);
  */
 router.get("/user-pack-count/:userId", AdminController.getUserPackCount);
 
-/**
- * Give fate coins to a user
- * POST /api/admin/give-fate-coins
- * Body: { userId: string, amount: number }
- */
-router.post("/give-fate-coins", AdminController.giveUserFateCoins);
-
 // ============================================================================
 // AUTOMATION TRIGGER ENDPOINTS (for manual override of scheduled tasks)
 // ============================================================================

@@ -147,6 +147,16 @@ const MailModel = {
       sort_order = "DESC",
     } = pagination;
 
+    const ALLOWED_SORT_COLUMNS = ["created_at", "expires_at", "is_read", "mail_type"] as const;
+    const ALLOWED_SORT_ORDERS = ["ASC", "DESC"] as const;
+
+    if (!ALLOWED_SORT_COLUMNS.includes(sort_by as any)) {
+      throw new Error(`Invalid sort_by column: ${sort_by}`);
+    }
+    if (!ALLOWED_SORT_ORDERS.includes(sort_order.toUpperCase() as any)) {
+      throw new Error(`Invalid sort_order: ${sort_order}`);
+    }
+
     const offset = (page - 1) * limit;
 
     // Build WHERE clause

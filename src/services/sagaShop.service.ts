@@ -308,37 +308,99 @@ const SagaShopService = {
     seasonId: string,
     itemId: string
   ): Promise<SagaShopPurchaseResult> {
+    // Resolve item definition before the transaction (read-only catalogue lookup).
     const view = await this.getShopView(playerId, seasonId);
     const item = view.items.find((i) => i.id === itemId);
     if (!item) throw httpError(404, "Shop item not found");
-    if (item.owned) throw httpError(400, "You already own this item");
-    if (!item.can_purchase) {
-      throw httpError(400, "Not enough currency for this purchase");
-    }
 
-    const progress = await SagaPlayerSeasonModel.getOrCreate(
-      playerId,
-      seasonId
-    );
-    const purchased = [...progress.purchased_item_ids, itemId];
     const activeRunId = await this.findActiveRunId(playerId, seasonId);
-    const balance = await SagaCurrencyService.spend(
-      playerId,
-      seasonId,
-      item.cost,
-      activeRunId
-    );
 
-    await SagaPlayerSeasonModel.update(playerId, seasonId, {
-      purchased_item_ids: purchased,
-    });
+    // Atomically: lock user row, re-check owned/balance, deduct echoes, record
+    // purchase. All checks and mutations share one transaction so concurrent
+    // requests cannot both pass the owned/balance guards.
+    let purchased: string[];
+    let balance: number;
 
-    if (item.type === "pack") {
-      const packQty =
-        typeof item.metadata?.quantity === "number" ? item.metadata.quantity : 1;
-      await UserModel.addPacks(playerId, packQty);
+    const client = await db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      // Lock user row and read echoes balance.
+      const { rows: userRows } = await client.query(
+        `SELECT echoes FROM users WHERE user_id = $1 FOR NO KEY UPDATE`,
+        [playerId]
+      );
+      if (userRows.length === 0) throw httpError(404, "Player not found");
+      const echoes: number = userRows[0].echoes;
+
+      // Re-read purchased list inside the lock.
+      const progress = await SagaPlayerSeasonModel.getOrCreate(playerId, seasonId);
+      if (progress.purchased_item_ids.includes(itemId)) {
+        await client.query("ROLLBACK");
+        throw httpError(400, "You already own this item");
+      }
+
+      if (echoes < item.cost) {
+        await client.query("ROLLBACK");
+        throw httpError(400, "Not enough currency for this purchase");
+      }
+
+      // Deduct echoes atomically (guard re-checked via WHERE clause).
+      const { rows: spendRows } = await client.query(
+        `UPDATE users SET echoes = echoes - $1
+         WHERE user_id = $2 AND echoes >= $1
+         RETURNING echoes`,
+        [item.cost, playerId]
+      );
+      if (spendRows.length === 0) {
+        await client.query("ROLLBACK");
+        throw httpError(400, "Not enough currency for this purchase");
+      }
+      balance = spendRows[0].echoes;
+
+      // Record the purchase in the player-season row.
+      purchased = [...progress.purchased_item_ids, itemId];
+      await client.query(
+        `UPDATE saga_player_seasons
+         SET purchased_item_ids = $1, updated_at = NOW()
+         WHERE player_id = $2 AND season_id = $3`,
+        [JSON.stringify(purchased), playerId, seasonId]
+      );
+
+      // Grant rewards that support a client inside the transaction.
+      if (item.type === "pack") {
+        const packQty =
+          typeof item.metadata?.quantity === "number" ? item.metadata.quantity : 1;
+        await UserModel.addPacks(playerId, packQty, client);
+      }
+
+      if (item.type === "card_border") {
+        const borderId =
+          typeof item.metadata?.border_id === "string" ? item.metadata.border_id : "";
+        if (!borderId) throw httpError(400, "Shop border item missing border_id metadata");
+        await BorderService.grantBorder(playerId, borderId, null, client);
+      }
+
+      if (item.type === "seasonal_card" || item.type === "art_variant") {
+        const variantId =
+          typeof item.metadata?.card_variant_id === "string"
+            ? item.metadata.card_variant_id
+            : "";
+        if (!variantId) throw httpError(400, "Shop card item missing card_variant_id metadata");
+        await CardModel.addCardToUser(playerId, variantId, client);
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
 
+    // card_back grant doesn't support a client; runs post-commit.
+    // Failure here doesn't roll back the spend — acceptable since the item is
+    // already recorded as purchased and support can re-grant manually.
     if (item.type === "card_back") {
       const codeKey =
         typeof item.metadata?.card_back_code_key === "string"
@@ -347,32 +409,8 @@ const SagaShopService = {
       await CardBackService.grantCardBackByCodeKey(playerId, codeKey);
     }
 
-    if (item.type === "card_border") {
-      const borderId =
-        typeof item.metadata?.border_id === "string" ? item.metadata.border_id : "";
-      if (!borderId) {
-        throw httpError(400, "Shop border item missing border_id metadata");
-      }
-      await BorderService.grantBorder(playerId, borderId);
-    }
-
-    if (item.type === "seasonal_card" || item.type === "art_variant") {
-      const variantId =
-        typeof item.metadata?.card_variant_id === "string"
-          ? item.metadata.card_variant_id
-          : "";
-      if (!variantId) {
-        throw httpError(400, "Shop card item missing card_variant_id metadata");
-      }
-      await CardModel.addCardToUser(playerId, variantId);
-    }
-
     if (activeRunId) {
-      await SagaCurrencyService.syncRunDisplayCurrency(
-        activeRunId,
-        playerId,
-        seasonId
-      );
+      await SagaCurrencyService.syncRunDisplayCurrency(activeRunId, playerId, seasonId);
     }
 
     return {

@@ -554,53 +554,57 @@ class TowerService {
    * Idempotency guarantees:
    * 1. SELECT ... FOR UPDATE on the user row serializes concurrent requests
    *    so two in-flight calls for the same user never race.
-   * 2. If a gameId is provided, we verify it hasn't already been reward-
-   *    processed (game_status must still be 'completed', not 'rewarded').
+   * 2. game_status must be 'completed' (not 'rewarded') and winner_id must
+   *    match the caller — won is derived server-side, never trusted from client.
    *    After granting rewards we mark it 'rewarded' atomically inside the
    *    same transaction.
    */
   async processTowerCompletion(
     userId: string,
     floorNumber: number,
-    won: boolean,
-    gameId?: string
+    gameId: string
   ): Promise<TowerCompletionResult> {
-    if (!won) {
-      return {
-        success: true,
-        won: false,
-        floor_number: floorNumber,
-      };
-    }
-
     const client = await db.getClient();
     try {
       await client.query("BEGIN");
 
-      // --- Game validation (sanity check) ---
-      if (gameId) {
-        const gameCheck = await client.query(
-          `SELECT game_id, floor_number, player1_id
-           FROM "games"
-           WHERE game_id = $1`,
-          [gameId]
+      // --- Game validation ---
+      const gameCheck = await client.query(
+        `SELECT game_id, floor_number, player1_id, game_status, winner_id
+         FROM "games"
+         WHERE game_id = $1`,
+        [gameId]
+      );
+
+      if (gameCheck.rows.length === 0) {
+        throw new Error("Game not found");
+      }
+
+      const game = gameCheck.rows[0];
+
+      if (game.player1_id !== userId) {
+        throw new Error("Game does not belong to this user");
+      }
+
+      if (game.floor_number !== floorNumber) {
+        throw new Error(
+          `Game floor (${game.floor_number}) does not match requested floor (${floorNumber})`
         );
+      }
 
-        if (gameCheck.rows.length === 0) {
-          throw new Error("Game not found");
-        }
+      if (game.game_status !== "completed") {
+        throw new Error("Game is not completed");
+      }
 
-        const game = gameCheck.rows[0];
+      const won = game.winner_id === userId;
 
-        if (game.player1_id !== userId) {
-          throw new Error("Game does not belong to this user");
-        }
-
-        if (game.floor_number !== floorNumber) {
-          throw new Error(
-            `Game floor (${game.floor_number}) does not match requested floor (${floorNumber})`
-          );
-        }
+      if (!won) {
+        await client.query("COMMIT");
+        return {
+          success: true,
+          won: false,
+          floor_number: floorNumber,
+        };
       }
 
       // --- Idempotency: row-level lock on user ---
@@ -698,6 +702,12 @@ class TowerService {
       await client.query(
         "UPDATE users SET tower_floor = $1, tower_floor_updated_at = NOW() WHERE user_id = $2",
         [newFloor, userId]
+      );
+
+      // Mark game as rewarded to prevent double-claiming
+      await client.query(
+        `UPDATE "games" SET game_status = 'rewarded' WHERE game_id = $1`,
+        [gameId]
       );
 
       // Check if we need to generate new floors

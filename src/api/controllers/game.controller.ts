@@ -586,11 +586,9 @@ class GameController {
 
           if (floorNumber !== null && gameCompletionResult) {
             try {
-              const won = winner_id_for_db === userId;
               towerCompletion = await TowerService.processTowerCompletion(
                 userId,
                 floorNumber,
-                won,
                 gameId
               );
             } catch (error) {
@@ -953,11 +951,9 @@ class GameController {
 
           if (floorNumberAI !== null && gameCompletionResult) {
             try {
-              const wonAI = winner_id_for_db === userId;
               towerCompletionAI = await TowerService.processTowerCompletion(
                 userId,
                 floorNumberAI,
-                wonAI,
                 gameId
               );
             } catch (error) {

@@ -276,11 +276,11 @@ export class TowerController {
         return;
       }
 
-      const { floor_number, won, game_id } = req.body;
+      const { floor_number, game_id } = req.body;
 
-      if (floor_number === undefined || won === undefined) {
+      if (floor_number === undefined || !game_id) {
         res.status(400).json({
-          error: "floor_number and won are required",
+          error: "floor_number and game_id are required",
         });
         return;
       }
@@ -288,13 +288,12 @@ export class TowerController {
       const result = await TowerService.processTowerCompletion(
         userId,
         floor_number,
-        won,
         game_id
       );
 
       res.status(200).json({
         status: "success",
-        message: won
+        message: result.won
           ? "Floor completed successfully!"
           : "Better luck next time!",
         data: result,

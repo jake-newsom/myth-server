@@ -1,6 +1,7 @@
 import SetModel from "../models/set.model";
 import UserModel from "../models/user.model";
 import CardModel from "../models/card.model";
+import db from "../config/db.config";
 import { Card } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
 import logger from "../utils/logger";
@@ -557,61 +558,82 @@ const PackService = {
       };
     }
 
-    // 3. Check how many packs the user owns
-    const userPackCount = await UserModel.getPackCount(userId);
-    let packsToUse = Math.min(userPackCount, count);
-    let packsToBuy = Math.max(0, count - userPackCount);
-    let requiredGems = 0;
-    let discount = 1;
-    if (packsToBuy > 0) {
-      requiredGems = packsToBuy * 100;
-      if (count >= 10) {
-        discount = 0.9;
-        requiredGems = Math.floor(requiredGems * discount);
+    // 3-4. Lock user row, compute costs, check card limit, and deduct
+    // resources atomically to prevent concurrent double-spend.
+    let packsToUse: number;
+    let packsToBuy: number;
+    let requiredGems: number;
+
+    const client = await db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      const { rows: lockRows } = await client.query(
+        `SELECT pack_count, gems, (
+           SELECT COUNT(*) FROM user_owned_cards WHERE user_id = $1
+         ) AS card_count
+         FROM users WHERE user_id = $1 FOR NO KEY UPDATE`,
+        [userId]
+      );
+
+      if (lockRows.length === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "User not found" };
       }
-      // Check if user has enough gems
-      const user = await UserModel.findById(userId);
-      if (!user || user.gems < requiredGems) {
+
+      const { pack_count: userPackCount, gems: userGems, card_count } = lockRows[0];
+      const currentCardCount = Number(card_count);
+      packsToUse = Math.min(userPackCount, count);
+      packsToBuy = Math.max(0, count - userPackCount);
+      requiredGems = 0;
+
+      if (packsToBuy > 0) {
+        requiredGems = packsToBuy * 100;
+        if (count >= 10) requiredGems = Math.floor(requiredGems * 0.9);
+        if (userGems < requiredGems) {
+          await client.query("ROLLBACK");
+          return { success: false, message: "Not enough resources to purchase packs" };
+        }
+      }
+
+      if (packsToUse + packsToBuy < count) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "Not enough resources to purchase packs" };
+      }
+
+      const cardsToReceive = count * CARDS_PER_PACK;
+      if (currentCardCount + cardsToReceive > USER_LIMITS.MAX_CARDS) {
+        await client.query("ROLLBACK");
         return {
           success: false,
-          message: "Not enough resources to purchase packs",
+          message: `Opening ${count} pack(s) would exceed your card limit of ${USER_LIMITS.MAX_CARDS}. You currently have ${currentCardCount} cards and would receive ${cardsToReceive} more cards.`,
+          code: "MAX_CARDS_EXCEEDED",
         };
       }
-    }
-    // If not enough packs and not enough gems, fail
-    if (packsToUse + packsToBuy < count) {
-      return {
-        success: false,
-        message: "Not enough resources to purchase packs",
-      };
-    }
 
-    // 4. CRITICAL: Check if opening these packs would exceed card limit BEFORE consuming resources
-    const currentCardCount = await CardModel.getUserTotalCardCount(userId);
-    const cardsToReceive = count * CARDS_PER_PACK;
-    if (currentCardCount + cardsToReceive > USER_LIMITS.MAX_CARDS) {
-      return {
-        success: false,
-        message: `Opening ${count} pack(s) would exceed your card limit of ${USER_LIMITS.MAX_CARDS}. You currently have ${currentCardCount} cards and would receive ${cardsToReceive} more cards.`,
-        code: "MAX_CARDS_EXCEEDED",
-      };
-    }
+      if (packsToUse > 0) {
+        await client.query(
+          `UPDATE users SET pack_count = pack_count - $1 WHERE user_id = $2`,
+          [packsToUse, userId]
+        );
+      }
+      if (packsToBuy > 0) {
+        const { rows: gemRows } = await client.query(
+          `UPDATE users SET gems = gems - $1 WHERE user_id = $2 AND gems >= $1 RETURNING gems`,
+          [requiredGems, userId]
+        );
+        if (gemRows.length === 0) {
+          await client.query("ROLLBACK");
+          return { success: false, message: "Not enough resources to purchase packs" };
+        }
+      }
 
-    // Remove packs and gems as needed
-    if (packsToUse > 0) {
-      const removed = await UserModel.removePacks(userId, packsToUse);
-      if (!removed) {
-        return {
-          success: false,
-          message: "Failed to remove packs from user inventory",
-        };
-      }
-    }
-    if (packsToBuy > 0) {
-      const spent = await UserModel.spendGems(userId, requiredGems);
-      if (!spent) {
-        return { success: false, message: "Failed to spend gems" };
-      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
 
     // Open the packs - but don't use openPack directly as it checks pack count each time
@@ -673,7 +695,7 @@ const PackService = {
           eventData: {
             setId,
             packsOpened: count,
-            packsRemaining: userPackCount - packsToUse + packsToBuy - count,
+            packsRemaining: 0,
           },
         });
 

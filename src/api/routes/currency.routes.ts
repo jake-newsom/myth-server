@@ -8,7 +8,6 @@ import {
   getCurrencies,
   getPackPrices,
   purchasePacks,
-  awardCurrency,
 } from "../controllers/currency.controller";
 
 const router = Router();
@@ -22,6 +21,5 @@ router.get("/pack-prices", moderateRateLimit, getPackPrices);
 
 // Write operations (strict rate limiting to prevent abuse)
 router.post("/purchase-packs", strictRateLimit, purchasePacks);
-router.post("/award", strictRateLimit, awardCurrency);
 
 export default router;

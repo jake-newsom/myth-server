@@ -1,6 +1,7 @@
 import DailyShopModel from "../models/dailyShop.model";
 import UserModel from "../models/user.model";
 import CardModel from "../models/card.model";
+import db from "../config/db.config";
 import {
   DailyShopConfig,
   DailyShopOfferingWithCard,
@@ -119,7 +120,7 @@ const DailyShopService = {
     const quantity = request.quantity || 1;
 
     try {
-      // Get the offering
+      // Resolve offering and config before entering the transaction (read-only).
       const offerings = await DailyShopModel.getTodaysOfferings(shopDate);
       const offering = offerings.find(
         (o) => o.offering_id === request.offeringId
@@ -132,7 +133,6 @@ const DailyShopService = {
         };
       }
 
-      // Get shop configuration for this item type
       const config = await DailyShopModel.getConfigByItemType(
         offering.item_type
       );
@@ -143,107 +143,144 @@ const DailyShopService = {
         };
       }
 
-      // Get user's current purchases for this item type
-      const userPurchases = await DailyShopModel.getUserPurchasesByItemType(
-        userId,
-        shopDate,
-        offering.item_type
-      );
-
-      // Calculate current purchase count and resets used
-      const currentPurchaseCount = userPurchases.reduce(
-        (sum, p) => sum + p.quantity_purchased,
-        0
-      );
-      const resetsUsed = userPurchases.reduce(
-        (max, p) => Math.max(max, p.resets_used),
-        0
-      );
-
-      // Check if user has reached purchase limit
-      const effectiveLimit =
-        config.daily_limit + resetsUsed * config.daily_limit;
-
-      if (currentPurchaseCount + quantity > effectiveLimit) {
-        if (request.useReset) {
-          // User wants to use a reset
-          const user = await UserModel.findById(userId);
-          if (!user) {
-            return { success: false, message: "User not found" };
-          }
-
-          if (user.gems < config.reset_price_gems) {
-            return {
-              success: false,
-              message: `Insufficient gems for reset. Need ${config.reset_price_gems} gems.`,
-            };
-          }
-
-          // Deduct gems for reset
-          await UserModel.spendGems(userId, config.reset_price_gems);
-        } else {
-          return {
-            success: false,
-            message: `Daily purchase limit reached for ${offering.item_type}. Use gems to reset limit.`,
-          };
-        }
-      }
-
-      // Calculate total cost
       const totalCost = offering.price * quantity;
 
-      // Check if user has enough currency
-      const user = await UserModel.findById(userId);
-      if (!user) {
-        return { success: false, message: "User not found" };
+      // All balance checks and mutations run inside one transaction with a
+      // row-level lock so concurrent requests cannot double-spend or
+      // double-grant.
+      const client = await db.getClient();
+      let purchase: DailyShopPurchase;
+      let cardReceived: any;
+      let packsReceived: number | undefined;
+      let newCurrencyBalance: number;
+
+      try {
+        await client.query("BEGIN");
+
+        // Lock user row and read current currency balances atomically.
+        const { rows: userRows } = await client.query(
+          `SELECT gems, card_fragments, fate_coins FROM users
+           WHERE user_id = $1 FOR NO KEY UPDATE`,
+          [userId]
+        );
+        if (userRows.length === 0) {
+          await client.query("ROLLBACK");
+          return { success: false, message: "User not found" };
+        }
+        const userRow = userRows[0];
+        const currentAmount: number =
+          offering.currency === "gems"
+            ? userRow.gems
+            : offering.currency === "card_fragments"
+            ? userRow.card_fragments
+            : userRow.fate_coins;
+
+        // Re-check purchase count and resets inside the lock.
+        const { rows: purchaseRows } = await client.query(
+          `SELECT COALESCE(SUM(quantity_purchased), 0)::int AS total_purchased,
+                  COALESCE(MAX(resets_used), 0)::int AS resets_used
+           FROM daily_shop_purchases
+           WHERE user_id = $1 AND shop_date = $2 AND item_type = $3`,
+          [userId, shopDate, offering.item_type]
+        );
+        const currentPurchaseCount: number = purchaseRows[0].total_purchased;
+        let resetsUsed: number = purchaseRows[0].resets_used;
+        const effectiveLimit = config.daily_limit + resetsUsed * config.daily_limit;
+
+        if (currentPurchaseCount + quantity > effectiveLimit) {
+          if (request.useReset) {
+            if (userRow.gems < config.reset_price_gems) {
+              await client.query("ROLLBACK");
+              return {
+                success: false,
+                message: `Insufficient gems for reset. Need ${config.reset_price_gems} gems.`,
+              };
+            }
+            const { rows: resetRows } = await client.query(
+              `UPDATE users SET gems = gems - $1 WHERE user_id = $2 AND gems >= $1 RETURNING gems`,
+              [config.reset_price_gems, userId]
+            );
+            if (resetRows.length === 0) {
+              await client.query("ROLLBACK");
+              return { success: false, message: "Insufficient gems for reset." };
+            }
+            resetsUsed += 1;
+          } else {
+            await client.query("ROLLBACK");
+            return {
+              success: false,
+              message: `Daily purchase limit reached for ${offering.item_type}. Use gems to reset limit.`,
+            };
+          }
+        }
+
+        if (currentAmount < totalCost) {
+          await client.query("ROLLBACK");
+          return {
+            success: false,
+            message: `Insufficient ${offering.currency}. You have ${currentAmount}, need ${totalCost}.`,
+          };
+        }
+
+        // Deduct currency atomically.
+        const currencyCol =
+          offering.currency === "gems"
+            ? "gems"
+            : offering.currency === "card_fragments"
+            ? "card_fragments"
+            : "fate_coins";
+        const { rows: deductRows } = await client.query(
+          `UPDATE users SET ${currencyCol} = ${currencyCol} - $1
+           WHERE user_id = $2 AND ${currencyCol} >= $1
+           RETURNING ${currencyCol} AS new_balance`,
+          [totalCost, userId]
+        );
+        if (deductRows.length === 0) {
+          await client.query("ROLLBACK");
+          return {
+            success: false,
+            message: `Insufficient ${offering.currency}.`,
+          };
+        }
+        newCurrencyBalance = deductRows[0].new_balance;
+
+        // Record the purchase inside the transaction.
+        const { rows: purchaseInsertRows } = await client.query(
+          `INSERT INTO daily_shop_purchases
+             (user_id, offering_id, shop_date, item_type, quantity_purchased,
+              total_cost, currency_used, resets_used)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING purchase_id, user_id, offering_id, shop_date, item_type,
+                     quantity_purchased, total_cost, currency_used, resets_used, purchased_at`,
+          [
+            userId,
+            offering.offering_id,
+            shopDate,
+            offering.item_type,
+            quantity,
+            totalCost,
+            offering.currency,
+            resetsUsed,
+          ]
+        );
+        purchase = purchaseInsertRows[0];
+
+        // Grant reward inside the transaction.
+        if (offering.item_type === "pack") {
+          await UserModel.addPacks(userId, quantity, client);
+          packsReceived = quantity;
+        } else if (offering.card_id) {
+          cardReceived = await CardModel.addCardToUser(userId, offering.card_id, client);
+        }
+
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
       }
 
-      const currentAmount = this.getUserCurrencyAmount(user, offering.currency);
-      if (currentAmount < totalCost) {
-        return {
-          success: false,
-          message: `Insufficient ${offering.currency}. You have ${currentAmount}, need ${totalCost}.`,
-        };
-      }
-
-      // Process the purchase
-      const newResetsUsed = request.useReset ? resetsUsed + 1 : resetsUsed;
-
-      // Deduct currency
-      await this.deductCurrency(userId, offering.currency, totalCost);
-
-      // Create purchase record
-      const purchase = await DailyShopModel.createPurchase({
-        user_id: userId,
-        offering_id: offering.offering_id,
-        shop_date: shopDate,
-        item_type: offering.item_type,
-        quantity_purchased: quantity,
-        total_cost: totalCost,
-        currency_used: offering.currency,
-        resets_used: newResetsUsed,
-      });
-
-      // Process the reward based on item type
-      let cardReceived;
-      let packsReceived;
-
-      if (offering.item_type === "pack") {
-        // Add packs to user
-        await UserModel.addPacks(userId, quantity);
-        packsReceived = quantity;
-      } else if (offering.card_id) {
-        // Add card to user's collection
-        cardReceived = await CardModel.addCardToUser(userId, offering.card_id);
-      }
-
-      // Get updated currency balance
-      const updatedUser = await UserModel.findById(userId);
-      const newCurrencyBalance = updatedUser
-        ? this.getUserCurrencyAmount(updatedUser, offering.currency)
-        : 0;
-
-      // Invalidate user's card cache if a card was purchased
       await cacheInvalidation.invalidateAfterShopPurchase(userId, offering.item_type);
 
       logger.info(`Daily shop purchase completed`, {
