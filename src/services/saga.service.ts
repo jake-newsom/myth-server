@@ -60,6 +60,20 @@ const SagaService = {
       return map?.version === 1;
     };
 
+    // A completed run only blocks a new attempt within the instance period it
+    // was completed in; once the period rolls over, stop surfacing it so the
+    // player can start a new run.
+    const completedInPeriod =
+      completed &&
+      isRunInCurrentInstancePeriod(
+        completed.completed_at
+          ? new Date(completed.completed_at)
+          : new Date(completed.created_at),
+        season.start_date
+      )
+        ? completed
+        : null;
+
     return {
       season_id: season.season_id,
       season_name: season.season_name,
@@ -75,11 +89,11 @@ const SagaService = {
             draft_complete: draftComplete(active),
           }
         : null,
-      completed_run: completed
+      completed_run: completedInPeriod
         ? {
-            run_id: completed.run_id,
-            completed_at: completed.completed_at
-              ? completed.completed_at.toISOString()
+            run_id: completedInPeriod.run_id,
+            completed_at: completedInPeriod.completed_at
+              ? completedInPeriod.completed_at.toISOString()
               : null,
           }
         : null,
