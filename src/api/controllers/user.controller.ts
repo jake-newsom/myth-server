@@ -31,6 +31,7 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
     image_url: card.image_url,
     base_power: card.base_power,
     set_id: card.set_id,
+    is_exclusive: card.is_exclusive ?? false,
     special_ability: card.special_ability
       ? {
         id: card.special_ability.ability_id,

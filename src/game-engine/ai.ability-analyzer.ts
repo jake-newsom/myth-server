@@ -557,21 +557,37 @@ export class AbilityAnalyzer {
       // +1 to all stats per destroyed ally
       score += defeatedAlliesCount * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
     } else if (abilityName === "vidar_vengeance") {
-      // +5 to all sides if Odin has been defeated - conditional powerhouse.
-      // The handler checks for an Odin on the board that has flipped at least
-      // one card (defeats.length > 0); mirror that to value the condition.
+      // If Odin has been defeated: +3 to all sides AND an extra combat from
+      // Vidar's tile (he re-attacks adjacent enemies). Strongest when placed
+      // next to flippable enemies so the retrigger can convert them.
       const odinDefeated = [...allAllies, ...allEnemies].some(
         (c) => c.base_card_data.name === "Odin" && c.defeats.length > 0
       );
-      score += odinDefeated
-        ? AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 5
-        : 30; // Big swing when met, modest otherwise
+      if (odinDefeated) {
+        score += AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 3; // the +3 buff
+        // Value the bonus attack by adjacent enemies it could flip.
+        score +=
+          adjacentEnemies.length *
+          AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE *
+          0.5;
+      } else {
+        score += 30; // modest until the condition is met
+      }
     }
 
     // === ADJACENCY-BASED BUFFS (Permanent) ===
     else if (abilityName === "frigg_bless") {
-      // Permanent +1 to adjacent allies
-      score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2;
+      // Fensalir's Foresight: reveal the opponent's hand and apply -3 to one of
+      // their hand cards. Value it as a guaranteed enemy debuff whenever the
+      // opponent actually has cards in hand to weaken (worthless otherwise).
+      const opponentForFrigg =
+        gameState.player1.user_id === aiPlayerId
+          ? gameState.player2
+          : gameState.player1;
+      score +=
+        opponentForFrigg.hand.length > 0
+          ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE
+          : 0;
     } else if (abilityName === "gunnr_war") {
       // Temporary +1 to adjacent allies
       score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE;
@@ -591,8 +607,12 @@ export class AbilityAnalyzer {
         AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE *
         (0.6 + 0.4 * followUpFactor);
     } else if (abilityName === "freyja_bless") {
-      // Temporary +2 to adjacent allies
-      score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 1.5;
+      // Warrior's Blessing: while in hand, Freyja gains +1 whenever any common
+      // card is played (ally or enemy). Placing her ENDS that accumulation, so
+      // playing her is only worth the power she has already banked — there's no
+      // on-place board effect. Treat placement as roughly vanilla; the decision
+      // to hold vs play her lives in getHoldValue below.
+      score += 0;
     } else if (abilityName === "momotaro_allies_rally") {
       // Temporary +1 to adjacent allies
       score += adjacentAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE;
@@ -1125,6 +1145,29 @@ export class AbilityAnalyzer {
         holdValue += 80; // Still good to hold
       } else {
         holdValue -= 60; // Last card, play it to get the blessings
+      }
+    } else if (abilityName === "freyja_bless") {
+      // Warrior's Blessing: while in hand, Freyja banks +1 per common card
+      // played (by either player). The longer she's held while commons are
+      // played, the bigger she gets — so hold her when the game still has
+      // commons likely to come, and cash her in late / when she's the last card.
+      const aiPlayer =
+        gameState.player1.user_id === aiPlayerId
+          ? gameState.player1
+          : gameState.player2;
+      const cardsInHand = aiPlayer.hand.length;
+      const boardFilled = [...gameState.board.flat()].filter(
+        (cell) => cell?.card
+      ).length;
+      const boardSize = gameState.board.length * gameState.board[0].length;
+      const lateGame = boardFilled >= boardSize - 3;
+
+      if (cardsInHand <= 1 || lateGame) {
+        holdValue -= 60; // No more time to accrue — play her now.
+      } else if (cardsInHand >= 3) {
+        holdValue += 120; // Lots of turns left to bank commons.
+      } else {
+        holdValue += 50;
       }
     }
 

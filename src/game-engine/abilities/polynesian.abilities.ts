@@ -32,7 +32,6 @@ import {
   getTileAtPosition,
   getRandomEmptyTile,
   createOrUpdateDebuff,
-  getRandomSide,
   chooseRandomCard,
   moveCardToPosition,
   isSameCard,
@@ -46,26 +45,6 @@ import { simulationContext } from "../simulation.context";
 import AchievementService from "../../services/achievement.service";
 
 import { v4 as uuidv4 } from "uuid";
-
-const fillRandomEmptyTileWithWater = (
-  position: BoardPosition,
-  board: GameBoard,
-  ownerId: string,
-) => {
-  const emptyAdjacentTiles = getEmptyAdjacentTiles(position, board);
-  if (emptyAdjacentTiles.length > 0) {
-    const { position: tilePos, tile } = emptyAdjacentTiles[0];
-    return setTileStatus(tile, tilePos, {
-      status: TileStatus.Normal,
-      turns_left: 1000,
-      animation_label: "water",
-      terrain: TileTerrain.Ocean,
-      effect_duration: 1000,
-      applies_to_user: ownerId,
-      power: { top: 1, bottom: 1, left: 1, right: 1 },
-    });
-  }
-};
 
 const countActiveLavaTiles = (board: GameBoard): number => {
   return board
@@ -737,49 +716,33 @@ export const polynesianAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Rain's Blessing: Fill an empty tile with water. Allies placed after her gain +1 to a random side.
+  // Rain's Blessing: Each round, flood a random empty tile with water that
+  // grants +1 to your cards standing on it (mirrors Kamapua'a's Wild Shift,
+  // but a friendly water tile instead of a hostile lava tile).
   hauwahine_rains_blessing: (context) => {
-    const {
-      triggerCard,
-      position,
-      state: { board },
-      triggerMoment,
-    } = context;
+    const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
 
-    if (triggerMoment === TriggerMoment.OnPlace) {
-      if (!position) return [];
-
-      // Fill one empty adjacent tile with water
-      const waterTileEvent = fillRandomEmptyTileWithWater(
-        position,
-        board,
-        triggerCard.owner,
+    const randomTile = getRandomEmptyTile(state.board);
+    if (randomTile) {
+      gameEvents.push(
+        setTileStatus(
+          randomTile.tile,
+          randomTile.position,
+          {
+            status: TileStatus.Normal,
+            turns_left: 1000,
+            terrain: TileTerrain.Ocean,
+            animation_label: "water",
+            effect_duration: 1000,
+            applies_to_user: triggerCard.owner, // Only buff this card owner's cards
+            power: { top: 1, bottom: 1, left: 1, right: 1 },
+          },
+          triggerCard.owner,
+          triggerCard,
+          { turnNumber: context.state.turn_number },
+        ),
       );
-      if (waterTileEvent) gameEvents.push(waterTileEvent);
-    } else if (triggerMoment === TriggerMoment.AnyOnPlace) {
-      const { originalTriggerCard } = context;
-      if (originalTriggerCard?.owner === triggerCard.owner) {
-        const cardPosition = getPositionOfCardById(
-          originalTriggerCard.user_card_instance_id,
-          board,
-        );
-        if (cardPosition) {
-          const randomSide = getRandomSide();
-          gameEvents.push(
-            addTempBuff(
-              originalTriggerCard,
-              1000,
-              { [randomSide]: 1 },
-              {
-                name: "Koolau Mist",
-                animation: "bubbles-centered",
-                position: cardPosition,
-              },
-            ),
-          );
-        }
-      }
     }
 
     return gameEvents;

@@ -30,14 +30,15 @@ import { clientSupportsMulligan } from "../utils/clientVersion";
 // Linear growth: both gems and fragments scale by (1 + band * GROWTH_SLOPE).
 const GROWTH_SLOPE = 0.05; // +5% of base value per band (every 10 floors)
 
-// Base gem value per tier (at band 0)
+// Base gem value per tier (at band 0). +50% across the board over the prior
+// 5/10/25/50/125/250 baseline.
 const BASE_GEM_VALUE_BY_TIER: Record<TowerTier, number> = {
-  E: 5, // normal floor
-  D: 10, // divisible by 5
-  C: 25, // divisible by 10
-  B: 50, // divisible by 25
-  A: 125, // divisible by 50
-  S: 250, // divisible by 100
+  E: 8, // normal floor (5 -> 7.5, rounded)
+  D: 15, // divisible by 5
+  C: 38, // divisible by 10 (25 -> 37.5, rounded)
+  B: 75, // divisible by 25
+  A: 188, // divisible by 50 (125 -> 187.5, rounded)
+  S: 375, // divisible by 100
 };
 
 // Base fragments per tier

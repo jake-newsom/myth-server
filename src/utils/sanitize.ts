@@ -77,5 +77,15 @@ export function sanitizeGameStateForPlayer(
 
     sanitizedState.hydrated_card_data_cache = filteredCache;
   }
+
+  // `pending_choice` is internal coordination state. Its `choosable_card_ids`
+  // are the opponent's hand — never broadcast it inside the shared game state.
+  // The chooser receives the revealed hand via the dedicated
+  // SERVER_CHOICE_REQUIRED payload instead. Stripping it for everyone keeps the
+  // broadcast snapshot free of the hidden hand even for the chooser's cache.
+  if (sanitizedState.pending_choice) {
+    delete sanitizedState.pending_choice;
+  }
+
   return sanitizedState;
 }

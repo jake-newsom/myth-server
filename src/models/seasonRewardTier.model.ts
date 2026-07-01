@@ -27,6 +27,7 @@ export interface ResolvedRewardCard {
   name: string;
   rarity: string;
   image_url: string;
+  is_exclusive: boolean;
 }
 export interface ResolvedRewardBorder {
   border_id: string;
@@ -136,7 +137,7 @@ const SeasonRewardTierModel = {
 
     if (variantIds.size > 0) {
       const { rows } = await executor.query(
-        `SELECT cv.card_variant_id, cv.image_url, cv.rarity,
+        `SELECT cv.card_variant_id, cv.image_url, cv.rarity, cv.is_exclusive,
                 ch.character_id AS base_card_id, ch.name
          FROM card_variants cv
          JOIN characters ch ON ch.character_id = cv.character_id
@@ -150,6 +151,7 @@ const SeasonRewardTierModel = {
           name: r.name,
           rarity: r.rarity,
           image_url: r.image_url,
+          is_exclusive: r.is_exclusive ?? false,
         });
       }
     }

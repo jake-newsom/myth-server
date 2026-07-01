@@ -114,6 +114,7 @@ interface ShopPreviewCard {
   set_id: string;
   special_ability: ShopPreviewAbility | null;
   attack_animation?: string | null;
+  is_exclusive: boolean;
 }
 
 const SagaShopService = {
@@ -187,6 +188,7 @@ const SagaShopService = {
            cv.rarity,
            cv.image_url,
            cv.attack_animation,
+           cv.is_exclusive,
            ch.name,
            ch.description,
            ch.tags,
@@ -228,6 +230,7 @@ const SagaShopService = {
           set_id: row.set_id,
           special_ability: ability,
           attack_animation: row.attack_animation ?? null,
+          is_exclusive: row.is_exclusive ?? false,
         });
       }
     }
