@@ -1,5 +1,6 @@
 import {
   TriggerMoment,
+  RarityUtils,
 } from "../../types/card.types";
 import {
   AbilityMap,
@@ -37,7 +38,7 @@ import {
   getAdjacentPositions,
   getTileAtPosition,
 } from "../ability.utils";
-import { drawCardSync, flipCard } from "../game.utils";
+import { drawCardSync, flipCard, resolveCombat } from "../game.utils";
 import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
 import { v4 as uuidv4 } from "uuid";
 import { TileStatus, TileTerrain } from "../../types/game.types";
@@ -293,36 +294,14 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Mother's Blessing: Grant +1 to all adjacent allies.
-  frigg_bless: (context) => {
-    const {
-      triggerCard,
-      position,
-      state: { board },
-    } = context;
-    const gameEvents: BaseGameEvent[] = [];
-    const adjacentAllies = getAlliesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner,
-    );
-    for (const ally of adjacentAllies) {
-      const allyPosition = getPositionOfCardById(
-        ally.user_card_instance_id,
-        board,
-      );
-      if (allyPosition) {
-        gameEvents.push(
-          buff(ally, 1, {
-            name: "Fensalir's Grace",
-            animation: "light-cross-spin",
-            position: allyPosition,
-          }),
-        );
-      }
-    }
-
-    return gameEvents;
+  // Fensalir's Foresight (interactive): when Frigg is played, the placing
+  // player is shown the opponent's hand and chooses one card to debuff by -3.
+  // The pause/reveal/choice orchestration lives in GameLogic.placeCard +
+  // resolveFriggChoice (it must wait on async player input, which an ability
+  // function cannot do). This handler is intentionally a no-op marker — the
+  // ability id is what placeCard keys off of to raise the pending choice.
+  frigg_bless: () => {
+    return [];
   },
 
   heimdall_block: (context) => {
@@ -383,10 +362,15 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Silent Vengeance: If Odin has been defeated, gain +3 to all stats.
+  // Silent Vengeance: If Odin has been defeated, gain +3 to all stats. On
+  // placement this is a one-time check; whenever any card is later flipped
+  // (AnyOnFlipped), Vidar avenges Odin by also retriggering combat from his
+  // tile. The "The Iron Shoe" buff is the once-per-game guard for both paths.
   vidar_vengeance: (context) => {
     const {
       triggerCard,
+      triggerMoment,
+      state,
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
@@ -406,7 +390,21 @@ export const norseAbilities: AbilityMap = {
       }
       if (odinDefeated) break;
     }
-    if (odinDefeated) {
+    if (!odinDefeated) return gameEvents;
+
+    const label = "The Iron Shoe";
+    const ironShoeBuff = triggerCard.temporary_effects.find(
+      (effect) => effect.name === label,
+    );
+
+    const triggerCardPosition = getPositionOfCardById(
+      triggerCard.user_card_instance_id,
+      board,
+    );
+    if (!triggerCardPosition) return gameEvents;
+
+    // Grant the +3 once per game (guarded by the buff's presence).
+    if (!ironShoeBuff) {
       if (!simulationContext.isInSimulation()) {
         AchievementService.triggerAchievementEvent({
           userId: triggerCard.owner,
@@ -420,20 +418,40 @@ export const norseAbilities: AbilityMap = {
           },
         }).catch(() => {});
       }
-      const triggerCardPosition = getPositionOfCardById(
-        triggerCard.user_card_instance_id,
-        board,
+
+      gameEvents.push(
+        buff(triggerCard, 3, {
+          name: label,
+          animation: "triangle-shield",
+          position: triggerCardPosition,
+        }),
       );
-      if (triggerCardPosition) {
-        gameEvents.push(
-          buff(triggerCard, 5, {
-            name: "The Iron Shoe",
-            animation: "triangle-shield",
-            position: triggerCardPosition,
-          }),
+    }
+
+    // Avenge Odin: only the AnyOnFlipped path retriggers combat. OnPlace is a
+    // passive +3 check with no extra attack. resolveCombat can flip cards and
+    // re-fire AnyOnFlipped on Vidar; guard with usedAttack (set before the
+    // resolveCombat call) so the bonus attack happens once, not on every flip.
+    if (triggerMoment === TriggerMoment.AnyOnFlipped) {
+      // Re-read the buff — buff() above mutates temporary_effects in place.
+      const currentBuff =
+        ironShoeBuff ??
+        triggerCard.temporary_effects.find((effect) => effect.name === label);
+      if (currentBuff && !currentBuff.data?.usedAttack) {
+        currentBuff.data = {
+          ...(currentBuff.data ?? {}),
+          usedAttack: true,
+        };
+
+        const combatResult = resolveCombat(
+          state,
+          triggerCardPosition,
+          triggerCard.owner,
         );
+        gameEvents.push(...combatResult.events);
       }
     }
+
     return gameEvents;
   },
 
@@ -481,35 +499,36 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Warrior's Blessing: Grant +2 to adjacent allies for a turn.
+  // Warrior's Blessing: While in hand, Freyja gains +1 power whenever any
+  // common card (standard/+/++/+++) is played on the board — ally or enemy.
   freyja_bless: (context) => {
-    const {
-      triggerCard,
-      position,
-      state: { board },
-    } = context;
-    const gameEvents: BaseGameEvent[] = [];
-    const adjacentAllies = getAlliesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner,
+    const { triggerCard, originalTriggerCard } = context;
+    const HAND_POSITION = { x: -1, y: -1 };
+
+    // Triggered by AnyOnPlace: only react to a common card being placed.
+    if (!originalTriggerCard) return [];
+
+    const baseRarity = RarityUtils.getBaseRarity(
+      originalTriggerCard.base_card_data.rarity,
     );
-    for (const ally of adjacentAllies) {
-      const allyPosition = getPositionOfCardById(
-        ally.user_card_instance_id,
-        board,
-      );
-      if (allyPosition) {
-        gameEvents.push(
-          addTempBuff(ally, 2, 2, {
-            name: "Warrior's Blessing",
-            animation: "light-cross-spin",
-            position: allyPosition,
-          }),
-        );
-      }
-    }
-    return gameEvents;
+    if (baseRarity !== "common") return [];
+
+    return [
+      createOrUpdateBuff(
+        triggerCard,
+        1000,
+        1,
+        "Warrior's Blessing",
+        HAND_POSITION,
+        {
+          animation: "light-cross-spin",
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          turnNumber: context.state.turn_number,
+        },
+      ),
+    ];
   },
 
   // Peaceful Strength: Gain +2 if no adjacent enemies.
@@ -957,9 +976,14 @@ export const norseAbilities: AbilityMap = {
   tyr_binding_justice: (context) => {
     const {
       triggerCard,
+      state,
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+
+    // "At the start of YOUR turn" — OnTurnStart fires for every board card
+    // regardless of owner, so only act when it's this card owner's turn.
+    if (triggerCard.owner !== state.current_player_id) return gameEvents;
 
     const enemies = getCardsByCondition(
       board,

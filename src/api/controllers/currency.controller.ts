@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import UserModel from "../../models/user.model";
+import db from "../../config/db.config";
 
 // Pack prices (can be configured)
 const PACK_PRICES = {
@@ -59,88 +60,54 @@ export const purchasePacks = async (req: Request, res: Response) => {
     const pricePerPack = PACK_PRICES.gems;
     const totalCost = quantity * pricePerPack;
 
-    // Get current user
-    const user = await UserModel.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    const client = await db.getClient();
+    try {
+      await client.query("BEGIN");
 
-    // Check if user has enough gems
-    if (user.gems < totalCost) {
-      return res.status(400).json({
-        error: `Insufficient gems. You have ${user.gems}, need ${totalCost}`,
-        required: totalCost,
-        available: user.gems,
+      // Atomically deduct gems (fails if insufficient) and add packs in one transaction
+      const { rows: deductRows } = await client.query(
+        `UPDATE users SET gems = gems - $1 WHERE user_id = $2 AND gems >= $1
+         RETURNING gems`,
+        [totalCost, userId]
+      );
+
+      if (deductRows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({
+          error: `Insufficient gems. Need ${totalCost}.`,
+          required: totalCost,
+        });
+      }
+
+      const { rows: packRows } = await client.query(
+        `UPDATE users SET pack_count = pack_count + $1 WHERE user_id = $2
+         RETURNING gems, pack_count`,
+        [quantity, userId]
+      );
+
+      await client.query("COMMIT");
+
+      res.json({
+        purchase_details: {
+          quantity,
+          currency_type,
+          cost_per_pack: pricePerPack,
+          total_cost: totalCost,
+        },
+        updated_currencies: {
+          gems: packRows[0].gems,
+          pack_count: packRows[0].pack_count,
+        },
       });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
-
-    // Process purchase
-    const updatedUser = await UserModel.spendGems(userId, totalCost);
-
-    if (!updatedUser) {
-      return res.status(500).json({ error: "Failed to deduct currency" });
-    }
-
-    // Add packs
-    const finalUser = await UserModel.addPacks(userId, quantity);
-    if (!finalUser) {
-      return res.status(500).json({ error: "Failed to add packs" });
-    }
-
-    res.json({
-      purchase_details: {
-        quantity,
-        currency_type,
-        cost_per_pack: pricePerPack,
-        total_cost: totalCost,
-      },
-      updated_currencies: {
-        gems: finalUser.gems,
-        pack_count: finalUser.pack_count,
-      },
-    });
   } catch (error) {
     console.error("Error purchasing packs:", error);
     res.status(500).json({ error: "Failed to purchase packs" });
-  }
-};
-
-export const awardCurrency = async (req: Request, res: Response) => {
-  try {
-    const userId = req.user?.user_id;
-    const { gems_amount, reason } = req.body;
-
-    if (!userId) {
-      return res.status(401).json({ error: "User not authenticated" });
-    }
-
-    // Validation
-    if (
-      !gems_amount ||
-      gems_amount < 0 ||
-      !Number.isInteger(gems_amount)
-    ) {
-      return res.status(400).json({
-        error: "Invalid gems amount - must be a non-negative integer",
-      });
-    }
-
-    const updatedUser = await UserModel.updateGems(userId, gems_amount);
-
-    if (!updatedUser) {
-      return res.status(500).json({ error: "Failed to award currency" });
-    }
-
-    res.json({
-      reason: reason || "Manual award",
-      updated_currencies: {
-        gems: updatedUser.gems,
-        total_xp: updatedUser.total_xp,
-      },
-    });
-  } catch (error) {
-    console.error("Error awarding currency:", error);
-    res.status(500).json({ error: "Failed to award currency" });
   }
 };
 

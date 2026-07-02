@@ -22,7 +22,7 @@
     "test-surrender": "node tests/surrender.test.js",
     "test-rate-limit": "node tests/rate-limit.test.js",
     "test-ai-drawing": "node tests/ai-card-drawing.test.js",
-    "test:abilities": "node --test --test-force-exit -r ts-node/register tests/game-engine/abilities.edge.test.ts",
+    "test:abilities": "node --test --test-force-exit -r ts-node/register tests/game-engine/abilities.edge.test.ts src/game-engine/__tests__/norse.abilities.test.ts src/game-engine/__tests__/polynesian.abilities.test.ts",
     "test:mulligan": "node --test --test-force-exit -r ts-node/register tests/game-engine/game.mulligan.test.ts",
     "test:ai-v2": "node --test --test-force-exit -r ts-node/register src/game-engine/__tests__/simulation.rng.test.ts src/game-engine/__tests__/ai.rules.engine.test.ts src/game-engine/__tests__/ai.unified-score.test.ts src/game-engine/__tests__/ai.regression-packs.test.ts src/game-engine/__tests__/ai.move-selection.test.ts src/game-engine/__tests__/iron-blessing.test.ts",
     "benchmark:ai": "node -r ts-node/register scripts/ai-selfplay-benchmark.ts",

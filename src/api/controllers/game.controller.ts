@@ -389,6 +389,18 @@ class GameController {
         return;
       }
 
+      // While a move is paused awaiting an interactive choice, only the matching
+      // handChoice action may proceed (mirrors the socket handler guard).
+      if (
+        currentGameState.pending_choice &&
+        action.action_type !== "handChoice"
+      ) {
+        res
+          .status(400)
+          .json({ error: "Waiting for an ability choice to resolve" });
+        return;
+      }
+
       switch (action.action_type) {
         case "placeCard":
           if (!action.user_card_instance_id || !action.position) {
@@ -469,6 +481,41 @@ class GameController {
           break;
         }
 
+        case "handChoice": {
+          // Resolve an interactive reveal-hand pause (single-player HTTP path).
+          // The engine method is shared with the socket path.
+          const pending = currentGameState.pending_choice;
+          const chosenCardIds = ((action as any).chosen_card_ids ??
+            []) as string[];
+
+          if (!pending || pending.type !== "reveal_hand_select") {
+            res.status(400).json({ error: "No pending choice to resolve" });
+            return;
+          }
+          if (userId !== pending.chooser_id) {
+            res.status(400).json({ error: "Not your choice to make" });
+            return;
+          }
+          const uniqueChosen = [...new Set(chosenCardIds)];
+          if (
+            uniqueChosen.length !== pending.select_count ||
+            !uniqueChosen.every((id) =>
+              pending.choosable_card_ids.includes(id)
+            )
+          ) {
+            res.status(400).json({ error: "Invalid chosen_card_ids" });
+            return;
+          }
+
+          const choiceResult = await GameLogic.resolveHandChoice(
+            currentGameState,
+            uniqueChosen
+          );
+          updatedGameState = choiceResult.state;
+          events.push(...choiceResult.events);
+          break;
+        }
+
         default:
           res.status(400).json({ error: "Invalid action type" });
           return;
@@ -539,11 +586,9 @@ class GameController {
 
           if (floorNumber !== null && gameCompletionResult) {
             try {
-              const won = winner_id_for_db === userId;
               towerCompletion = await TowerService.processTowerCompletion(
                 userId,
                 floorNumber,
-                won,
                 gameId
               );
             } catch (error) {
@@ -774,6 +819,26 @@ class GameController {
           );
           updatedGameState = placeCardResult.state;
           events.push(...placeCardResult.events);
+
+          // If the AI played an interactive reveal-hand ability (e.g. Frigg), it
+          // can't make a follow-up choice — resolve it inline against the
+          // strongest enemy hand card(s) so the move completes instead of
+          // leaving the game paused.
+          if (updatedGameState.pending_choice) {
+            const chosenIds =
+              GameLogic.pickStrongestPendingChoiceCards(updatedGameState);
+            if (chosenIds.length > 0) {
+              const choiceResult = await GameLogic.resolveHandChoice(
+                updatedGameState,
+                chosenIds
+              );
+              updatedGameState = choiceResult.state;
+              events.push(...choiceResult.events);
+            } else {
+              updatedGameState.pending_choice = undefined;
+            }
+          }
+
           if (updatedGameState.saga_context?.ai_opening_play_pending) {
             updatedGameState.saga_context.ai_opening_play_pending = false;
           }
@@ -886,11 +951,9 @@ class GameController {
 
           if (floorNumberAI !== null && gameCompletionResult) {
             try {
-              const wonAI = winner_id_for_db === userId;
               towerCompletionAI = await TowerService.processTowerCompletion(
                 userId,
                 floorNumberAI,
-                wonAI,
                 gameId
               );
             } catch (error) {

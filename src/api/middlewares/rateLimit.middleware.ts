@@ -85,6 +85,22 @@ process.on("SIGINT", () => {
   globalStore.destroy();
 });
 
+// Transport-agnostic rate limit check for non-Express callers (e.g. Socket.IO
+// event handlers). Returns whether the request is allowed and the record so
+// callers can surface retry-after info if they want to.
+export const checkRateLimit = (
+  scope: string,
+  identity: string,
+  windowMs: number,
+  maxRequests: number
+): { allowed: boolean; retryAfterSeconds: number } => {
+  const key = `${scope}:${identity}`;
+  const record = globalStore.hit(key, windowMs);
+  const allowed = record.requests <= maxRequests;
+  const retryAfterSeconds = Math.ceil((record.resetTime - Date.now()) / 1000);
+  return { allowed, retryAfterSeconds };
+};
+
 // Rate limiting middleware factory
 export const createRateLimit = (config: RateLimitConfig) => {
   return (req: Request, res: Response, next: NextFunction): void => {

@@ -35,6 +35,7 @@ const formatDeckCardInstanceResponse = (
     power_enhancements: instance.power_enhancements,
     tags: baseCard.tags,
     set_id: baseCard.set_id || null,
+    is_exclusive: baseCard.is_exclusive ?? false,
     special_ability: ability
       ? {
           ability_id: ability.ability_id,
@@ -137,7 +138,7 @@ const DeckModel = {
         dc.deck_id,
         dc.user_card_instance_id,
         uci.level, uci.xp, uci.is_locked, uci.card_variant_id AS base_card_id,
-        ch.character_id, ch.name, cv.rarity, cv.image_url, cv.attack_animation,
+        ch.character_id, ch.name, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
         ch.base_power->>'top' as base_power_top,
         ch.base_power->>'right' as base_power_right,
         ch.base_power->>'bottom' as base_power_bottom,
@@ -182,6 +183,7 @@ const DeckModel = {
         special_ability_id: row.special_ability_id,
         set_id: row.set_id,
         tags: row.tags,
+        is_exclusive: row.is_exclusive ?? false,
         ...(row.sound_effect && { sound_effect: row.sound_effect }),
       };
 
@@ -260,9 +262,9 @@ const DeckModel = {
       SELECT
         dc.user_card_instance_id,
         uci.level, uci.xp, uci.is_locked, uci.card_variant_id AS base_card_id,
-        ch.character_id, ch.name, cv.rarity, cv.image_url, cv.attack_animation,
+        ch.character_id, ch.name, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
         ch.base_power->>'top' as base_power_top,
-        ch.base_power->>'right' as base_power_right, 
+        ch.base_power->>'right' as base_power_right,
         ch.base_power->>'bottom' as base_power_bottom, 
         ch.base_power->>'left' as base_power_left,
         ch.special_ability_id, ch.set_id, ch.tags,
@@ -307,6 +309,7 @@ const DeckModel = {
         special_ability_id: row.special_ability_id,
         set_id: row.set_id,
         tags: row.tags,
+        is_exclusive: row.is_exclusive ?? false,
         ...(row.sound_effect && { sound_effect: row.sound_effect }),
       };
 

@@ -30,14 +30,15 @@ import { clientSupportsMulligan } from "../utils/clientVersion";
 // Linear growth: both gems and fragments scale by (1 + band * GROWTH_SLOPE).
 const GROWTH_SLOPE = 0.05; // +5% of base value per band (every 10 floors)
 
-// Base gem value per tier (at band 0)
+// Base gem value per tier (at band 0). +50% across the board over the prior
+// 5/10/25/50/125/250 baseline.
 const BASE_GEM_VALUE_BY_TIER: Record<TowerTier, number> = {
-  E: 5, // normal floor
-  D: 10, // divisible by 5
-  C: 25, // divisible by 10
-  B: 50, // divisible by 25
-  A: 125, // divisible by 50
-  S: 250, // divisible by 100
+  E: 8, // normal floor (5 -> 7.5, rounded)
+  D: 15, // divisible by 5
+  C: 38, // divisible by 10 (25 -> 37.5, rounded)
+  B: 75, // divisible by 25
+  A: 188, // divisible by 50 (125 -> 187.5, rounded)
+  S: 375, // divisible by 100
 };
 
 // Base fragments per tier
@@ -553,53 +554,57 @@ class TowerService {
    * Idempotency guarantees:
    * 1. SELECT ... FOR UPDATE on the user row serializes concurrent requests
    *    so two in-flight calls for the same user never race.
-   * 2. If a gameId is provided, we verify it hasn't already been reward-
-   *    processed (game_status must still be 'completed', not 'rewarded').
+   * 2. game_status must be 'completed' (not 'rewarded') and winner_id must
+   *    match the caller — won is derived server-side, never trusted from client.
    *    After granting rewards we mark it 'rewarded' atomically inside the
    *    same transaction.
    */
   async processTowerCompletion(
     userId: string,
     floorNumber: number,
-    won: boolean,
-    gameId?: string
+    gameId: string
   ): Promise<TowerCompletionResult> {
-    if (!won) {
-      return {
-        success: true,
-        won: false,
-        floor_number: floorNumber,
-      };
-    }
-
     const client = await db.getClient();
     try {
       await client.query("BEGIN");
 
-      // --- Game validation (sanity check) ---
-      if (gameId) {
-        const gameCheck = await client.query(
-          `SELECT game_id, floor_number, player1_id
-           FROM "games"
-           WHERE game_id = $1`,
-          [gameId]
+      // --- Game validation ---
+      const gameCheck = await client.query(
+        `SELECT game_id, floor_number, player1_id, game_status, winner_id
+         FROM "games"
+         WHERE game_id = $1`,
+        [gameId]
+      );
+
+      if (gameCheck.rows.length === 0) {
+        throw new Error("Game not found");
+      }
+
+      const game = gameCheck.rows[0];
+
+      if (game.player1_id !== userId) {
+        throw new Error("Game does not belong to this user");
+      }
+
+      if (game.floor_number !== floorNumber) {
+        throw new Error(
+          `Game floor (${game.floor_number}) does not match requested floor (${floorNumber})`
         );
+      }
 
-        if (gameCheck.rows.length === 0) {
-          throw new Error("Game not found");
-        }
+      if (game.game_status !== "completed") {
+        throw new Error("Game is not completed");
+      }
 
-        const game = gameCheck.rows[0];
+      const won = game.winner_id === userId;
 
-        if (game.player1_id !== userId) {
-          throw new Error("Game does not belong to this user");
-        }
-
-        if (game.floor_number !== floorNumber) {
-          throw new Error(
-            `Game floor (${game.floor_number}) does not match requested floor (${floorNumber})`
-          );
-        }
+      if (!won) {
+        await client.query("COMMIT");
+        return {
+          success: true,
+          won: false,
+          floor_number: floorNumber,
+        };
       }
 
       // --- Idempotency: row-level lock on user ---
@@ -697,6 +702,12 @@ class TowerService {
       await client.query(
         "UPDATE users SET tower_floor = $1, tower_floor_updated_at = NOW() WHERE user_id = $2",
         [newFloor, userId]
+      );
+
+      // Mark game as rewarded to prevent double-claiming
+      await client.query(
+        `UPDATE "games" SET game_status = 'rewarded' WHERE game_id = $1`,
+        [gameId]
       );
 
       // Check if we need to generate new floors

@@ -1,4 +1,9 @@
-import { GameState, BoardPosition, Player } from "../types/game.types";
+import {
+  GameState,
+  BoardPosition,
+  Player,
+  HandChoiceEffect,
+} from "../types/game.types";
 import { InGameCard, TriggerMoment } from "../types/card.types";
 import * as _ from "lodash";
 import db from "../config/db.config"; // For direct DB access if necessary for hydration
@@ -30,6 +35,41 @@ import { simulationContext } from "./simulation.context";
 import { GameStatus } from "../types";
 export { GameStatus };
 
+import {
+  createOrUpdateDebuff,
+  getCardTotalPower,
+  getOpponentId,
+  getPositionOfCardById,
+} from "./ability.utils";
+
+/**
+ * Registry of abilities that trigger the generic "reveal the opponent's hand
+ * and select N card(s)" interactive pause. To add a new such ability, add an
+ * entry here — no changes to placeCard / resolveHandChoice / the client overlay
+ * are needed (it reads everything from pending_choice).
+ */
+const REVEAL_HAND_ABILITIES: Record<
+  string,
+  {
+    selectCount: number;
+    promptTitle: string;
+    promptText: string;
+    effect: HandChoiceEffect;
+  }
+> = {
+  frigg_bless: {
+    selectCount: 1,
+    promptTitle: "Fensalir's Foresight",
+    promptText: "Choose an enemy card to weaken by -3.",
+    effect: {
+      kind: "debuff",
+      amount: 3,
+      label: "Fensalir's Foresight",
+      animation: "light-cross-spin",
+    },
+  },
+};
+
 export class GameLogic {
   //Helper to fetch and cache details for multiple UserCardInstances
   static async hydrateCardInstances(
@@ -52,7 +92,7 @@ export class GameLogic {
           cv.card_variant_id as base_card_id, ch.name, cv.rarity, cv.image_url, 
           ch.base_power->>'top' as base_power_top, ch.base_power->>'right' as base_power_right, 
           ch.base_power->>'bottom' as base_power_bottom, ch.base_power->>'left' as base_power_left, 
-          ch.tags, ch.special_ability_id, ch.set_id, cv.attack_animation,
+          ch.tags, ch.special_ability_id, ch.set_id, cv.attack_animation, cv.is_exclusive,
           COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
           sa.id as ability_key, sa.name as ability_name, sa.description as ability_description,
           sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
@@ -116,6 +156,7 @@ export class GameLogic {
             base_power: basePower,
             set_id: row.set_id,
             tags: row.tags,
+            is_exclusive: row.is_exclusive ?? false,
             special_ability: row.ability_name
               ? {
                 ability_id: row.special_ability_id,
@@ -512,26 +553,60 @@ export class GameLogic {
       newState.player1.score = scores.player1Score;
       newState.player2.score = scores.player2Score;
 
-      if (validators.shouldDrawCard(player, newState.max_cards_in_hand)) {
-        const drawCardResult = await this.drawCard(newState, playerId);
-        newState = drawCardResult.state;
-        events.push(...drawCardResult.events);
-      }
-
-      if (sightBlessingTriggered) {
-        const refreshedPlayer = validators.getPlayer(newState, playerId);
-        if (validators.shouldDrawCard(refreshedPlayer, newState.max_cards_in_hand)) {
-          const bonusDrawResult = await this.drawCard(newState, playerId);
-          newState = bonusDrawResult.state;
-          events.push(...bonusDrawResult.events);
+      // Interactive pause point (after combat/scoring, before draw + endTurn).
+      // Reveal-hand abilities (e.g. Frigg) show the opponent's hand and wait for
+      // the placing player to select card(s). We pause here, set pending_choice,
+      // and return the events so far; the deferred tail (draw + endTurn) runs in
+      // resolveHandChoice once the selection arrives (or times out).
+      //
+      // Safe in saga battles: all saga post-combat mechanics (slayer/thorns/
+      // world's-end/dynamic blessings) and scoring above have already run by this
+      // point, so the pause only defers the draw + endTurn tail — the same tail
+      // resolveHandChoice runs. The saga opponent is AI, and submitAIAction
+      // auto-resolves the choice when the AI itself plays a reveal-hand card.
+      const revealConfig = playedAbilityId
+        ? REVEAL_HAND_ABILITIES[playedAbilityId]
+        : undefined;
+      if (
+        revealConfig &&
+        newBoardCell.card // card may have been flipped/removed during combat
+      ) {
+        const opponentId = getOpponentId(playerId, newState);
+        const opponent = validators.getPlayer(newState, opponentId);
+        const sourceStillOnBoard = getPositionOfCardById(
+          newBoardCell.card.user_card_instance_id,
+          newState.board
+        );
+        // Only pause if there is actually a hand to choose from and the source
+        // card survived its own placement combat (a removed card can't anchor VFX).
+        if (opponent.hand.length > 0 && sourceStillOnBoard) {
+          newState.pending_choice = {
+            type: "reveal_hand_select",
+            chooser_id: playerId,
+            source_card_id: newBoardCell.card.user_card_instance_id,
+            source_position: sourceStillOnBoard,
+            choosable_card_ids: [...opponent.hand],
+            // Can't select more cards than the opponent actually holds.
+            select_count: Math.min(
+              revealConfig.selectCount,
+              opponent.hand.length
+            ),
+            prompt_title: revealConfig.promptTitle,
+            prompt_text: revealConfig.promptText,
+            effect: revealConfig.effect,
+            turn_number: newState.turn_number,
+          };
+          return { state: newState, events };
         }
       }
 
-      // Switch turn to opponent. endTurn() checks for full-board game over
-      // as its final step, after turn effects have ticked down.
-      const endTurnResult = await GameLogic.endTurn(newState, playerId);
-      newState = endTurnResult.state;
-      events.push(...endTurnResult.events);
+      const finished = await GameLogic.finishPlacement(
+        newState,
+        playerId,
+        sightBlessingTriggered
+      );
+      newState = finished.state;
+      events.push(...finished.events);
 
       return { state: newState, events };
     } catch (error) {
@@ -548,6 +623,145 @@ export class GameLogic {
       }
       throw error;
     }
+  }
+
+  /**
+   * The tail end of a card placement: draw-if-needed (+ saga sight-blessing
+   * bonus draw) and switch the turn to the opponent. Extracted so the normal
+   * placement path and the interactive resume path (resolveFriggChoice) run an
+   * identical, single end-of-move sequence.
+   */
+  private static async finishPlacement(
+    state: GameState,
+    playerId: string,
+    sightBlessingTriggered: boolean
+  ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
+    const events: BaseGameEvent[] = [];
+    let newState = state;
+    const player = validators.getPlayer(newState, playerId);
+
+    if (validators.shouldDrawCard(player, newState.max_cards_in_hand)) {
+      const drawCardResult = await this.drawCard(newState, playerId);
+      newState = drawCardResult.state;
+      events.push(...drawCardResult.events);
+    }
+
+    if (sightBlessingTriggered) {
+      const refreshedPlayer = validators.getPlayer(newState, playerId);
+      if (validators.shouldDrawCard(refreshedPlayer, newState.max_cards_in_hand)) {
+        const bonusDrawResult = await this.drawCard(newState, playerId);
+        newState = bonusDrawResult.state;
+        events.push(...bonusDrawResult.events);
+      }
+    }
+
+    // Switch turn to opponent. endTurn() checks for full-board game over
+    // as its final step, after turn effects have ticked down.
+    const endTurnResult = await GameLogic.endTurn(newState, playerId);
+    newState = endTurnResult.state;
+    events.push(...endTurnResult.events);
+
+    return { state: newState, events };
+  }
+
+  /**
+   * Applies a pending reveal-hand choice's effect to each selected card, clears
+   * pending_choice, then runs the deferred placement tail (draw + endTurn). Used
+   * by both the player's explicit choice and the turn-timeout AI fallback.
+   *
+   * The caller MUST validate that a pending_choice exists and that every id in
+   * chosenCardIds is one of choosable_card_ids before calling (the socket/HTTP
+   * layers do this and hold the per-game action lock to prevent racing the
+   * timeout fallback).
+   */
+  static async resolveHandChoice(
+    currentGameState: GameState,
+    chosenCardIds: string[]
+  ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
+    const events: BaseGameEvent[] = [];
+    const newState = _.cloneDeep(currentGameState);
+    const pending = newState.pending_choice;
+
+    if (!pending || pending.type !== "reveal_hand_select") {
+      throw new Error("No pending hand choice to resolve");
+    }
+    // De-dupe and validate membership.
+    const uniqueIds = [...new Set(chosenCardIds)];
+    if (uniqueIds.length !== pending.select_count) {
+      throw new Error(
+        `Expected ${pending.select_count} selection(s), got ${uniqueIds.length}`
+      );
+    }
+    if (!uniqueIds.every((id) => pending.choosable_card_ids.includes(id))) {
+      throw new Error("A chosen card is not a valid target");
+    }
+
+    const chooserId = pending.chooser_id;
+    const effect = pending.effect;
+    const sourceCard =
+      newState.hydrated_card_data_cache?.[pending.source_card_id];
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
+
+    for (const chosenCardId of uniqueIds) {
+      const chosenCard = newState.hydrated_card_data_cache?.[chosenCardId];
+      if (!chosenCard) continue;
+
+      if (effect.kind === "debuff") {
+        events.push(
+          createOrUpdateDebuff(
+            chosenCard,
+            1000,
+            effect.amount,
+            effect.label,
+            HAND_POSITION,
+            {
+              animation: effect.animation,
+              actingPlayerId: chooserId,
+              sourceCard,
+              sourcePlayerId: chooserId,
+              turnNumber: newState.turn_number,
+              targetTotalPowerBefore: getCardTotalPower(chosenCard),
+            }
+          )
+        );
+      }
+
+      // createOrUpdateDebuff mutates current_power in place; the hand card is the
+      // same reference held in the cache, but write back explicitly to match the
+      // tsukuyomi_moons_balance hand-debuff pattern.
+      if (newState.hydrated_card_data_cache?.[chosenCardId]) {
+        newState.hydrated_card_data_cache[chosenCardId] = chosenCard;
+      }
+    }
+
+    // Choice consumed — clear the pause before running the deferred tail so the
+    // resumed move (and any reconnect) no longer sees a pending choice.
+    newState.pending_choice = undefined;
+
+    const finished = await GameLogic.finishPlacement(newState, chooserId, false);
+    return { state: finished.state, events: [...events, ...finished.events] };
+  }
+
+  /**
+   * Picks the N strongest cards (by total power) among a pending choice's
+   * candidates — the AI/timeout fallback when the chooser doesn't respond in
+   * time. N is the choice's select_count. Returns [] if there is no pending
+   * choice (caller should then just resume / clear).
+   */
+  static pickStrongestPendingChoiceCards(state: GameState): string[] {
+    const pending = state.pending_choice;
+    if (!pending || pending.choosable_card_ids.length === 0) return [];
+
+    const ranked = [...pending.choosable_card_ids].sort((a, b) => {
+      const pa = state.hydrated_card_data_cache?.[a];
+      const pb = state.hydrated_card_data_cache?.[b];
+      const powerA = pa ? getCardTotalPower(pa) : -Infinity;
+      const powerB = pb ? getCardTotalPower(pb) : -Infinity;
+      return powerB - powerA;
+    });
+
+    // select_count is already clamped to the hand size when the choice is raised.
+    return ranked.slice(0, pending.select_count);
   }
 
   /**
@@ -671,6 +885,20 @@ export class GameLogic {
 
     // Start-of-turn Norse deck effect: if behind, buff a random card in hand.
     events.push(...applyNorseDeckEffect(newState, newState.current_player_id));
+
+    // Start-of-turn abilities (e.g. Tyr's Binding Justice). The turn has just
+    // flipped to newState.current_player_id; these events ride the same batch as
+    // the rest of endTurn so the client can animate them — there is no separate
+    // turn-start round-trip to carry them otherwise. triggerAbilities fires every
+    // board card with OnTurnStart regardless of owner, so any "start of YOUR
+    // turn" ability must itself gate on triggerCard.owner === current_player_id.
+    events.push(
+      ...gameUtils.triggerAbilities(TriggerMoment.OnTurnStart, {
+        state: newState,
+        triggerMoment: TriggerMoment.OnTurnStart,
+        position: { x: 0, y: 0 },
+      })
+    );
 
     // Track events to detect terrain additions for deck effects
     const eventsBeforeTurnEnd = events.length;

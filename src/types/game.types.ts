@@ -88,6 +88,58 @@ export interface MulliganPlayerState {
   replaced_count: number;
 }
 
+/**
+ * The effect applied to each card the chooser selects in a reveal-hand choice.
+ * Generic so different abilities can reuse the same interactive flow.
+ */
+export type HandChoiceEffect = {
+  /** Currently only an in-hand power debuff is supported. */
+  kind: "debuff";
+  /** Magnitude applied to all sides of each chosen card (positive number). */
+  amount: number;
+  /** Effect label shown on the floating power-change indicator. */
+  label: string;
+  /** Optional VFX animation key. */
+  animation?: string;
+};
+
+/**
+ * Tracks a move that is paused mid-resolution awaiting interactive player input:
+ * a generic "reveal the opponent's hand and select N card(s)" prompt. Frigg's
+ * Foresight is the first user, but the shape is ability-agnostic — the prompt
+ * copy, how many cards to pick, and the effect applied all come from here.
+ *
+ * When set, the game is frozen: no further actions resolve until the chooser
+ * responds (or the turn timer times out and the server auto-resolves). It is
+ * part of persisted state so a reconnect/refresh can re-derive the prompt.
+ *
+ * NOTE: this is sensitive — `choosable_card_ids` reveals the opponent's hand.
+ * It must be stripped from the state broadcast to the non-chooser (see
+ * sanitizeGameStateForPlayer) and surfaced to the chooser via a dedicated
+ * SERVER_CHOICE_REQUIRED payload only.
+ */
+export interface PendingChoice {
+  /** Discriminator for the kind of interactive prompt. */
+  type: "reveal_hand_select";
+  /** Player who must respond (the one who played the source card). */
+  chooser_id: string;
+  /** Source card's user_card_instance_id (effect source / VFX origin). */
+  source_card_id: string;
+  /** Source card's board tile. */
+  source_position: BoardPosition;
+  /** Opponent hand card ids, snapshotted when the choice was raised. */
+  choosable_card_ids: string[];
+  /** How many cards the chooser must select. */
+  select_count: number;
+  /** Title shown on the overlay (usually the skill name). */
+  prompt_title: string;
+  /** Short instruction shown under the title. */
+  prompt_text: string;
+  /** What happens to each selected card when the choice resolves. */
+  effect: HandChoiceEffect;
+  turn_number: number;
+}
+
 export interface GameState {
   board: GameBoard;
   player1: Player;
@@ -113,17 +165,30 @@ export interface GameState {
   };
   /** Present for Sagas mode battles (Phase 4+) */
   saga_context?: SagaBattleContext;
+  /**
+   * Set when a move is paused awaiting interactive player input (e.g. Frigg).
+   * While present, the game is frozen until the choice resolves or times out.
+   */
+  pending_choice?: PendingChoice;
 }
 
 export interface GameAction {
   game_id: string;
-  action_type: "placeCard" | "endTurn" | "surrender" | "forcePass" | "mulligan";
+  action_type:
+    | "placeCard"
+    | "endTurn"
+    | "surrender"
+    | "forcePass"
+    | "mulligan"
+    | "handChoice";
   user_card_instance_id?: string; // ID of the UserCardInstance being played
   position?: BoardPosition;
   // Player-chosen target for abilities that require selecting a board card
   // (e.g. urashima_time_shift, tawara_piercing_shot). Validated server-side.
   targetPosition?: BoardPosition;
   replaced_card_instance_ids?: string[]; // For mulligan action
+  // Chosen enemy hand card(s) for an interactive reveal-hand choice (handChoice).
+  chosen_card_ids?: string[];
 }
 
 export interface AbilityEffect {

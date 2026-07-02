@@ -234,6 +234,10 @@ export const RATE_LIMIT_CONFIG = {
     WINDOW_MS: 10 * 1000, // 10 seconds
     MAX_REQUESTS: 100,
   },
+  SOCKET_JOIN_GAME: {
+    WINDOW_MS: 10 * 1000, // 10 seconds
+    MAX_REQUESTS: 10,
+  },
   AI_ACTION: {
     WINDOW_MS: 1 * 1000, // 1 second
     MAX_REQUESTS: 40,

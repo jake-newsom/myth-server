@@ -47,6 +47,7 @@ interface DbCardRow {
   ability_sound_effect: string | null;
   attack_animation: string | null;
   sound_effect: string | null;
+  is_exclusive: boolean;
 }
 
 async function fetchCardsByName(names: string[]): Promise<Map<string, DbCardRow>> {
@@ -54,7 +55,7 @@ async function fetchCardsByName(names: string[]): Promise<Map<string, DbCardRow>
   const { rows } = await db.query(
     `SELECT
        cv.card_variant_id, ch.name, cv.rarity, cv.image_url,
-       ch.set_id, ch.tags, ch.special_ability_id, cv.attack_animation,
+       ch.set_id, ch.tags, ch.special_ability_id, cv.attack_animation, cv.is_exclusive,
        COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
        sa.id as ability_key, sa.name as ability_name, sa.description as ability_description,
        sa.trigger_moments as ability_triggers, sa.parameters as ability_parameters,
@@ -104,6 +105,7 @@ function buildInGameCard(
       image_url: dbRow.image_url,
       base_power: { ...spec.power },
       set_id: dbRow.set_id,
+      is_exclusive: dbRow.is_exclusive ?? false,
       special_ability: ability,
       ...(dbRow.attack_animation && { attack_animation: dbRow.attack_animation }),
       ...(dbRow.sound_effect && { sound_effect: dbRow.sound_effect }),

@@ -33,16 +33,39 @@ export function sanitizeGameStateForPlayer(
   const isPlayer1 = sanitizedState.player1.user_id === viewerId;
   const isPlayer2 = sanitizedState.player2.user_id === viewerId;
 
+  // Deck order determines every future draw (`deck.shift()` in game.logic.ts),
+  // so it must be redacted the same way as hand for BOTH players — otherwise a
+  // modified client can read its own or the opponent's exact future draws.
   if (isPlayer1) {
     if (sanitizedState.player2) {
       sanitizedState.player2.hand = new Array(
         sanitizedState.player2.hand.length
       ).fill(null as any);
     }
+    if (sanitizedState.player1?.deck) {
+      sanitizedState.player1.deck = new Array(
+        sanitizedState.player1.deck.length
+      ).fill(null as any);
+    }
+    if (sanitizedState.player2?.deck) {
+      sanitizedState.player2.deck = new Array(
+        sanitizedState.player2.deck.length
+      ).fill(null as any);
+    }
   } else if (isPlayer2) {
     if (sanitizedState.player1) {
       sanitizedState.player1.hand = new Array(
         sanitizedState.player1.hand.length
+      ).fill(null as any);
+    }
+    if (sanitizedState.player1?.deck) {
+      sanitizedState.player1.deck = new Array(
+        sanitizedState.player1.deck.length
+      ).fill(null as any);
+    }
+    if (sanitizedState.player2?.deck) {
+      sanitizedState.player2.deck = new Array(
+        sanitizedState.player2.deck.length
       ).fill(null as any);
     }
   }
@@ -77,5 +100,15 @@ export function sanitizeGameStateForPlayer(
 
     sanitizedState.hydrated_card_data_cache = filteredCache;
   }
+
+  // `pending_choice` is internal coordination state. Its `choosable_card_ids`
+  // are the opponent's hand — never broadcast it inside the shared game state.
+  // The chooser receives the revealed hand via the dedicated
+  // SERVER_CHOICE_REQUIRED payload instead. Stripping it for everyone keeps the
+  // broadcast snapshot free of the hidden hand even for the chooser's cache.
+  if (sanitizedState.pending_choice) {
+    delete sanitizedState.pending_choice;
+  }
+
   return sanitizedState;
 }

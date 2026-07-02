@@ -7,6 +7,7 @@ export interface SagaEnemyNodePreview {
   preview_name: string;
   preview_image_url: string;
   preview_rarity: string;
+  preview_is_exclusive: boolean;
 }
 
 // Preview-card preference, evaluated entirely in SQL (see loadEnemyDeckPreviews):
@@ -38,7 +39,8 @@ async function loadEnemyDeckPreviews(
             cv.card_variant_id,
             ch.name AS card_name,
             cv.image_url,
-            cv.rarity
+            cv.rarity,
+            cv.is_exclusive
      FROM deck_cards dc
      JOIN decks d ON d.deck_id = dc.deck_id
      JOIN user_owned_cards uoc ON uoc.user_card_instance_id = dc.user_card_instance_id
@@ -60,6 +62,7 @@ async function loadEnemyDeckPreviews(
       preview_name: String(row.card_name),
       preview_image_url: String(row.image_url ?? ""),
       preview_rarity: String(row.rarity ?? "common"),
+      preview_is_exclusive: Boolean(row.is_exclusive),
     });
   }
 

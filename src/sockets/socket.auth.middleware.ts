@@ -1,15 +1,9 @@
-import jwt from "jsonwebtoken";
-import config from "../config";
 import UserModel from "../models/user.model";
 import db from "../config/db.config";
 import { Socket } from "socket.io";
 import logger from "../utils/logger";
 import { AuthenticatedSocket } from "../types/socket.types";
-
-interface JwtPayload {
-  userId: string;
-  [key: string]: any;
-}
+import SessionService from "../services/session.service";
 
 /**
  * Middleware to authenticate socket connections using JWT and authorize for a game room.
@@ -40,28 +34,21 @@ export const socketAuthMiddleware = async (
   }
 
   try {
-    if (!config.jwtSecret) {
-      logger.error("JWT Secret not configured");
-      return next(
-        new Error("Authentication error: Server configuration issue")
-      );
+    const session = await SessionService.validateAccessToken(token);
+
+    if (!session) {
+      logger.warn("Socket authentication failed: invalid or revoked token", {
+        socketId: socket.id,
+      });
+      return next(new Error("Authentication error: Invalid or expired token."));
     }
 
-    const decoded = jwt.verify(token, config.jwtSecret, { algorithms: ["HS256"] }) as JwtPayload;
     logger.debug("JWT token verified successfully", {
       socketId: socket.id,
-      userId: decoded.userId,
+      userId: session.user_id,
     });
 
-    if (!decoded || typeof decoded !== "object" || !decoded.userId) {
-      logger.warn("Invalid JWT token payload format", {
-        socketId: socket.id,
-        decoded,
-      });
-      return next(new Error("Authentication error: Invalid token format"));
-    }
-
-    const userId = decoded.userId;
+    const userId = session.user_id;
     const user = await UserModel.findById(userId);
 
     if (!user) {

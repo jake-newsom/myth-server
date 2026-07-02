@@ -8,7 +8,9 @@ import {
   ServerJoinedResponse,
   GameNamespaceEvent,
   GameActionPayload,
+  ServerChoiceRequiredPayload,
 } from "../types/socket.types";
+import { InGameCard } from "../types/card.types";
 import {
   applyPlayerMulligan,
   finalizeMulliganIfReady,
@@ -33,6 +35,8 @@ import {
   sumAnimationDelay,
 } from "../game-engine/game-events";
 import logger from "../utils/logger";
+import { checkRateLimit } from "../api/middlewares/rateLimit.middleware";
+import { RATE_LIMIT_CONFIG } from "../config/constants";
 
 // Users with an active /game namespace socket connection.
 const gameNamespaceConnectedUsers = new Set<string>();
@@ -115,6 +119,67 @@ export function setupGameNamespace(io: Server): void {
     }
   }
 
+  /**
+   * Like emitGameStateSanitized but sends ONLY to the sockets belonging to a
+   * single player. Used to deliver Frigg's interactive pause to the chooser
+   * while the opponent receives nothing (they must not learn the move happened
+   * until the choice resolves).
+   */
+  async function emitGameStateToPlayer(
+    gameNs: Namespace,
+    room: string,
+    rawState: any,
+    targetPlayerId: string,
+    payload: Record<string, any> = {}
+  ) {
+    const sockets = await gameNs.in(room).fetchSockets();
+    for (const s of sockets as any) {
+      const viewerId: string = s.data?.user_id ?? "";
+      if (viewerId !== targetPlayerId) continue;
+      s.emit(GameNamespaceEvent.SERVER_EVENTS, {
+        gameState: sanitizeGameStateForPlayer(rawState, viewerId),
+        ...payload,
+      });
+    }
+  }
+
+  /**
+   * Emits the SERVER_CHOICE_REQUIRED reveal to the chooser only, carrying the
+   * fully hydrated candidate cards (the opponent's hand) built from the
+   * UNSANITIZED state. Never sent to the opponent.
+   */
+  async function emitChoiceRequired(
+    gameNs: Namespace,
+    room: string,
+    gameId: string,
+    rawState: any
+  ) {
+    const pending = rawState.pending_choice;
+    if (!pending) return;
+
+    const cards = (pending.choosable_card_ids as string[])
+      .map((id) => rawState.hydrated_card_data_cache?.[id])
+      .filter((c): c is InGameCard => !!c);
+
+    const choicePayload: ServerChoiceRequiredPayload = {
+      gameId,
+      type: pending.type,
+      sourceCardId: pending.source_card_id,
+      sourcePosition: pending.source_position,
+      cards,
+      selectCount: pending.select_count,
+      promptTitle: pending.prompt_title,
+      promptText: pending.prompt_text,
+    };
+
+    const sockets = await gameNs.in(room).fetchSockets();
+    for (const s of sockets as any) {
+      const viewerId: string = s.data?.user_id ?? "";
+      if (viewerId !== pending.chooser_id) continue;
+      s.emit(GameNamespaceEvent.SERVER_CHOICE_REQUIRED, choicePayload);
+    }
+  }
+
   async function hydrateMissingHandCardsForPlayer(
     state: any,
     playerId: string
@@ -174,6 +239,55 @@ export function setupGameNamespace(io: Server): void {
         let events: any[] = [];
         let aiMoveUsed = false;
 
+        // If the move is paused awaiting this player's interactive choice (e.g.
+        // Frigg) and they ran out of time, auto-resolve against the strongest
+        // enemy hand card(s), then broadcast the full move to both players.
+        if (currentState.pending_choice) {
+          const chosenIds =
+            GameLogic.pickStrongestPendingChoiceCards(currentState);
+          if (chosenIds.length > 0) {
+            const result = await GameLogic.resolveHandChoice(
+              currentState,
+              chosenIds
+            );
+            currentState = result.state;
+            events = result.events;
+          } else {
+            // No resolvable candidate (shouldn't happen) — clear and end turn.
+            currentState.pending_choice = undefined;
+            const result = await GameLogic.endTurn(currentState, timedOutPlayerId);
+            currentState = result.state;
+            events = result.events;
+          }
+
+          await gameService.updateGameAfterAction(
+            gameId,
+            currentState,
+            currentState.status,
+            currentState.winner ?? null
+          );
+          events = pacePowerEvents(events);
+          await emitGameStateSanitized(gameNs, roomName, currentState, {
+            events,
+          });
+
+          if (meta.turnManager) {
+            if (currentState.status === GameStatus.COMPLETED) {
+              meta.turnManager.dispose();
+              meta.turnManager = null;
+              clearActiveMatch(meta.playerIds[0]);
+              clearActiveMatch(meta.playerIds[1]);
+            } else {
+              meta.turnManager.startTurn(
+                currentState.current_player_id,
+                false,
+                sumAnimationDelay(events)
+              );
+            }
+          }
+          return;
+        }
+
         const aiDifficulty = resolveAIDifficulty({ isTimeoutFallback: true });
         const aiMove = await ai.makeAIMove(
           currentState,
@@ -191,6 +305,25 @@ export function setupGameNamespace(io: Server): void {
           );
           currentState = result.state;
           events = result.events;
+
+          // If the AI just played an interactive reveal-hand ability (e.g.
+          // Frigg), it can't send a follow-up choice — resolve it inline against
+          // the strongest enemy hand card(s) so the move completes in this same
+          // tick instead of hanging.
+          if (currentState.pending_choice) {
+            const chosenIds =
+              GameLogic.pickStrongestPendingChoiceCards(currentState);
+            if (chosenIds.length > 0) {
+              const choiceResult = await GameLogic.resolveHandChoice(
+                currentState,
+                chosenIds
+              );
+              currentState = choiceResult.state;
+              events.push(...choiceResult.events);
+            } else {
+              currentState.pending_choice = undefined;
+            }
+          }
         } else {
           const result = await GameLogic.endTurn(currentState, timedOutPlayerId);
           currentState = result.state;
@@ -326,6 +459,20 @@ export function setupGameNamespace(io: Server): void {
      *  { gameId: string }
      */
     socket.on("client:join_game", async (payload: JoinGamePayload) => {
+      const { allowed, retryAfterSeconds } = checkRateLimit(
+        "socket-join-game",
+        `user:${userId}`,
+        RATE_LIMIT_CONFIG.SOCKET_JOIN_GAME.WINDOW_MS,
+        RATE_LIMIT_CONFIG.SOCKET_JOIN_GAME.MAX_REQUESTS
+      );
+      if (!allowed) {
+        socket.emit("server:error", {
+          message: "Too many join attempts. Please slow down.",
+          retryAfterSeconds,
+        });
+        return;
+      }
+
       try {
         if (!payload?.gameId) {
           socket.emit("server:error", {
@@ -430,6 +577,28 @@ export function setupGameNamespace(io: Server): void {
           opponentUsername,
         };
         socket.emit(GameNamespaceEvent.SERVER_JOINED, joinResponse);
+
+        // If a move is paused awaiting THIS player's interactive choice (e.g.
+        // they refreshed mid-Frigg), re-send the reveal so the overlay returns.
+        // sanitizeGameStateForPlayer strips pending_choice, so this is the only
+        // way the rejoining chooser re-learns about the pending prompt.
+        const pendingChoice = (game.game_state as any).pending_choice;
+        if (pendingChoice && pendingChoice.chooser_id === userId) {
+          const cards = (pendingChoice.choosable_card_ids as string[])
+            .map((id) => game.game_state.hydrated_card_data_cache?.[id])
+            .filter((c): c is InGameCard => !!c);
+          const choicePayload: ServerChoiceRequiredPayload = {
+            gameId,
+            type: pendingChoice.type,
+            sourceCardId: pendingChoice.source_card_id,
+            sourcePosition: pendingChoice.source_position,
+            cards,
+            selectCount: pendingChoice.select_count,
+            promptTitle: pendingChoice.prompt_title,
+            promptText: pendingChoice.prompt_text,
+          };
+          socket.emit(GameNamespaceEvent.SERVER_CHOICE_REQUIRED, choicePayload);
+        }
 
         // Optionally notify the other peer that this player has joined.
         socket.to(roomName).emit(GameNamespaceEvent.SERVER_PLAYER_JOINED, {
@@ -571,6 +740,20 @@ export function setupGameNamespace(io: Server): void {
         const { gameId, actionType, user_card_instance_id, position, targetPosition } =
           actionPayload;
 
+        const { allowed, retryAfterSeconds } = checkRateLimit(
+          "socket-game-action",
+          `user:${userId}`,
+          RATE_LIMIT_CONFIG.GAME_ACTION.WINDOW_MS,
+          RATE_LIMIT_CONFIG.GAME_ACTION.MAX_REQUESTS
+        );
+        if (!allowed) {
+          socket.emit(GameNamespaceEvent.SERVER_ERROR, {
+            message: "Too many actions submitted. Please slow down.",
+            retryAfterSeconds,
+          });
+          return;
+        }
+
         if (!gameId || !actionType) {
           socket.emit(GameNamespaceEvent.SERVER_ERROR, {
             message: "gameId and actionType are required",
@@ -638,6 +821,16 @@ export function setupGameNamespace(io: Server): void {
 
           let nextState = gameRecord.game_state;
           let events: any[] = [];
+
+          // While a move is paused awaiting an interactive choice, the game is
+          // frozen: only the matching handChoice action may proceed. Reject any
+          // other action so a player can't place/end-turn around the pause.
+          if (nextState.pending_choice && actionType !== "handChoice") {
+            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
+              message: "Waiting for an ability choice to resolve",
+            });
+            return;
+          }
 
           const meta = activeGames.get(gameId);
           const supportsMulliganUi = clientSupportsMulligan(
@@ -708,6 +901,43 @@ export function setupGameNamespace(io: Server): void {
               await hydrateMissingHandCardsForPlayer(nextState, userId);
 
               nextState = finalizeMulliganIfReady(nextState).state;
+            } else if (actionType === "handChoice") {
+              // Resolve an interactive reveal-hand pause: the chooser picked card(s).
+              const pending = nextState.pending_choice;
+              const chosenCardIds =
+                (actionPayload as GameActionPayload).chosen_card_ids ?? [];
+
+              if (!pending || pending.type !== "reveal_hand_select") {
+                socket.emit(GameNamespaceEvent.SERVER_ERROR, {
+                  message: "No pending choice to resolve",
+                });
+                return;
+              }
+              if (userId !== pending.chooser_id) {
+                socket.emit(GameNamespaceEvent.SERVER_ERROR, {
+                  message: "Not your choice to make",
+                });
+                return;
+              }
+              const uniqueChosen = [...new Set(chosenCardIds)];
+              if (
+                uniqueChosen.length !== pending.select_count ||
+                !uniqueChosen.every((id) =>
+                  pending.choosable_card_ids.includes(id)
+                )
+              ) {
+                socket.emit(GameNamespaceEvent.SERVER_ERROR, {
+                  message: "Invalid chosen_card_ids",
+                });
+                return;
+              }
+
+              const result = await GameLogic.resolveHandChoice(
+                nextState,
+                uniqueChosen
+              );
+              nextState = result.state;
+              events = result.events;
             } else {
               socket.emit(GameNamespaceEvent.SERVER_ERROR, {
                 message: "Invalid actionType",
@@ -736,6 +966,36 @@ export function setupGameNamespace(io: Server): void {
           // Merge/space consecutive power-change floaters before broadcasting so
           // the turn timer (below) can derive its delay from the paced events.
           events = pacePowerEvents(events);
+
+          // Interactive pause (Frigg): the move stopped after combat awaiting the
+          // chooser's selection. Reveal the opponent's hand to the CHOOSER ONLY
+          // (placement + combat events + the choice prompt) and send the opponent
+          // NOTHING — they must not learn the move happened until it resolves. The
+          // turn timer is re-armed on the same chooser so a non-response times out
+          // and the AI fallback (in makeOnTurnTimeout) auto-resolves.
+          if (nextState.pending_choice) {
+            const chooserId = nextState.pending_choice.chooser_id;
+            await emitGameStateToPlayer(
+              gameNs,
+              roomName,
+              nextState,
+              chooserId,
+              { events }
+            );
+            await emitChoiceRequired(gameNs, roomName, gameId, nextState);
+
+            const pauseMeta = activeGames.get(gameId);
+            if (pauseMeta?.turnManager) {
+              // Keep it the chooser's turn; re-arm the timer after the placement
+              // animations so the existing escalation/timeout logic still fires.
+              pauseMeta.turnManager.startTurn(
+                chooserId,
+                false,
+                sumAnimationDelay(events)
+              );
+            }
+            return;
+          }
 
           // Broadcast events & new state to both players
           if (actionType !== "surrender") {

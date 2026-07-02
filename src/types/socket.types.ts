@@ -57,6 +57,9 @@ export enum GameNamespaceEvent {
   SERVER_EVENTS = "server:events",
   SERVER_GAME_END = "server:game_end",
   SERVER_MULLIGAN_START = "server:mulligan_start",
+  // Sent only to the chooser when an interactive ability (e.g. Frigg) pauses
+  // the move and reveals data they must act on (the opponent's hand).
+  SERVER_CHOICE_REQUIRED = "server:choice_required",
 }
 
 // Presence namespace ("/presence") events.
@@ -133,13 +136,39 @@ export interface JoinGamePayload {
 
 export interface GameActionPayload {
   gameId: string;
-  actionType: "placeCard" | "endTurn" | "surrender" | "forcePass" | "mulligan";
+  actionType:
+    | "placeCard"
+    | "endTurn"
+    | "surrender"
+    | "forcePass"
+    | "mulligan"
+    | "handChoice";
   user_card_instance_id?: string;
   position?: BoardPosition;
   // Player-chosen target for abilities that require selecting a board card
   // (e.g. urashima_time_shift, tawara_piercing_shot). Validated server-side.
   targetPosition?: BoardPosition;
   replaced_card_instance_ids?: string[];
+  // Chosen enemy hand card(s) for an interactive reveal-hand choice (actionType
+  // "handChoice"). Validated against the active pending_choice server-side.
+  chosen_card_ids?: string[];
+}
+
+/**
+ * Payload for SERVER_CHOICE_REQUIRED — sent only to the chooser. Carries the
+ * fully hydrated cards they may pick from (the opponent's revealed hand), the
+ * prompt copy + how many to pick, and the source card context so the client can
+ * anchor the prompt UI. Generic across abilities that reveal-hand-and-select.
+ */
+export interface ServerChoiceRequiredPayload {
+  gameId: string;
+  type: "reveal_hand_select";
+  sourceCardId: string;
+  sourcePosition: BoardPosition;
+  cards: InGameCard[];
+  selectCount: number;
+  promptTitle: string;
+  promptText: string;
 }
 
 export interface ServerMulliganStartPayload {

@@ -57,6 +57,7 @@ interface DbCardRow {
   ability_sound_effect: string | null;
   attack_animation: string | null;
   sound_effect: string | null;
+  is_exclusive: boolean;
   base_power_top: string;
   base_power_right: string;
   base_power_bottom: string;
@@ -72,7 +73,7 @@ export async function fetchCardRowsByVariantIds(
   const { rows } = await db.query(
     `SELECT
       cv.card_variant_id, ch.name, cv.rarity, cv.image_url,
-      ch.set_id, ch.tags, ch.special_ability_id, cv.attack_animation,
+      ch.set_id, ch.tags, ch.special_ability_id, cv.attack_animation, cv.is_exclusive,
       COALESCE(cv.sound_effect, ch.sound_effect) as sound_effect,
       ch.base_power->>'top' as base_power_top,
       ch.base_power->>'right' as base_power_right,
@@ -140,6 +141,7 @@ export function buildSagaInGameCard(
       image_url: dbRow.image_url,
       base_power: { ...basePower },
       set_id: dbRow.set_id,
+      is_exclusive: dbRow.is_exclusive ?? false,
       special_ability: ability,
       ...(dbRow.attack_animation && { attack_animation: dbRow.attack_animation }),
       ...(dbRow.sound_effect && { sound_effect: dbRow.sound_effect }),

@@ -530,21 +530,25 @@ const rules: Record<string, AbilityRule> = {
     avoidWhen: [{ metric: "playerOwnedOccupiedRatio", operator: "<", value: 0.25, score: -16 }],
     placementPriorities: [{ metric: "safePlacementScore", score: 0.25 }],
   }),
+  // Fensalir's Foresight: reveal the enemy hand and debuff a card. The effect
+  // is independent of where Frigg lands, so bias only toward a safe tile.
   frigg_bless: makeRule({
     cardId: "frigg_bless",
     timing: "mid",
     riskProfile: "safe",
-    preferWhen: [{ metric: "adjacentAllyCount", operator: ">=", value: 2, score: 26 }],
-    avoidWhen: [{ metric: "adjacentAllyCount", operator: "==", value: 0, score: -20 }],
-    placementPriorities: [{ metric: "adjacentAllyCount", score: 12 }],
+    preferWhen: [],
+    avoidWhen: [],
+    placementPriorities: [{ metric: "safePlacementScore", score: 0.3 }],
   }),
+  // Warrior's Blessing: a hand-passive (banks +1 per common played). Placement
+  // has no board effect, so just prefer a safe tile when she's finally played.
   freyja_bless: makeRule({
     cardId: "freyja_bless",
-    timing: "mid",
+    timing: "late",
     riskProfile: "safe",
-    preferWhen: [{ metric: "adjacentAllyCount", operator: ">=", value: 2, score: 24 }],
-    avoidWhen: [{ metric: "adjacentAllyCount", operator: "==", value: 0, score: -18 }],
-    placementPriorities: [{ metric: "adjacentAllyCount", score: 12 }],
+    preferWhen: [],
+    avoidWhen: [],
+    placementPriorities: [{ metric: "safePlacementScore", score: 0.3 }],
   }),
   gunnr_war: makeRule({
     cardId: "gunnr_war",
@@ -770,13 +774,21 @@ const rules: Record<string, AbilityRule> = {
     avoidWhen: [{ metric: "enemyBeastOrDragonCount", operator: "==", value: 0, score: -28 }],
     placementPriorities: [{ metric: "safePlacementScore", score: 0.2 }],
   }),
+  // Silent Vengeance: once Odin is defeated, +3 and re-attacks adjacent enemies.
+  // Favour placing him next to enemies so the bonus combat can flip them.
   vidar_vengeance: makeRule({
     cardId: "vidar_vengeance",
     timing: "late",
     riskProfile: "comeback",
-    preferWhen: [{ metric: "turnsRemaining", operator: "<=", value: 4, score: 16 }],
+    preferWhen: [
+      { metric: "turnsRemaining", operator: "<=", value: 4, score: 16 },
+      { metric: "adjacentEnemyCount", operator: ">=", value: 1, score: 14 },
+    ],
     avoidWhen: [{ metric: "turnsRemaining", operator: ">=", value: 7, score: -12 }],
-    placementPriorities: [{ metric: "safePlacementScore", score: 0.2 }],
+    placementPriorities: [
+      { metric: "safePlacementScore", score: 0.2 },
+      { metric: "adjacentEnemyCount", score: 8 },
+    ],
   }),
 };
 
