@@ -567,11 +567,6 @@ export class GameLogic {
       const revealConfig = playedAbilityId
         ? REVEAL_HAND_ABILITIES[playedAbilityId]
         : undefined;
-      console.log("[reveal-hand debug]", {
-        playedAbilityId,
-        hasRevealConfig: !!revealConfig,
-        sourceCardStillPlaced: !!newBoardCell.card,
-      });
       if (
         revealConfig &&
         newBoardCell.card // card may have been flipped/removed during combat
@@ -582,11 +577,6 @@ export class GameLogic {
           newBoardCell.card.user_card_instance_id,
           newState.board
         );
-        console.log("[reveal-hand debug] inner", {
-          opponentId,
-          opponentHandLen: opponent.hand.length,
-          sourceStillOnBoard: !!sourceStillOnBoard,
-        });
         // Only pause if there is actually a hand to choose from and the source
         // card survived its own placement combat (a removed card can't anchor VFX).
         if (opponent.hand.length > 0 && sourceStillOnBoard) {
