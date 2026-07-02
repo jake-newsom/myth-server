@@ -49,7 +49,7 @@ test("njord_sea buffs when adjacent to a sea-tagged card", () => {
     assert.equal(njord.temporary_effects[0].power.top, 3);
     assert.equal(
       (events[0] as unknown as { effectName: string }).effectName,
-      "Nóatún’s Guard",
+      "Noatun’s Guard",
     );
   } finally {
     simulationContext.exitSimulation();
