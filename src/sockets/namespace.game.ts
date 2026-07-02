@@ -35,6 +35,8 @@ import {
   sumAnimationDelay,
 } from "../game-engine/game-events";
 import logger from "../utils/logger";
+import { checkRateLimit } from "../api/middlewares/rateLimit.middleware";
+import { RATE_LIMIT_CONFIG } from "../config/constants";
 
 // Users with an active /game namespace socket connection.
 const gameNamespaceConnectedUsers = new Set<string>();
@@ -457,6 +459,20 @@ export function setupGameNamespace(io: Server): void {
      *  { gameId: string }
      */
     socket.on("client:join_game", async (payload: JoinGamePayload) => {
+      const { allowed, retryAfterSeconds } = checkRateLimit(
+        "socket-join-game",
+        `user:${userId}`,
+        RATE_LIMIT_CONFIG.SOCKET_JOIN_GAME.WINDOW_MS,
+        RATE_LIMIT_CONFIG.SOCKET_JOIN_GAME.MAX_REQUESTS
+      );
+      if (!allowed) {
+        socket.emit("server:error", {
+          message: "Too many join attempts. Please slow down.",
+          retryAfterSeconds,
+        });
+        return;
+      }
+
       try {
         if (!payload?.gameId) {
           socket.emit("server:error", {
@@ -723,6 +739,20 @@ export function setupGameNamespace(io: Server): void {
       async (actionPayload: GameActionPayload) => {
         const { gameId, actionType, user_card_instance_id, position, targetPosition } =
           actionPayload;
+
+        const { allowed, retryAfterSeconds } = checkRateLimit(
+          "socket-game-action",
+          `user:${userId}`,
+          RATE_LIMIT_CONFIG.GAME_ACTION.WINDOW_MS,
+          RATE_LIMIT_CONFIG.GAME_ACTION.MAX_REQUESTS
+        );
+        if (!allowed) {
+          socket.emit(GameNamespaceEvent.SERVER_ERROR, {
+            message: "Too many actions submitted. Please slow down.",
+            retryAfterSeconds,
+          });
+          return;
+        }
 
         if (!gameId || !actionType) {
           socket.emit(GameNamespaceEvent.SERVER_ERROR, {

@@ -127,7 +127,7 @@ export const polynesianCombatResolvers: CombatResolverMap = {
           triggerCard,
           1000,
           3,
-          "Harbor Protection",
+          "Pu'uloa Guard",
           guardianPosition,
           {
             animation: null,
