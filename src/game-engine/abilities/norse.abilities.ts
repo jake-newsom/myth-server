@@ -490,7 +490,7 @@ export const norseAbilities: AbilityMap = {
     if (adjacentSeaCards.length > 0) {
       gameEvents.push(
         buff(triggerCard, 3, {
-          name: "Nóatún’s Guard",
+          name: "Noatun’s Guard",
           animation: "splash-up-down",
           position,
         }),

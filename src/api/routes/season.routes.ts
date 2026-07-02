@@ -69,6 +69,18 @@ router.get(
   seasonController.getMyRewardStatus,
 );
 
+router.get(
+  "/previous/standings",
+  lenientRateLimit,
+  seasonController.getPreviousStandings,
+);
+
+router.get(
+  "/previous/leaderboard/overall",
+  lenientRateLimit,
+  seasonController.getPreviousLeaderboard,
+);
+
 router.post(
   "/ensure-buffer",
   authMiddleware.protect,

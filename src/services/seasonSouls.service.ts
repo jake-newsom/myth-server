@@ -1,4 +1,5 @@
 import SeasonSoulsModel, { SeasonOverallLeaderboardEntry } from "../models/seasonSouls.model";
+import SeasonModel from "../models/season.model";
 import SeasonRewardTierModel, {
   SeasonRewardBundle,
   SeasonRewardTierRow,
@@ -568,6 +569,80 @@ class SeasonSoulsServiceClass {
         current_page: normalizedPage,
         total_pages: totalPages,
         total_players: leaderboardPage.total_players,
+        per_page: normalizedLimit,
+      },
+    };
+  }
+
+  async getPreviousStandings(): Promise<{
+    no_previous_season: boolean;
+    season_id: string | null;
+    season_name: string | null;
+    standings: Array<{
+      set_id: string;
+      set_name: string;
+      image_url: string | null;
+      souls_total: number;
+      placement: number;
+    }>;
+  }> {
+    const prev = await SeasonModel.getMostRecentFinishedSeason();
+    if (!prev) {
+      return { no_previous_season: true, season_id: null, season_name: null, standings: [] };
+    }
+    const standings = await SeasonSoulsModel.getSeasonStandings(prev.season_id);
+    return {
+      no_previous_season: false,
+      season_id: prev.season_id,
+      season_name: prev.name,
+      standings,
+    };
+  }
+
+  async getPreviousLeaderboard(
+    page: number = 1,
+    limit: number = 50
+  ): Promise<{
+    no_previous_season: boolean;
+    season_id: string | null;
+    leaderboard: SeasonOverallLeaderboardEntry[];
+    pagination: {
+      current_page: number;
+      total_pages: number;
+      total_players: number;
+      per_page: number;
+    };
+  }> {
+    const prev = await SeasonModel.getMostRecentFinishedSeason();
+    if (!prev) {
+      return {
+        no_previous_season: true,
+        season_id: null,
+        leaderboard: [],
+        pagination: { current_page: page, total_pages: 0, total_players: 0, per_page: limit },
+      };
+    }
+
+    const normalizedPage = Math.max(1, page);
+    const normalizedLimit = Math.min(Math.max(1, limit), 100);
+
+    const result = await SeasonSoulsModel.getOverallLeaderboardPaginated(
+      prev.season_id,
+      normalizedPage,
+      normalizedLimit
+    );
+
+    const totalPages =
+      result.total_players === 0 ? 0 : Math.ceil(result.total_players / normalizedLimit);
+
+    return {
+      no_previous_season: false,
+      season_id: prev.season_id,
+      leaderboard: result.entries,
+      pagination: {
+        current_page: normalizedPage,
+        total_pages: totalPages,
+        total_players: result.total_players,
         per_page: normalizedLimit,
       },
     };

@@ -165,6 +165,18 @@ const SeasonModel = {
     return rows.length > 0;
   },
 
+  async getMostRecentFinishedSeason(): Promise<SeasonDefinitionRow | null> {
+    const query = `
+      SELECT season_id, name, start_at, end_at, status, generated_by, generation_rule_version, created_at, updated_at
+      FROM season_definitions
+      WHERE status IN ('finalizing', 'finalized')
+      ORDER BY end_at DESC
+      LIMIT 1;
+    `;
+    const { rows } = await db.query(query);
+    return (rows[0] as SeasonDefinitionRow) || null;
+  },
+
   async updateSeasonDates(
     seasonId: string,
     input: SeasonDateUpdateInput
