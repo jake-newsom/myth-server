@@ -15,6 +15,10 @@ export interface SagaEnemyNodePreview {
   preview_name: string;
   preview_image_url: string;
   preview_rarity: string;
+  preview_top_buff: number;
+  preview_right_buff: number;
+  preview_bottom_buff: number;
+  preview_left_buff: number;
 }
 
 export interface SagaMapNode {

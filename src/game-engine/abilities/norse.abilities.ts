@@ -580,7 +580,7 @@ export const norseAbilities: AbilityMap = {
       gameEvents.push(
         addTempDebuff(enemy, 3, -2, {
           name: "Winter's Step",
-          animation: "winter-grasp",
+          animation: "icicle",
           position: enemyPosition,
           data: {
             actingPlayerId: triggerCard.owner,

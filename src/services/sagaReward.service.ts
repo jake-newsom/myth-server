@@ -77,6 +77,12 @@ const BLESSING_DESCRIPTION_BY_TYPE: Record<SagaRuneType, string> = {
     "When placed adjacent to a stronger enemy, reduce that enemy's highest side by 2.",
 };
 
+function cardRewardBuffForFloor(floor: number): number {
+  if (floor >= 3) return 5;
+  if (floor === 2) return 4;
+  return 2; // floor 1
+}
+
 function randomBlessing(): SagaRuneType {
   return ALL_BLESSINGS[Math.floor(Math.random() * ALL_BLESSINGS.length)];
 }
@@ -414,12 +420,21 @@ const SagaRewardService = {
       throw httpError(400, "Invalid card selection");
     }
 
+    const rewardBuff = cardRewardBuffForFloor(run.current_floor);
+    const buffFields = {
+      top_buff: rewardBuff,
+      right_buff: rewardBuff,
+      bottom_buff: rewardBuff,
+      left_buff: rewardBuff,
+    };
+
     if (deckSize >= 20) {
       const created = await SagaCardModel.create(runId, {
         base_card_id: input.base_card_id,
         deck_id: null,
         is_active: false,
         modifier_floor: run.current_floor,
+        ...buffFields,
       });
       sagaCardId = created.saga_card_id;
     } else {
@@ -428,6 +443,7 @@ const SagaRewardService = {
         deck_id: deck.deck_id,
         is_active: true,
         modifier_floor: run.current_floor,
+        ...buffFields,
       });
       sagaCardId = created.saga_card_id;
     }

@@ -8,6 +8,10 @@ export interface SagaEnemyNodePreview {
   preview_image_url: string;
   preview_rarity: string;
   preview_is_exclusive: boolean;
+  preview_top_buff: number;
+  preview_right_buff: number;
+  preview_bottom_buff: number;
+  preview_left_buff: number;
 }
 
 // Preview-card preference, evaluated entirely in SQL (see loadEnemyDeckPreviews):
@@ -40,12 +44,17 @@ async function loadEnemyDeckPreviews(
             ch.name AS card_name,
             cv.image_url,
             cv.rarity,
-            cv.is_exclusive
+            cv.is_exclusive,
+            COALESCE(sc.top_buff, 0)    AS top_buff,
+            COALESCE(sc.right_buff, 0)  AS right_buff,
+            COALESCE(sc.bottom_buff, 0) AS bottom_buff,
+            COALESCE(sc.left_buff, 0)   AS left_buff
      FROM deck_cards dc
      JOIN decks d ON d.deck_id = dc.deck_id
      JOIN user_owned_cards uoc ON uoc.user_card_instance_id = dc.user_card_instance_id
      JOIN card_variants cv ON cv.card_variant_id = uoc.card_variant_id
      JOIN characters ch ON ch.character_id = cv.character_id
+     LEFT JOIN saga_cards sc ON sc.deck_id = dc.deck_id AND sc.base_card_id = cv.card_variant_id AND sc.is_active = true
      WHERE dc.deck_id = ANY($1::uuid[])
      ORDER BY
        dc.deck_id,
@@ -63,6 +72,10 @@ async function loadEnemyDeckPreviews(
       preview_image_url: String(row.image_url ?? ""),
       preview_rarity: String(row.rarity ?? "common"),
       preview_is_exclusive: Boolean(row.is_exclusive),
+      preview_top_buff: Number(row.top_buff),
+      preview_right_buff: Number(row.right_buff),
+      preview_bottom_buff: Number(row.bottom_buff),
+      preview_left_buff: Number(row.left_buff),
     });
   }
 
