@@ -22,7 +22,7 @@ const R2_ASSET_ORIGIN =
 //     relies on native code/permissions not present in older store builds.
 //     Omit/null = no floor.
 const CURRENT_BUNDLE = {
-  bundleVersion: "1.0.13",
+  bundleVersion: "1.0.14",
   r2Key: "updater-bundles/com.nurdturd.myth_1.0.14.zip",
   checksum: "957a54ab2ba57f4dabe000ea364e31b8cbdf5fc4e0d7c3f2da4fadab83e0b31d",
   minNativeVersion: null as string | null,
