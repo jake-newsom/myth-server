@@ -28,6 +28,7 @@ import borderRoutes from "./border.routes";
 import cardBackRoutes from "./cardBack.routes";
 import challengeRoutes from "./challenge.routes";
 import sagaRoutes from "./saga.routes";
+import updaterRoutes from "./updater.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -65,6 +66,7 @@ router.use("/asset-patches", assetPatchRoutes);
 router.use("/borders", borderRoutes);
 router.use("/card-backs", cardBackRoutes);
 router.use("/sagas", sagaRoutes);
+router.use("/updater", updaterRoutes);
 
 // Global error handler
 router.use(errorHandler);
