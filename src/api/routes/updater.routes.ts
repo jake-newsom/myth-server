@@ -13,7 +13,10 @@ const R2_ASSET_ORIGIN =
 //   - `bundleVersion` is independent of the native app-store version; bump it
 //     on every OTA push (e.g. "1.0.13", "1.0.14", ...).
 //   - `r2Key` is the object path in the R2 bucket (e.g. "updater-bundles/1.0.13.zip").
-//   - Generate `checksum` with:  sha256sum <file>.zip   (prefix with "sha256:")
+//   - Generate `checksum` with:  sha256sum <file>.zip
+//     Use the raw 64-char hex digest as-is — no "sha256:" prefix. The plugin
+//     detects the algorithm by hex length (64 chars = SHA-256) and rejects
+//     anything else as "unknown checksum algorithm".
 //   - `minNativeVersion` is the minimum native app-store (Capacitor shell)
 //     version required to safely apply this bundle — set it when the bundle
 //     relies on native code/permissions not present in older store builds.
@@ -21,7 +24,7 @@ const R2_ASSET_ORIGIN =
 const CURRENT_BUNDLE = {
   bundleVersion: "1.0.13",
   r2Key: "updater-bundles/com.nurdturd.myth_1.0.13.zip",
-  checksum: "sha256:c32bcf017e59829151d215b06f87c8f16e6ca586ee0e358624cef5a8c4201dbd",
+  checksum: "c32bcf017e59829151d215b06f87c8f16e6ca586ee0e358624cef5a8c4201dbd",
   minNativeVersion: null as string | null,
 };
 
@@ -40,6 +43,7 @@ function bundleUrl(r2Key: string): string {
  */
 router.post("/check", moderateRateLimit, (req: Request, res: Response) => {
   const { version_name: nativeVersion } = req.body || {};
+  console.log("[updater] /check hit", JSON.stringify(req.body));
 
   const meetsFloor =
     !CURRENT_BUNDLE.minNativeVersion ||
@@ -47,18 +51,22 @@ router.post("/check", moderateRateLimit, (req: Request, res: Response) => {
       compareSemver(nativeVersion, CURRENT_BUNDLE.minNativeVersion) >= 0);
 
   if (!meetsFloor || !CURRENT_BUNDLE.r2Key) {
-    res.status(200).json({
+    const body = {
       message: "No update available",
       version: typeof nativeVersion === "string" ? nativeVersion : "",
-    });
+    };
+    console.log("[updater] responding no-update", JSON.stringify(body));
+    res.status(200).json(body);
     return;
   }
 
-  res.status(200).json({
+  const body = {
     version: CURRENT_BUNDLE.bundleVersion,
     url: bundleUrl(CURRENT_BUNDLE.r2Key),
     checksum: CURRENT_BUNDLE.checksum,
-  });
+  };
+  console.log("[updater] responding with update", JSON.stringify(body));
+  res.status(200).json(body);
 });
 
 export default router;
