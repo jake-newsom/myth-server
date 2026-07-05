@@ -23,8 +23,8 @@ const R2_ASSET_ORIGIN =
 //     Omit/null = no floor.
 const CURRENT_BUNDLE = {
   bundleVersion: "1.0.13",
-  r2Key: "updater-bundles/com.nurdturd.myth_1.0.13.zip",
-  checksum: "c32bcf017e59829151d215b06f87c8f16e6ca586ee0e358624cef5a8c4201dbd",
+  r2Key: "updater-bundles/com.nurdturd.myth_1.0.14.zip",
+  checksum: "957a54ab2ba57f4dabe000ea364e31b8cbdf5fc4e0d7c3f2da4fadab83e0b31d",
   minNativeVersion: null as string | null,
 };
 
