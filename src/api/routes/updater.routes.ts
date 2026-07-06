@@ -21,10 +21,12 @@ const R2_ASSET_ORIGIN =
 //     version required to safely apply this bundle — set it when the bundle
 //     relies on native code/permissions not present in older store builds.
 //     Omit/null = no floor.
+// No OTA bundle published yet — r2Key null makes /check always report
+// "no update available" (see the !CURRENT_BUNDLE.r2Key branch below).
 const CURRENT_BUNDLE = {
-  bundleVersion: "1.0.14",
-  r2Key: "updater-bundles/com.nurdturd.myth_1.0.14.zip",
-  checksum: "957a54ab2ba57f4dabe000ea364e31b8cbdf5fc4e0d7c3f2da4fadab83e0b31d",
+  bundleVersion: "unset",
+  r2Key: null as string | null,
+  checksum: "",
   minNativeVersion: null as string | null,
 };
 

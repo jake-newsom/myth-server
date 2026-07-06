@@ -68,8 +68,7 @@ const SagaService = {
       isRunInCurrentInstancePeriod(
         completed.completed_at
           ? new Date(completed.completed_at)
-          : new Date(completed.created_at),
-        season.start_date
+          : new Date(completed.created_at)
       )
         ? completed
         : null;
@@ -78,9 +77,7 @@ const SagaService = {
       season_id: season.season_id,
       season_name: season.season_name,
       currency_balance: balance,
-      instance_period_ends_at: getCurrentInstancePeriodEnd(
-        season.start_date
-      ).toISOString(),
+      instance_period_ends_at: getCurrentInstancePeriodEnd().toISOString(),
       active_run: active
         ? {
             run_id: active.run_id,
@@ -185,9 +182,7 @@ const SagaService = {
       run.created_at instanceof Date
         ? run.created_at
         : new Date(run.created_at);
-    if (
-      isRunInCurrentInstancePeriod(createdAt, season.start_date)
-    ) {
+    if (isRunInCurrentInstancePeriod(createdAt)) {
       return run;
     }
 

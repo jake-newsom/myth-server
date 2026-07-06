@@ -1,34 +1,21 @@
-/** Saga instance window length (7 days). */
-export const SAGA_INSTANCE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
-
-export function getInstancePeriodStart(
-  at: Date,
-  seasonStart: Date
-): Date {
-  const anchorMs = seasonStart.getTime();
-  const atMs = at.getTime();
-  if (atMs < anchorMs) return new Date(anchorMs);
-  const periodIndex = Math.floor((atMs - anchorMs) / SAGA_INSTANCE_PERIOD_MS);
-  return new Date(anchorMs + periodIndex * SAGA_INSTANCE_PERIOD_MS);
+/** Returns the most recent Monday 00:00:00.000 UTC on or before `at`. */
+export function getInstancePeriodStart(at: Date = new Date()): Date {
+  const d = new Date(at);
+  // getUTCDay(): 0=Sun,1=Mon,...,6=Sat — days since last Monday
+  const daysSinceMonday = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - daysSinceMonday);
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
 }
 
-export function getInstancePeriodEnd(periodStart: Date): Date {
-  return new Date(periodStart.getTime() + SAGA_INSTANCE_PERIOD_MS);
+export function getCurrentInstancePeriodEnd(now: Date = new Date()): Date {
+  const start = getInstancePeriodStart(now);
+  return new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
 }
 
 export function isRunInCurrentInstancePeriod(
   runCreatedAt: Date,
-  seasonStart: Date,
   now: Date = new Date()
 ): boolean {
-  const periodStart = getInstancePeriodStart(now, seasonStart);
-  return runCreatedAt.getTime() >= periodStart.getTime();
-}
-
-export function getCurrentInstancePeriodEnd(
-  seasonStart: Date,
-  now: Date = new Date()
-): Date {
-  const periodStart = getInstancePeriodStart(now, seasonStart);
-  return getInstancePeriodEnd(periodStart);
+  return runCreatedAt.getTime() >= getInstancePeriodStart(now).getTime();
 }

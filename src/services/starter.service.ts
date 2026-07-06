@@ -28,7 +28,7 @@ const STARTER_DECK_CONFIG = {
   name: "Starter Deck",
 };
 
-const STARTER_PACKS_QUANTITY = 10; // Temporarily increased for testing - will be reduced before launch
+const STARTER_PACKS_QUANTITY = 2; // Temporarily increased for testing - will be reduced before launch
 
 const StarterService = {
   async grantStarterCards(
