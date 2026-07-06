@@ -19,6 +19,7 @@ export type TowerReward = {
   reward_rare_art_card: number; // 0 or 1 - variant card with rare/epic/legendary base
   reward_legendary_card: number; // 0 or 1 - at floor % 500
   reward_epic_card: number; // 0 or 1 - at floor % 250
+  reward_card_back?: boolean; // true at floors 100/200/300/400
 };
 
 /**
@@ -66,6 +67,12 @@ export interface TowerGameStartResponse {
 /**
  * Result of completing a tower floor
  */
+export interface AwardedCardBack {
+  back_id: string;
+  name: string;
+  image_url: string;
+}
+
 export interface TowerCompletionResult {
   success: boolean;
   won: boolean;
@@ -76,6 +83,7 @@ export interface TowerCompletionResult {
     legendary_card?: AwardedCard;
     epic_card?: AwardedCard;
   };
+  card_back_awarded?: AwardedCardBack;
   new_floor?: number; // New current floor after winning
   generation_triggered?: boolean; // Whether new floor generation was triggered
 }

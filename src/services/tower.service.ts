@@ -25,6 +25,7 @@ import {
   chooseAIMulligan,
 } from "../game-engine/game.mulligan";
 import { clientSupportsMulligan } from "../utils/clientVersion";
+import CardBackModel from "../models/cardBack.model";
 
 // Constants for reward calculation
 // Linear growth: both gems and fragments scale by (1 + band * GROWTH_SLOPE).
@@ -80,6 +81,14 @@ const MILESTONE_CARD_50: MilestoneCardSpec = {
 const MILESTONE_CARD_100: MilestoneCardSpec = {
   rarityWeights: { legendary: 100 },
   levelWeights: { "+": 50, "++": 30, "+++": 20 },
+};
+
+// Card backs awarded at Ascendant's Spire milestones (floor -> code_key).
+const SPIRE_CARD_BACK_BY_FLOOR: Partial<Record<number, string>> = {
+  100: "tower-100",
+  200: "tower-200",
+  300: "tower-300",
+  400: "tower-400",
 };
 
 class TowerService {
@@ -164,6 +173,7 @@ class TowerService {
       reward_rare_art_card,
       reward_legendary_card,
       reward_epic_card,
+      reward_card_back: floor in SPIRE_CARD_BACK_BY_FLOOR || undefined,
     };
   }
 
@@ -697,6 +707,23 @@ class TowerService {
         }
       }
 
+      // Award Ascendant's Spire card back at milestone floors (idempotent via ON CONFLICT DO NOTHING).
+      let cardBackAwarded: TowerCompletionResult["card_back_awarded"];
+      const spireBackKey = SPIRE_CARD_BACK_BY_FLOOR[floorNumber];
+      if (spireBackKey) {
+        const back = await CardBackModel.findByCodeKey(spireBackKey);
+        if (back) {
+          await CardBackModel.grantToUser(userId, back.back_id, client);
+          cardBackAwarded = {
+            back_id: back.back_id,
+            name: back.name,
+            image_url: back.image_url,
+          };
+        } else {
+          console.warn(`[Tower] Card back not found for code_key: ${spireBackKey} (floor ${floorNumber})`);
+        }
+      }
+
       // Increment user's tower floor and record when they advanced
       const newFloor = floorNumber + 1;
       await client.query(
@@ -727,6 +754,7 @@ class TowerService {
         rewards_earned: rewards,
         cards_awarded:
           Object.keys(cardsAwarded).length > 0 ? cardsAwarded : undefined,
+        card_back_awarded: cardBackAwarded,
         new_floor: newFloor,
         generation_triggered: generationTriggered,
       };

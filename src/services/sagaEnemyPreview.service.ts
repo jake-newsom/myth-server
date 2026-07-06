@@ -1,5 +1,6 @@
 import db from "../config/db.config";
 import type { SagaNodeMapData, SagaMapNode } from "../types/sagaMap.types";
+import { SAGA_FLOOR_BATTLE_CONFIG } from "../types/sagaBattle.types";
 
 export interface SagaEnemyNodePreview {
   deck_name: string;
@@ -91,12 +92,21 @@ async function loadEnemyDeckPreview(
 
 function attachPreviewToNode(
   node: SagaMapNode,
-  preview: SagaEnemyNodePreview | null
+  preview: SagaEnemyNodePreview | null,
+  floorNumber: number
 ): SagaMapNode {
   if (!preview || (node.type !== "battle" && node.type !== "boss")) {
     return node;
   }
-  return { ...node, enemy_preview: preview };
+  const statBonus = SAGA_FLOOR_BATTLE_CONFIG[floorNumber]?.enemy_stat_bonus ?? 0;
+  const adjusted: SagaEnemyNodePreview = statBonus > 0 ? {
+    ...preview,
+    preview_top_buff: preview.preview_top_buff + statBonus,
+    preview_right_buff: preview.preview_right_buff + statBonus,
+    preview_bottom_buff: preview.preview_bottom_buff + statBonus,
+    preview_left_buff: preview.preview_left_buff + statBonus,
+  } : preview;
+  return { ...node, enemy_preview: adjusted };
 }
 
 export async function enrichMapWithEnemyPreviews(
@@ -122,7 +132,8 @@ export async function enrichMapWithEnemyPreviews(
           node,
           node.enemy_deck_id
             ? previews.get(node.enemy_deck_id) ?? null
-            : null
+            : null,
+          floor.floor
         )
       ),
     })),
