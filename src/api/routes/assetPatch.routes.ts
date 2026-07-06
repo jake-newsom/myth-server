@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getClientVersionFromHeader } from "../../utils/clientVersion";
 import { meetsMinAppVersion } from "../../utils/catalogVersion";
+import { compareSemver } from "../../utils/clientVersion";
 
 const router = Router();
 
@@ -28,6 +29,8 @@ export interface AssetPatch {
   description: string;
   /** Minimum client app version required to receive this patch (null = all clients). */
   minAppVersion?: string | null;
+  /** Maximum client app version that should receive this patch (null = all clients). */
+  maxAppVersion?: string | null;
 }
 
 export interface AssetPatchManifestEntry {
@@ -62,16 +65,21 @@ export interface AssetPatchManifest {
 //     Omit or null = unrestricted. Clients below the minimum (or with no version)
 //     do not receive the patch.
 const PATCHES: AssetPatch[] = [
+  // ── Baseline (patch-1) ────────────────────────────────────────────────────
+  // Consolidated zip for new installs on 1.0.12+. Existing clients already
+  // have id="patch-1" v1 applied and will skip it. Update r2Key/checksum/size
+  // when consolidating; bump version only if existing clients need to re-sync.
   {
     id: "patch-1",
     version: 1,
     type: "mixed",
-    r2Key: "patches/patch-1.zip",
-    checksum:
-      "sha256:e948db6a726f1ffabecbc456f9d584b98f3f258f1c742dcbd5388020cbdead31",
-    size: 106179534,
-    description: "Initial file patch",
+    r2Key: "patches/baseline-1.zip", // TODO: fill in once zip is built
+    checksum: "sha256:40d7d0e3b9f0816cb2da0cfbd76f911a81345ba760cde271b02ce90a8c0805b6",
+    size: 99906879,
+    description: "main game assets",
   },
+
+  // ── Incremental patches (legacy clients < 1.0.12) ─────────────────────────
   {
     id: "gc-patch-1",
     version: 1,
@@ -81,6 +89,7 @@ const PATCHES: AssetPatch[] = [
       "sha256:4bb8736ca3c652f766afa63c2b2a6e2b5ec2126a429073b49a688d6f2c82a935",
     size: 0,
     description: "initial gold cards patch",
+    maxAppVersion: "1.0.11",
   },
   {
     id: "gc-patch-2",
@@ -91,6 +100,7 @@ const PATCHES: AssetPatch[] = [
       "sha256:c26ac8c3b2c1713fb6f88fc24c348156a714354723292746da9bfda337efb688",
     size: 0,
     description: "second gold cards patch",
+    maxAppVersion: "1.0.11",
   },
   {
     id: "bp1.5.2",
@@ -101,6 +111,7 @@ const PATCHES: AssetPatch[] = [
       "sha256:298fd06cb6c1ec40fd1ad30129c40c19a7b7333d31ae9d8cdc7cdb2d9d4be051",
     size: 0,
     description: "border pack",
+    maxAppVersion: "1.0.11",
   },
   {
     id: "audio-pack-2.2",
@@ -111,6 +122,7 @@ const PATCHES: AssetPatch[] = [
       "sha256:69f1c322aaacbbeef59575b607ef1e8c47161e1ae26de1fa8bfc223be25e97e8",
     size: 0,
     description: "audio pack",
+    maxAppVersion: "1.0.11",
   },
   {
     id: "cards-may-2026",
@@ -121,6 +133,7 @@ const PATCHES: AssetPatch[] = [
       "sha256:dd787aed2f6fe5b4cba4c0377896bcb3738d3b46b2d70972d416ac7ad04e0508",
     size: 0,
     description: "cards update",
+    maxAppVersion: "1.0.11",
   },
   {
     id: "ragnarok-saga-june-2026",
@@ -131,6 +144,7 @@ const PATCHES: AssetPatch[] = [
       "sha256:cc4ed5b36cee8c46984752e5090b80af7e213e5eff45ed05cc2f3144d4ceb4e9",
     size: 88257900,
     description: "graphics for ragnarok saga",
+    maxAppVersion: "1.0.11",
   },
   {
     // Delete-only: remove legacy video VFX files; flipbook PNGs stay put.
@@ -152,8 +166,8 @@ const PATCHES: AssetPatch[] = [
       "sha256:343f666f132de9e76aa280618a54eba6f51a6b614d078fedc5b3f2cf5586e55d",
     size: 15514914,
     description: "S1 rewards, vfx & sfx updates",
+    maxAppVersion: "1.0.11",
   },
-
 ];
 
 function assetUrl(r2Key: string): string {
@@ -175,9 +189,14 @@ function clientVersionFromRequest(req: Request): string | undefined {
 
 router.get("/manifest", (req: Request, res: Response) => {
   const clientVersion = clientVersionFromRequest(req);
-  const visiblePatches = PATCHES.filter((p) =>
-    meetsMinAppVersion(p.minAppVersion, { clientVersion })
-  );
+  const visiblePatches = PATCHES.filter((p) => {
+    if (!meetsMinAppVersion(p.minAppVersion, { clientVersion })) return false;
+    if (p.maxAppVersion?.trim() && clientVersion?.trim()) {
+      if (compareSemver(clientVersion.trim(), p.maxAppVersion.trim()) > 0)
+        return false;
+    }
+    return true;
+  });
 
   const patches: AssetPatchManifestEntry[] = visiblePatches.map((p) => ({
     id: p.id,
