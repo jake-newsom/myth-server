@@ -369,6 +369,82 @@ export function setupGameNamespace(io: Server): void {
   }
 
   /**
+   * Tears down all in-process state for a completed/aborted game.
+   * Must be called from every completion path to prevent meta leaks.
+   */
+  function teardownGame(gameId: string): void {
+    const meta = activeGames.get(gameId);
+    if (!meta) return;
+    if (meta.turnManager) {
+      meta.turnManager.dispose();
+      meta.turnManager = null;
+    }
+    if (meta.mulliganTimer) {
+      clearTimeout(meta.mulliganTimer);
+      meta.mulliganTimer = null;
+    }
+    for (const timer of meta.graceTimers.values()) clearTimeout(timer);
+    meta.graceTimers.clear();
+    activeGames.delete(gameId);
+  }
+
+  /**
+   * Processes end-of-game rewards and emits SERVER_GAME_END to all players in
+   * the room. Called from every completion path (action handler, grace timer).
+   * Also tears down in-process metadata so nothing leaks (0.5).
+   */
+  async function processGameCompletion(
+    gameId: string,
+    gameRecord: { created_at: Date; player1_id: string; player2_id: string; player1_deck_id?: string | null; player2_deck_id?: string | null },
+    completedState: any,
+    roomName: string,
+    reason: "completed" | "surrender" | "disconnect"
+  ): Promise<void> {
+    const { hydrated_card_data_cache, ...rest } = completedState;
+    const isForfeit = reason !== "completed";
+    const gameStartTime = gameRecord.created_at;
+    const player1Id = gameRecord.player1_id;
+    const player2Id = gameRecord.player2_id;
+
+    const [player1Rewards, player2Rewards] = await Promise.all([
+      GameRewardsService.processGameCompletion(
+        player1Id, completedState, "pvp", gameStartTime,
+        player1Id, player2Id, gameRecord.player1_deck_id!, gameId, isForfeit
+      ).catch((err) => {
+        console.error(`[namespace.game] Error processing rewards for player1 ${player1Id}:`, err);
+        return null;
+      }),
+      GameRewardsService.processGameCompletion(
+        player2Id, completedState, "pvp", gameStartTime,
+        player1Id, player2Id, gameRecord.player2_deck_id!, gameId, isForfeit
+      ).catch((err) => {
+        console.error(`[namespace.game] Error processing rewards for player2 ${player2Id}:`, err);
+        return null;
+      }),
+    ]);
+
+    const sockets = await gameNs.in(roomName).fetchSockets();
+    for (const s of sockets as any) {
+      const viewerId: string = s.data?.user_id ?? "";
+      const playerRewards = viewerId === player1Id ? player1Rewards : player2Rewards;
+      s.emit(GameNamespaceEvent.SERVER_GAME_END, {
+        result: { winnerId: completedState.winner, reason, gameState: rest },
+        rewards: playerRewards
+          ? {
+            gems: playerRewards.rewards.currency.gems,
+            cardXp: playerRewards.rewards.card_xp_rewards,
+            winStreakInfo: playerRewards.win_streak_info,
+          }
+          : null,
+      });
+    }
+
+    teardownGame(gameId);
+    clearActiveMatch(player1Id);
+    clearActiveMatch(player2Id);
+  }
+
+  /**
    * Called when the 30s mulligan timer fires. Auto-commits uncommitted players
    * with empty replacements, finalizes the phase, and starts TurnManager.
    */
@@ -641,9 +717,13 @@ export function setupGameNamespace(io: Server): void {
           if (!freshRecord) return;
           const currentStatus = freshRecord.game_state.status;
 
-          if (currentStatus === GameStatus.MULLIGAN && !meta.mulliganTimer) {
+          if (currentStatus === GameStatus.MULLIGAN) {
             const releaseLock = await acquireActionLock(gameId);
             try {
+              // Re-check inside the lock — two simultaneous joins can both pass
+              // the outer guard, so only the first one through should arm the timer.
+              if (meta.mulliganTimer) return;
+
               const latest = await gameService.getRawGameRecord(
                 gameId,
                 meta.playerIds[0]
@@ -787,9 +867,11 @@ export function setupGameNamespace(io: Server): void {
           }
 
           // Guard: non-mulligan actions are blocked during MULLIGAN phase
+          // (except surrender, which is always allowed)
           if (
             gameRecord.game_state.status === GameStatus.MULLIGAN &&
-            actionType !== "mulligan"
+            actionType !== "mulligan" &&
+            actionType !== "surrender"
           ) {
             socket.emit(GameNamespaceEvent.SERVER_ERROR, {
               message: "Game is in mulligan phase",
@@ -825,7 +907,8 @@ export function setupGameNamespace(io: Server): void {
           // While a move is paused awaiting an interactive choice, the game is
           // frozen: only the matching handChoice action may proceed. Reject any
           // other action so a player can't place/end-turn around the pause.
-          if (nextState.pending_choice && actionType !== "handChoice") {
+          // Surrender is always permitted even mid-choice.
+          if (nextState.pending_choice && actionType !== "handChoice" && actionType !== "surrender") {
             socket.emit(GameNamespaceEvent.SERVER_ERROR, {
               message: "Waiting for an ability choice to resolve",
             });
@@ -951,7 +1034,8 @@ export function setupGameNamespace(io: Server): void {
             return;
           }
 
-          // Persist updated state
+          // Persist updated state — abort on failure so clients never see a
+          // state the DB didn't store (0.4).
           try {
             await gameService.updateGameAfterAction(
               gameId,
@@ -961,6 +1045,10 @@ export function setupGameNamespace(io: Server): void {
             );
           } catch (err) {
             console.error("[namespace.game] DB update error", err);
+            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
+              message: "Move could not be saved, please retry",
+            });
+            return;
           }
 
           // Merge/space consecutive power-change floaters before broadcasting so
@@ -1028,12 +1116,7 @@ export function setupGameNamespace(io: Server): void {
           } else if (roomMeta && roomMeta.turnManager) {
             roomMeta.turnManager.onPlayerAction(userId);
 
-            if (nextState.status === GameStatus.COMPLETED) {
-              roomMeta.turnManager.dispose();
-              roomMeta.turnManager = null;
-              clearActiveMatch(roomMeta.playerIds[0]);
-              clearActiveMatch(roomMeta.playerIds[1]);
-            } else {
+            if (nextState.status !== GameStatus.COMPLETED) {
               roomMeta.turnManager.startTurn(
                 nextState.current_player_id,
                 false,
@@ -1043,85 +1126,13 @@ export function setupGameNamespace(io: Server): void {
           }
 
           if (nextState.status === GameStatus.COMPLETED) {
-            const { hydrated_card_data_cache, ...rest } = nextState;
-
-            // Determine if this is a forfeit (surrender) or normal completion
-            const isForfeit = actionType === "surrender";
-            const gameStartTime = new Date(gameRecord.created_at);
-            const player1Id = gameRecord.player1_id;
-            const player2Id = gameRecord.player2_id;
-
-            // Process rewards for both players in parallel
-            const rewardPromises: Promise<any>[] = [];
-
-            // Process rewards for player 1
-            rewardPromises.push(
-              GameRewardsService.processGameCompletion(
-                player1Id,
-                nextState,
-                "pvp",
-                gameStartTime,
-                player1Id,
-                player2Id,
-                gameRecord.player1_deck_id!,
-                gameId,
-                isForfeit
-              ).catch((err) => {
-                console.error(
-                  `[namespace.game] Error processing rewards for player1 ${player1Id}:`,
-                  err
-                );
-                return null;
-              })
+            await processGameCompletion(
+              gameId,
+              gameRecord,
+              nextState,
+              roomName,
+              actionType === "surrender" ? "surrender" : "completed"
             );
-
-            // Process rewards for player 2
-            rewardPromises.push(
-              GameRewardsService.processGameCompletion(
-                player2Id,
-                nextState,
-                "pvp",
-                gameStartTime,
-                player1Id,
-                player2Id,
-                gameRecord.player2_deck_id!,
-                gameId,
-                isForfeit
-              ).catch((err) => {
-                console.error(
-                  `[namespace.game] Error processing rewards for player2 ${player2Id}:`,
-                  err
-                );
-                return null;
-              })
-            );
-
-            const [player1Rewards, player2Rewards] = await Promise.all(
-              rewardPromises
-            );
-
-            // Emit game end with reward info
-            const sockets = await gameNs.in(roomName).fetchSockets();
-            for (const s of sockets as any) {
-              const viewerId: string = s.data?.user_id ?? "";
-              const playerRewards =
-                viewerId === player1Id ? player1Rewards : player2Rewards;
-
-              s.emit(GameNamespaceEvent.SERVER_GAME_END, {
-                result: {
-                  winnerId: nextState.winner,
-                  reason: isForfeit ? "surrender" : "completed",
-                  gameState: rest,
-                },
-                rewards: playerRewards
-                  ? {
-                    gems: playerRewards.rewards.currency.gems,
-                    cardXp: playerRewards.rewards.card_xp_rewards,
-                    winStreakInfo: playerRewards.win_streak_info,
-                  }
-                  : null,
-              });
-            }
           }
         } finally {
           // Always release the lock
@@ -1176,6 +1187,9 @@ export function setupGameNamespace(io: Server): void {
       if (meta.graceTimers.has(userId)) return; // already running
 
       const timer = setTimeout(async () => {
+        // Acquire the lock before any read-modify-write so concurrent actions
+        // (e.g. opponent's card being played) can't race with this path (0.2).
+        const releaseLock = await acquireActionLock(gameId);
         try {
           // Before surrendering, double-check user is still disconnected
           const currentRoomSockets = await gameNs.in(roomName).fetchSockets();
@@ -1184,21 +1198,16 @@ export function setupGameNamespace(io: Server): void {
           );
 
           if (userReconnected) {
-            // User reconnected during grace period
             meta.graceTimers.delete(userId);
             return;
           }
 
-          // Treat as surrender due to disconnect timeout
-          const latestRecord = await gameService.getRawGameRecord(
-            gameId,
-            userId
-          );
-
+          const latestRecord = await gameService.getRawGameRecord(gameId, userId);
           if (!latestRecord) return;
 
-          // Don't surrender if game is already completed
-          if (latestRecord.game_status !== GameStatus.ACTIVE) {
+          // Only surrender from active game states — re-check inside the lock (0.2).
+          const liveStatus = latestRecord.game_status;
+          if (liveStatus !== GameStatus.ACTIVE && liveStatus !== GameStatus.MULLIGAN) {
             meta.graceTimers.delete(userId);
             return;
           }
@@ -1215,89 +1224,11 @@ export function setupGameNamespace(io: Server): void {
             surrenderedState.winner ?? null
           );
 
-          // Process rewards for both players (disconnect is a forfeit)
-          const gameStartTime = new Date(latestRecord.created_at);
-          const player1Id = latestRecord.player1_id;
-          const player2Id = latestRecord.player2_id;
-          const isForfeit = true; // Disconnect is always a forfeit
-
-          const rewardPromises: Promise<any>[] = [];
-
-          // Process rewards for player 1
-          rewardPromises.push(
-            GameRewardsService.processGameCompletion(
-              player1Id,
-              surrenderedState,
-              "pvp",
-              gameStartTime,
-              player1Id,
-              player2Id,
-              latestRecord.player1_deck_id!,
-              gameId,
-              isForfeit
-            ).catch((err) => {
-              console.error(
-                `[namespace.game] Error processing disconnect rewards for player1:`,
-                err
-              );
-              return null;
-            })
-          );
-
-          // Process rewards for player 2
-          rewardPromises.push(
-            GameRewardsService.processGameCompletion(
-              player2Id,
-              surrenderedState,
-              "pvp",
-              gameStartTime,
-              player1Id,
-              player2Id,
-              latestRecord.player2_deck_id!,
-              gameId,
-              isForfeit
-            ).catch((err) => {
-              console.error(
-                `[namespace.game] Error processing disconnect rewards for player2:`,
-                err
-              );
-              return null;
-            })
-          );
-
-          const [player1Rewards, player2Rewards] = await Promise.all(
-            rewardPromises
-          );
-
-          // Emit game end with reward info to remaining connected player(s)
-          const remainingSockets = await gameNs.in(roomName).fetchSockets();
-          for (const s of remainingSockets as any) {
-            const viewerId: string = s.data?.user_id ?? "";
-            const playerRewards =
-              viewerId === player1Id ? player1Rewards : player2Rewards;
-
-            s.emit(GameNamespaceEvent.SERVER_GAME_END, {
-              result: {
-                winnerId: surrenderedState.winner,
-                reason: "disconnect",
-              },
-              rewards: playerRewards
-                ? {
-                  gems: playerRewards.rewards.currency.gems,
-                  cardXp: playerRewards.rewards.card_xp_rewards,
-                  winStreakInfo: playerRewards.win_streak_info,
-                }
-                : null,
-            });
-          }
-
-          // Cleanup turn manager & metadata
-          if (meta.turnManager) meta.turnManager.dispose();
-          activeGames.delete(gameId);
-          clearActiveMatch(meta.playerIds[0]);
-          clearActiveMatch(meta.playerIds[1]);
+          await processGameCompletion(gameId, latestRecord, surrenderedState, roomName, "disconnect");
         } catch (err) {
           console.error("[namespace.game] surrender on disconnect error", err);
+        } finally {
+          releaseLock();
         }
       }, 15000); // 15 seconds
 
