@@ -255,6 +255,25 @@ const GameRewardsService = {
     skipCurrency: boolean = false
   ): Promise<GameCompletionResult> {
     try {
+      // === IDEMPOTENCY GATE (PvP only) ===
+      // Claim the reward slot before touching any user state. If the row already
+      // exists (double-completion race or retry), skip out immediately so gems/XP
+      // are never granted twice (hardening plan 0.3).
+      if (gameMode === "pvp" && gameId) {
+        const { rowCount } = await db.query(
+          `INSERT INTO game_rewards_granted (game_id, user_id)
+           VALUES ($1, $2)
+           ON CONFLICT DO NOTHING`,
+          [gameId, userId]
+        );
+        if (rowCount === 0) {
+          console.warn(
+            `[GameRewards] Duplicate reward attempt skipped for user=${userId} game=${gameId}`
+          );
+          return null as unknown as GameCompletionResult;
+        }
+      }
+
       // === PHASE 1: Sequential calculations (sync, no DB) ===
       const gameResult = this.calculateGameResult(
         gameState,

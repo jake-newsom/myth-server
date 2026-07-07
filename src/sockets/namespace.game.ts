@@ -816,9 +816,14 @@ export function setupGameNamespace(io: Server): void {
 
     socket.on(
       GameNamespaceEvent.CLIENT_ACTION,
-      async (actionPayload: GameActionPayload) => {
+      async (actionPayload: GameActionPayload, ack?: (r: { ok: boolean; error?: string }) => void) => {
         const { gameId, actionType, user_card_instance_id, position, targetPosition } =
           actionPayload;
+
+        const rejectAction = (message: string, extra: Record<string, any> = {}) => {
+          socket.emit(GameNamespaceEvent.SERVER_ERROR, { message, ...extra });
+          ack?.({ ok: false, error: message });
+        };
 
         const { allowed, retryAfterSeconds } = checkRateLimit(
           "socket-game-action",
@@ -827,17 +832,12 @@ export function setupGameNamespace(io: Server): void {
           RATE_LIMIT_CONFIG.GAME_ACTION.MAX_REQUESTS
         );
         if (!allowed) {
-          socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-            message: "Too many actions submitted. Please slow down.",
-            retryAfterSeconds,
-          });
+          rejectAction("Too many actions submitted. Please slow down.", { retryAfterSeconds });
           return;
         }
 
         if (!gameId || !actionType) {
-          socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-            message: "gameId and actionType are required",
-          });
+          rejectAction("gameId and actionType are required");
           return;
         }
 
@@ -846,9 +846,7 @@ export function setupGameNamespace(io: Server): void {
         // Validate that the socket has joined this game room
         const roomMembers = gameNs.adapter.rooms.get(roomName);
         if (!roomMembers || !roomMembers.has(socket.id)) {
-          socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-            message: "You must join the game room before submitting actions",
-          });
+          rejectAction("You must join the game room before submitting actions");
           return;
         }
 
@@ -860,9 +858,7 @@ export function setupGameNamespace(io: Server): void {
           const gameRecord = await gameService.getRawGameRecord(gameId, userId);
 
           if (!gameRecord) {
-            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-              message: "Game not found or access denied",
-            });
+            rejectAction("Game not found or access denied");
             return;
           }
 
@@ -873,9 +869,7 @@ export function setupGameNamespace(io: Server): void {
             actionType !== "mulligan" &&
             actionType !== "surrender"
           ) {
-            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-              message: "Game is in mulligan phase",
-            });
+            rejectAction("Game is in mulligan phase");
             return;
           }
 
@@ -884,9 +878,7 @@ export function setupGameNamespace(io: Server): void {
             actionType === "mulligan" &&
             gameRecord.game_state.status !== GameStatus.MULLIGAN
           ) {
-            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-              message: "Mulligan phase has ended",
-            });
+            rejectAction("Mulligan phase has ended");
             return;
           }
 
@@ -895,9 +887,7 @@ export function setupGameNamespace(io: Server): void {
             gameRecord.game_status !== GameStatus.ACTIVE &&
             gameRecord.game_state.status !== GameStatus.MULLIGAN
           ) {
-            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-              message: `Game is not active (status: ${gameRecord.game_status})`,
-            });
+            rejectAction(`Game is not active (status: ${gameRecord.game_status})`);
             return;
           }
 
@@ -909,9 +899,7 @@ export function setupGameNamespace(io: Server): void {
           // other action so a player can't place/end-turn around the pause.
           // Surrender is always permitted even mid-choice.
           if (nextState.pending_choice && actionType !== "handChoice" && actionType !== "surrender") {
-            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-              message: "Waiting for an ability choice to resolve",
-            });
+            rejectAction("Waiting for an ability choice to resolve");
             return;
           }
 
@@ -941,9 +929,7 @@ export function setupGameNamespace(io: Server): void {
           try {
             if (actionType === "placeCard") {
               if (!user_card_instance_id || !position) {
-                socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-                  message: "user_card_instance_id and position required",
-                });
+                rejectAction("user_card_instance_id and position required");
                 return;
               }
 
@@ -970,9 +956,7 @@ export function setupGameNamespace(io: Server): void {
               const replaced: string[] =
                 (actionPayload as any).replaced_card_instance_ids ?? [];
               if (!Array.isArray(replaced) || replaced.length > MAX_MULLIGAN_REPLACEMENTS) {
-                socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-                  message: `replaced_card_instance_ids must be an array of ≤ ${MAX_MULLIGAN_REPLACEMENTS}`,
-                });
+                rejectAction(`replaced_card_instance_ids must be an array of ≤ ${MAX_MULLIGAN_REPLACEMENTS}`);
                 return;
               }
               const r = applyPlayerMulligan(nextState, userId, replaced);
@@ -991,15 +975,11 @@ export function setupGameNamespace(io: Server): void {
                 (actionPayload as GameActionPayload).chosen_card_ids ?? [];
 
               if (!pending || pending.type !== "reveal_hand_select") {
-                socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-                  message: "No pending choice to resolve",
-                });
+                rejectAction("No pending choice to resolve");
                 return;
               }
               if (userId !== pending.chooser_id) {
-                socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-                  message: "Not your choice to make",
-                });
+                rejectAction("Not your choice to make");
                 return;
               }
               const uniqueChosen = [...new Set(chosenCardIds)];
@@ -1009,9 +989,7 @@ export function setupGameNamespace(io: Server): void {
                   pending.choosable_card_ids.includes(id)
                 )
               ) {
-                socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-                  message: "Invalid chosen_card_ids",
-                });
+                rejectAction("Invalid chosen_card_ids");
                 return;
               }
 
@@ -1022,15 +1000,12 @@ export function setupGameNamespace(io: Server): void {
               nextState = result.state;
               events = result.events;
             } else {
-              socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-                message: "Invalid actionType",
-              });
+              rejectAction("Invalid actionType");
               return;
             }
           } catch (err) {
-            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-              message: err instanceof Error ? err.message : String(err),
-            });
+            const msg = err instanceof Error ? err.message : String(err);
+            rejectAction(msg);
             return;
           }
 
@@ -1045,9 +1020,7 @@ export function setupGameNamespace(io: Server): void {
             );
           } catch (err) {
             console.error("[namespace.game] DB update error", err);
-            socket.emit(GameNamespaceEvent.SERVER_ERROR, {
-              message: "Move could not be saved, please retry",
-            });
+            rejectAction("Move could not be saved, please retry");
             return;
           }
 
@@ -1082,6 +1055,7 @@ export function setupGameNamespace(io: Server): void {
                 sumAnimationDelay(events)
               );
             }
+            ack?.({ ok: true });
             return;
           }
 
@@ -1134,6 +1108,8 @@ export function setupGameNamespace(io: Server): void {
               actionType === "surrender" ? "surrender" : "completed"
             );
           }
+
+          ack?.({ ok: true });
         } finally {
           // Always release the lock
           releaseLock();
