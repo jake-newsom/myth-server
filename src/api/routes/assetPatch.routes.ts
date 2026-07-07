@@ -73,9 +73,9 @@ const PATCHES: AssetPatch[] = [
     id: "patch-1",
     version: 1,
     type: "mixed",
-    r2Key: "patches/baseline-1.zip", // TODO: fill in once zip is built
-    checksum: "sha256:40d7d0e3b9f0816cb2da0cfbd76f911a81345ba760cde271b02ce90a8c0805b6",
-    size: 99906879,
+    r2Key: "patches/baseline-1.1.zip",
+    checksum: "sha256:b971b08964c4b8b3feed578bf3ed48adf8ef5546dcac507a9a6b99af99c069c7",
+    size: 101_547_232,
     description: "main game assets",
   },
 
@@ -166,6 +166,17 @@ const PATCHES: AssetPatch[] = [
       "sha256:343f666f132de9e76aa280618a54eba6f51a6b614d078fedc5b3f2cf5586e55d",
     size: 15514914,
     description: "S1 rewards, vfx & sfx updates",
+    maxAppVersion: "1.0.11",
+  },
+  {
+    id: "holo-masks",
+    version: 1,
+    type: "graphics",
+    r2Key: "patches/holo-masks.zip",
+    checksum:
+      "sha256:c979efb6a5b71a8738a4418f83395a8ed15834ad8cc9d78ba2b64c7de1dc13b6",
+    size: 1_619_696,
+    description: "holo masks",
     maxAppVersion: "1.0.11",
   },
 ];
