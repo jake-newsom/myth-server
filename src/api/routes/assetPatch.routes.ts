@@ -179,6 +179,17 @@ const PATCHES: AssetPatch[] = [
     description: "holo masks",
     maxAppVersion: "1.0.14",
   },
+  {
+    id: "holo-masks-alpha",
+    version: 3,
+    type: "graphics",
+    r2Key: "patches/holo-masks-alpha-1.2.zip",
+    checksum:
+      "sha256:e95a376b32a3dcd74bbe5dd7e7152c28be1c7a1446815f470e2abaf0b0787cf8",
+    size: 2469674,
+    description: "holo masks alpha",
+    maxAppVersion: "1.0.14",
+  }
 ];
 
 function assetUrl(r2Key: string): string {
