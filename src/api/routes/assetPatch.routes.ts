@@ -177,7 +177,7 @@ const PATCHES: AssetPatch[] = [
       "sha256:c979efb6a5b71a8738a4418f83395a8ed15834ad8cc9d78ba2b64c7de1dc13b6",
     size: 1_619_696,
     description: "holo masks",
-    maxAppVersion: "1.0.14",
+    maxAppVersion: "1.0.15",
   },
   {
     id: "holo-masks-alpha",
@@ -188,7 +188,7 @@ const PATCHES: AssetPatch[] = [
       "sha256:e95a376b32a3dcd74bbe5dd7e7152c28be1c7a1446815f470e2abaf0b0787cf8",
     size: 2469674,
     description: "holo masks alpha",
-    maxAppVersion: "1.0.14",
+    maxAppVersion: "1.0.15",
   }
 ];
 

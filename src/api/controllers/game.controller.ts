@@ -536,6 +536,17 @@ class GameController {
         ReturnType<typeof SagaBattleService.processBattleCompletion>
       > | null = null;
 
+      // Persist final status/winner before reward processing:
+      // processTowerCompletion validates game_status and winner_id against
+      // the DB row, so the completed state must already be written.
+      const updatedGameResponse: UpdatedGameResponse =
+        await GameService.updateGameAfterAction(
+          gameId,
+          updatedGameState,
+          new_game_status_for_db,
+          winner_id_for_db
+        );
+
       // Skip rewards entirely for tutorial games
       const isSagaGame = !!gameRecord.saga_run_id;
       const isTowerGame =
@@ -608,14 +619,6 @@ class GameController {
           }
         }
       }
-
-      const updatedGameResponse: UpdatedGameResponse =
-        await GameService.updateGameAfterAction(
-          gameId,
-          updatedGameState,
-          new_game_status_for_db,
-          winner_id_for_db
-        );
 
       const finalGameStateObject =
         typeof updatedGameResponse.game_state === "string"
@@ -899,6 +902,17 @@ class GameController {
         ReturnType<typeof SagaBattleService.processBattleCompletion>
       > | null = null;
 
+      // Persist final status/winner before reward processing:
+      // processTowerCompletion validates game_status and winner_id against
+      // the DB row, so the completed state must already be written.
+      const updatedGameResponse: UpdatedGameResponse =
+        await GameService.updateGameAfterAction(
+          gameId,
+          updatedGameState,
+          new_game_status_for_db,
+          winner_id_for_db
+        );
+
       const isSagaGameAI = !!gameRecord.saga_run_id;
       const isTowerGameAI =
         gameRecord.floor_number != null && !isSagaGameAI;
@@ -973,14 +987,6 @@ class GameController {
           }
         }
       }
-
-      const updatedGameResponse: UpdatedGameResponse =
-        await GameService.updateGameAfterAction(
-          gameId,
-          updatedGameState,
-          new_game_status_for_db,
-          winner_id_for_db
-        );
 
       const finalGameStateObject =
         typeof updatedGameResponse.game_state === "string"
