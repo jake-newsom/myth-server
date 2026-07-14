@@ -38,7 +38,11 @@ import {
   resolveTargetCard,
   disableAbilities,
 } from "../ability.utils";
-import { BaseGameEvent } from "../game-events";
+import {
+  BaseGameEvent,
+  CardPowerChangedEvent,
+  EVENT_TYPES,
+} from "../game-events";
 import { flipCard } from "../game.utils";
 import { getPositionOfCardById, getCardHighestPower } from "../ability.utils";
 import { randomInt } from "../simulation.rng";
@@ -81,6 +85,7 @@ export const japaneseAbilities: AbilityMap = {
         gameEvents.push(
           debuff(strongestEnemy, -2, {
             name: "Moon's Balance",
+            animation: "moons-balance",
             position: enemyPosition,
             data: {
               actingPlayerId: triggerCard.owner,
@@ -758,7 +763,7 @@ export const japaneseAbilities: AbilityMap = {
           const destroyEvent = destroyCardAtPosition(
             enemyPosition,
             board,
-            "blast-up",
+            "susanoo-storm-breaker",
             triggerCard.owner,
             triggerCard,
           );
@@ -853,6 +858,21 @@ export const japaneseAbilities: AbilityMap = {
       ...adjacentEnemiesInRow,
       ...adjacentEnemiesInColumn,
     ];
+
+    if (adjacentEnemies.length > 0) {
+      // Orochi's many-heads eruption plays on the tile Yamata was played on;
+      // powerDelta 0 with no effectName means VFX only, no floating label.
+      gameEvents.push({
+        type: EVENT_TYPES.CARD_POWER_CHANGED,
+        animation: "yamata-many-heads",
+        eventId: uuidv4(),
+        timestamp: Date.now(),
+        cardId: triggerCard.user_card_instance_id,
+        powerDelta: 0,
+        position,
+      } as CardPowerChangedEvent);
+    }
+
     for (const enemy of adjacentEnemies) {
       const enemyPosition = getPositionOfCardById(
         enemy.user_card_instance_id,
@@ -909,7 +929,7 @@ export const japaneseAbilities: AbilityMap = {
             enemyPosition,
             enemy,
             triggerCard,
-            "water-burst-2",
+            "ryujin-surge",
             {
               achievementBatchId: batchId,
               combatType: COMBAT_TYPES.SPECIAL,
@@ -917,6 +937,20 @@ export const japaneseAbilities: AbilityMap = {
           ),
         );
       }
+    }
+
+    if (gameEvents.length > 0) {
+      // The dragon god's jewel pulses on Ryūjin's own tile when the sweep
+      // flips anything; powerDelta 0 with no effectName means VFX only.
+      gameEvents.unshift({
+        type: EVENT_TYPES.CARD_POWER_CHANGED,
+        animation: "ryujin-jewel",
+        eventId: uuidv4(),
+        timestamp: Date.now(),
+        cardId: triggerCard.user_card_instance_id,
+        powerDelta: 0,
+        position,
+      } as CardPowerChangedEvent);
     }
 
     return gameEvents;

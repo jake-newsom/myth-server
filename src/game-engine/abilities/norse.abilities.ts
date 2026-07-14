@@ -1003,7 +1003,7 @@ export const norseAbilities: AbilityMap = {
         gameEvents.push(
           debuff(strongestEnemy, -2, {
             name: "Binding Justice",
-            animation: "triangle-shield-down",
+            animation: "binding-justice",
             position: enemyPosition,
             data: {
               actingPlayerId: triggerCard.owner,
@@ -1031,7 +1031,7 @@ export const norseAbilities: AbilityMap = {
         gameEvents.push(
           buff(weakestAlly, 2, {
             name: "Binding Justice",
-            animation: "triangle-shield",
+            animation: "binding-justice",
             position: allyPosition,
           }),
         );
