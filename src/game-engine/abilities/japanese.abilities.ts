@@ -581,7 +581,6 @@ export const japaneseAbilities: AbilityMap = {
             "Demon Bane",
             triggerPosition,
             {
-              animation: "red-lightning",
               actingPlayerId: triggerCard.owner,
               sourceCard: triggerCard,
               sourcePlayerId: triggerCard.owner,

@@ -342,7 +342,7 @@ export const polynesianAbilities: AbilityMap = {
           sourceCard: triggerCard,
           sourcePlayerId: triggerCard.owner,
           turnNumber: context.state.turn_number,
-          animation: "debuff",
+          animation: "blood-altar",
         }),
       );
 
@@ -482,7 +482,7 @@ export const polynesianAbilities: AbilityMap = {
       triggerCard.current_power = updateCurrentPower(triggerCard);
       gameEvents.push({
         type: EVENT_TYPES.CARD_POWER_CHANGED,
-        animation: "explode-swirl",
+        animation: "sun-trick",
         eventId: uuidv4(),
         timestamp: Date.now(),
         cardId: triggerCard.user_card_instance_id,

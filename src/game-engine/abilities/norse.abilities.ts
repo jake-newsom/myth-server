@@ -39,7 +39,12 @@ import {
   getTileAtPosition,
 } from "../ability.utils";
 import { drawCardSync, flipCard, resolveCombat } from "../game.utils";
-import { BaseGameEvent, CardEvent, EVENT_TYPES } from "../game-events";
+import {
+  BaseGameEvent,
+  CardEvent,
+  CardPowerChangedEvent,
+  EVENT_TYPES,
+} from "../game-events";
 import { v4 as uuidv4 } from "uuid";
 import { TileStatus, TileTerrain } from "../../types/game.types";
 import { randomChance, randomInt } from "../simulation.rng";
@@ -829,10 +834,26 @@ export const norseAbilities: AbilityMap = {
     } = context;
     const events = pullCardsIn(position, board, triggerCard.owner);
 
-    return events.map((event) => {
+    const gameEvents: BaseGameEvent[] = events.map((event) => {
       event.animation = "pull"; //currently the same but we may change it later
       return event;
     });
+
+    if (gameEvents.length > 0) {
+      // Rán's undertow plays on her own tile (behind the card on the client);
+      // powerDelta 0 with no effectName means VFX only.
+      gameEvents.unshift({
+        type: EVENT_TYPES.CARD_POWER_CHANGED,
+        animation: "ran_pull",
+        eventId: uuidv4(),
+        timestamp: Date.now(),
+        cardId: triggerCard.user_card_instance_id,
+        powerDelta: 0,
+        position,
+      } as CardPowerChangedEvent);
+    }
+
+    return gameEvents;
   },
 
   // Valkyrie Sisterhood: Gain +2 if adjacent to another Valkyrie.
