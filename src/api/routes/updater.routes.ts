@@ -24,9 +24,9 @@ const R2_ASSET_ORIGIN =
 // No OTA bundle published yet — r2Key null makes /check always report
 // "no update available" (see the !CURRENT_BUNDLE.r2Key branch below).
 const CURRENT_BUNDLE = {
-  bundleVersion: "1.0.15",
-  r2Key: "updater-bundles/com.nurdturd.myth_1.0.15.zip",
-  checksum: "b590c9e2e9d3e28f249429451f8f03fc99ce5a77d915a64888b53930834f51fa",
+  bundleVersion: "1.0.16",
+  r2Key: "updater-bundles/com.nurdturd.myth_1.0.16.zip",
+  checksum: "70047fbb9812b35971ddaa7a6bc340957beae12b1d3deab0e5cf90d01bdd345c",
   minNativeVersion: null as string | null,
 };
 
