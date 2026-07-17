@@ -24,6 +24,7 @@ import DeckService, {
   DeckNotFoundError,
   DeckAccessError,
   EmptyDeckError,
+  DeckBudgetError,
 } from "../../services/deck.service";
 import GameService, {
   GameNotFoundError,
@@ -90,7 +91,10 @@ class GameController {
       }
 
       // 1. Validate user's deck and get card instances
-      await DeckService.validateUserDeck(deckId, userId); // Throws on error
+      const playerDeck: any = await DeckService.validateUserDeck(
+        deckId,
+        userId
+      ); // Throws on error
       const playerCardInstanceIds = await DeckService.getDeckCardInstances(
         deckId
       );
@@ -106,6 +110,17 @@ class GameController {
             : `Your deck has too many cards. Decks must contain exactly ${DECK_CONFIG.DECK_SIZE} cards to start a game (your deck currently has ${playerCardInstanceIds.length}).`;
         res.status(400).json({ error: message });
         return;
+      }
+
+      // Enforce the deck power budget for the player deck (AI deck is exempt).
+      try {
+        await DeckService.assertDeckWithinBudget(deckId, playerDeck?.name);
+      } catch (budgetError: any) {
+        if (budgetError instanceof DeckBudgetError) {
+          res.status(400).json({ error: budgetError.message });
+          return;
+        }
+        throw budgetError;
       }
 
       // 2. Determine and prepare AI deck (balanced by average power level)

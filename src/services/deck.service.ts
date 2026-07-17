@@ -5,6 +5,8 @@ import db from "../config/db.config";
 // If it's exported from game.controller.ts:
 import { AI_PLAYER_ID } from "../api/controllers/game.controller";
 import { DeckEffectType } from "../types/game.types";
+import { DECK_CONFIG } from "../config/constants";
+import { RarityUtils } from "../types/card.types";
 
 // Define a simple type for deck data, expand as needed
 interface Deck {
@@ -33,6 +35,13 @@ export class EmptyDeckError extends Error {
   constructor(message: string = "Deck is empty") {
     super(message);
     this.name = "EmptyDeckError";
+  }
+}
+
+export class DeckBudgetError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DeckBudgetError";
   }
 }
 
@@ -75,6 +84,47 @@ class DeckService {
     // Note: The plan mentions not throwing EmptyDeckError here by default
     // to match original controller logic. Caller should check length.
     return rows.map((row) => row.user_card_instance_id);
+  }
+
+  /**
+   * Computes the total power-budget cost of a deck's cards and whether it fits
+   * within DECK_CONFIG.POWER_BUDGET.
+   */
+  async getDeckBudget(
+    deckId: string
+  ): Promise<{ spent: number; budget: number; valid: boolean }> {
+    const query = `
+      SELECT cv.rarity
+      FROM deck_cards dc
+      JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
+      JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+      WHERE dc.deck_id = $1;
+    `;
+    const { rows } = await db.query(query, [deckId]);
+    const spent = rows.reduce(
+      (total, row) => total + RarityUtils.getPowerCost(row.rarity),
+      0
+    );
+    const budget = DECK_CONFIG.POWER_BUDGET;
+    return { spent, budget, valid: spent <= budget };
+  }
+
+  /**
+   * Throws DeckBudgetError if the deck exceeds the power budget. Used at match
+   * start for player decks. AI decks and saga decks are exempt and should not
+   * be passed here.
+   */
+  async assertDeckWithinBudget(
+    deckId: string,
+    deckName?: string
+  ): Promise<void> {
+    const { spent, budget, valid } = await this.getDeckBudget(deckId);
+    if (!valid) {
+      const label = deckName ? ` "${deckName}"` : "";
+      throw new DeckBudgetError(
+        `Deck${label} exceeds the power budget (${spent}/${budget}). Edit the deck to reduce its cost before playing.`
+      );
+    }
   }
 
   /**

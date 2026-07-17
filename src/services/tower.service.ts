@@ -16,6 +16,8 @@ import {
   rowToTowerFloor,
 } from "../types/tower.types";
 import DeckService from "./deck.service";
+import { RarityUtils } from "../types/card.types";
+import { DECK_CONFIG } from "../config/constants";
 import { GameLogic } from "../game-engine/game.logic";
 import { hydrateGameStateCards } from "../game-engine/game.utils";
 import { AI_PLAYER_ID } from "../api/controllers/game.controller";
@@ -1073,14 +1075,15 @@ class TowerService {
         throw new Error(message);
       }
 
-      // Rule 2: Count legendary cards (max 2)
-      const legendaryCount = cards.filter((card) =>
-        card.rarity.toLowerCase().startsWith("legendary")
-      ).length;
+      // Rule 2: Total power cost must fit within the deck power budget
+      const budgetSpent = cards.reduce(
+        (total, card) => total + RarityUtils.getPowerCost(card.rarity),
+        0
+      );
 
-      if (legendaryCount > 2) {
+      if (budgetSpent > DECK_CONFIG.POWER_BUDGET) {
         throw new Error(
-          `Deck can have maximum 2 legendary cards. Your deck has ${legendaryCount} legendary cards.`
+          `Deck exceeds the power budget (${budgetSpent}/${DECK_CONFIG.POWER_BUDGET}). Edit the deck to reduce its cost before playing.`
         );
       }
 

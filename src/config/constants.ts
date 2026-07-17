@@ -14,8 +14,20 @@ export const GAME_CONFIG = {
 export const DECK_CONFIG = {
   DECK_SIZE: 20,
   MAX_IDENTICAL_BASE_CARDS: 2,
-  MAX_LEGENDARY_CARDS: 2,
+  // Total power budget a player deck may spend across its cards.
+  POWER_BUDGET: 30,
 } as const;
+
+// Power cost per base rarity tier, spent against DECK_CONFIG.POWER_BUDGET.
+// Keyed by base rarity (strip "+" upgrade suffixes before lookup).
+// Keep in sync with the client copy in myth/src/utils/card.utils.ts.
+export const RARITY_POWER_COST: Record<string, number> = {
+  legendary: 7,
+  epic: 3,
+  rare: 1,
+  uncommon: 0,
+  common: 0,
+};
 
 // XP System Configuration
 // Uses formula: xpRequired = BASE_XP * (level - 1)^EXPONENT

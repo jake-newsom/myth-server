@@ -1,4 +1,5 @@
 import { SpecialAbility } from "./database.types";
+import { RARITY_POWER_COST } from "../config/constants";
 
 export interface PowerValues {
   top: number;
@@ -52,6 +53,14 @@ export const RarityUtils = {
    */
   isLegendary(rarity: Rarity): boolean {
     return rarity.startsWith("legendary");
+  },
+
+  /**
+   * Power-budget cost of a card by its base rarity ("+" upgrades are cosmetic
+   * and cost the same as the base tier).
+   */
+  getPowerCost(rarity: Rarity): number {
+    return RARITY_POWER_COST[this.getBaseRarity(rarity)] ?? 0;
   },
 
   /**
