@@ -169,7 +169,7 @@ export class TowerController {
           error.message.includes("too many cards") ||
           error.message.includes("must contain") ||
           error.message.includes("exactly 20 cards") ||
-          error.message.includes("legendary") ||
+          error.message.includes("power budget") ||
           error.message.includes("copies"))
       ) {
         res.status(400).json({

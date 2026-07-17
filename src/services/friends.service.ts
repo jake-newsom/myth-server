@@ -481,16 +481,25 @@ class FriendsService {
         };
       }
 
+      // Enforce the deck power budget for the challenger's deck.
+      const challengerBudget = await DeckService.getDeckBudget(deckId);
+      if (!challengerBudget.valid) {
+        return {
+          success: false,
+          message: `Deck "${challengerDeck.name}" exceeds the power budget (${challengerBudget.spent}/${challengerBudget.budget}). Edit the deck to reduce its cost before playing.`,
+          error: "INVALID_DECK",
+        };
+      }
+
       // For friend challenges, we'll use the friend's default deck or a random valid deck
-      // First, get a valid deck for the friend
+      // First, get candidate decks for the friend, then pick the first within budget.
       const friendDecks = await db.query(
-        `SELECT d.deck_id 
-         FROM decks d 
-         JOIN deck_cards dc ON d.deck_id = dc.deck_id 
-         WHERE d.user_id = $1 
-         GROUP BY d.deck_id 
-         HAVING COUNT(dc.user_card_instance_id) >= 10 
-         LIMIT 1`,
+        `SELECT d.deck_id
+         FROM decks d
+         JOIN deck_cards dc ON d.deck_id = dc.deck_id
+         WHERE d.user_id = $1
+         GROUP BY d.deck_id
+         HAVING COUNT(dc.user_card_instance_id) >= 10`,
         [friendId]
       );
 
@@ -502,7 +511,22 @@ class FriendsService {
         };
       }
 
-      const friendDeckId = friendDecks.rows[0].deck_id;
+      let friendDeckId: string | null = null;
+      for (const row of friendDecks.rows) {
+        const budget = await DeckService.getDeckBudget(row.deck_id);
+        if (budget.valid) {
+          friendDeckId = row.deck_id;
+          break;
+        }
+      }
+
+      if (!friendDeckId) {
+        return {
+          success: false,
+          message: "Friend doesn't have a deck within the power budget",
+          error: "FRIEND_NO_DECK",
+        };
+      }
       const friendDeck = await DeckModel.findByIdAndUserIdWithCards(
         friendDeckId,
         friendId

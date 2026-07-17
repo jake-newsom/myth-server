@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { Request, Response, NextFunction } from "express";
 import { Server as IoServer } from "socket.io";
 import { GameState } from "../../types/game.types";
-import DeckService from "../../services/deck.service";
+import DeckService, { DeckBudgetError } from "../../services/deck.service";
 import { DECK_CONFIG } from "../../config/constants";
 import {
   PresenceNamespaceEvent,
@@ -104,6 +104,18 @@ const MatchmakingController = {
           return res.status(400).json({
             error: { message },
           });
+        }
+
+        // Enforce the deck power budget before queueing.
+        try {
+          await DeckService.assertDeckWithinBudget(deckId, playerDeck.name);
+        } catch (budgetError: any) {
+          if (budgetError instanceof DeckBudgetError) {
+            return res.status(400).json({
+              error: { message: budgetError.message },
+            });
+          }
+          throw budgetError;
         }
 
         // --- Database-level active game check (survives server restarts) ---

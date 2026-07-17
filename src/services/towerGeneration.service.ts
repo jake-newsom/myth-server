@@ -70,8 +70,7 @@ function isGenericFloorName(name: string): boolean {
 const AI_MAX_LEGENDARY_CARDS = 4;
 const AI_MAX_SAME_NAME_CARDS = 4;
 
-// Player deck constraints (enforced at game start)
-const PLAYER_MAX_LEGENDARY_CARDS = 2;
+// Player deck constraints (enforced at game start via the power budget)
 const PLAYER_MAX_SAME_NAME_CARDS = 2;
 
 // Powerup scaling rules

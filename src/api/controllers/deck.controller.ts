@@ -16,7 +16,7 @@ import CardBackService from "../../services/cardBack.service";
  * Validates deck composition based on game rules:
  * - Exactly 20 cards per deck
  * - Maximum 2 copies of the same base card
- * - Maximum 2 legendary cards
+ * - Total power cost within DECK_CONFIG.POWER_BUDGET (legendary 7, epic 3, rare 1)
  */
 async function validateDeckComposition(
   userId: string,
@@ -63,17 +63,15 @@ async function validateDeckComposition(
     };
   }
 
-  let legendaryCount = 0;
+  let budgetSpent = 0;
   const baseCardCounts = new Map<string, number>();
 
   // Process all instances in a single loop
   for (const row of instanceRes.rows) {
     const { base_card_id, rarity } = row;
 
-    // Count legendary cards (including variants)
-    if (RarityUtils.isLegendary(rarity)) {
-      legendaryCount++;
-    }
+    // Accumulate power-budget cost (by base rarity tier)
+    budgetSpent += RarityUtils.getPowerCost(rarity);
 
     // Count identical base cards
     baseCardCounts.set(
@@ -82,10 +80,10 @@ async function validateDeckComposition(
     );
   }
 
-  if (legendaryCount > DECK_CONFIG.MAX_LEGENDARY_CARDS) {
+  if (budgetSpent > DECK_CONFIG.POWER_BUDGET) {
     throw {
       statusCode: 400,
-      message: `Deck cannot contain more than ${DECK_CONFIG.MAX_LEGENDARY_CARDS} Legendary cards. Found: ${legendaryCount}.`,
+      message: `Deck exceeds the power budget (${budgetSpent}/${DECK_CONFIG.POWER_BUDGET}). Edit the deck to reduce its cost before playing.`,
     };
   }
 

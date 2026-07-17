@@ -231,6 +231,24 @@ class ChallengeController {
         );
       }
 
+      // Enforce the deck power budget for both player decks.
+      const [challengerBudget, opponentBudget] = await Promise.all([
+        DeckService.getDeckBudget(challengerDeckId),
+        DeckService.getDeckBudget(opponentDeckId),
+      ]);
+      if (!challengerBudget.valid) {
+        throw new ChallengeError(
+          `Deck "${challengerDeck.name}" exceeds the power budget (${challengerBudget.spent}/${challengerBudget.budget}). Edit the deck to reduce its cost before playing.`,
+          400
+        );
+      }
+      if (!opponentBudget.valid) {
+        throw new ChallengeError(
+          `Deck "${opponentDeck.name}" exceeds the power budget (${opponentBudget.spent}/${opponentBudget.budget}). Edit the deck to reduce its cost before playing.`,
+          400
+        );
+      }
+
       const challengerCardIds = challengerDeck.cards
         .map((card) => card.user_card_instance_id)
         .filter((id): id is string => Boolean(id));
