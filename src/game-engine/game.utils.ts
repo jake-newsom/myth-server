@@ -351,7 +351,17 @@ export function flipCard(
   // can set overrideProtection to skip the checks below.
   if (!metadata?.overrideProtection) {
     if (target.lockedTurns > 0) {
-      return buildDefendedEvents();
+      // Soul-lock is bypassed if the locking card is silenced (e.g. Urashima
+      // Time Shift applied to Hel before her lock is checked against a target).
+      const lockerIsSilenced =
+        target.lockedBy !== null &&
+        getCardsByCondition(
+          state.board,
+          (card) => card.user_card_instance_id === target.lockedBy,
+        ).some(isSilenced);
+      if (!lockerIsSilenced) {
+        return buildDefendedEvents();
+      }
     }
 
     if (
