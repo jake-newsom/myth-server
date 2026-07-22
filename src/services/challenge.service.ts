@@ -99,11 +99,13 @@ class ChallengeService {
       throw new ChallengeError("You cannot challenge yourself.", 400);
     }
 
+    // A stale challenge (e.g. the challenger refreshed and lost the client-side
+    // state that let them cancel) would otherwise lock them out until the TTL
+    // expires. Auto-cancel any existing challenge they own before creating the
+    // new one — a lock-status challenge is never a live game (games tear the
+    // challenge down via markReady), so this only clears pending/deck-select.
     if (this.hasActiveChallengeLock(challengerId)) {
-      throw new ChallengeError(
-        "You have a pending challenge. Cancel it before starting another game.",
-        409
-      );
+      this.cancelChallenge({ userId: challengerId });
     }
 
     if (this.isUserInMatchmakingQueue(challengerId)) {

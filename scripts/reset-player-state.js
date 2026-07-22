@@ -293,22 +293,8 @@ const SIMPLE_WIPE_STEPS = [
 ];
 
 async function wipeAchievements(client) {
-  // Reset character achievement progress in-place (preserves the row, clears counts)
-  const { rowCount: reset } = await client.query(`
-    UPDATE user_achievements ua
-    SET    current_progress = 0,
-           is_completed     = false,
-           completed_at     = NULL,
-           claimed_at       = NULL,
-           is_claimed       = false,
-           updated_at       = NOW()
-    FROM   achievements a
-    WHERE  ua.achievement_id = a.id
-      AND  a.achievement_kind = 'character'
-      AND  ua.user_id != $1
-  `, [AI_PLAYER_ID]);
-  console.log(`  reset   ${String(reset).padStart(6)} character achievement rows`);
-
+  // Character achievements are kept exactly as-is (beta testers keep their progress).
+  // All other user_achievements are deleted — users re-earn them from scratch.
   const { rowCount: deleted } = await client.query(`
     DELETE FROM user_achievements ua
     USING  achievements a
@@ -316,7 +302,7 @@ async function wipeAchievements(client) {
       AND  a.achievement_kind != 'character'
       AND  ua.user_id != $1
   `, [AI_PLAYER_ID]);
-  console.log(`  deleted ${String(deleted).padStart(6)} non-character achievement rows`);
+  console.log(`  deleted ${String(deleted).padStart(6)} non-character achievement rows (character progress kept)`);
 }
 
 function resetUsersSql() {
@@ -402,7 +388,6 @@ async function dryRun(client, catalogue, humans, perUser) {
   const steps = [
     ...SIMPLE_WIPE_STEPS,
     ["user_achievements (non-character, deleted)", `user_id != '${AI_PLAYER_ID}'`],
-    ["user_achievements (character, reset to 0)",  `user_id != '${AI_PLAYER_ID}'`],
     ["tower_floors",                               null],
   ];
   for (const [label, where] of steps) {

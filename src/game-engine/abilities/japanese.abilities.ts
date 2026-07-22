@@ -298,14 +298,17 @@ export const japaneseAbilities: AbilityMap = {
       flippedCard,
       triggerCard,
       originalTriggerCard,
+      defeatedOriginalOwner,
       state: { board },
     } = context;
 
     if (
       flippedCard &&
-      // AnyOnFlip fires before ownership is switched, so the flipped card owner
-      // still represents the defeated card's original owner.
-      flippedCard.owner === triggerCard.owner &&
+      // The defeated card was one of my allies (compare its ORIGINAL owner,
+      // captured pre-flip, so this is independent of when the trigger runs
+      // relative to the ownership switch)...
+      defeatedOriginalOwner === triggerCard.owner &&
+      // ...and the attacker is an enemy.
       originalTriggerCard?.user_card_instance_id &&
       originalTriggerCard.owner !== triggerCard.owner
     ) {
@@ -355,8 +358,8 @@ export const japaneseAbilities: AbilityMap = {
       );
       if (enemyPosition) {
         gameEvents.push(
-          createOrUpdateDebuff(enemy, 1000, 1, "Vengeful Bite", enemyPosition, {
-            animation: "blue-purple-spurt",
+          createOrUpdateDebuff(enemy, 1000, 1, "Hidden Maw", enemyPosition, {
+            animation: "hidden-maw",
             actingPlayerId: triggerCard.owner,
             sourceCard: triggerCard,
             sourcePlayerId: triggerCard.owner,
@@ -684,12 +687,35 @@ export const japaneseAbilities: AbilityMap = {
 
   // Radiant Blessing: Grant +1 to a random card in the owner's hand when an ally is defeated
   amaterasu_radiant_blessing: (context) => {
-    const { originalTriggerCard, triggerCard, state } = context;
+    const { triggerCard, flippedCard, defeatedOriginalOwner, state } = context;
     const gameEvents: BaseGameEvent[] = [];
     const batchId = `${triggerCard.user_card_instance_id}:${state.turn_number}:amaterasu`;
     const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
 
-    if (originalTriggerCard?.owner !== triggerCard.owner) {
+    // Fires when one of my allies was defeated. Compare the defeated card's
+    // ORIGINAL owner (captured pre-flip) so this is independent of ownership-
+    // switch timing.
+    if (defeatedOriginalOwner === triggerCard.owner) {
+      // Cave's Light bursts on the tile of the ally that was just defeated.
+      // powerDelta 0 with no effectName means VFX only, no floating label.
+      const defeatedPosition = flippedCard
+        ? getPositionOfCardById(
+            flippedCard.user_card_instance_id,
+            state.board,
+          )
+        : undefined;
+      if (defeatedPosition) {
+        gameEvents.push({
+          type: EVENT_TYPES.CARD_POWER_CHANGED,
+          animation: "caves-light",
+          eventId: uuidv4(),
+          timestamp: Date.now(),
+          cardId: flippedCard!.user_card_instance_id,
+          powerDelta: 0,
+          position: defeatedPosition,
+        } as CardPowerChangedEvent);
+      }
+
       const owner =
         state.player1.user_id === triggerCard.owner
           ? state.player1

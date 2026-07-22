@@ -121,6 +121,12 @@ export type TriggerContext = {
   flippedBy?: InGameCard;
   flippedCardId?: string;
   flippedByCardId?: string;
+  // Owner of `flippedCard` captured BEFORE the flip switches ownership.
+  // Flip-reaction abilities (AnyOnFlip/AnyOnFlipped) must identify the
+  // *defeated* card's original owner without depending on when the trigger
+  // runs relative to the `target.owner = ...` mutation in flipCard. Read this
+  // instead of the mutable `flippedCard.owner`.
+  defeatedOriginalOwner?: string;
   position: BoardPosition;
   // Player-chosen target board position for targeted OnPlace abilities.
   // Undefined for AI/timeout plays — those abilities self-select a target.

@@ -866,7 +866,7 @@ export class GameLogic {
               return effect.duration > 0;
             }
           );
-          cell.card.current_power = updateCurrentPower(cell.card);
+          cell.card.current_power = updateCurrentPower(cell.card, newState.board);
           if (newState.hydrated_card_data_cache) {
             newState.hydrated_card_data_cache[cell.card.user_card_instance_id] =
               cell.card;

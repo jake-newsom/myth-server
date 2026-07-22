@@ -88,8 +88,37 @@ import {
   transferTileEffectToCard,
   getCardsByCondition,
   isSilenced,
+  isProtectionSuppressed,
 } from "./ability.utils";
-import { batchEvents } from "./game-events";
+import { batchEvents, EFFECT_BEAT_MS } from "./game-events";
+
+/**
+ * Gap (ms) after a CARD_FLIPPED (attack) before its flip-consequence power
+ * changes animate, so the attack lands as its own beat and the resulting
+ * buffs/debuffs read as a distinct follow-up rather than colliding with it.
+ */
+const FLIP_TO_CONSEQUENCE_BEAT_MS = EFFECT_BEAT_MS;
+
+/** Default trailing gap (ms) closing a triggerAbilities batch. */
+const ABILITY_BATCH_DELAY_MS = 100;
+
+/**
+ * Longer trailing gap (ms) for OnPlace-family triggers. A card's placement
+ * buff (e.g. Shore Fury) is often the last placement event before combat /
+ * turn-end events rush past; without this hold it flashes for ~100ms and the
+ * player can't read it. Applies to OnPlace and its Any/Hand/Board variants.
+ */
+const ONPLACE_BATCH_DELAY_MS = 250;
+
+/** Trailing delay to close an ability batch for a given trigger moment. */
+function abilityBatchDelay(trigger: TriggerMoment): number {
+  return trigger === TriggerMoment.OnPlace ||
+    trigger === TriggerMoment.AnyOnPlace ||
+    trigger === TriggerMoment.HandOnPlace ||
+    trigger === TriggerMoment.BoardOnPlace
+    ? ONPLACE_BATCH_DELAY_MS
+    : ABILITY_BATCH_DELAY_MS;
+}
 
 /**
  * Creates a new board cell from hydrated card data, transferring tile effects to card if present
@@ -351,30 +380,34 @@ export function flipCard(
   // can set overrideProtection to skip the checks below.
   if (!metadata?.overrideProtection) {
     if (target.lockedTurns > 0) {
-      // Soul-lock is bypassed if the locking card is silenced (e.g. Urashima
-      // Time Shift applied to Hel before her lock is checked against a target).
-      const lockerIsSilenced =
-        target.lockedBy !== null &&
-        getCardsByCondition(
-          state.board,
-          (card) => card.user_card_instance_id === target.lockedBy,
-        ).some(isSilenced);
-      if (!lockerIsSilenced) {
+      // Soul-lock is suppressed when the locking card is silenced. The matching
+      // BlockDefeat effect (added by hel_soul) drives this via the check below,
+      // so here we only skip ahead — don't early-return yet.
+      const lockEffect = target.temporary_effects.find(
+        (e) =>
+          e.type === EffectType.BlockDefeat &&
+          e.sourceCardInstanceId === target.lockedBy,
+      );
+      const lockSuppressed =
+        lockEffect !== undefined &&
+        isProtectionSuppressed(lockEffect, state.board);
+      if (!lockSuppressed) {
         return buildDefendedEvents();
       }
     }
 
-    if (
-      target.temporary_effects.find(
-        (effect) => effect.type === EffectType.BlockDefeat
-      )
-    ) {
+    const activeBlockDefeat = target.temporary_effects.find(
+      (effect) =>
+        effect.type === EffectType.BlockDefeat &&
+        !isProtectionSuppressed(effect, state.board),
+    );
+    if (activeBlockDefeat) {
       if (!simulationContext.isInSimulation()) {
         AchievementService.triggerAchievementEvent({
           userId: target.owner,
           eventType: "power_buff_applied",
           eventData: {
-            source_ability_id: "kane_pure_waters",
+            source_ability_id: activeBlockDefeat.data?.sourceAbilityId ?? "kane_pure_waters",
             turn_number: state.turn_number,
             target_card_id: target.user_card_instance_id,
             power_delta: 0,
@@ -457,15 +490,33 @@ export function flipCard(
   const sourceTotalPowerBefore = getCardTotalPower(source);
   const targetTotalPowerBefore = getCardTotalPower(target);
 
-  events.push(
-    ...triggerAbilities(TriggerMoment.OnFlip, {
-      state,
-      triggerCard: source,
-      triggerMoment: TriggerMoment.OnFlip,
-      flippedCard: target,
-      position,
-    })
+  // Capture the defeated card's owner BEFORE the switch below. Flip-reaction
+  // abilities read this (not the mutable `target.owner`) to tell whose card was
+  // defeated, so their event emission can be reordered to animate after the
+  // flip without inverting owner comparisons.
+  const defeatedOriginalOwner = target.owner;
+
+  // Clear defeat-prevention state before OnFlip triggers fire, so a fresh
+  // soul-lock (hel_soul) applied during OnFlip isn't immediately wiped.
+  target.temporary_effects = target.temporary_effects.filter(
+    (e) => e.type !== EffectType.BlockDefeat,
   );
+  target.lockedTurns = 0;
+  target.lockedBy = null;
+
+  // Compute OnFlip abilities while state is still pre-switch (some read the
+  // board/owner as it was at the moment of the flip). Their EVENTS, however,
+  // are buffered and pushed *after* the CARD_FLIPPED event below so the flip
+  // animates first and its consequences follow.
+  const onFlipEvents = triggerAbilities(TriggerMoment.OnFlip, {
+    state,
+    triggerCard: source,
+    triggerMoment: TriggerMoment.OnFlip,
+    flippedCard: target,
+    defeatedOriginalOwner,
+    position,
+  });
+
   target.owner = metadata?.forcedOwnerId ?? state.current_player_id;
   target.defeats.push({
     user_card_instance_id: source.user_card_instance_id,
@@ -473,7 +524,11 @@ export function flipCard(
     name: source.base_card_data.name,
   });
 
-  if (!targetPosition) return events;
+  if (!targetPosition) {
+    // No board position to animate a flip at; still surface the OnFlip effects.
+    events.push(...onFlipEvents);
+    return events;
+  }
 
   // Check if the source card has a custom attack animation
   const attackAnimation =
@@ -488,7 +543,13 @@ export function flipCard(
     cardId: target.user_card_instance_id,
     position: targetPosition,
     animation: attackAnimation || "attack",
+    // Lead-in beat: let the attack land, then a gap before flip-consequence
+    // buffs/debuffs (Demon Bane, Hunter's Mark, …) animate as their own beat.
+    delayAfterMs: FLIP_TO_CONSEQUENCE_BEAT_MS,
   } as CardEvent);
+
+  // Flip-consequence events animate after the flip.
+  events.push(...onFlipEvents);
 
   events.push(
     ...triggerAbilities(TriggerMoment.OnFlipped, {
@@ -496,6 +557,7 @@ export function flipCard(
       triggerCard: target,
       triggerMoment: TriggerMoment.OnFlipped,
       flippedBy: source,
+      defeatedOriginalOwner,
       position: targetPosition,
     })
   );
@@ -593,7 +655,7 @@ export function triggerAbilities(
 
   events.push(...triggerIndirectAbilities(trigger, context));
 
-  return batchEvents(events, 100);
+  return batchEvents(events, abilityBatchDelay(trigger));
 }
 
 export function triggerIndirectAbilities(
@@ -710,7 +772,16 @@ export function triggerIndirectAbilities(
       events.push(...abilityEvents);
     }
   }
-  return batchEvents(events, 100);
+
+  // Recompute board cards' current_power after the Any*/lifecycle abilities
+  // above. These handlers (e.g. Moon's Balance on OnRoundEnd) apply temporary
+  // effects to BOARD targets but don't recompute current_power themselves, and
+  // unlike triggerAbilities' direct-card branch this path never called
+  // updateAllBoardCards — so a debuffed board card was serialized with stale
+  // power and the client showed the old value until the next state push.
+  updateAllBoardCards(state);
+
+  return batchEvents(events, abilityBatchDelay(trigger));
 }
 
 export function updateAllBoardCards(gameState: GameState) {
@@ -721,7 +792,7 @@ export function updateAllBoardCards(gameState: GameState) {
       const cell = gameState.board[y][x];
       if (!cell?.card) continue;
 
-      cell.card.current_power = updateCurrentPower(cell.card);
+      cell.card.current_power = updateCurrentPower(cell.card, gameState.board);
 
       const cachedCard =
         gameState.hydrated_card_data_cache?.[cell.card.user_card_instance_id];

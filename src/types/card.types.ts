@@ -261,4 +261,6 @@ export interface TemporaryEffect {
   name?: string;
   data?: Record<string, any>;
   type: EffectType;
+  // When set, this effect is suppressed while the named card is silenced.
+  sourceCardInstanceId?: string;
 }

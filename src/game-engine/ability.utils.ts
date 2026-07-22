@@ -78,6 +78,7 @@ export function transferTileEffectToCard(
       terrain: tileEffect.terrain,
       originalTileEffect: tileEffect.animation_label,
     },
+    sourceCardInstanceId: tileEffect.sourceCardInstanceId,
   };
 
   card.temporary_effects.push(temporaryEffect);
@@ -114,7 +115,10 @@ export function transferTileEffectToCard(
   return true;
 }
 
-export function updateCurrentPower(card: InGameCard): PowerValues {
+export function updateCurrentPower(
+  card: InGameCard,
+  board?: GameBoard,
+): PowerValues {
   const currentPower: PowerValues = structuredClone(
     card.base_card_data.base_power,
   );
@@ -129,6 +133,14 @@ export function updateCurrentPower(card: InGameCard): PowerValues {
   // Add temporary effects
   if (card.temporary_effects) {
     card.temporary_effects.forEach((effect) => {
+      // Skip tile-landing bonuses whose source card is currently silenced.
+      if (
+        board &&
+        effect.type === EffectType.TilePowerBonus &&
+        isProtectionSuppressed(effect, board)
+      ) {
+        return;
+      }
       (Object.keys(effect.power) as (keyof PowerValues)[]).forEach(
         (direction) => {
           currentPower[direction] += effect.power[direction] ?? 0;
@@ -1673,6 +1685,23 @@ export function isSilenced(card: InGameCard | null | undefined): boolean {
 }
 
 /**
+ * Returns true if a protection effect should be treated as inactive because
+ * its source card is currently silenced. An effect without a sourceCardInstanceId
+ * is never suppressed (it's unconditional protection, e.g. saga blessings).
+ */
+export function isProtectionSuppressed(
+  effect: { sourceCardInstanceId?: string },
+  board: GameBoard,
+): boolean {
+  if (!effect.sourceCardInstanceId) return false;
+  const sourceCards = getCardsByCondition(
+    board,
+    (card) => card.user_card_instance_id === effect.sourceCardInstanceId,
+  );
+  return sourceCards.some(isSilenced);
+}
+
+/**
  * Nullifies a card's special ability for `turns` turn-ticks by attaching a
  * Silence temporary effect. The effect carries no power change (so buff-strips
  * leave it intact) and decrements with the normal temporary-effect lifecycle
@@ -1767,6 +1796,8 @@ export function protectFromDefeat(
       sourceAbilityId: getAbilityIdFromCard(sourceCard),
       soundEffect: sourceCard?.base_card_data?.special_ability?.sound_effect ?? null,
     },
+    // When set, this protection is suppressed while the source card is silenced.
+    sourceCardInstanceId: sourceCard?.user_card_instance_id,
   });
   if (actingPlayerId && !simulationContext.isInSimulation()) {
     AchievementService.triggerAchievementEvent({

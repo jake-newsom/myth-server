@@ -44,6 +44,8 @@ export interface TileEffect {
   source_player_id?: string;
   source_card_id?: string;
   source_ability_id?: string;
+  // When set, this effect is suppressed while the named card is silenced.
+  sourceCardInstanceId?: string;
 }
 
 export interface BoardCell {

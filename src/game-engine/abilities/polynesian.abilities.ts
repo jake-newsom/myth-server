@@ -639,7 +639,7 @@ export const polynesianAbilities: AbilityMap = {
             gameEvents.push(
               addTempBuff(card, 1000, 2, {
                 name: "Icy Presence",
-                animation: "icicle",
+                animation: "ice-spike",
                 position: tilePosition,
                 data: {
                   actingPlayerId: triggerCard.owner,
@@ -653,7 +653,7 @@ export const polynesianAbilities: AbilityMap = {
             gameEvents.push(
               debuff(card, -1, {
                 name: "Icy Presence",
-                animation: "icicle",
+                animation: "ice-spike",
                 position: tilePosition,
                 data: {
                   actingPlayerId: triggerCard.owner,

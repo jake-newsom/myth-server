@@ -188,7 +188,6 @@ const PATCHES: AssetPatch[] = [
       "sha256:e95a376b32a3dcd74bbe5dd7e7152c28be1c7a1446815f470e2abaf0b0787cf8",
     size: 2469674,
     description: "holo masks alpha",
-    maxAppVersion: "1.0.15",
   },
   {
     id: "small-vfx-update",
@@ -198,6 +197,16 @@ const PATCHES: AssetPatch[] = [
     checksum:
       "sha256:12256f2144b395e22d440bb0882784a9e070f94f42c9082de9cd36a5210d8b52",
     size: 5191310,
+    description: "vfx updates",
+  },
+  {
+    id: "vfx-patch-2",
+    version: 1,
+    type: "graphics",
+    r2Key: "patches/vfx-patch-2.zip",
+    checksum:
+      "sha256:620184100a7e1cbb9c40df8dbf9b43972d0a0e72be792aee7a78192508cd7b00",
+    size: 3714846,
     description: "vfx updates",
   }
 ];

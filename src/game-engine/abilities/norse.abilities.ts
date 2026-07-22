@@ -1,6 +1,7 @@
 import {
   TriggerMoment,
   RarityUtils,
+  EffectType,
 } from "../../types/card.types";
 import {
   AbilityMap,
@@ -664,6 +665,17 @@ export const norseAbilities: AbilityMap = {
     if (flippedCard) {
       flippedCard.lockedTurns = 1000;
       flippedCard.lockedBy = triggerCard.user_card_instance_id;
+      // Mirror the lock as a BlockDefeat effect so silence-suppression logic
+      // in flipCard applies uniformly. lockedTurns/lockedBy are still used for
+      // the destruction-release path (releaseLocksAppliedBy).
+      if (!flippedCard.temporary_effects) flippedCard.temporary_effects = [];
+      flippedCard.temporary_effects.push({
+        power: { top: 0, bottom: 0, left: 0, right: 0 },
+        duration: 1000,
+        type: EffectType.BlockDefeat,
+        sourceCardInstanceId: triggerCard.user_card_instance_id,
+        data: { sourceAbilityId: "hel_soul", soundEffect: triggerCard.base_card_data?.special_ability?.sound_effect ?? null },
+      });
       if (!simulationContext.isInSimulation()) {
         AchievementService.triggerAchievementEvent({
           userId: triggerCard.owner,

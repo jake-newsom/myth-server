@@ -11,6 +11,8 @@ import {
 } from "../../src/types/game.types";
 import { TriggerContext, CombatContext } from "../../src/types/game-engine.types";
 import { GameStatus } from "../../src/game-engine/game.logic";
+import { resolveCombat, triggerAbilities } from "../../src/game-engine/game.utils";
+import { EVENT_TYPES } from "../../src/types";
 import { blockTile } from "../../src/game-engine/ability.utils";
 import DailyTaskService from "../../src/services/dailyTask.service";
 import SeasonSoulsService from "../../src/services/seasonSouls.service";
@@ -474,6 +476,190 @@ test("heimdall_block end-to-end never blocks the last playable tile on the board
     playableCount >= 1,
     `heimdall_block left ${playableCount} playable tiles; must leave at least 1`,
   );
+});
+
+// Regression: AnyOnFlip reaction abilities (Hunter's Mark) must (a) still
+// identify the defeated card's original owner after the OnFlip event emission
+// was reordered to animate AFTER the flip, and (b) emit their CARD_POWER_CHANGED
+// events *after* the CARD_FLIPPED they react to.
+test("Hunter's Mark: applied on ally defeat AND emitted after the flip", () => {
+  const state = makeGameState();
+
+  // My board: an Okuriinu (Hunter's Mark) watcher + the ally that gets defeated.
+  const okuriinu = makeCard({
+    id: "okuriinu",
+    name: "Okuriinu",
+    owner: PLAYER_1,
+    tags: ["beast"],
+  });
+  okuriinu.base_card_data.special_ability = {
+    ability_id: "okuriinu_hunters_mark",
+    id: "okuriinu_hunters_mark",
+    name: "Hunter's Mark",
+    description: "When an ally is defeated, drain power from the attacker.",
+    triggerMoments: [TriggerMoment.AnyOnFlip],
+    parameters: {},
+  } as InGameCard["base_card_data"]["special_ability"];
+
+  const myAlly = makeCard({
+    id: "my-ally",
+    name: "My Ally",
+    owner: PLAYER_1,
+    tags: ["beast"],
+  });
+  myAlly.base_card_data.base_power = { top: 2, right: 2, bottom: 2, left: 2 };
+  myAlly.current_power = { top: 2, right: 2, bottom: 2, left: 2 };
+
+  // Enemy attacker placed adjacent to my ally; strong enough to flip it.
+  const attacker = makeCard({
+    id: "attacker",
+    name: "Attacker",
+    owner: PLAYER_2,
+    tags: ["demon"],
+  });
+  attacker.base_card_data.base_power = { top: 9, right: 9, bottom: 9, left: 9 };
+  attacker.current_power = { top: 9, right: 9, bottom: 9, left: 9 };
+
+  // Layout: okuriinu at (0,1), my ally at (1,1), attacker placed at (2,1).
+  // Attacker's left(9) beats ally's right(2) → ally flips to PLAYER_2.
+  placeCard(state, { x: 0, y: 1 }, okuriinu);
+  placeCard(state, { x: 1, y: 1 }, myAlly);
+  placeCard(state, { x: 2, y: 1 }, attacker);
+  state.current_player_id = PLAYER_2;
+
+  const { events } = resolveCombat(state, { x: 2, y: 1 }, PLAYER_2);
+
+  // (a) Owner-timing parity: the ally flipped, and Hunter's Mark debuffed the
+  // attacker (a -2 CARD_POWER_CHANGED named "Hunter's Mark" on the attacker).
+  assert.equal(
+    state.board[1][1].card?.owner,
+    PLAYER_2,
+    "ally should have flipped to the attacker",
+  );
+  const huntersMark = events.find(
+    (e) =>
+      e.type === EVENT_TYPES.CARD_POWER_CHANGED &&
+      (e as any).effectName === "Hunter's Mark" &&
+      (e as any).cardId === attacker.user_card_instance_id,
+  );
+  assert.ok(
+    huntersMark,
+    "Hunter's Mark debuff should be applied to the attacker",
+  );
+
+  // (b) Ordering: the CARD_FLIPPED for my ally must come before the Hunter's
+  // Mark power change (consequence animates after the flip).
+  const flipIdx = events.findIndex(
+    (e) =>
+      e.type === EVENT_TYPES.CARD_FLIPPED &&
+      (e as any).cardId === myAlly.user_card_instance_id,
+  );
+  const markIdx = events.indexOf(huntersMark!);
+  assert.ok(flipIdx >= 0, "expected a CARD_FLIPPED for the defeated ally");
+  assert.ok(
+    flipIdx < markIdx,
+    `CARD_FLIPPED (idx ${flipIdx}) must precede Hunter's Mark (idx ${markIdx})`,
+  );
+});
+
+// An OnPlace placement buff must hold long enough to read before the following
+// combat / turn-end events rush past. The OnPlace ability batch closes with a
+// longer trailing delay (250ms) than the default (100ms).
+test("OnPlace buff (Shore Fury) gets the longer 250ms hold", () => {
+  const state = makeGameState();
+
+  const ushiOni = makeCard({
+    id: "ushi-oni",
+    name: "Ushi-Oni",
+    owner: PLAYER_1,
+    tags: ["beast"],
+  });
+  ushiOni.base_card_data.special_ability = {
+    ability_id: "ushi_oni_shore_fury",
+    id: "ushi_oni_shore_fury",
+    name: "Shore Fury",
+    description: "Gains +2 power if placed on an edge.",
+    triggerMoments: [TriggerMoment.OnPlace],
+    parameters: {},
+  } as InGameCard["base_card_data"]["special_ability"];
+
+  // Edge placement (x:0) so Shore Fury triggers.
+  const edgePos: BoardPosition = { x: 0, y: 1 };
+  placeCard(state, edgePos, ushiOni);
+
+  const events = triggerAbilities(TriggerMoment.OnPlace, {
+    state,
+    triggerCard: ushiOni,
+    triggerMoment: TriggerMoment.OnPlace,
+    position: edgePos,
+  });
+
+  const shoreFury = events.find(
+    (e) =>
+      e.type === EVENT_TYPES.CARD_POWER_CHANGED &&
+      (e as any).effectName === "Shore Fury",
+  );
+  assert.ok(shoreFury, "Shore Fury buff event should be emitted");
+  assert.equal(
+    shoreFury!.delayAfterMs,
+    250,
+    "OnPlace placement buff should hold for 250ms, not the default 100ms",
+  );
+});
+
+// A board card debuffed by a lifecycle/Any* ability (Moon's Balance on
+// OnRoundEnd) must have its current_power recomputed before the state is
+// returned. Previously triggerIndirectAbilities only recomputed hand cards, so
+// the board enemy's current_power was stale and the client showed old values
+// until the next state push.
+test("Moon's Balance debuff updates the board enemy's current_power", () => {
+  const state = makeGameState();
+
+  const tsukuyomi = makeCard({
+    id: "tsukuyomi",
+    name: "Tsukuyomi",
+    owner: PLAYER_1,
+    tags: ["goddess"],
+  });
+  tsukuyomi.base_card_data.special_ability = {
+    ability_id: "tsukuyomi_moons_balance",
+    id: "tsukuyomi_moons_balance",
+    name: "Moon's Balance",
+    description: "Each round, weaken the strongest enemy and buff a hand card.",
+    triggerMoments: [TriggerMoment.OnRoundEnd],
+    parameters: {},
+  } as InGameCard["base_card_data"]["special_ability"];
+
+  const enemy = makeCard({
+    id: "moon-enemy",
+    name: "Moon Enemy",
+    owner: PLAYER_2,
+    tags: ["demon"],
+  });
+  enemy.current_power = { top: 5, right: 5, bottom: 5, left: 5 };
+
+  placeCard(state, CENTER, tsukuyomi);
+  placeCard(state, RIGHT_OF_CENTER, enemy);
+
+  triggerAbilities(TriggerMoment.OnRoundEnd, {
+    state,
+    triggerMoment: TriggerMoment.OnRoundEnd,
+    position: { x: 0, y: 0 },
+  });
+
+  // Enemy (base 5/side) should now read 3/side from the -2 Moon's Balance debuff.
+  const enemyOnBoard = state.board[CENTER.y][RIGHT_OF_CENTER.x].card;
+  assert.equal(
+    enemyOnBoard?.user_card_instance_id,
+    enemy.user_card_instance_id,
+    "enemy should still be at RIGHT_OF_CENTER",
+  );
+  assert.equal(
+    enemyOnBoard?.current_power.top,
+    3,
+    "board enemy current_power should reflect the -2 Moon's Balance debuff",
+  );
+  assert.equal(enemyOnBoard?.current_power.left, 3);
 });
 
 after(() => {
