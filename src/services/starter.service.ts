@@ -19,7 +19,7 @@ const STARTER_BASE_CARD_NAMES_AND_QUANTITIES: {
     { name: "Yuki-onna", quantity: 1 },
 
     { name: "Benkei", quantity: 1 },
-    { name: "Momotaro", quantity: 1 },
+    { name: "Momotarō", quantity: 1 },
     { name: "Bragi", quantity: 1 },
     { name: "Frigg", quantity: 1 },
   ];

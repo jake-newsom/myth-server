@@ -576,6 +576,20 @@ export const norseAbilities: AbilityMap = {
       triggerCard.owner,
     );
 
+    // One vertical ice beam stands up Skadi's whole column (row 0 → row 3),
+    // centered on her tile — the client resolves the column span and rotation
+    // from this single event's position. powerDelta 0 + no effectName means
+    // VFX only, no floating label; the per-enemy debuffs below carry the numbers.
+    gameEvents.push({
+      type: EVENT_TYPES.CARD_POWER_CHANGED,
+      animation: "winter-step-beam",
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      cardId: triggerCard.user_card_instance_id,
+      powerDelta: 0,
+      position,
+    } as CardPowerChangedEvent);
+
     for (const enemy of enemiesInColumn) {
       const enemyPosition = getPositionOfCardById(
         enemy.user_card_instance_id,
