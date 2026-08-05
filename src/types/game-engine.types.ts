@@ -58,6 +58,18 @@ export interface CardEvent extends BaseGameEvent {
 export interface CardPlacedEvent extends CardEvent {
   originalOwner: string;
   position: BoardPosition;
+  /**
+   * The card's power at the moment it lands: base + enhancements + any
+   * temporary effects it already carried from hand (e.g. Sacred Spring).
+   * Excludes everything that happens later in the same batch (OnPlace
+   * abilities, combat, round-end debuffs).
+   *
+   * The client must render THIS on arrival rather than the card's end-of-batch
+   * power, otherwise later modifiers appear to have applied before their own
+   * events animate — e.g. a card that lands at 14 and is later debuffed to 12
+   * would show 12 while flipping a 13, which reads as impossible.
+   */
+  powerOnPlace?: PowerValues;
 }
 
 export interface TileEvent extends BaseGameEvent {

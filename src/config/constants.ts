@@ -414,6 +414,45 @@ export const STORY_MODE_CONFIG = {
   },
 } as const;
 
+// Chat Configuration
+export const CHAT_CONFIG = {
+  /** Hard cap on a single text message, enforced server-side. */
+  MAX_MESSAGE_LENGTH: 300,
+  /** Newest-N kept in memory per channel by the client ring buffer. */
+  CLIENT_BUFFER_SIZE: 200,
+
+  // Rate limiting (in-memory token bucket, per user).
+  // Degrades safely: a restart grants everyone a fresh bucket.
+  RATE_LIMIT: {
+    /** Bucket capacity — the allowed burst. */
+    BURST: 5,
+    /** Window over which the burst refills, in ms. */
+    REFILL_WINDOW_MS: 10_000,
+    /** Hard floor between any two messages, in ms. */
+    MIN_INTERVAL_MS: 1_000,
+    /** Card shares are rate limited more tightly than text, in ms. */
+    SHARE_INTERVAL_MS: 30_000,
+  },
+
+  /**
+   * Full-history retention. Moderator-deleted rows are kept beyond this as
+   * an audit trail. Raise without a code change if moderation load justifies.
+   */
+  RETENTION_DAYS: 7,
+  /** Batch size for the retention sweeper, to avoid a long lock. */
+  RETENTION_SWEEP_BATCH: 5_000,
+  /** How often the retention sweeper runs, in ms. */
+  RETENTION_SWEEP_INTERVAL_MS: 24 * 60 * 60 * 1000,
+
+  /** Cards returned by the public showcase endpoint. */
+  SHOWCASE_CARD_COUNT: 3,
+  /** Showcase cache TTL, in seconds. */
+  SHOWCASE_CACHE_TTL_SECONDS: 60,
+
+  /** Tower floors that trigger a global announcement (every Nth floor). */
+  TOWER_ANNOUNCE_INTERVAL: 100,
+} as const;
+
 // Error Codes
 export const ERROR_CODES = {
   VALIDATION_ERROR: "VALIDATION_ERROR",

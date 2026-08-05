@@ -17,8 +17,8 @@ import {
 } from "../types/tower.types";
 import DeckService from "./deck.service";
 import { RarityUtils } from "../types/card.types";
+import { DECK_CONFIG, CHAT_CONFIG } from "../config/constants";
 import { pickRandomVariantByRarity } from "../utils/cardVariant.helpers";
-import { DECK_CONFIG } from "../config/constants";
 import { GameLogic } from "../game-engine/game.logic";
 import { hydrateGameStateCards } from "../game-engine/game.utils";
 import { AI_PLAYER_ID } from "../api/controllers/game.controller";
@@ -748,7 +748,25 @@ class TowerService {
         floorNumber
       );
 
+      // Capture the intent INSIDE the guarded path, but emit only after the
+      // commit below succeeds. Deriving it here means the existing row lock
+      // and the `currentFloor !== floorNumber` check already guarantee
+      // idempotency, so a retried completion cannot double-post and no
+      // separate dedupe table is needed.
+      const centuryToAnnounce =
+        floorNumber % CHAT_CONFIG.TOWER_ANNOUNCE_INTERVAL === 0
+          ? floorNumber
+          : null;
+
       await client.query("COMMIT");
+
+      // Post-commit, fire-and-forget. Deliberately NOT read back from the DB:
+      // callers invoke this before game_status is persisted, so a parallel
+      // read here would be racing the same ordering bug that broke floor
+      // advancement previously.
+      if (centuryToAnnounce !== null) {
+        void this.announceTowerCentury(userId, centuryToAnnounce);
+      }
 
       return {
         success: true,
@@ -766,6 +784,41 @@ class TowerService {
       throw error;
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * Post a global chat announcement for a century floor clear.
+   *
+   * Always called post-commit and never awaited by the caller: a chat failure
+   * must not affect tower rewards, which have already been granted by the time
+   * this runs.
+   */
+  private async announceTowerCentury(
+    userId: string,
+    floorNumber: number
+  ): Promise<void> {
+    try {
+      const [{ default: chatService }, { default: UserModel }] =
+        await Promise.all([
+          import("./chat.service"),
+          import("../models/user.model"),
+        ]);
+
+      const user = await UserModel.findById(userId);
+      if (!user) return;
+
+      await chatService.postTowerCenturyAnnouncement(
+        userId,
+        user.username,
+        floorNumber
+      );
+    } catch (error) {
+      console.error("[Tower] Chat century announcement failed", {
+        userId,
+        floorNumber,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

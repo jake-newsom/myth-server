@@ -1,4 +1,4 @@
-import SetModel from "../models/set.model";
+import PackModel from "../models/pack.model";
 import PackService from "./pack.service";
 import FatePickService from "./fatePick.service";
 import UserModel from "../models/user.model";
@@ -12,7 +12,7 @@ interface AutomatedFatePickResult {
   success: boolean;
   message: string;
   fatePickId?: string;
-  setUsed?: string;
+  packUsed?: string;
   cardsGenerated?: number;
 }
 
@@ -20,7 +20,7 @@ const AIAutomationService = {
   /**
    * Generate an automated fate pick for the AI user
    * This function:
-   * 1. Chooses a random available set
+   * 1. Chooses a random available pack
    * 2. Opens a pack for the AI user (bypassing pack count check)
    * 3. Creates a fate pick from the pack
    * 4. Deletes the 5 cards from the AI user's collection
@@ -39,49 +39,49 @@ const AIAutomationService = {
         };
       }
 
-      // 2. Get all released sets
-      const availableSets = await SetModel.findReleased();
-      if (availableSets.length === 0) {
-        console.error("❌ No released sets available");
+      // 2. Get all available packs
+      const availablePacks = await PackModel.findAvailable();
+      if (availablePacks.length === 0) {
+        console.error("❌ No available packs");
         return {
           success: false,
-          message: "No released sets available for pack opening",
+          message: "No available packs for pack opening",
         };
       }
 
-      // 3. Choose a random set
-      const randomSetIndex = Math.floor(Math.random() * availableSets.length);
-      const selectedSet = availableSets[randomSetIndex];
+      // 3. Choose a random pack
+      const randomPackIndex = Math.floor(Math.random() * availablePacks.length);
+      const selectedPack = availablePacks[randomPackIndex];
       console.log(
-        `🎲 Selected set: ${selectedSet.name} (${selectedSet.set_id})`,
+        `🎲 Selected pack: ${selectedPack.name} (${selectedPack.pack_id})`,
       );
 
-      // 4. Check if the set has cards available
-      const setCardsCount = await PackService.getSetCardCount(
-        selectedSet.set_id,
-      );
-      if (setCardsCount === 0) {
-        console.error(`❌ Set ${selectedSet.name} has no cards available`);
+      // 4. Check if the pack has cards available
+      const packCardsCount = await PackModel.getCardCount(selectedPack.pack_id);
+      if (packCardsCount === 0) {
+        console.error(`❌ Pack ${selectedPack.name} has no cards available`);
         return {
           success: false,
-          message: `Selected set ${selectedSet.name} has no cards available`,
+          message: `Selected pack ${selectedPack.name} has no cards available`,
         };
       }
 
       // 5. Generate pack contents (simulate pack opening without pack count check)
-      const setCards = await PackService.getCardsFromSet(selectedSet.set_id);
-      if (setCards.length === 0) {
+      const packCards = await PackService.getCardsFromPack(
+        selectedPack.pack_id,
+      );
+      if (packCards.length === 0) {
         console.error(
-          `❌ Could not retrieve cards from set ${selectedSet.name}`,
+          `❌ Could not retrieve cards from pack ${selectedPack.name}`,
         );
         return {
           success: false,
-          message: `Could not retrieve cards from set ${selectedSet.name}`,
+          message: `Could not retrieve cards from pack ${selectedPack.name}`,
         };
       }
 
       // 6. Select 5 random cards for the pack
-      const selectedCards = PackService.selectRandomCards(setCards, 5);
+      const selectedCards = PackService.selectRandomCards(packCards, 5);
       console.log(`📦 Generated pack with ${selectedCards.length} cards`);
 
       // 7. Add cards to AI user's collection temporarily
@@ -89,7 +89,7 @@ const AIAutomationService = {
 
       // 8. Log the pack opening for the AI user
       const packOpeningId = await this.logAIPackOpening(
-        selectedSet.set_id,
+        selectedPack.pack_id,
         selectedCards,
       );
 
@@ -99,7 +99,7 @@ const AIAutomationService = {
           packOpeningId,
           AI_PLAYER_ID,
           selectedCards,
-          selectedSet.set_id,
+          selectedPack.pack_id,
           1, // Cost in fate coins
         );
 
@@ -121,9 +121,9 @@ const AIAutomationService = {
       );
       return {
         success: true,
-        message: `Successfully created automated fate pick from ${selectedSet.name}`,
+        message: `Successfully created automated fate pick from ${selectedPack.name}`,
         fatePickId: fatePickResult.fatePick?.id,
-        setUsed: selectedSet.name,
+        packUsed: selectedPack.name,
         cardsGenerated: selectedCards.length,
       };
     } catch (error) {
@@ -174,18 +174,19 @@ const AIAutomationService = {
   /**
    * Log pack opening for AI user
    */
-  async logAIPackOpening(setId: string, cards: any[]): Promise<string> {
+  async logAIPackOpening(packId: string, cards: any[]): Promise<string> {
     const cardIds = cards.map((card) => card.card_id);
 
+    // set_id left NULL: packs may mix sets. See PackService.logPackOpening.
     const query = `
-      INSERT INTO "pack_opening_history" (user_id, set_id, card_ids)
+      INSERT INTO "pack_opening_history" (user_id, pack_id, card_ids)
       VALUES ($1, $2, $3)
       RETURNING pack_opening_id;
     `;
 
     const { rows } = await db.query(query, [
       AI_PLAYER_ID,
-      setId,
+      packId,
       JSON.stringify(cardIds),
     ]);
     return rows[0].pack_opening_id;

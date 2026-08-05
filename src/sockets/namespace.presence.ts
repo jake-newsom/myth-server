@@ -6,6 +6,8 @@ import {
   PresencePlayerCountPayload,
 } from "../types/socket.types";
 import logger from "../utils/logger";
+import { registerChatHandlers } from "./chat.handlers";
+import chatService from "../services/chat.service";
 
 /**
  * Socket.IO room name used by the `/presence` namespace to group all
@@ -36,6 +38,12 @@ export function getPresenceSocketCountForUser(userId: string): number {
 export function setupPresenceNamespace(io: Server): void {
   const presenceNs: Namespace = io.of("/presence");
   presenceNs.use((socket, next) => presenceAuthMiddleware(socket as any, next));
+
+  // Chat rides this namespace. Injecting the namespace here (rather than
+  // having chat read `app.get("io")`) is what makes chat broadcasts work under
+  // both entrypoints: dev runs `ts-node src/app.ts` and prod runs
+  // `node server.js`, and they don't both call `app.set("io", io)`.
+  chatService.setPresenceNamespace(presenceNs);
 
   function getUniqueUserCount(): number {
     return userSocketsMap.size;
@@ -74,6 +82,9 @@ export function setupPresenceNamespace(io: Server): void {
       uniqueUsers: getUniqueUserCount(),
     });
 
+    // Chat listeners live on this same socket — no second connection.
+    registerChatHandlers(authedSocket);
+
     // Send current count to this socket immediately
     socket.emit(PresenceNamespaceEvent.SERVER_PLAYER_COUNT, {
       count: getUniqueUserCount(),
@@ -94,6 +105,9 @@ export function setupPresenceNamespace(io: Server): void {
         socketsForUserAfter.delete(socket.id);
         if (socketsForUserAfter.size === 0) {
           userSocketsMap.delete(userId);
+          // Last socket for this user is gone — drop their cached chat state
+          // so the map doesn't grow with every user who has ever connected.
+          chatService.releaseUserState(userId);
         }
       }
 
