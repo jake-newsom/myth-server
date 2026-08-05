@@ -17,6 +17,10 @@ export interface AuthenticatedRequest extends Request {
     auth_provider: "local" | "facebook" | "apple" | "google";
     password_hash?: string;
     role?: "user" | "admin";
+    // Populated by auth.middleware.protect via UserModel.findById, which
+    // selects created_at. Optional because other code paths construct this
+    // shape without it.
+    created_at?: Date;
   };
   sessionId?: string;
 }

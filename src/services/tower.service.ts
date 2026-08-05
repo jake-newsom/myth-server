@@ -17,6 +17,7 @@ import {
 } from "../types/tower.types";
 import DeckService from "./deck.service";
 import { RarityUtils } from "../types/card.types";
+import { pickRandomVariantByRarity } from "../utils/cardVariant.helpers";
 import { DECK_CONFIG } from "../config/constants";
 import { GameLogic } from "../game-engine/game.logic";
 import { hydrateGameStateCards } from "../game-engine/game.utils";
@@ -835,35 +836,13 @@ class TowerService {
     userId: string,
     variantRarity: string
   ): Promise<AwardedCard | null> {
-    const countQuery = `
-      SELECT COUNT(*)::int as total
-      FROM card_variants cv
-      JOIN characters ch ON ch.character_id = cv.character_id
-      WHERE cv.rarity::text = $1
-        AND cv.is_exclusive = false
-        AND cv.released_at <= NOW()
-        AND ch.released_at <= NOW();
-    `;
-    const { rows: countRows } = await db.query(countQuery, [variantRarity]);
-    const total = Number(countRows[0]?.total || 0);
-    if (total === 0) return null;
+    // Pool selection is shared with the onboarding track (see
+    // utils/cardVariant.helpers.ts) so the "released, non-exclusive" pool
+    // definition can't drift between the two callers. The grant stays here:
+    // tower awards immediately, whereas onboarding defers to mail claim.
+    const card = await pickRandomVariantByRarity(variantRarity);
+    if (!card) return null;
 
-    const randomOffset = Math.floor(Math.random() * total);
-    const query = `
-      SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url
-      FROM card_variants cv
-      JOIN characters ch ON cv.character_id = ch.character_id
-      WHERE cv.rarity::text = $1
-        AND cv.is_exclusive = false
-        AND cv.released_at <= NOW()
-        AND ch.released_at <= NOW()
-      ORDER BY cv.card_variant_id
-      LIMIT 1 OFFSET $2;
-    `;
-    const { rows } = await db.query(query, [variantRarity, randomOffset]);
-    if (rows.length === 0) return null;
-
-    const card = rows[0];
     const insertQuery = `
       INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp)
       VALUES ($1, $2, 1, 0)
@@ -871,15 +850,15 @@ class TowerService {
     `;
     const { rows: insertRows } = await db.query(insertQuery, [
       userId,
-      card.card_id,
+      card.card_variant_id,
     ]);
 
     return {
       user_card_instance_id: insertRows[0]?.user_card_instance_id,
-      card_id: card.card_id,
+      card_id: card.card_variant_id,
       name: card.name,
       rarity: card.rarity,
-      image_url: card.image_url,
+      image_url: card.image_url ?? undefined,
     };
   }
 

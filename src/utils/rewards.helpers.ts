@@ -12,6 +12,7 @@ export interface MailRewardFields {
   reward_packs: number;
   reward_card_ids: string[];
   reward_border_id?: string | null;
+  reward_card_back_id?: string | null;
 }
 
 export interface AchievementRewardFields {
@@ -60,6 +61,9 @@ export function mailRewardsToItems(mail: MailRewardFields): RewardItem[] {
   }
   if (mail.reward_border_id) {
     items.push({ type: "border", border_id: mail.reward_border_id });
+  }
+  if (mail.reward_card_back_id) {
+    items.push({ type: "card_back", back_id: mail.reward_card_back_id });
   }
   return items;
 }

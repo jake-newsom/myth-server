@@ -2,6 +2,7 @@
 import { Request, Response, NextFunction } from "express";
 import SessionService from "../../services/session.service";
 import UserModel from "../../models/user.model";
+import OnboardingService from "../../services/onboarding.service";
 
 // Extend Request type to include user and sessionId properties
 declare module "express-serve-static-core" {
@@ -76,6 +77,18 @@ const protect = async (
       // Add user and session info to request object for use in protected routes
       req.user = user;
       req.sessionId = session.session_id;
+
+      // Advance the onboarding day counter. Deliberately NOT awaited: this
+      // must never add latency to a response or turn a working request into a
+      // 500. The eligibility check is in-process (created_at is already on the
+      // user row), so ineligible users cost nothing here.
+      if (user.created_at && OnboardingService.isEligible(user.created_at)) {
+        void OnboardingService.tick({
+          user_id: user.user_id,
+          created_at: user.created_at,
+        });
+      }
+
       next();
     } catch (error) {
       console.log(`[AUTH DEBUG] Error during user lookup: ${error}`);

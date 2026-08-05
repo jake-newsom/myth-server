@@ -1,4 +1,4 @@
-import db from "../config/db.config";
+import db, { QueryExecutor } from "../config/db.config";
 import bcrypt from "bcrypt";
 import config from "../config";
 import { User } from "../types/database.types";
@@ -101,9 +101,17 @@ const UserModel = {
     return rows[0] || null;
   },
 
-  async findById(userId: string): Promise<User | null> {
+  /**
+   * @param executor Optional transaction client. Callers reading balances they
+   * just wrote inside a transaction MUST pass their client — the default `db`
+   * uses a separate pooled connection and would return pre-commit values.
+   */
+  async findById(
+    userId: string,
+    executor: QueryExecutor = db
+  ): Promise<User | null> {
     const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, role, in_game_currency, gems, fate_coins, card_fragments, echoes, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, completed_feature_tutorials, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
-    const { rows } = await db.query(query, [userId]);
+    const { rows } = await executor.query(query, [userId]);
     return rows[0] || null;
   },
 

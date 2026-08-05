@@ -29,6 +29,8 @@ import cardBackRoutes from "./cardBack.routes";
 import challengeRoutes from "./challenge.routes";
 import sagaRoutes from "./saga.routes";
 import updaterRoutes from "./updater.routes";
+import promoCodeRoutes from "./promoCode.routes";
+import onboardingRoutes from "./onboarding.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -67,6 +69,8 @@ router.use("/borders", borderRoutes);
 router.use("/card-backs", cardBackRoutes);
 router.use("/sagas", sagaRoutes);
 router.use("/updater", updaterRoutes);
+router.use("/promo-codes", promoCodeRoutes);
+router.use("/onboarding", onboardingRoutes);
 
 // Global error handler
 router.use(errorHandler);

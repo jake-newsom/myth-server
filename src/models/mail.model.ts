@@ -1,4 +1,4 @@
-import db from "../config/db.config";
+import db, { QueryExecutor } from "../config/db.config";
 import { Mail, MailWithSender, MailStats } from "../types/database.types";
 
 interface CreateMailInput {
@@ -22,6 +22,7 @@ interface CreateMailInput {
   reward_fate_coins?: number;
   reward_card_ids?: string[];
   reward_border_id?: string | null;
+  reward_card_back_id?: string | null;
   expires_at?: Date;
 }
 
@@ -44,7 +45,10 @@ const MailModel = {
   /**
    * Create a new mail entry
    */
-  async create(mailData: CreateMailInput): Promise<Mail> {
+  async create(
+    mailData: CreateMailInput,
+    client?: QueryExecutor
+  ): Promise<Mail> {
     const {
       user_id,
       mail_type = "system",
@@ -59,6 +63,7 @@ const MailModel = {
       reward_fate_coins = 0,
       reward_card_ids = [],
       reward_border_id = null,
+      reward_card_back_id = null,
       expires_at = null,
     } = mailData;
 
@@ -66,9 +71,9 @@ const MailModel = {
       INSERT INTO mail (
         user_id, mail_type, subject, content, sender_id, sender_name,
         has_rewards, reward_gold, reward_gems, reward_packs, reward_fate_coins,
-        reward_card_ids, reward_border_id, expires_at
+        reward_card_ids, reward_border_id, reward_card_back_id, expires_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *;
     `;
 
@@ -86,10 +91,12 @@ const MailModel = {
       reward_fate_coins,
       reward_card_ids,
       reward_border_id,
+      reward_card_back_id,
       expires_at,
     ];
 
-    const { rows } = await db.query(query, values);
+    const exec = client ?? db;
+    const { rows } = await exec.query(query, values);
     return rows[0];
   },
 
