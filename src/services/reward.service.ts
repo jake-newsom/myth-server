@@ -2,6 +2,7 @@ import db, { QueryExecutor, PoolClient } from "../config/db.config";
 import UserModel from "../models/user.model";
 import CardModel from "../models/card.model";
 import BorderService from "./border.service";
+import CardBackModel from "../models/cardBack.model";
 import { cacheInvalidation } from "./cache.invalidation.service";
 import logger from "../utils/logger";
 import {
@@ -42,6 +43,7 @@ interface AggregatedRewards {
   packs: number;
   card_variant_ids: string[];
   border_grants: BorderGrant[];
+  card_back_ids: string[];
 }
 
 function emptyAggregate(): AggregatedRewards {
@@ -53,6 +55,7 @@ function emptyAggregate(): AggregatedRewards {
     packs: 0,
     card_variant_ids: [],
     border_grants: [],
+    card_back_ids: [],
   };
 }
 
@@ -83,6 +86,9 @@ function aggregate(items: RewardItem[]): AggregatedRewards {
           border_id: item.border_id,
           character_id: item.character_id,
         });
+        break;
+      case "card_back":
+        totals.card_back_ids.push(item.back_id);
         break;
     }
   }
@@ -211,6 +217,18 @@ const RewardService = {
       newlyGrantedBorderIds = new Set(newlyGranted);
     }
 
+    // Card backs: grantToUser is ON CONFLICT DO NOTHING and already accepts a
+    // QueryExecutor, so it composes with the caller's transaction. Card back
+    // grants are always low-cardinality (one per mail at most), so a loop is
+    // fine here rather than a bulk statement.
+    const newlyGrantedCardBackIds = new Set<string>();
+    for (const backId of totals.card_back_ids) {
+      const isNew = await CardBackModel.grantToUser(userId, backId, client);
+      if (isNew) {
+        newlyGrantedCardBackIds.add(backId);
+      }
+    }
+
     // Build per-item granted records that mirror the input order. Cards are
     // matched by card_variant_id in the order they were inserted (CardModel's
     // bulk insert preserves multiplicity).
@@ -232,13 +250,20 @@ const RewardService = {
           item,
           newly_granted: newlyGrantedBorderIds.has(item.border_id),
         });
+      } else if (item.type === "card_back") {
+        granted.push({
+          item,
+          newly_granted: newlyGrantedCardBackIds.has(item.back_id),
+        });
       } else {
         granted.push({ item });
       }
     }
 
-    // Single fetch for the user's post-grant balances.
-    const updatedUser = await UserModel.findById(userId);
+    // Single fetch for the user's post-grant balances. Must read through the
+    // grant's own executor: the updates above are uncommitted, so a pooled
+    // connection would report stale pre-grant totals.
+    const updatedUser = await UserModel.findById(userId, client);
 
     // Invalidate caches once if cards or borders moved.
     if (totals.card_variant_ids.length > 0 || totals.border_grants.length > 0) {
@@ -257,6 +282,7 @@ const RewardService = {
         packs: totals.packs,
         cards: totals.card_variant_ids.length,
         borders: totals.border_grants.length,
+        card_backs: totals.card_back_ids.length,
       },
       updated_currencies: updatedUser
         ? {
@@ -279,6 +305,7 @@ const RewardService = {
       packs: 0,
       cards: 0,
       borders: 0,
+      card_backs: 0,
     };
   },
 };

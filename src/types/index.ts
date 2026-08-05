@@ -90,3 +90,6 @@ export * from "./game-engine.types";
 
 // Export tower types
 export * from "./tower.types";
+
+// Export promo code types
+export * from "./promo.types";

@@ -412,13 +412,15 @@ export type RewardItem =
   | { type: "card_fragments"; amount: number }
   | { type: "packs"; amount: number }
   | { type: "card"; card_variant_id: string }
-  | { type: "border"; border_id: string; character_id?: string | null };
+  | { type: "border"; border_id: string; character_id?: string | null }
+  | { type: "card_back"; back_id: string };
 
 export interface GrantedReward {
   item: RewardItem;
   // For card grants, the resulting user_card_instance_id (single instance per card_variant_id)
   user_card_instance_id?: string;
-  // For border grants, true if newly granted, false if user already owned it
+  // For border and card back grants, true if newly granted, false if the user
+  // already owned it
   newly_granted?: boolean;
 }
 
@@ -433,6 +435,7 @@ export interface GrantRewardsResult {
     packs: number;
     cards: number;
     borders: number;
+    card_backs: number;
   };
   updated_currencies?: {
     gems: number;

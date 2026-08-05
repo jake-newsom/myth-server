@@ -480,6 +480,7 @@ export interface Mail {
   reward_fate_coins: number;
   reward_card_ids: string[];
   reward_border_id?: string | null; // References card_borders table
+  reward_card_back_id?: string | null; // References card_backs table
   expires_at?: Date;
   read_at?: Date;
   claimed_at?: Date;

@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import UserModel from "../../models/user.model";
 import StarterService from "../../services/starter.service";
+import OnboardingService from "../../services/onboarding.service";
 import SessionService from "../../services/session.service";
 import FacebookService from "../../services/facebook.service";
 import AppleService from "../../services/apple.service";
@@ -135,6 +136,14 @@ const AuthController = {
       await StarterService.grantStarterContent(newUser.user_id);
 
       await client.query("COMMIT");
+
+      // Seed the onboarding track and send the day-1 welcome mail. Must run
+      // after COMMIT: it uses its own connections, so the user row has to be
+      // visible outside this transaction first. Never throws.
+      await OnboardingService.initializeForUser(
+        newUser.user_id,
+        newUser.created_at
+      );
 
       // Generate session and tokens
       const sessionMetadata = SessionService.extractSessionMetadata(req);
@@ -470,6 +479,14 @@ const AuthController = {
       await StarterService.grantStarterContent(newUser.user_id);
 
       await client.query("COMMIT");
+
+      // Seed the onboarding track and send the day-1 welcome mail. Must run
+      // after COMMIT: it uses its own connections, so the user row has to be
+      // visible outside this transaction first. Never throws.
+      await OnboardingService.initializeForUser(
+        newUser.user_id,
+        newUser.created_at
+      );
 
       // Generate session and tokens
       const sessionMetadata = SessionService.extractSessionMetadata(req);
@@ -949,6 +966,14 @@ const AuthController = {
 
       await client.query("COMMIT");
 
+      // Seed the onboarding track and send the day-1 welcome mail. Must run
+      // after COMMIT: it uses its own connections, so the user row has to be
+      // visible outside this transaction first. Never throws.
+      await OnboardingService.initializeForUser(
+        newUser.user_id,
+        newUser.created_at
+      );
+
       // Generate session and tokens
       const sessionMetadata = SessionService.extractSessionMetadata(req);
       const tokens = SessionService.generateTokenPair(newUser.user_id, "");
@@ -1240,6 +1265,14 @@ const AuthController = {
       await StarterService.grantStarterContent(newUser.user_id);
 
       await client.query("COMMIT");
+
+      // Seed the onboarding track and send the day-1 welcome mail. Must run
+      // after COMMIT: it uses its own connections, so the user row has to be
+      // visible outside this transaction first. Never throws.
+      await OnboardingService.initializeForUser(
+        newUser.user_id,
+        newUser.created_at
+      );
 
       // Generate session and tokens
       const sessionMetadata = SessionService.extractSessionMetadata(req);
