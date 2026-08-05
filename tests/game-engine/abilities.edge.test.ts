@@ -2,7 +2,7 @@ import test, { after } from "node:test";
 import assert from "node:assert/strict";
 
 import { abilities, combatResolvers } from "../../src/game-engine/abilities";
-import { TriggerMoment, InGameCard } from "../../src/types/card.types";
+import { TriggerMoment, InGameCard, EffectType } from "../../src/types/card.types";
 import {
   BoardPosition,
   GameBoard,
@@ -11,7 +11,11 @@ import {
 } from "../../src/types/game.types";
 import { TriggerContext, CombatContext } from "../../src/types/game-engine.types";
 import { GameStatus } from "../../src/game-engine/game.logic";
-import { resolveCombat, triggerAbilities } from "../../src/game-engine/game.utils";
+import {
+  createBoardCell,
+  resolveCombat,
+  triggerAbilities,
+} from "../../src/game-engine/game.utils";
 import { EVENT_TYPES } from "../../src/types";
 import { blockTile } from "../../src/game-engine/ability.utils";
 import DailyTaskService from "../../src/services/dailyTask.service";
@@ -660,6 +664,37 @@ test("Moon's Balance debuff updates the board enemy's current_power", () => {
     "board enemy current_power should reflect the -2 Moon's Balance debuff",
   );
   assert.equal(enemyOnBoard?.current_power.left, 3);
+});
+
+// CARD_PLACED carries `powerOnPlace` = the card's power as it lands, taken from
+// createBoardCell's computed current_power. It must include effects the card
+// already carried from hand (e.g. Sacred Spring's +1) so the client doesn't
+// render end-of-batch power at placement time.
+test("createBoardCell includes hand-carried buffs in the placed card's power", () => {
+  const card = makeCard({
+    id: "ukupanipo",
+    name: "Ukupanipo",
+    owner: PLAYER_1,
+    tags: ["beast"],
+  });
+  card.base_card_data.base_power = { top: 4, right: 4, bottom: 13, left: 4 };
+  // Buff picked up while still in hand (Sacred Spring).
+  card.temporary_effects = [
+    {
+      power: { top: 1, right: 1, bottom: 1, left: 1 },
+      duration: 1000,
+      name: "Sacred Spring",
+      type: EffectType.Buff,
+    },
+  ] as InGameCard["temporary_effects"];
+
+  const { boardCell } = createBoardCell(card, PLAYER_1);
+
+  assert.equal(
+    boardCell.card?.current_power.bottom,
+    14,
+    "placed power should be base 13 + Sacred Spring 1 = 14",
+  );
 });
 
 after(() => {

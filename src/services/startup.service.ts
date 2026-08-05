@@ -1,6 +1,11 @@
 import DailyShopService from "./dailyShop.service";
 import DailyShopModel from "../models/dailyShop.model";
+import ChatModel from "../models/chat.model";
+import { CHAT_CONFIG } from "../config/constants";
 import { logger } from "../utils/logger";
+
+/** Handle for the chat retention sweeper, so it can be stopped in tests. */
+let chatRetentionTimer: NodeJS.Timeout | null = null;
 
 const StartupService = {
   /**
@@ -58,6 +63,57 @@ const StartupService = {
   },
 
   /**
+   * Delete chat messages past the retention window.
+   *
+   * Retention exists only for moderation, support and analytics -- the client
+   * never backfills history -- so the window is deliberately short. Rows that
+   * a moderator soft-deleted, and rows authored by a currently-muted user, are
+   * exempted by the model as an audit trail for open cases.
+   */
+  async sweepChatRetention(): Promise<void> {
+    try {
+      const removed = await ChatModel.sweepExpired();
+      if (removed > 0) {
+        logger.info(
+          `🧹 Chat retention sweep removed ${removed} message(s) older than ${CHAT_CONFIG.RETENTION_DAYS} days`
+        );
+      }
+    } catch (error) {
+      logger.error("❌ Chat retention sweep failed:", error as any);
+      // Don't throw - a failed sweep must not affect the running server.
+    }
+  },
+
+  /**
+   * Start the periodic chat retention sweeper. Runs once at startup and then
+   * on a fixed interval.
+   */
+  startChatRetentionSweeper(): void {
+    if (chatRetentionTimer) return;
+
+    void this.sweepChatRetention();
+
+    chatRetentionTimer = setInterval(() => {
+      void this.sweepChatRetention();
+    }, CHAT_CONFIG.RETENTION_SWEEP_INTERVAL_MS);
+
+    // Don't hold the process open just for the sweeper.
+    chatRetentionTimer.unref?.();
+
+    logger.info(
+      `🧹 Chat retention sweeper started (every ${
+        CHAT_CONFIG.RETENTION_SWEEP_INTERVAL_MS / 3_600_000
+      }h, keeping ${CHAT_CONFIG.RETENTION_DAYS} days)`
+    );
+  },
+
+  stopChatRetentionSweeper(): void {
+    if (!chatRetentionTimer) return;
+    clearInterval(chatRetentionTimer);
+    chatRetentionTimer = null;
+  },
+
+  /**
    * Run all startup initialization tasks
    */
   async initialize(): Promise<void> {
@@ -65,6 +121,7 @@ const StartupService = {
 
     try {
       await this.initializeDailyShop();
+      this.startChatRetentionSweeper();
       logger.info("✅ Startup initialization completed successfully");
     } catch (error) {
       logger.error("❌ Startup initialization failed:", error as any);

@@ -67,6 +67,29 @@ export interface Set {
 
 // UserPack interface removed - packs are now tracked as a simple count on the User
 
+/**
+ * A pack is the openable product: a curated list of card_variants that may
+ * mix sets. Distinct from `users.pack_count`, which is how many pack opens a
+ * player owns. Sets remain a gameplay concept (passive effects); packs are
+ * purely distribution and must never be read by the game engine.
+ */
+export interface Pack {
+  pack_id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  image_url?: string;
+  is_released: boolean;
+  released_at?: Date | null;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface PackWithCardCount extends Pack {
+  card_count: number;
+}
+
 export interface SpecialAbility {
   ability_id: string;
   id: string;

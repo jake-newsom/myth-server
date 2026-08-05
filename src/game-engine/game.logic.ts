@@ -390,6 +390,12 @@ export class GameLogic {
         originalOwner: playedCardData.owner,
         delayAfterMs: 500,
         position,
+        // Power as the card lands (includes effects carried from hand, excludes
+        // anything later in this batch) so the client doesn't render end-of-batch
+        // power at placement time.
+        powerOnPlace: newBoardCell.card
+          ? { ...newBoardCell.card.current_power }
+          : undefined,
       } as CardPlacedEvent);
 
       // Minamoto achievement: only when card is played and the Demon Bane

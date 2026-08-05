@@ -1,8 +1,8 @@
-import SetModel from "../models/set.model";
+import PackModel from "../models/pack.model";
 import UserModel from "../models/user.model";
 import CardModel from "../models/card.model";
 import db from "../config/db.config";
-import { Card } from "../types/database.types";
+import { Card, Pack } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
 import logger from "../utils/logger";
 import DailyTaskService from "./dailyTask.service";
@@ -36,8 +36,8 @@ const PackService = {
    */
   async _openSinglePackCore(
     userId: string,
-    setId: string,
-    setCards: CardWithAbility[],
+    packId: string,
+    packCards: CardWithAbility[],
   ): Promise<{
     selectedCards: CardWithAbility[];
     isGodPack: boolean;
@@ -46,18 +46,18 @@ const PackService = {
     // Check for God Pack and select cards accordingly
     const isGodPack = this.isGodPack();
     const selectedCards = isGodPack
-      ? this.selectGodPackCards(setCards, CARDS_PER_PACK)
-      : this.selectRandomCards(setCards, CARDS_PER_PACK);
+      ? this.selectGodPackCards(packCards, CARDS_PER_PACK)
+      : this.selectRandomCards(packCards, CARDS_PER_PACK);
 
     if (isGodPack) {
-      logger.info("God Pack opened!", { userId, setId });
+      logger.info("God Pack opened!", { userId, packId });
     }
 
     // Add the selected cards to user's collection
     await this.addCardsToUserCollection(userId, selectedCards);
 
     // Log the pack opening to history
-    await this.logPackOpening(userId, setId, selectedCards);
+    await this.logPackOpening(userId, packId, selectedCards);
 
     // Get the pack opening ID from the history
     const packOpeningQuery = `
@@ -80,7 +80,7 @@ const PackService = {
           packOpeningId,
           userId,
           selectedCards,
-          setId,
+          packId,
           1, // Cost in wonder coins
         );
       }
@@ -162,18 +162,18 @@ const PackService = {
 
   async openPack(
     userId: string,
-    setId: string,
+    packId: string,
   ): Promise<PackOpenResult | null> {
-    // 1. Verify the set exists and is released
-    const set = await SetModel.findById(setId);
-    if (!set || !set.is_released) {
-      throw new Error("Set is not available for pack opening");
+    // 1. Verify the pack exists and is available
+    const pack = await PackModel.findById(packId);
+    if (!pack || !this.isPackAvailable(pack)) {
+      throw new Error("Pack is not available for opening");
     }
 
-    // 2. Check if the set has cards available
-    const setCardsCount = await this.getSetCardCount(setId);
-    if (setCardsCount === 0) {
-      throw new Error("No cards available in this set");
+    // 2. Check if the pack has cards available
+    const packCardsCount = await PackModel.getCardCount(packId);
+    if (packCardsCount === 0) {
+      throw new Error("No cards available in this pack");
     }
 
     // 3. Check if user has at least one pack
@@ -182,10 +182,10 @@ const PackService = {
       throw new Error("User does not have any packs available");
     }
 
-    // 4. Get all cards from this set
-    const setCards = await this.getCardsFromSet(setId);
-    if (setCards.length === 0) {
-      throw new Error("No cards available in this set");
+    // 4. Get all cards from this pack
+    const packCards = await this.getCardsFromPack(packId);
+    if (packCards.length === 0) {
+      throw new Error("No cards available in this pack");
     }
 
     // 5. Remove one pack from user's total pack count
@@ -197,8 +197,8 @@ const PackService = {
     // 6. Open the pack using core function
     const { selectedCards, isGodPack } = await this._openSinglePackCore(
       userId,
-      setId,
-      setCards,
+      packId,
+      packCards,
     );
 
     // 7. Invalidate user's card cache since collection changed
@@ -213,7 +213,7 @@ const PackService = {
         userId,
         eventType: "pack_opened",
         eventData: {
-          setId,
+          packId,
           packsOpened: 1,
           packsRemaining: updatedUser.pack_count,
         },
@@ -231,6 +231,12 @@ const PackService = {
       // Don't fail the pack opening process if achievement processing fails
     }
 
+    // 9. Announce a legendary+ pull in global chat. At most one banner per
+    // pack opening (a God Pack can yield several qualifying cards), and
+    // fire-and-forget: postPackPullBanner never throws, because the user's
+    // cards are the transaction that matters here, not the chat frame.
+    void this._postPackPullBanner(userId, selectedCards, pack.name);
+
     return {
       cards: selectedCards,
       remainingPacks: updatedUser.pack_count,
@@ -238,29 +244,109 @@ const PackService = {
     };
   },
 
-  async getCardsFromSet(setId: string): Promise<CardWithAbility[]> {
-    // Query card_variants joined with characters to get all cards from a set
+  /**
+   * Bridge from a pack result to the chat banner. Kept private and
+   * defensive so no chat failure can affect a pack opening.
+   */
+  async _postPackPullBanner(
+    userId: string,
+    cards: CardWithAbility[],
+    packName: string | null,
+  ): Promise<void> {
+    try {
+      const [{ default: chatService }, UserModelModule] = await Promise.all([
+        import("./chat.service"),
+        import("../models/user.model"),
+      ]);
+
+      const candidates = cards
+        .filter((card) => chatService.isBannerWorthyRarity(card.rarity as any))
+        .map((card) => {
+          // getCardsFromSet builds a nested `special_ability` object rather
+          // than flat ability_* columns.
+          const ability = (
+            card as unknown as {
+              special_ability?: {
+                ability_id?: string;
+                name?: string;
+                description?: string;
+              } | null;
+            }
+          ).special_ability;
+
+          return {
+            cardVariantId: card.card_id,
+            characterName: card.name,
+            rarity: card.rarity as any,
+            imageUrl: card.image_url ?? null,
+            // Presentation fields so the chat banner's GameCard renders the set
+            // icon, tag badge and ability text rather than a bare portrait.
+            setId: card.set_id ?? null,
+            tags: card.tags ?? [],
+            isExclusive: false,
+            specialAbility: ability
+              ? {
+                  abilityId: String(ability.ability_id ?? ""),
+                  name: String(ability.name ?? ""),
+                  description: String(ability.description ?? ""),
+                }
+              : null,
+            // A freshly pulled card has no equipped border yet.
+            equippedBorder: null,
+            power: card.base_power,
+          };
+        });
+
+      if (candidates.length === 0) return;
+
+      const user = await UserModelModule.default.findById(userId);
+      if (!user) return;
+
+      await chatService.postPackPullBanner(
+        userId,
+        user.username,
+        candidates,
+        packName,
+      );
+    } catch (error) {
+      logger.error(
+        "Error posting pack pull chat banner",
+        { userId },
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
+  },
+
+  /**
+   * The openable contents of a pack: explicit membership via
+   * pack_card_variants, so a pack can mix sets freely. `ch.set_id` is still
+   * selected and carried on each card because set drives passive effects and
+   * the client renders the set icon -- it just no longer decides what is in
+   * the pack.
+   */
+  async getCardsFromPack(packId: string): Promise<CardWithAbility[]> {
     const db = require("../config/db.config").default;
     const query = `
-      SELECT 
+      SELECT
         cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
         ch.name, ch.description, ch.type,
         ch.base_power->>'top' as base_power_top,
-        ch.base_power->>'right' as base_power_right, 
-        ch.base_power->>'bottom' as base_power_bottom, 
+        ch.base_power->>'right' as base_power_right,
+        ch.base_power->>'bottom' as base_power_bottom,
         ch.base_power->>'left' as base_power_left,
         ch.special_ability_id, ch.set_id, ch.tags,
         sa.ability_id as sa_ability_id, sa.name as sa_name, sa.description as sa_description,
         sa.trigger_moments as sa_trigger_moments, sa.parameters as sa_parameters
-      FROM "card_variants" cv
+      FROM "pack_card_variants" pcv
+      JOIN "card_variants" cv ON cv.card_variant_id = pcv.card_variant_id
       JOIN "characters" ch ON cv.character_id = ch.character_id
       LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
-      WHERE ch.set_id = $1
+      WHERE pcv.pack_id = $1
         AND cv.is_exclusive = false
         AND cv.released_at <= NOW()
         AND ch.released_at <= NOW();
     `;
-    const { rows } = await db.query(query, [setId]);
+    const { rows } = await db.query(query, [packId]);
 
     return rows.map((row: any) => ({
       card_id: row.card_variant_id, // Use card_variant_id as card_id for compatibility
@@ -455,7 +541,7 @@ const PackService = {
 
   async logPackOpening(
     userId: string,
-    setId: string,
+    packId: string,
     cards: CardWithAbility[],
   ): Promise<void> {
     const db = require("../config/db.config").default;
@@ -463,12 +549,14 @@ const PackService = {
     // Extract card IDs for storage
     const cardIds = cards.map((card) => card.card_id);
 
+    // set_id is deliberately left NULL: a pack can mix sets, so there is no
+    // single set to attribute an opening to. Pre-pack rows keep theirs.
     const query = `
-      INSERT INTO "pack_opening_history" (user_id, set_id, card_ids)
+      INSERT INTO "pack_opening_history" (user_id, pack_id, card_ids)
       VALUES ($1, $2, $3);
     `;
 
-    await db.query(query, [userId, setId, JSON.stringify(cardIds)]);
+    await db.query(query, [userId, packId, JSON.stringify(cardIds)]);
   },
 
   getPackRarityWeights(): { [key: string]: number } {
@@ -539,22 +627,22 @@ const PackService = {
     };
   },
 
-  async openMultiplePacks(userId: string, setId: string, count: number) {
-    // 1. Verify the set exists and is released
-    const set = await SetModel.findById(setId);
-    if (!set || !set.is_released) {
+  async openMultiplePacks(userId: string, packId: string, count: number) {
+    // 1. Verify the pack exists and is available
+    const pack = await PackModel.findById(packId);
+    if (!pack || !this.isPackAvailable(pack)) {
       return {
         success: false,
-        message: "Set is not available for pack opening",
+        message: "Pack is not available for opening",
       };
     }
 
-    // 2. Check if the set has cards available
-    const setCardsCount = await this.getSetCardCount(setId);
-    if (setCardsCount === 0) {
+    // 2. Check if the pack has cards available
+    const packCardsCount = await PackModel.getCardCount(packId);
+    if (packCardsCount === 0) {
       return {
         success: false,
-        message: "No cards available in this set",
+        message: "No cards available in this pack",
       };
     }
 
@@ -573,7 +661,7 @@ const PackService = {
            SELECT COUNT(*) FROM user_owned_cards WHERE user_id = $1
          ) AS card_count
          FROM users WHERE user_id = $1 FOR NO KEY UPDATE`,
-        [userId]
+        [userId],
       );
 
       if (lockRows.length === 0) {
@@ -581,7 +669,11 @@ const PackService = {
         return { success: false, message: "User not found" };
       }
 
-      const { pack_count: userPackCount, gems: userGems, card_count } = lockRows[0];
+      const {
+        pack_count: userPackCount,
+        gems: userGems,
+        card_count,
+      } = lockRows[0];
       const currentCardCount = Number(card_count);
       packsToUse = Math.min(userPackCount, count);
       packsToBuy = Math.max(0, count - userPackCount);
@@ -592,13 +684,19 @@ const PackService = {
         if (count >= 10) requiredGems = Math.floor(requiredGems * 0.9);
         if (userGems < requiredGems) {
           await client.query("ROLLBACK");
-          return { success: false, message: "Not enough resources to purchase packs" };
+          return {
+            success: false,
+            message: "Not enough resources to purchase packs",
+          };
         }
       }
 
       if (packsToUse + packsToBuy < count) {
         await client.query("ROLLBACK");
-        return { success: false, message: "Not enough resources to purchase packs" };
+        return {
+          success: false,
+          message: "Not enough resources to purchase packs",
+        };
       }
 
       const cardsToReceive = count * CARDS_PER_PACK;
@@ -614,17 +712,20 @@ const PackService = {
       if (packsToUse > 0) {
         await client.query(
           `UPDATE users SET pack_count = pack_count - $1 WHERE user_id = $2`,
-          [packsToUse, userId]
+          [packsToUse, userId],
         );
       }
       if (packsToBuy > 0) {
         const { rows: gemRows } = await client.query(
           `UPDATE users SET gems = gems - $1 WHERE user_id = $2 AND gems >= $1 RETURNING gems`,
-          [requiredGems, userId]
+          [requiredGems, userId],
         );
         if (gemRows.length === 0) {
           await client.query("ROLLBACK");
-          return { success: false, message: "Not enough resources to purchase packs" };
+          return {
+            success: false,
+            message: "Not enough resources to purchase packs",
+          };
         }
       }
 
@@ -647,10 +748,10 @@ const PackService = {
     };
 
     try {
-      // Get all cards from this set
-      const setCards = await this.getCardsFromSet(setId);
-      if (setCards.length === 0) {
-        throw new Error("No cards available in this set");
+      // Get all cards from this pack
+      const packCards = await this.getCardsFromPack(packId);
+      if (packCards.length === 0) {
+        throw new Error("No cards available in this pack");
       }
 
       // Process each pack
@@ -658,14 +759,14 @@ const PackService = {
         // Open pack using core function
         const { selectedCards, isGodPack } = await this._openSinglePackCore(
           userId,
-          setId,
-          setCards,
+          packId,
+          packCards,
         );
 
         if (isGodPack) {
           logger.info("God Pack opened in multiple pack opening!", {
             userId,
-            setId,
+            packId,
             packNumber: i + 1,
           });
           godPacks.push(i); // Track this pack as a God Pack (0-indexed)
@@ -693,7 +794,7 @@ const PackService = {
           userId,
           eventType: "pack_opened",
           eventData: {
-            setId,
+            packId,
             packsOpened: count,
             packsRemaining: 0,
           },
@@ -725,6 +826,11 @@ const PackService = {
         // Don't fail the pack opening process if tracking fails
       }
 
+      // Announce the single best legendary+ pull across the whole batch.
+      // One banner for the batch, not one per pack: a 10-pack open would
+      // otherwise post ten banners into global chat at once.
+      void this._postPackPullBanner(userId, packs.flat(), pack.name);
+
       // Get updated user info
       const updatedUser = await UserModel.findById(userId);
       return {
@@ -750,19 +856,43 @@ const PackService = {
     }
   },
 
-  // Add this helper method to check if a set has cards
-  async getSetCardCount(setId: string): Promise<number> {
-    const db = require("../config/db.config").default;
+  /**
+   * A pack is openable when it is flagged released and any scheduled release
+   * date has passed. Mirrors the WHERE clause in PackModel.findAvailable so
+   * the shop listing and the open endpoint cannot disagree.
+   */
+  /**
+   * Back-compat for clients that still POST a setId. The packs migration
+   * seeded one pack per released set sharing its name, so we map through
+   * the name. Returns null when there is no such pack, which the caller
+   * surfaces as a normal "Pack ID is required" 400.
+   */
+  async resolveLegacySetIdToPackId(setId: string): Promise<string | null> {
     const query = `
-      SELECT COUNT(*) as card_count 
-      FROM card_variants cv 
-      JOIN characters ch ON cv.character_id = ch.character_id 
-      WHERE ch.set_id = $1
-        AND cv.released_at <= NOW()
-        AND ch.released_at <= NOW();
+      SELECT p.pack_id
+      FROM sets s
+      JOIN packs p ON p.name = s.name
+      WHERE s.set_id = $1
+      ORDER BY p.sort_order, p.created_at
+      LIMIT 1;
     `;
-    const { rows } = await db.query(query, [setId]);
-    return parseInt(rows[0]?.card_count || "0", 10);
+    try {
+      const { rows } = await db.query(query, [setId]);
+      return rows[0]?.pack_id ?? null;
+    } catch (error) {
+      logger.error(
+        "Error resolving legacy setId to packId",
+        { setId },
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      return null;
+    }
+  },
+
+  isPackAvailable(pack: Pack): boolean {
+    if (!pack.is_released) return false;
+    if (!pack.released_at) return true;
+    return new Date(pack.released_at).getTime() <= Date.now();
   },
 };
 

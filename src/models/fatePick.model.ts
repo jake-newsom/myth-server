@@ -6,7 +6,10 @@ interface FatePick {
   pack_opening_id: string;
   original_owner_id: string;
   original_cards: any[];
-  set_id: string;
+  // Which pool this pick came from. set_id is legacy: rows created before
+  // packs existed have set_id and no pack_id, and vice versa.
+  pack_id: string | null;
+  set_id: string | null;
   cost_fate_coins: number;
   max_participants: number;
   current_participants: number;
@@ -45,12 +48,14 @@ const FatePickModel = {
     packOpeningId: string,
     originalOwnerId: string,
     cards: any[],
-    setId: string,
+    packId: string,
     costFateCoins: number = 1
   ): Promise<FatePick> {
+    // set_id is left NULL -- a pack can mix sets, so the pool a pick came
+    // from is now identified by pack_id. Rows predating packs keep set_id.
     const query = `
       INSERT INTO fate_picks (
-        pack_opening_id, original_owner_id, original_cards, set_id, cost_fate_coins
+        pack_opening_id, original_owner_id, original_cards, pack_id, cost_fate_coins
       ) VALUES ($1, $2, $3, $4, $5)
       RETURNING *;
     `;
@@ -59,7 +64,7 @@ const FatePickModel = {
       packOpeningId,
       originalOwnerId,
       JSON.stringify(cards),
-      setId,
+      packId,
       costFateCoins,
     ]);
 
@@ -135,7 +140,7 @@ const FatePickModel = {
             END AS rarity_priority
           FROM fate_picks wp
           JOIN users u ON wp.original_owner_id = u.user_id
-          JOIN sets s ON wp.set_id = s.set_id
+          LEFT JOIN packs s ON wp.pack_id = s.pack_id
           WHERE wp.is_active = true
             AND wp.expires_at > NOW()
             AND wp.original_owner_id != $1
@@ -185,7 +190,7 @@ const FatePickModel = {
             END AS rarity_priority
           FROM fate_picks wp
           JOIN users u ON wp.original_owner_id = u.user_id
-          JOIN sets s ON wp.set_id = s.set_id
+          LEFT JOIN packs s ON wp.pack_id = s.pack_id
           WHERE wp.is_active = true
             AND wp.expires_at > NOW()
             AND wp.original_owner_id != $1
@@ -272,7 +277,7 @@ const FatePickModel = {
         }
       FROM fate_picks wp
       JOIN users u ON wp.original_owner_id = u.user_id
-      JOIN sets s ON wp.set_id = s.set_id
+      LEFT JOIN packs s ON wp.pack_id = s.pack_id
       WHERE wp.id = $1;
     `;
 
@@ -621,7 +626,7 @@ const FatePickModel = {
       FROM fate_pick_participations wpp
       JOIN fate_picks wp ON wpp.fate_pick_id = wp.id
       JOIN users u ON wp.original_owner_id = u.user_id
-      JOIN sets s ON wp.set_id = s.set_id
+      LEFT JOIN packs s ON wp.pack_id = s.pack_id
       WHERE wpp.participant_id = $1
       ORDER BY wpp.participated_at DESC
       LIMIT $2 OFFSET $3;
@@ -706,7 +711,8 @@ const FatePickModel = {
           pack_opening_id: row.pack_opening_id,
           original_owner_id: row.original_owner_id,
           original_cards: parsedOriginalCards,
-          set_id: row.set_id,
+          pack_id: row.pack_id ?? null,
+          set_id: row.set_id ?? null,
           cost_fate_coins: row.cost_fate_coins,
           max_participants: row.max_participants,
           current_participants: row.current_participants,
@@ -775,7 +781,7 @@ const FatePickModel = {
       popular_set AS (
         SELECT s.name as set_name
         FROM fate_picks wp
-        JOIN sets s ON wp.set_id = s.set_id
+        LEFT JOIN packs s ON wp.pack_id = s.pack_id
         WHERE wp.created_at >= NOW() - INTERVAL '7 days'
         GROUP BY s.name
         ORDER BY COUNT(*) DESC

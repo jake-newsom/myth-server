@@ -243,7 +243,7 @@ const AdminController = {
         logger.info("AI fate pick generated successfully", {
           adminId: req.user?.user_id,
           fatePickId: result.fatePickId,
-          setUsed: result.setUsed,
+          packUsed: result.packUsed,
           cardsGenerated: result.cardsGenerated,
         });
 
@@ -252,7 +252,7 @@ const AdminController = {
           message: result.message,
           data: {
             fatePickId: result.fatePickId,
-            setUsed: result.setUsed,
+            packUsed: result.packUsed,
             cardsGenerated: result.cardsGenerated,
           },
           timestamp: new Date().toISOString(),

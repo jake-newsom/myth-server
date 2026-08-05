@@ -15,7 +15,7 @@ const FatePickService = {
     packOpeningId: string,
     originalOwnerId: string,
     cards: any[],
-    setId: string,
+    packId: string,
     costWonderCoins: number = 1,
   ): Promise<{ success: boolean; fatePick?: any; error?: string }> {
     try {
@@ -31,7 +31,7 @@ const FatePickService = {
         packOpeningId,
         originalOwnerId,
         cards,
-        setId,
+        packId,
         costWonderCoins,
       );
 
@@ -482,7 +482,7 @@ const FatePickService = {
             SELECT s.name
             FROM fate_pick_participations wpp2
             JOIN fate_picks wp ON wpp2.fate_pick_id = wp.id
-            JOIN sets s ON wp.set_id = s.set_id
+            LEFT JOIN packs s ON wp.pack_id = s.pack_id
             WHERE wpp2.participant_id = $1
             GROUP BY s.name
             ORDER BY COUNT(*) DESC
