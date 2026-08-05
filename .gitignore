@@ -7,3 +7,4 @@ dist/
 graphify-out/
 docs/
 scripts/
+*.DS_Store

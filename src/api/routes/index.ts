@@ -32,6 +32,7 @@ import sagaRoutes from "./saga.routes";
 import updaterRoutes from "./updater.routes";
 import promoCodeRoutes from "./promoCode.routes";
 import onboardingRoutes from "./onboarding.routes";
+import featureFlagRoutes from "./featureFlag.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -73,6 +74,7 @@ router.use("/sagas", sagaRoutes);
 router.use("/updater", updaterRoutes);
 router.use("/promo-codes", promoCodeRoutes);
 router.use("/onboarding", onboardingRoutes);
+router.use("/feature-flags", featureFlagRoutes);
 
 // Global error handler
 router.use(errorHandler);
