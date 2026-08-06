@@ -843,6 +843,7 @@ export const japaneseAbilities: AbilityMap = {
           sourcePlayerId: triggerCard.owner,
           batchId,
           turnNumber: context.state.turn_number,
+          animation: "flame-spin-3",
         });
         if (event) gameEvents.push(event);
       }
