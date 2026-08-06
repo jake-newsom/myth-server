@@ -208,6 +208,16 @@ const PATCHES: AssetPatch[] = [
       "sha256:620184100a7e1cbb9c40df8dbf9b43972d0a0e72be792aee7a78192508cd7b00",
     size: 3714846,
     description: "vfx updates",
+  },
+  {
+    id: "vfx-patch-3",
+    version: 1,
+    type: "graphics",
+    r2Key: "patches/vfx-small-bundle.zip",
+    checksum:
+      "sha256:98f9f56cbb6147d5516535c5589126ed0cc047939ea4a83c9adc022b1b89e624",
+    size: 2999117,
+    description: "vfx updates",
   }
 ];
 

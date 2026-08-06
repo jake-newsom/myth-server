@@ -25,6 +25,7 @@ import apiRoutes from "./api/routes";
 import errorHandler from "./api/middlewares/errorHandler.middleware";
 import AIAutomationService from "./services/aiAutomation.service";
 import SessionCleanupService from "./services/sessionCleanup.service";
+import DataRetentionService from "./services/dataRetention.service";
 import DailyRewardsService from "./services/dailyRewards.service";
 import DailyTaskService from "./services/dailyTask.service";
 import StartupService from "./services/startup.service";
@@ -334,6 +335,14 @@ if (require.main === module) {
       console.error("❌ Failed to start Session Cleanup Service:", error);
     }
 
+    // Start the data retention service (expires + purges fate picks, mail)
+    try {
+      DataRetentionService.start();
+      console.log("🧹 Data Retention Service started successfully");
+    } catch (error) {
+      console.error("❌ Failed to start Data Retention Service:", error);
+    }
+
     // Start the daily rewards and shop service
     try {
       dailyRewardsSchedulerTasks =
@@ -392,6 +401,7 @@ process.on("SIGTERM", async () => {
   }
   SeasonSoulsService.stop();
   SessionCleanupService.stop();
+  DataRetentionService.stop();
   await redisCache.disconnect();
   process.exit(0);
 });
@@ -418,6 +428,7 @@ process.on("SIGINT", async () => {
   }
   SeasonSoulsService.stop();
   SessionCleanupService.stop();
+  DataRetentionService.stop();
   await redisCache.disconnect();
   process.exit(0);
 });

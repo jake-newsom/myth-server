@@ -1,7 +1,7 @@
 import PackModel from "../models/pack.model";
 import UserModel from "../models/user.model";
 import CardModel from "../models/card.model";
-import db from "../config/db.config";
+import db, { QueryExecutor } from "../config/db.config";
 import { Card, Pack } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
 import logger from "../utils/logger";
@@ -38,6 +38,7 @@ const PackService = {
     userId: string,
     packId: string,
     packCards: CardWithAbility[],
+    executor?: QueryExecutor,
   ): Promise<{
     selectedCards: CardWithAbility[];
     isGodPack: boolean;
@@ -54,46 +55,59 @@ const PackService = {
     }
 
     // Add the selected cards to user's collection
-    await this.addCardsToUserCollection(userId, selectedCards);
+    await this.addCardsToUserCollection(userId, selectedCards, executor);
 
-    // Log the pack opening to history
-    await this.logPackOpening(userId, packId, selectedCards);
+    // Log the pack opening to history (returns the new opening's id)
+    const packOpeningId = await this.logPackOpening(
+      userId,
+      packId,
+      selectedCards,
+      executor,
+    );
 
-    // Get the pack opening ID from the history
-    const packOpeningQuery = `
-      SELECT pack_opening_id FROM pack_opening_history 
-      WHERE user_id = $1 
-      ORDER BY opened_at DESC 
-      LIMIT 1;
-    `;
-    const db = require("../config/db.config").default;
-    const { rows: packRows } = await db.query(packOpeningQuery, [userId]);
-    const packOpeningId = packRows[0]?.pack_opening_id || "";
+    // Create the fate pick opportunity. When running inside a transaction the
+    // caller defers this until after COMMIT: the fate pick references
+    // packOpeningId, which is not visible to other connections until then.
+    if (!executor) {
+      await this.createFatePickForOpening(
+        packOpeningId,
+        userId,
+        selectedCards,
+        packId,
+      );
+    }
 
-    // Create fate pick opportunity from this pack opening
+    return { selectedCards, isGodPack, packOpeningId };
+  },
+
+  /**
+   * Best-effort fate pick creation for a completed opening. Never throws — a
+   * fate pick failure must not fail the pack opening that already granted cards.
+   */
+  async createFatePickForOpening(
+    packOpeningId: string,
+    userId: string,
+    selectedCards: CardWithAbility[],
+    packId: string,
+  ): Promise<void> {
+    if (!packOpeningId) return;
+
     try {
       const FatePickService = await import("./fatePick.service");
-
-      if (packOpeningId) {
-        // Create fate pick with 1 wonder coin cost
-        await FatePickService.default.createFatePickFromPackOpening(
-          packOpeningId,
-          userId,
-          selectedCards,
-          packId,
-          1, // Cost in wonder coins
-        );
-      }
+      await FatePickService.default.createFatePickFromPackOpening(
+        packOpeningId,
+        userId,
+        selectedCards,
+        packId,
+        1, // Cost in wonder coins
+      );
     } catch (error) {
       logger.error(
         "Error creating fate pick from pack opening",
         {},
         error instanceof Error ? error : new Error(String(error)),
       );
-      // Don't fail the pack opening process if fate pick creation fails
     }
-
-    return { selectedCards, isGodPack, packOpeningId };
   },
 
   /**
@@ -176,35 +190,76 @@ const PackService = {
       throw new Error("No cards available in this pack");
     }
 
-    // 3. Check if user has at least one pack
-    const userPackCount = await UserModel.getPackCount(userId);
-    if (userPackCount < 1) {
-      throw new Error("User does not have any packs available");
-    }
-
-    // 4. Get all cards from this pack
+    // 3. Get all cards from this pack
     const packCards = await this.getCardsFromPack(packId);
     if (packCards.length === 0) {
       throw new Error("No cards available in this pack");
     }
 
-    // 5. Remove one pack from user's total pack count
-    const updatedUser = await UserModel.removePacks(userId, 1);
-    if (!updatedUser) {
-      throw new Error("Failed to remove pack from user inventory");
+    // 4. Debit the pack and grant the cards atomically. Previously the debit
+    // and the grant were separate unguarded statements: a failure between them
+    // consumed the pack without granting cards, and the check-then-act on
+    // pack_count let concurrent opens double-spend a single pack.
+    let selectedCards: CardWithAbility[];
+    let isGodPack: boolean;
+    let packOpeningId: string;
+    let remainingPacks: number;
+
+    const client = await db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      // Lock the user row so a concurrent open can't spend the same pack.
+      const { rows: lockRows } = await client.query(
+        `SELECT pack_count FROM users WHERE user_id = $1 FOR NO KEY UPDATE`,
+        [userId],
+      );
+
+      if (lockRows.length === 0) {
+        await client.query("ROLLBACK");
+        throw new Error("User not found");
+      }
+
+      if (Number(lockRows[0].pack_count) < 1) {
+        await client.query("ROLLBACK");
+        throw new Error("User does not have any packs available");
+      }
+
+      const { rows: debitRows } = await client.query(
+        `UPDATE users SET pack_count = pack_count - 1
+          WHERE user_id = $1 AND pack_count >= 1
+          RETURNING pack_count`,
+        [userId],
+      );
+      if (debitRows.length === 0) {
+        await client.query("ROLLBACK");
+        throw new Error("Failed to remove pack from user inventory");
+      }
+      remainingPacks = Number(debitRows[0].pack_count);
+
+      ({ selectedCards, isGodPack, packOpeningId } =
+        await this._openSinglePackCore(userId, packId, packCards, client));
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
     }
 
-    // 6. Open the pack using core function
-    const { selectedCards, isGodPack } = await this._openSinglePackCore(
+    // 5. Fate pick is created after COMMIT so it references a visible opening.
+    await this.createFatePickForOpening(
+      packOpeningId,
       userId,
+      selectedCards,
       packId,
-      packCards,
     );
 
-    // 7. Invalidate user's card cache since collection changed
+    // 6. Invalidate user's card cache since collection changed
     await cacheInvalidation.invalidateAfterPackOpen(userId);
 
-    // 8. Trigger achievement events for pack opening and card collection
+    // 7. Trigger achievement events for pack opening and card collection
     try {
       const AchievementService = await import("./achievement.service");
 
@@ -215,7 +270,7 @@ const PackService = {
         eventData: {
           packId,
           packsOpened: 1,
-          packsRemaining: updatedUser.pack_count,
+          packsRemaining: remainingPacks,
         },
       });
 
@@ -231,7 +286,7 @@ const PackService = {
       // Don't fail the pack opening process if achievement processing fails
     }
 
-    // 9. Announce a legendary+ pull in global chat. At most one banner per
+    // 8. Announce a legendary+ pull in global chat. At most one banner per
     // pack opening (a God Pack can yield several qualifying cards), and
     // fire-and-forget: postPackPullBanner never throws, because the user's
     // cards are the transaction that matters here, not the chat frame.
@@ -239,7 +294,7 @@ const PackService = {
 
     return {
       cards: selectedCards,
-      remainingPacks: updatedUser.pack_count,
+      remainingPacks,
       isGodPack,
     };
   },
@@ -522,29 +577,45 @@ const PackService = {
     return selectedCards;
   },
 
+  /**
+   * Bulk-insert opened cards into the user's collection.
+   *
+   * Single multi-row INSERT rather than one round trip per card: a 10-pack open
+   * was 50 sequential round trips. `executor` lets callers pass a transaction
+   * client so the grant commits atomically with the pack/gem debit.
+   */
   async addCardsToUserCollection(
     userId: string,
     cards: CardWithAbility[],
+    executor?: QueryExecutor,
   ): Promise<void> {
-    const db = require("../config/db.config").default;
+    if (cards.length === 0) return;
 
-    // Insert each card into user's collection
+    const runner: QueryExecutor = executor ?? db;
+
     // card.card_id is actually the card_variant_id in the new normalized structure
-    for (const card of cards) {
-      const query = `
-        INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
-        VALUES ($1, $2, 1, 0, NOW());
-      `;
-      await db.query(query, [userId, card.card_id]);
-    }
+    const query = `
+      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
+      SELECT $1, variant_id, 1, 0, NOW()
+      FROM UNNEST($2::uuid[]) AS variant_id;
+    `;
+    await runner.query(query, [userId, cards.map((card) => card.card_id)]);
   },
 
+  /**
+   * Record the opening in history and return its id.
+   *
+   * Returns the new row's id via RETURNING rather than re-querying for the
+   * user's most recent opening — that read-back raced with concurrent opens by
+   * the same user and could attribute a fate pick to the wrong opening.
+   */
   async logPackOpening(
     userId: string,
     packId: string,
     cards: CardWithAbility[],
-  ): Promise<void> {
-    const db = require("../config/db.config").default;
+    executor?: QueryExecutor,
+  ): Promise<string> {
+    const runner: QueryExecutor = executor ?? db;
 
     // Extract card IDs for storage
     const cardIds = cards.map((card) => card.card_id);
@@ -553,10 +624,16 @@ const PackService = {
     // single set to attribute an opening to. Pre-pack rows keep theirs.
     const query = `
       INSERT INTO "pack_opening_history" (user_id, pack_id, card_ids)
-      VALUES ($1, $2, $3);
+      VALUES ($1, $2, $3)
+      RETURNING pack_opening_id;
     `;
 
-    await db.query(query, [userId, packId, JSON.stringify(cardIds)]);
+    const { rows } = await runner.query(query, [
+      userId,
+      packId,
+      JSON.stringify(cardIds),
+    ]);
+    return rows[0]?.pack_opening_id ?? "";
   },
 
   getPackRarityWeights(): { [key: string]: number } {
