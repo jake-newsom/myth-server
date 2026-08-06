@@ -837,17 +837,12 @@ export const japaneseAbilities: AbilityMap = {
         state.board,
       );
       if (allyPosition) {
-        const event = addTempBuff(ally, 1000, 1, {
-          name: "Divine Archery",
-          animation: "flame-spin-3",
-          position: allyPosition,
-          data: {
-            actingPlayerId: triggerCard.owner,
-            sourceCard: triggerCard,
-            sourcePlayerId: triggerCard.owner,
-            batchId,
-            turnNumber: context.state.turn_number,
-          },
+        const event = createOrUpdateBuff(ally, 1000, 1, "Divine Archery", allyPosition, {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          batchId,
+          turnNumber: context.state.turn_number,
         });
         if (event) gameEvents.push(event);
       }

@@ -102,6 +102,7 @@ const DailyShopModel = {
         dso.mythology, dso.price, dso.currency, dso.slot_number, dso.created_at,
         cv.card_variant_id as card_card_id, ch.name as card_name, cv.rarity as card_rarity, 
         cv.image_url as card_image_url, ch.tags as card_tags, ch.set_id as card_set_id,
+        ch.description as card_description,
         ch.base_power->>'top' as card_power_top,
         ch.base_power->>'right' as card_power_right, 
         ch.base_power->>'bottom' as card_power_bottom, 
@@ -144,6 +145,7 @@ const DailyShopModel = {
         ? {
             card_id: row.card_card_id,
             name: row.card_name,
+            description: row.card_description ?? null,
             rarity: row.card_rarity,
             image_url: row.card_image_url,
             tags: row.card_tags || [],

@@ -568,6 +568,7 @@ export interface DailyShopOfferingWithCard extends DailyShopOffering {
   card?: {
     card_id: string;
     name: string;
+    description?: string | null;
     rarity: Rarity;
     image_url: string;
     tags: string[];
