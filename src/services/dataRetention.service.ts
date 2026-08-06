@@ -18,15 +18,39 @@ import db from "../config/db.config";
  *    FATE_PICK_RETENTION_DAYS so recent history stays visible, then deleted.
  *    Mail already has a real DELETE in `MailModel.cleanupExpiredMail`.
  *
- * Both jobs were previously dead code: the service methods existed but nothing
- * ever called them.
+ * 3. **Game state clearing** — `games.game_state` is a full board/hand/event
+ *    blob that nothing reads once a game is terminal (there is no history or
+ *    replay feature; long-term stats live in `game_results`). We blank it
+ *    rather than deleting the row: `game_results.game_id` is ON DELETE CASCADE,
+ *    so purging `games` rows would destroy the rating history the leaderboards
+ *    depend on. Blanking reclaims effectively all the row weight — the JSONB is
+ *    TOASTed and the scalar columns are trivial — with no referential risk.
+ *
+ * The fate pick and mail jobs were previously dead code: the service methods
+ * existed but nothing ever called them.
  */
 
 const RETENTION_SCHEDULE = "15 3 * * *"; // 03:15 UTC daily, off the midnight cron pile-up
 
+/** Statuses a game can never leave. Confirmed against the game_status enum. */
+const TERMINAL_GAME_STATUSES = ["completed", "rewarded", "aborted"];
+
+/** Rows cleared per statement, so a large backlog can't trip statement_timeout. */
+const GAME_STATE_BATCH_SIZE = 5_000;
+
 function retentionDays(): number {
   const parsed = Number(process.env.FATE_PICK_RETENTION_DAYS);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+}
+
+/**
+ * Age floor before a terminal game's state is cleared. Guards the reconnect
+ * window: a client that hasn't navigated away may still refetch a game it just
+ * finished. Default 48h.
+ */
+function gameStateRetentionHours(): number {
+  const parsed = Number(process.env.GAME_STATE_RETENTION_HOURS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 48;
 }
 
 class DataRetentionService {
@@ -79,6 +103,7 @@ class DataRetentionService {
       await this.expireFatePicks();
       await this.purgeExpiredFatePicks();
       await this.purgeExpiredMail();
+      await this.clearTerminalGameState();
     } finally {
       this.running = false;
     }
@@ -146,6 +171,60 @@ class DataRetentionService {
       console.error("[Data Retention] Fate pick purge failed:", error);
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * Blank `game_state` on terminal games past the age floor.
+   *
+   * Notes on the predicate:
+   * - Only terminal statuses. An old `active` row may still be a resumable
+   *   game, and clearing its state would destroy a live game.
+   * - Age is keyed on COALESCE(completed_at, created_at): `completed_at` is set
+   *   by a CASE in updateGameAfterAction that only fires for 'completed', so a
+   *   row that reached a terminal status another way can have it NULL. Without
+   *   the COALESCE those rows would compare NULL and never be cleared.
+   * - `game_state <> '{}'` makes the job idempotent — re-runs skip rows already
+   *   cleared instead of rewriting them (and bloating the heap for nothing).
+   *
+   * The column is NOT NULL with default '{}', so we write the empty object
+   * rather than NULL; no schema change needed.
+   */
+  private async clearTerminalGameState(): Promise<void> {
+    const hours = gameStateRetentionHours();
+    let totalCleared = 0;
+
+    try {
+      // Batched so a large backlog can't exceed statement_timeout (15s). Each
+      // batch is its own autocommit statement; partial progress is fine and the
+      // next run picks up where this one stopped.
+      for (;;) {
+        const { rows } = await db.query(
+          `UPDATE games
+              SET game_state = '{}'::jsonb
+            WHERE game_id IN (
+              SELECT game_id FROM games
+               WHERE game_status = ANY($1::game_status[])
+                 AND game_state <> '{}'::jsonb
+                 AND COALESCE(completed_at, created_at) < NOW() - ($2 || ' hours')::interval
+               LIMIT $3
+            )
+            RETURNING game_id;`,
+          [TERMINAL_GAME_STATUSES, String(hours), GAME_STATE_BATCH_SIZE],
+        );
+
+        totalCleared += rows.length;
+        if (rows.length < GAME_STATE_BATCH_SIZE) break;
+      }
+
+      if (totalCleared > 0) {
+        console.log(
+          `[Data Retention] Cleared game_state on ${totalCleared} terminal ` +
+            `games older than ${hours}h`,
+        );
+      }
+    } catch (error) {
+      console.error("[Data Retention] Game state clearing failed:", error);
     }
   }
 
