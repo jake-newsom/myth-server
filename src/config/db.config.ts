@@ -22,9 +22,11 @@ const pool = new Pool({
   query_timeout: 15_000,
 });
 
+// Idle-client errors are recoverable: pg discards the bad client and the pool
+// opens a fresh one on the next checkout. Exiting here turned a transient
+// network hiccup from the DB host into a full process restart.
 pool.on("error", (err: Error) => {
   console.error("Unexpected error on idle client", err);
-  process.exit(-1);
 });
 
 /** Minimal interface satisfied by both the db wrapper and a raw PoolClient. */

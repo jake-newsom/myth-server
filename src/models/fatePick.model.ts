@@ -17,6 +17,26 @@ interface FatePick {
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
+  /**
+   * Browse sort tier; see computeRarityPriority. Optional because it's only
+   * selected on the browse path — history/detail queries don't project it.
+   */
+  rarity_priority?: number | null;
+}
+
+/**
+ * Browse sort tier for a pick's cards: 0 = contains a legendary+++,
+ * 1 = contains any +++ card, 2 = neither.
+ *
+ * Must stay in lockstep with the SQL fallback in getAvailableFatePicks and the
+ * backfill in migration 1789000000000. Kept as a plain function (not a method)
+ * so the ordering rule lives in one place.
+ */
+function computeRarityPriority(cards: any[]): number {
+  const rarities = (cards ?? []).map((card) => String(card?.rarity ?? ""));
+  if (rarities.some((rarity) => rarity === "legendary+++")) return 0;
+  if (rarities.some((rarity) => rarity.endsWith("+++"))) return 1;
+  return 2;
 }
 
 interface FatePickWithDetails extends FatePick {
@@ -53,10 +73,14 @@ const FatePickModel = {
   ): Promise<FatePick> {
     // set_id is left NULL -- a pack can mix sets, so the pool a pick came
     // from is now identified by pack_id. Rows predating packs keep set_id.
+    // rarity_priority is denormalized here so the browse query doesn't have to
+    // expand original_cards with jsonb_array_elements on every candidate row.
+    // Computed in JS from the same cards we're inserting; immutable thereafter.
     const query = `
       INSERT INTO fate_picks (
-        pack_opening_id, original_owner_id, original_cards, pack_id, cost_fate_coins
-      ) VALUES ($1, $2, $3, $4, $5)
+        pack_opening_id, original_owner_id, original_cards, pack_id,
+        cost_fate_coins, rarity_priority
+      ) VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *;
     `;
 
@@ -66,6 +90,7 @@ const FatePickModel = {
       JSON.stringify(cards),
       packId,
       costFateCoins,
+      computeRarityPriority(cards),
     ]);
 
     return rows[0];
@@ -127,7 +152,9 @@ const FatePickModel = {
               PARTITION BY wp.original_owner_id
               ORDER BY wp.created_at DESC
             ) AS player_rank,
-            CASE
+            -- Denormalized at insert. COALESCE covers rows written by an older
+            -- server instance mid-deploy that predate the column being set.
+            COALESCE(wp.rarity_priority, CASE
               WHEN EXISTS (
                 SELECT 1 FROM jsonb_array_elements(wp.original_cards::jsonb) AS card
                 WHERE card->>'rarity' = 'legendary+++'
@@ -137,7 +164,7 @@ const FatePickModel = {
                 WHERE card->>'rarity' LIKE '%+++'
               ) THEN 1
               ELSE 2
-            END AS rarity_priority
+            END) AS browse_rarity_priority
           FROM fate_picks wp
           JOIN users u ON wp.original_owner_id = u.user_id
           LEFT JOIN packs s ON wp.pack_id = s.pack_id
@@ -148,7 +175,7 @@ const FatePickModel = {
         )
         SELECT * FROM ranked
         ORDER BY
-          rarity_priority ASC,
+          browse_rarity_priority ASC,
           player_rank ASC,
           CASE WHEN original_owner_id = ANY($2) THEN 0 ELSE 1 END ASC,
           created_at DESC
@@ -177,7 +204,9 @@ const FatePickModel = {
               PARTITION BY wp.original_owner_id
               ORDER BY wp.created_at DESC
             ) AS player_rank,
-            CASE
+            -- Denormalized at insert. COALESCE covers rows written by an older
+            -- server instance mid-deploy that predate the column being set.
+            COALESCE(wp.rarity_priority, CASE
               WHEN EXISTS (
                 SELECT 1 FROM jsonb_array_elements(wp.original_cards::jsonb) AS card
                 WHERE card->>'rarity' = 'legendary+++'
@@ -187,7 +216,7 @@ const FatePickModel = {
                 WHERE card->>'rarity' LIKE '%+++'
               ) THEN 1
               ELSE 2
-            END AS rarity_priority
+            END) AS browse_rarity_priority
           FROM fate_picks wp
           JOIN users u ON wp.original_owner_id = u.user_id
           LEFT JOIN packs s ON wp.pack_id = s.pack_id
@@ -197,7 +226,7 @@ const FatePickModel = {
             AND wp.current_participants < wp.max_participants
         )
         SELECT * FROM ranked
-        ORDER BY rarity_priority ASC, player_rank ASC, created_at DESC
+        ORDER BY browse_rarity_priority ASC, player_rank ASC, created_at DESC
         LIMIT $2 OFFSET $3;
       `;
       queryParams = [userId, limit, offset];
@@ -240,8 +269,11 @@ const FatePickModel = {
         original_cards: parsedCards,
         can_participate: row.can_participate,
         user_has_participated: row.user_has_participated,
-        has_triple_plus: row.rarity_priority <= 1,
-        has_legendary_triple_plus: row.rarity_priority === 0,
+        // Read the COALESCE'd alias, not the raw column: a row written by an
+        // older instance can still have rarity_priority NULL, which would make
+        // both flags silently false.
+        has_triple_plus: row.browse_rarity_priority <= 1,
+        has_legendary_triple_plus: row.browse_rarity_priority === 0,
       };
     });
   },

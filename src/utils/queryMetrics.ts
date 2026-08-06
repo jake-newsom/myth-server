@@ -17,6 +17,12 @@ const DEFAULT_TRACKED_PREFIXES = [
   "/api/achievements",
   "/api/daily",
   "/api/tower",
+  // High-growth write paths: pack opening fans out into card inserts +
+  // achievements + fate pick creation, and fate pick browse is the heaviest
+  // read in the app. These are the paths worth watching as volume grows.
+  "/api/packs",
+  "/api/fate-picks",
+  "/api/games",
 ];
 
 function isEnabled(): boolean {
