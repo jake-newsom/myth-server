@@ -17,6 +17,7 @@ import {
   CardEvent,
   CardPlacedEvent,
   CardPowerChangedEvent,
+  EFFECT_BEAT_MS,
   EVENT_TYPES,
 } from "./game-events";
 import {
@@ -69,6 +70,33 @@ const REVEAL_HAND_ABILITIES: Record<
     },
   },
 };
+
+/**
+ * If an OnPlace ability buffed the placed card right before combat and that
+ * combat produced a flip, give the buff event a full beat so it animates to
+ * completion before the attack — otherwise the flip appears unjustified (the
+ * card flips, THEN its power visibly rises). Mutates `lastPreCombat` in place.
+ * No-op unless the last pre-combat event is a CARD_POWER_CHANGED on the placed
+ * card and `combatEvents` contains a CARD_FLIPPED. Never shrinks an existing
+ * larger delay.
+ *
+ * Exported for unit testing.
+ */
+export function applyPreconditionBuffBeat(
+  lastPreCombat: BaseGameEvent | undefined,
+  combatEvents: BaseGameEvent[],
+  placedCardId: string | undefined
+): void {
+  if (!lastPreCombat || !placedCardId) return;
+  if (lastPreCombat.type !== EVENT_TYPES.CARD_POWER_CHANGED) return;
+  if ((lastPreCombat as CardPowerChangedEvent).cardId !== placedCardId) return;
+  if (!combatEvents.some((e) => e.type === EVENT_TYPES.CARD_FLIPPED)) return;
+
+  lastPreCombat.delayAfterMs = Math.max(
+    lastPreCombat.delayAfterMs ?? 0,
+    EFFECT_BEAT_MS
+  );
+}
 
 export class GameLogic {
   //Helper to fetch and cache details for multiple UserCardInstances
@@ -504,6 +532,18 @@ export class GameLogic {
       );
       newState = combatResult.state;
       events.push(...combatResult.events);
+
+      // Precondition self-buff beat: an OnPlace ability that buffs the placed
+      // card (e.g. Yamabiko's Echo Power copying an adjacent power) mutates its
+      // current_power BEFORE resolveCombat, so the flip it enables is correct —
+      // but with no gap the flip animates on top of the buff and reads as an
+      // unjustified attack ("he flipped a card he shouldn't have, then his power
+      // went up"). Give the buff a full beat so it visibly resolves first.
+      applyPreconditionBuffBeat(
+        events[eventsBeforeCombat - 1],
+        combatResult.events,
+        newBoardCell.card?.user_card_instance_id
+      );
 
       if (newState.saga_context) {
         const {

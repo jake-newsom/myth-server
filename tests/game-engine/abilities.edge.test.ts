@@ -10,7 +10,10 @@ import {
   TileStatus,
 } from "../../src/types/game.types";
 import { TriggerContext, CombatContext } from "../../src/types/game-engine.types";
-import { GameStatus } from "../../src/game-engine/game.logic";
+import {
+  GameStatus,
+  applyPreconditionBuffBeat,
+} from "../../src/game-engine/game.logic";
 import {
   createBoardCell,
   resolveCombat,
@@ -695,6 +698,63 @@ test("createBoardCell includes hand-carried buffs in the placed card's power", (
     14,
     "placed power should be base 13 + Sacred Spring 1 = 14",
   );
+});
+
+// An OnPlace self-buff that enables the placed card's attack (Yamabiko's Echo
+// Power) must fully resolve before the combat flips animate, else the flip
+// reads as unjustified. applyPreconditionBuffBeat gives that buff a full beat,
+// but only when combat actually flipped and the buff is on the placed card.
+test("applyPreconditionBuffBeat: buff on placed card before a flip gets a beat", () => {
+  const PLACED = "placed-card";
+  const buffEvent = {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    cardId: PLACED,
+    delayAfterMs: 100,
+  } as any;
+  const combatEvents = [{ type: EVENT_TYPES.CARD_FLIPPED, cardId: "enemy" }] as any[];
+
+  applyPreconditionBuffBeat(buffEvent, combatEvents, PLACED);
+  assert.equal(buffEvent.delayAfterMs, 400, "buff should be held a full beat");
+});
+
+test("applyPreconditionBuffBeat: no flip means no beat", () => {
+  const PLACED = "placed-card";
+  const buffEvent = {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    cardId: PLACED,
+    delayAfterMs: 100,
+  } as any;
+  const combatEvents = [
+    { type: EVENT_TYPES.CARD_DEFENDED, cardId: "enemy" },
+  ] as any[];
+
+  applyPreconditionBuffBeat(buffEvent, combatEvents, PLACED);
+  assert.equal(buffEvent.delayAfterMs, 100, "no flip → delay untouched");
+});
+
+test("applyPreconditionBuffBeat: buff on a different card is untouched", () => {
+  const buffEvent = {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    cardId: "some-other-card",
+    delayAfterMs: 100,
+  } as any;
+  const combatEvents = [{ type: EVENT_TYPES.CARD_FLIPPED, cardId: "enemy" }] as any[];
+
+  applyPreconditionBuffBeat(buffEvent, combatEvents, "placed-card");
+  assert.equal(buffEvent.delayAfterMs, 100, "buff not on placed card → untouched");
+});
+
+test("applyPreconditionBuffBeat: never shrinks an existing larger delay", () => {
+  const PLACED = "placed-card";
+  const buffEvent = {
+    type: EVENT_TYPES.CARD_POWER_CHANGED,
+    cardId: PLACED,
+    delayAfterMs: 600,
+  } as any;
+  const combatEvents = [{ type: EVENT_TYPES.CARD_FLIPPED, cardId: "enemy" }] as any[];
+
+  applyPreconditionBuffBeat(buffEvent, combatEvents, PLACED);
+  assert.equal(buffEvent.delayAfterMs, 600, "existing larger delay preserved");
 });
 
 after(() => {
