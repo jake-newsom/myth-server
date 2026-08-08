@@ -882,6 +882,21 @@ export function setupGameNamespace(io: Server): void {
             return;
           }
 
+          // Guard: one mulligan per player per game. While waiting on the other
+          // player to commit, the game stays in MULLIGAN, so without this a
+          // client could submit repeatedly and keep redrawing its hand.
+          if (actionType === "mulligan") {
+            const mulliganState = gameRecord.game_state.mulligan_state;
+            const playerKey =
+              gameRecord.game_state.player1.user_id === userId
+                ? "player1"
+                : "player2";
+            if (mulliganState?.[playerKey]?.committed) {
+              rejectAction("You have already mulliganed this game");
+              return;
+            }
+          }
+
           // Validate that the game is still active (for non-mulligan actions)
           if (
             gameRecord.game_status !== GameStatus.ACTIVE &&
