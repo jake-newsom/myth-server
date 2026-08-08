@@ -25,6 +25,7 @@ import SagaSeasonModel from "../models/sagaSeason.model";
 import SagaRunModel from "../models/sagaRun.model";
 import SagaCardModel from "../models/sagaCard.model";
 import SagaMapService from "./sagaMap.service";
+import GameService from "./game.service";
 import { isSagaNodeMapData } from "./sagaMapGeneration.service";
 import CardBackModel from "../models/cardBack.model";
 import DeckService from "./deck.service";
@@ -296,29 +297,44 @@ const SagaBattleService = {
     finalState = legacyBootstrap.state;
     await hydrateGameStateCards(finalState);
 
-    const { rows } = await db.query(
-      `INSERT INTO games (
-        player1_id, player2_id, player1_deck_id, player2_deck_id,
-        game_mode, game_status, board_layout, game_state,
-        saga_run_id, saga_node_id, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-      RETURNING game_id`,
-      [
-        playerId,
-        AI_PLAYER_ID,
-        // Saga decks live in `saga_decks`, not `decks`, so we cannot reference
-        // the saga deck id here (FK -> decks). Cards are already in game_state
-        // and saga rewards are handled by SagaBattleService, so leave this null.
-        null,
-        enemyDeckId,
-        "solo",
-        finalState.status,
-        "4x4",
-        JSON.stringify(finalState),
-        runId,
-        nodeId,
-      ]
-    );
+    // One game in progress at a time — see GameService.abandonActiveAiGamesForUser.
+    // This insert bypasses createGameRecord, so it retires prior games itself.
+    const client = await db.getClient();
+    let rows: Array<{ game_id: string }>;
+    try {
+      await client.query("BEGIN");
+      await GameService.abandonActiveAiGamesForUser(playerId, client);
+      const result = await client.query(
+        `INSERT INTO games (
+          player1_id, player2_id, player1_deck_id, player2_deck_id,
+          game_mode, game_status, board_layout, game_state,
+          saga_run_id, saga_node_id, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        RETURNING game_id`,
+        [
+          playerId,
+          AI_PLAYER_ID,
+          // Saga decks live in `saga_decks`, not `decks`, so we cannot reference
+          // the saga deck id here (FK -> decks). Cards are already in game_state
+          // and saga rewards are handled by SagaBattleService, so leave this null.
+          null,
+          enemyDeckId,
+          "solo",
+          finalState.status,
+          "4x4",
+          JSON.stringify(finalState),
+          runId,
+          nodeId,
+        ]
+      );
+      await client.query("COMMIT");
+      rows = result.rows;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => { });
+      throw error;
+    } finally {
+      client.release();
+    }
 
     const deckNameResult = await db.query(
       "SELECT name FROM decks WHERE deck_id = $1",

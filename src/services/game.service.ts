@@ -56,6 +56,44 @@ import { AI_PLAYER_ID } from "../api/controllers/game.controller";
 
 class GameService {
   /**
+   * Marks every in-progress game a user has against the AI as aborted.
+   *
+   * A user may only have one game in progress at a time, so starting a new one
+   * ends any earlier one. Without this, a double-fired create leaves an orphan
+   * row behind and the client can end up bound to a game the player can never
+   * act in (e.g. one still in the mulligan phase), which reads as a card that
+   * sticks to the board and no server-side error.
+   *
+   * Scoped to games against the AI on purpose: PvP games have a second player
+   * and are torn down by the socket layer (disconnect grace timer + surrender),
+   * so they are never left orphaned this way and must not be ended from here.
+   *
+   * Pass the transaction client when running alongside an insert so the abort
+   * and the create either both land or neither does.
+   */
+  async abandonActiveAiGamesForUser(
+    userId: string,
+    executor: { query: (text: string, params?: unknown[]) => Promise<{ rowCount: number | null }> } = db
+  ): Promise<number> {
+    const { rowCount } = await executor.query(
+      `UPDATE "games"
+       SET game_status = $1, completed_at = NOW()
+       WHERE player1_id = $2
+         AND player2_id = $3
+         AND game_status IN ($4, $5, $6)`,
+      [
+        GameStatus.ABORTED,
+        userId,
+        AI_PLAYER_ID,
+        GameStatus.PENDING,
+        GameStatus.ACTIVE,
+        GameStatus.MULLIGAN,
+      ]
+    );
+    return rowCount ?? 0;
+  }
+
+  /**
    * Creates a new game record in the database.
    */
   async createGameRecord(
@@ -100,7 +138,24 @@ class GameService {
         "4x4", // Assuming '4x4' as default or pass as param if variable
         JSON.stringify(initialGameState),
       ];
-    const { rows } = await db.query(query, values);
+    // One game in progress at a time: retire any earlier AI game for this
+    // player in the same transaction as the insert, so a create can never
+    // leave two live rows behind for the client to pick between.
+    const client = await db.getClient();
+    let rows: CreateGameResponse[];
+    try {
+      await client.query("BEGIN");
+      await this.abandonActiveAiGamesForUser(player1Id, client);
+      const result = await client.query(query, values);
+      await client.query("COMMIT");
+      rows = result.rows;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => { });
+      throw error;
+    } finally {
+      client.release();
+    }
+
     if (rows.length === 0) {
       throw new Error("Failed to create game record."); // Or a more specific error
     }
