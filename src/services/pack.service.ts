@@ -437,21 +437,28 @@ const PackService = {
     cards: CardWithAbility[],
     count: number,
   ): CardWithAbility[] {
-    // God Pack rarity distribution: 50% legendary, 20% epic, 15% rare, 15% common
-    // All cards must be variant (+/++/+++)
+    // God Pack rarity distribution: 60% legendary, 25% epic, 10% rare, 5% common
+    // Every card must be a real full-art variant (+/++/+++). We only ever pick
+    // cards that actually exist in the pool at the target rarity -- a God Pack
+    // never relabels a base card, because the granted card_variant_id is what
+    // determines the art the player receives.
     const godPackRarities = ["legendary", "epic", "rare", "common"];
     const godPackWeights = [60, 25, 10, 5]; // Percentages
     const variantTypes = ["+", "++", "+++"];
 
-    // Group cards by base rarity
+    // Group cards by their FULL rarity ("legendary++"), not the base tier, so a
+    // lookup for a specific variant can actually hit.
     const cardsByRarity: { [key: string]: CardWithAbility[] } = {};
     cards.forEach((card) => {
-      const baseRarity = RarityUtils.getBaseRarity(card.rarity as any);
-      if (!cardsByRarity[baseRarity]) {
-        cardsByRarity[baseRarity] = [];
+      const rarity = String(card.rarity);
+      if (!cardsByRarity[rarity]) {
+        cardsByRarity[rarity] = [];
       }
-      cardsByRarity[baseRarity].push(card);
+      cardsByRarity[rarity].push(card);
     });
+
+    // Every full-art card in the pool, for the last-resort reroll below.
+    const allFullArt = cards.filter((card) => String(card.rarity).includes("+"));
 
     const selectedCards: CardWithAbility[] = [];
 
@@ -474,28 +481,27 @@ const PackService = {
         variantTypes[Math.floor(Math.random() * variantTypes.length)];
       const targetRarity = `${selectedBaseRarity}${variantType}`;
 
-      // Try to find cards of the target variant rarity first
+      // Exact match first: a real card at this base rarity and variant tier.
       let availableCards = cardsByRarity[targetRarity];
-      let actualRarity = targetRarity;
 
-      // If no variant cards exist, fall back to base rarity cards but still assign variant
+      // Reroll the variant tier within the same base rarity -- the player still
+      // gets the tier the weights promised, just a different full-art level.
       if (!availableCards || availableCards.length === 0) {
-        availableCards = cardsByRarity[selectedBaseRarity];
-        // We'll still assign the variant rarity even if the card doesn't exist in that variant
+        availableCards = variantTypes
+          .map((suffix) => cardsByRarity[`${selectedBaseRarity}${suffix}`] ?? [])
+          .flat();
       }
 
-      // Final fallback to any available cards
+      // Last resort: any full-art card in the pool. Still never a base card.
       if (!availableCards || availableCards.length === 0) {
-        availableCards = cards;
+        availableCards = allFullArt;
       }
 
       if (availableCards.length > 0) {
         const randomIndex = Math.floor(Math.random() * availableCards.length);
-        const selectedCard = { ...availableCards[randomIndex] };
-
-        // Force the variant rarity for God Pack
-        selectedCard.rarity = targetRarity as any;
-        selectedCards.push(selectedCard);
+        // Push the pool card as-is: its card_id/rarity already describe a real
+        // full-art variant, so there is nothing to override.
+        selectedCards.push({ ...availableCards[randomIndex] });
       }
     }
 
