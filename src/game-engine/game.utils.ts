@@ -121,6 +121,35 @@ function abilityBatchDelay(trigger: TriggerMoment): number {
 }
 
 /**
+ * Before a CARD_DEFENDED is emitted, give the placed card's most recent
+ * power-reducing event in this combat a full beat, so a client that ticks
+ * power per-event shows the drop before the defend animation. Scans `events`
+ * from the end for the latest CARD_POWER_CHANGED on `placedCardId` with a
+ * negative delta and bumps its delayAfterMs (never shrinking). No-op if none.
+ * Exported for unit testing.
+ */
+export function holdPlacedCardDebuffBeforeDefend(
+  events: BaseGameEvent[],
+  placedCardId: string
+): void {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e.type !== EVENT_TYPES.CARD_POWER_CHANGED) continue;
+    const pc = e as CardPowerChangedEvent;
+    if (pc.cardId !== placedCardId) continue;
+
+    const bySide = pc.powerBySide;
+    const reduces = bySide
+      ? Object.values(bySide).some((v) => (v ?? 0) < 0)
+      : (pc.powerDelta ?? 0) < 0;
+    if (!reduces) return; // most recent change to the placed card wasn't a debuff
+
+    e.delayAfterMs = Math.max(e.delayAfterMs ?? 0, EFFECT_BEAT_MS);
+    return;
+  }
+}
+
+/**
  * Creates a new board cell from hydrated card data, transferring tile effects to card if present
  */
 export function createBoardCell(
@@ -251,6 +280,17 @@ export function resolveCombat(
               )
             );
           } else {
+            // If the placed card was weakened earlier in THIS combat (e.g.
+            // Okuri-inu's Hunter's Mark -2 after it flipped the first enemy)
+            // and that weakening is why this neighbor now defends, give that
+            // debuff a full beat so the client's number visibly drops before
+            // the defend animation plays — otherwise the card still shows its
+            // higher pre-debuff power while defending, which reads as a bug.
+            holdPlacedCardDebuffBeforeDefend(
+              events,
+              placedCell.card.user_card_instance_id
+            );
+
             events.push({
               type: EVENT_TYPES.CARD_DEFENDED,
               eventId: uuidv4(),

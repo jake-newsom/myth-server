@@ -129,6 +129,15 @@ const XpService = {
         [newSourceXp, newSourceLevel, sourceCardId]
       );
 
+      // Power ups are budgeted by level (max = level - 1), so draining the
+      // source card back to level 1 must also drop its power ups. Otherwise the
+      // card keeps stat bonuses it no longer has the level to justify, and the
+      // budget can be re-spent after re-leveling.
+      await client.query(
+        `DELETE FROM user_card_power_ups WHERE user_card_instance_id = $1`,
+        [sourceCardId]
+      );
+
       // Update target card
       const newTargetXp = targetCard.xp + actualXpTransferred;
       const newTargetLevel = this.calculateLevel(newTargetXp);
@@ -161,6 +170,9 @@ const XpService = {
       });
 
       await client.query("COMMIT");
+
+      // Both cards changed level, and the source card's power ups were cleared.
+      await cacheInvalidation.invalidateAfterLevelUp(userId);
 
       // Trigger achievement event for XP transfer (card-to-card)
       try {

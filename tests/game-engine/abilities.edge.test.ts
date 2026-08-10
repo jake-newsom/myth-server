@@ -16,6 +16,7 @@ import {
 } from "../../src/game-engine/game.logic";
 import {
   createBoardCell,
+  holdPlacedCardDebuffBeforeDefend,
   resolveCombat,
   triggerAbilities,
 } from "../../src/game-engine/game.utils";
@@ -755,6 +756,69 @@ test("applyPreconditionBuffBeat: never shrinks an existing larger delay", () => 
 
   applyPreconditionBuffBeat(buffEvent, combatEvents, PLACED);
   assert.equal(buffEvent.delayAfterMs, 600, "existing larger delay preserved");
+});
+
+// Before a CARD_DEFENDED, the placed card's most recent power-reducing event in
+// this combat gets a full beat so a per-event-ticking client shows the drop
+// before the defend plays.
+test("holdPlacedCardDebuffBeforeDefend: debuff on placed card gets a beat", () => {
+  const PLACED = "placed";
+  const events = [
+    { type: EVENT_TYPES.CARD_FLIPPED, cardId: "enemy-top" },
+    {
+      type: EVENT_TYPES.CARD_POWER_CHANGED,
+      cardId: PLACED,
+      powerBySide: { top: -2, bottom: -2, left: -2, right: -2 },
+      delayAfterMs: 100,
+    },
+  ] as any[];
+
+  holdPlacedCardDebuffBeforeDefend(events, PLACED);
+  assert.equal(events[1].delayAfterMs, 400, "the -2 debuff should hold a beat");
+});
+
+test("holdPlacedCardDebuffBeforeDefend: a buff on the placed card is left alone", () => {
+  const PLACED = "placed";
+  const events = [
+    {
+      type: EVENT_TYPES.CARD_POWER_CHANGED,
+      cardId: PLACED,
+      powerBySide: { top: 2, bottom: 2, left: 2, right: 2 },
+      delayAfterMs: 100,
+    },
+  ] as any[];
+
+  holdPlacedCardDebuffBeforeDefend(events, PLACED);
+  assert.equal(events[0].delayAfterMs, 100, "a buff should not be held");
+});
+
+test("holdPlacedCardDebuffBeforeDefend: no power change for the placed card is a no-op", () => {
+  const events = [
+    {
+      type: EVENT_TYPES.CARD_POWER_CHANGED,
+      cardId: "someone-else",
+      powerBySide: { top: -2 },
+      delayAfterMs: 100,
+    },
+  ] as any[];
+
+  holdPlacedCardDebuffBeforeDefend(events, "placed");
+  assert.equal(events[0].delayAfterMs, 100, "unrelated card untouched");
+});
+
+test("holdPlacedCardDebuffBeforeDefend: never shrinks an existing larger delay", () => {
+  const PLACED = "placed";
+  const events = [
+    {
+      type: EVENT_TYPES.CARD_POWER_CHANGED,
+      cardId: PLACED,
+      powerDelta: -2,
+      delayAfterMs: 600,
+    },
+  ] as any[];
+
+  holdPlacedCardDebuffBeforeDefend(events, PLACED);
+  assert.equal(events[0].delayAfterMs, 600, "existing larger delay preserved");
 });
 
 after(() => {
