@@ -278,10 +278,17 @@ export function setupGameNamespace(io: Server): void {
               clearActiveMatch(meta.playerIds[0]);
               clearActiveMatch(meta.playerIds[1]);
             } else {
+              // Escalation only applies when the SAME player is being handed the
+              // turn again after their own timeout; if play moved on, the next
+              // player gets a full-length turn.
               meta.turnManager.startTurn(
                 currentState.current_player_id,
                 false,
-                sumAnimationDelay(events)
+                sumAnimationDelay(events),
+                {
+                  preserveStrikes:
+                    currentState.current_player_id === timedOutPlayerId,
+                }
               );
             }
           }
@@ -356,7 +363,11 @@ export function setupGameNamespace(io: Server): void {
             meta.turnManager.startTurn(
               currentState.current_player_id,
               false,
-              sumAnimationDelay(events)
+              sumAnimationDelay(events),
+              {
+                preserveStrikes:
+                  currentState.current_player_id === timedOutPlayerId,
+              }
             );
           }
         }

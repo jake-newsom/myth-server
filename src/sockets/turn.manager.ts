@@ -62,13 +62,29 @@ export class TurnManager {
   public startTurn(
     playerId: string,
     isFirstTurn: boolean = false,
-    animationDelayMs?: number
+    animationDelayMs?: number,
+    options?: { preserveStrikes?: boolean }
   ): void {
     this.clearAllTimers();
+
+    // A player receiving a fresh turn starts from full time. Strikes only
+    // persist when this turn is a direct continuation of a timeout for the SAME
+    // player (the escalation ladder); any other transition — including the turn
+    // handed back after an opponent's move, or a re-armed interactive-choice
+    // turn — resets them. Previously this relied on callers invoking
+    // `onPlayerAction`, which only one of seven call sites did, so a single
+    // timeout permanently stranded a player on the shortest duration.
+    if (!options?.preserveStrikes) {
+      this.strikes.set(playerId, 0);
+    }
+
     this.currentPlayerId = playerId;
 
     const strikeIndex = this.strikes.get(playerId) ?? 0;
-    const timeAllowed = this.allowedDurations[strikeIndex] ?? 5;
+    const timeAllowed =
+      this.allowedDurations[
+        Math.min(strikeIndex, this.allowedDurations.length - 1)
+      ] ?? 30;
 
     if (isFirstTurn) {
       // First turn of the game - start immediately
@@ -108,6 +124,11 @@ export class TurnManager {
 
   /**
    * Should be invoked whenever the active player successfully performs an action.
+   *
+   * Note: strike clearing does not depend on this being called — `startTurn`
+   * clears the incoming player's strikes unless the caller explicitly marks the
+   * turn as timeout-driven. This remains the explicit signal for a successful
+   * action and is safe to call redundantly.
    */
   public onPlayerAction(playerId: string): void {
     if (playerId !== this.currentPlayerId) return; // ignore if not active
