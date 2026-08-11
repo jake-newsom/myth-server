@@ -4,6 +4,7 @@ import authMiddleware, {
   authenticateJWT,
 } from "../middlewares/auth.middleware";
 import requireAdmin from "../middlewares/adminAuth.middleware";
+import optionalAuth from "../middlewares/optionalAuth.middleware";
 import {
   packOpeningRateLimit,
   moderateRateLimit,
@@ -18,6 +19,12 @@ router.get("/rates", PackController.getPackRates);
 // Declared before "/" so neither shadows the other, and before "/:packId"
 // so "available" is never read as an id.
 router.get("/available", PackController.getAvailablePacks);
+
+// GET /api/packs/catalog - Public: packs + the card_variant_ids each contains,
+// for the client's Collection view. Optional auth so admins also see
+// unreleased catalog entries. Declared before "/:packId" for the same reason
+// as "/available".
+router.get("/catalog", optionalAuth, PackController.getPackCatalog);
 
 // Get user's pack inventory (the pack_count currency, not pack products)
 router.get(

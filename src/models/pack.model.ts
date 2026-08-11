@@ -1,5 +1,15 @@
 import db from "../config/db.config";
-import { Pack, PackWithCardCount } from "../types/database.types";
+import {
+  Pack,
+  PackWithCardCount,
+  PackWithCardVariantIds,
+} from "../types/database.types";
+import {
+  CatalogQueryOptions,
+  sqlCharacterReleased,
+  sqlVariantReleased,
+} from "../utils/catalogRelease";
+import { meetsMinAppVersion } from "../utils/catalogVersion";
 
 interface PackCreateInput {
   name: string;
@@ -83,6 +93,83 @@ const PackModel = {
     `;
     const { rows } = await db.query(query);
     return rows;
+  },
+
+  /**
+   * Pack metadata plus the card_variant_ids each pack contains, for the
+   * client's Collection view. Returns IDs only: the client already holds full
+   * variant data from GET /characters, so this stays a small payload and the
+   * card shape is not duplicated in a second endpoint.
+   *
+   * Release gating lives in the join conditions (as in findAvailable) so a
+   * pack with only unreleased cards still returns a row with an empty array
+   * rather than disappearing. Admins may include unreleased catalog entries.
+   *
+   * min_app_version gating is applied in-application rather than in SQL, for
+   * the reason given in catalogVersion.ts (one semver comparator, no second
+   * subtly-different one in raw SQL). We gate on the VARIANT's
+   * min_app_version only, mirroring findAllWithVariants: a variant is listed
+   * here exactly when GET /characters would have served it, so the Collection
+   * view never receives an id it holds no card data for.
+   */
+  async findCatalog(
+    options: CatalogQueryOptions = {}
+  ): Promise<PackWithCardVariantIds[]> {
+    const includeUnreleased = options.includeUnreleased === true;
+    const query = `
+      SELECT ${PACK_COLUMNS.split(",")
+        .map((c) => `p.${c.trim()}`)
+        .join(", ")},
+        -- Filters on ch, not cv: a variant whose character is still
+        -- unreleased leaves ch NULL and must not be listed (same rule as
+        -- findAvailable's card_count). Packs with no visible cards then
+        -- aggregate to '{}' rather than '{NULL}'.
+        --
+        -- Paired id/min_app_version arrays: the version gate below is applied
+        -- in JS, so it needs each surviving variant's min_app_version. The two
+        -- aggregates share one FILTER, so they stay index-aligned.
+        COALESCE(
+          ARRAY_AGG(cv.card_variant_id)
+            FILTER (WHERE ch.character_id IS NOT NULL),
+          '{}'
+        ) AS card_variant_ids,
+        COALESCE(
+          ARRAY_AGG(cv.min_app_version)
+            FILTER (WHERE ch.character_id IS NOT NULL),
+          '{}'
+        ) AS card_variant_min_app_versions
+      FROM "packs" p
+      LEFT JOIN "pack_card_variants" pcv ON pcv.pack_id = p.pack_id
+      LEFT JOIN "card_variants" cv
+        ON cv.card_variant_id = pcv.card_variant_id
+        AND ${sqlVariantReleased("cv", includeUnreleased)}
+      -- LEFT so an empty pack still yields a row; the aggregate below counts
+      -- cv, which is NULL whenever the character fails release gating.
+      LEFT JOIN "characters" ch
+        ON ch.character_id = cv.character_id
+        AND ${sqlCharacterReleased("ch", includeUnreleased)}
+      WHERE p.is_released = true
+        AND (p.released_at IS NULL OR p.released_at <= NOW())
+      GROUP BY p.pack_id
+      ORDER BY p.sort_order, p.name;
+    `;
+    const { rows } = await db.query(query);
+    return rows.map((row) => {
+      const {
+        card_variant_ids: ids,
+        card_variant_min_app_versions: minVersions,
+        ...pack
+      } = row;
+      return {
+        ...pack,
+        card_variant_ids: (ids as string[]).filter((_id, i) =>
+          meetsMinAppVersion(
+            (minVersions as (string | null)[])[i] ?? null,
+            options
+          )
+        ),
+      } as PackWithCardVariantIds;
+    });
   },
 
   async findById(packId: string): Promise<Pack | null> {

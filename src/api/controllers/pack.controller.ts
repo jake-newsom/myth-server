@@ -3,6 +3,7 @@ import PackService from "../../services/pack.service";
 import PackModel from "../../models/pack.model";
 import UserModel from "../../models/user.model";
 import { AuthenticatedRequest } from "../../types";
+import { catalogOptionsFromRequest } from "../../utils/catalogRelease";
 
 const PackController = {
   /**
@@ -18,6 +19,28 @@ const PackController = {
       });
     } catch (error) {
       console.error("Error getting available packs:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Internal server error",
+      });
+    }
+  },
+
+  /**
+   * Pack metadata + the card_variant_ids in each pack, for the client's
+   * Collection view. Public; admins additionally see unreleased catalog rows.
+   */
+  async getPackCatalog(req: AuthenticatedRequest, res: Response) {
+    try {
+      const packs = await PackModel.findCatalog(
+        catalogOptionsFromRequest(req)
+      );
+      return res.status(200).json({
+        status: "success",
+        data: packs,
+      });
+    } catch (error) {
+      console.error("Error getting pack catalog:", error);
       return res.status(500).json({
         status: "error",
         message: "Internal server error",

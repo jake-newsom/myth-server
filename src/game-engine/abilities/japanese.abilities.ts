@@ -570,7 +570,7 @@ export const japaneseAbilities: AbilityMap = {
 
     if (
       flippedCard?.base_card_data.tags?.includes("demon") ||
-      flippedCard?.base_card_data.tags?.includes("yokai")
+      flippedCard?.base_card_data.tags?.includes("spirit")
     ) {
       const triggerPosition =
         position ||

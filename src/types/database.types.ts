@@ -90,6 +90,11 @@ export interface PackWithCardCount extends Pack {
   card_count: number;
 }
 
+/** Pack plus the ids of the card variants it contains (client Collection view). */
+export interface PackWithCardVariantIds extends Pack {
+  card_variant_ids: string[];
+}
+
 export interface SpecialAbility {
   ability_id: string;
   id: string;

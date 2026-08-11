@@ -48,12 +48,18 @@ import {
 import { resolveAIDifficulty } from "../../game-engine/ai.difficulty";
 import { DECK_CONFIG } from "../../config/constants";
 import ChallengeService from "../../services/challenge.service";
+import FeatureFlagService from "../../services/featureFlag.service";
 
 // Initialize ability registry
 // AbilityRegistry.initialize();
 
 // Define a constant UUID for the AI player and EXPORT it
 export const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
+
+// Gates "autoplay": letting a player hand their own solo turn to the AI engine.
+// Off by default; with it off, the AI-action endpoint behaves exactly as it did
+// before autoplay existed (AI seat only).
+export const SOLO_AUTOPLAY_FLAG = "solo-autoplay";
 
 class GameController {
   constructor() {
@@ -752,8 +758,22 @@ class GameController {
 
       const currentGameState: GameState = gameRecord.game_state;
 
-      // Validate that it's the AI's turn
-      if (currentGameState.current_player_id !== AI_PLAYER_ID) {
+      // Determine whose turn this endpoint is being asked to play.
+      //
+      // Normally this is the AI seat. With the `solo-autoplay` flag on, the
+      // human may also ask the AI engine to take THEIR turn for them (see
+      // `isAutoplayMove` below). Anything other than these two exact ids is
+      // rejected — this must stay a strict equality check, or this endpoint
+      // becomes "make a move as any player in this game".
+      const actingPlayerId = currentGameState.current_player_id;
+      const isAiTurn = actingPlayerId === AI_PLAYER_ID;
+      const isAutoplayMove =
+        !isAiTurn &&
+        actingPlayerId === userId &&
+        !gameRecord.is_tutorial &&
+        (await FeatureFlagService.isEnabled(userId, SOLO_AUTOPLAY_FLAG));
+
+      if (!isAiTurn && !isAutoplayMove) {
         res.status(400).json({ error: "Not AI's turn" });
         return;
       }
@@ -807,10 +827,14 @@ class GameController {
         });
         let aiMove = await ai.makeAIMove(
           _.cloneDeep(currentGameState),
-          aiDifficulty
+          aiDifficulty,
+          actingPlayerId
         );
-        const forcedOpeningCardId =
-          currentGameState.saga_context?.forced_ai_opening_card_instance_id;
+        // Saga scripts a forced AI opening play. This is AI-seat-only flavour:
+        // it must never hijack a human's autoplayed turn.
+        const forcedOpeningCardId = isAutoplayMove
+          ? undefined
+          : currentGameState.saga_context?.forced_ai_opening_card_instance_id;
         const shouldForceOpeningPlay =
           !!forcedOpeningCardId &&
           !!currentGameState.saga_context?.ai_opening_play_pending;
@@ -820,7 +844,11 @@ class GameController {
             const forcedState = _.cloneDeep(currentGameState);
             const forcedStateAiPlayer = validators.getPlayer(forcedState, AI_PLAYER_ID);
             forcedStateAiPlayer.hand = [forcedOpeningCardId];
-            const forcedMove = await ai.makeAIMove(forcedState, aiDifficulty);
+            const forcedMove = await ai.makeAIMove(
+              forcedState,
+              aiDifficulty,
+              actingPlayerId
+            );
             if (forcedMove) {
               aiMove = forcedMove;
             }
@@ -831,7 +859,7 @@ class GameController {
           await hydrateGameStateCards(currentGameState);
           const placeCardResult = await GameLogic.placeCard(
             currentGameState,
-            AI_PLAYER_ID,
+            actingPlayerId,
             aiMove.user_card_instance_id,
             aiMove.position
           );
@@ -861,13 +889,16 @@ class GameController {
             updatedGameState.saga_context.ai_opening_play_pending = false;
           }
         } else {
-          const aiPlayer = validators.getPlayer(currentGameState, AI_PLAYER_ID);
+          const aiPlayer = validators.getPlayer(
+            currentGameState,
+            actingPlayerId
+          );
 
           if (!validators.canPlayerPlay(aiPlayer)) {
-            // AI has no cards left — force-pass the turn
+            // No cards left — force-pass the turn
             const forcePassResult = await GameLogic.forcePass(
               currentGameState,
-              AI_PLAYER_ID
+              actingPlayerId
             );
             updatedGameState = forcePassResult.state;
             events.push(...forcePassResult.events);
@@ -877,7 +908,7 @@ class GameController {
           } else {
             const endTurnResult = await GameLogic.endTurn(
               currentGameState,
-              AI_PLAYER_ID
+              actingPlayerId
             );
             updatedGameState = endTurnResult.state;
             events.push(...endTurnResult.events);
@@ -885,7 +916,10 @@ class GameController {
               updatedGameState.saga_context.ai_opening_play_pending = false;
             }
 
-            const aiPlayerAfter = validators.getPlayer(updatedGameState, AI_PLAYER_ID);
+            const aiPlayerAfter = validators.getPlayer(
+              updatedGameState,
+              actingPlayerId
+            );
 
             if (
               validators.shouldDrawCard(
@@ -895,7 +929,7 @@ class GameController {
             ) {
               const drawCardResult = await GameLogic.drawCard(
                 updatedGameState,
-                AI_PLAYER_ID
+                actingPlayerId
               );
               updatedGameState = drawCardResult.state;
               events.push(...drawCardResult.events);
