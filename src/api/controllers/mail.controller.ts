@@ -231,6 +231,54 @@ export const deleteMail = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 /**
+ * Delete all mail that has no rewards or already-claimed rewards.
+ * Mail with unclaimed rewards is preserved.
+ */
+export const deleteAllMail = async (
+  req: AuthenticatedRequest,
+  res: Response
+) => {
+  try {
+    const userId = req.user?.user_id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          type: "AUTH_ERROR",
+          message: "Authentication required",
+          suggestion: "Please log in to delete mail",
+        },
+      });
+    }
+
+    const result = await MailService.deleteAllMail(userId);
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          type: "MAIL_ERROR",
+          message: result.error,
+          suggestion: "Please try again later",
+        },
+      });
+    }
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Error deleting all mail:", error);
+    res.status(500).json({
+      success: false,
+      error: {
+        type: "MAIL_ERROR",
+        message: "Failed to delete mail",
+        suggestion: "Please try again later",
+      },
+    });
+  }
+};
+
+/**
  * Mark mail as read
  */
 export const markAsRead = async (req: AuthenticatedRequest, res: Response) => {

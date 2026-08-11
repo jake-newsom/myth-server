@@ -212,6 +212,42 @@ const MailService = {
   },
 
   /**
+   * Delete all of a user's mail that has no rewards or whose rewards have
+   * already been claimed. Mail with unclaimed rewards is left untouched.
+   */
+  async deleteAllMail(userId: string): Promise<{
+    success: boolean;
+    deleted_count: number;
+    remaining_count: number;
+    message?: string;
+    error?: string;
+  }> {
+    try {
+      const deletedCount = await MailModel.deleteAllReadableForUser(userId);
+      const stats = await MailModel.getUserMailStats(userId);
+      const remainingCount = Number(stats?.total_mail ?? 0);
+
+      return {
+        success: true,
+        deleted_count: deletedCount,
+        remaining_count: remainingCount,
+        message:
+          deletedCount === 0
+            ? "No mail to delete"
+            : `Deleted ${deletedCount} mail`,
+      };
+    } catch (error) {
+      console.error("Error deleting all mail:", error);
+      return {
+        success: false,
+        deleted_count: 0,
+        remaining_count: 0,
+        error: "Failed to delete mail",
+      };
+    }
+  },
+
+  /**
    * Mark mail as read
    */
   async markAsRead(

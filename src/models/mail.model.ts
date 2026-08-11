@@ -351,6 +351,22 @@ const MailModel = {
   },
 
   /**
+   * Delete all of a user's mail that is safe to remove: mail with no rewards,
+   * or mail whose rewards have already been claimed. Mail with unclaimed
+   * rewards is always preserved.
+   */
+  async deleteAllReadableForUser(userId: string): Promise<number> {
+    const query = `
+      DELETE FROM mail
+      WHERE user_id = $1
+        AND (has_rewards = false OR is_claimed = true)
+      RETURNING id;
+    `;
+    const { rows } = await db.query(query, [userId]);
+    return rows.length;
+  },
+
+  /**
    * Delete expired mail that has been claimed or has no rewards
    */
   async cleanupExpiredMail(): Promise<number> {

@@ -136,7 +136,7 @@ export function buildSagaInGameCard(
     base_card_data: {
       card_id: dbRow.card_variant_id,
       name: dbRow.name,
-      tags: [...dbRow.tags, "saga"],
+      tags: [...dbRow.tags],
       rarity: dbRow.rarity as Rarity,
       image_url: dbRow.image_url,
       base_power: { ...basePower },

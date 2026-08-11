@@ -66,6 +66,21 @@ router.get(
 );
 
 /**
+ * DELETE /api/mail/delete/all
+ * Delete all of the user's mail that has no rewards or already-claimed
+ * rewards. Mail with unclaimed rewards is preserved.
+ *
+ * NOTE: must be registered before DELETE /:mailId so the literal path is not
+ * matched as a mail ID.
+ */
+router.delete(
+  "/delete/all",
+  authMiddleware.protect, // Requires authentication
+  strictRateLimit, // Strict rate limiting for bulk operations
+  mailController.deleteAllMail
+);
+
+/**
  * GET /api/mail/:mailId
  * Get specific mail by ID
  * Params:
