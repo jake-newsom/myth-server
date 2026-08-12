@@ -42,7 +42,7 @@ export class TurnManager {
     this.io = io;
     this.room = room;
     this.currentPlayerId = currentPlayerId;
-    this.allowedDurations = options?.allowedDurations ?? [30, 15, 10, 5];
+    this.allowedDurations = options?.allowedDurations ?? [30, 30, 30, 30];
     this.animationDelay = options?.animationDelay ?? DEFAULT_ANIMATION_DELAY_MS;
 
     // Initialise strike counters to 0

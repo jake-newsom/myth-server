@@ -21,7 +21,11 @@ import {
   triggerAbilities,
 } from "../../src/game-engine/game.utils";
 import { EVENT_TYPES } from "../../src/types";
-import { blockTile } from "../../src/game-engine/ability.utils";
+import {
+  blockTile,
+  createOrUpdateBuff,
+  createOrUpdateDebuff,
+} from "../../src/game-engine/ability.utils";
 import DailyTaskService from "../../src/services/dailyTask.service";
 import SeasonSoulsService from "../../src/services/seasonSouls.service";
 
@@ -819,6 +823,34 @@ test("holdPlacedCardDebuffBeforeDefend: never shrinks an existing larger delay",
 
   holdPlacedCardDebuffBeforeDefend(events, PLACED);
   assert.equal(events[0].delayAfterMs, 600, "existing larger delay preserved");
+});
+
+// The client ticks board power per-event using the signed per-side powerBySide.
+// createOrUpdateBuff/Debuff must emit it (powerDelta alone is a display scalar
+// and cannot be applied per-side). Guards the per-event-ticking contract.
+test("createOrUpdateDebuff emits a negative signed powerBySide", () => {
+  const card = makeCard({ id: "cud", name: "Debuffed", owner: PLAYER_2 });
+  const event = createOrUpdateDebuff(card, 1000, 2, "Hidden Maw", CENTER, {}) as any;
+
+  assert.deepEqual(event.powerBySide, {
+    top: -2,
+    bottom: -2,
+    left: -2,
+    right: -2,
+  });
+  assert.ok(event.powerDelta < 0, "scalar powerDelta stays negative for debuff");
+});
+
+test("createOrUpdateBuff emits a positive signed powerBySide", () => {
+  const card = makeCard({ id: "cub", name: "Buffed", owner: PLAYER_1 });
+  const event = createOrUpdateBuff(card, 1000, 1, "Divine Archery", CENTER, {}) as any;
+
+  assert.deepEqual(event.powerBySide, {
+    top: 1,
+    bottom: 1,
+    left: 1,
+    right: 1,
+  });
 });
 
 after(() => {

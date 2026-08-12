@@ -437,6 +437,18 @@ export function createOrUpdateBuff(
     }).catch(() => {});
   }
 
+  // Signed per-side delta this call applied, so the client can tick current_power
+  // per event (powerDelta is the display scalar / largest side, not per-side).
+  const appliedBySide: PowerValues =
+    typeof power === "number"
+      ? { top: power, bottom: power, left: power, right: power }
+      : {
+          top: power.top || 0,
+          bottom: power.bottom || 0,
+          left: power.left || 0,
+          right: power.right || 0,
+        };
+
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
     animation: data?.animation || "buff",
@@ -444,6 +456,7 @@ export function createOrUpdateBuff(
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
     powerDelta: calculatePowerDelta(power),
+    powerBySide: appliedBySide,
     effectName: name,
     position,
   } as CardPowerChangedEvent;
@@ -516,6 +529,18 @@ export function createOrUpdateDebuff(
     }).catch(() => {});
   }
 
+  // Signed (negative) per-side delta this call applied, so the client can tick
+  // current_power per event (powerDelta is the display scalar, not per-side).
+  const appliedBySide: PowerValues =
+    typeof power === "number"
+      ? { top: -power, bottom: -power, left: -power, right: -power }
+      : {
+          top: -(power.top || 0),
+          bottom: -(power.bottom || 0),
+          left: -(power.left || 0),
+          right: -(power.right || 0),
+        };
+
   return {
     type: EVENT_TYPES.CARD_POWER_CHANGED,
     // Pass `data.animation: null` to emit a power/label-only event with no VFX
@@ -526,6 +551,7 @@ export function createOrUpdateDebuff(
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
     powerDelta: calculatePowerDelta(power, true),
+    powerBySide: appliedBySide,
     effectName: name,
     position,
   } as CardPowerChangedEvent;
