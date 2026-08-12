@@ -91,6 +91,14 @@ export interface CardPowerChangedEvent extends CardEvent {
   powerBySide?: Partial<PowerValues>;
   effectName?: string;     // e.g., "Blessing of Amaterasu"
   position: BoardPosition; // Required for power change events
+  /**
+   * When true, stampAbilityMetadata must NOT overwrite `effectName` with the
+   * triggering ability's DB name. Set on events that are side effects of an
+   * ability (e.g. a tile-effect transfer during a card MOVE) rather than the
+   * power change the ability semantically authored — otherwise a water-tile
+   * "+1" picked up while Nightmarcher moves gets mislabeled "Dread Aura".
+   */
+  preserveEffectName?: boolean;
 }
 
 export type CombatContext = TriggerContext & {

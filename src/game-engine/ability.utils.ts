@@ -115,6 +115,24 @@ export function transferTileEffectToCard(
   return true;
 }
 
+/**
+ * Human-readable floating-text label for a tile effect's `animation_label`.
+ * The label itself is the VISUAL-effect key (drives the tile shader on the
+ * client) so it must NOT be renamed; this maps it to the name shown in the
+ * power-change floating text only. Unknown labels fall through unchanged.
+ */
+const TILE_EFFECT_DISPLAY_NAMES: Record<string, string> = {
+  water: "Water Blessing",
+  lava: "Lava",
+};
+
+export function tileEffectDisplayName(
+  animationLabel?: string | null,
+): string {
+  if (!animationLabel) return "Tile Effect";
+  return TILE_EFFECT_DISPLAY_NAMES[animationLabel] ?? animationLabel;
+}
+
 export function updateCurrentPower(
   card: InGameCard,
   board?: GameBoard,
@@ -351,13 +369,16 @@ export function addTempDebuff(
     }).catch(() => {});
   }
 
-  // `negativePower` holds positive magnitudes (negated at apply-time); the
-  // event's per-side delta is the signed (negated) value so the client renders
-  // "-N" with a down/debuff caret.
-  const negatedBySide: Partial<PowerValues> = {};
+  // The event's per-side delta must be the SIGNED value actually applied to the
+  // card — i.e. `negativePower`, which is exactly what was pushed onto
+  // temporary_effects above. Every caller passes a negative magnitude (e.g.
+  // debuff() forwards -2), so negativePower is already negative; do NOT negate
+  // it again (that flips a -2 debuff into a +2 buff in the client's per-side
+  // tick). Normalize to always-negative per side to be robust to either sign.
+  const signedBySide: Partial<PowerValues> = {};
   for (const side of ["top", "bottom", "left", "right"] as const) {
     const v = negativePower[side];
-    if (v !== undefined) negatedBySide[side] = -v;
+    if (v !== undefined) signedBySide[side] = -Math.abs(v);
   }
 
   return {
@@ -367,7 +388,7 @@ export function addTempDebuff(
     timestamp: Date.now(),
     cardId: card.user_card_instance_id,
     powerDelta: calculatePowerDelta(power, true),
-    powerBySide: negatedBySide,
+    powerBySide: signedBySide,
     effectName: options.name,
     position: options.position,
   } as CardPowerChangedEvent;
@@ -1468,13 +1489,21 @@ export function applyTileEffectsToMovedCard(
     const tileEffectTransferred = transferTileEffectToCard(card, tileEffect);
 
     if (tileEffectTransferred) {
-      // Calculate powerDelta from tile effect
-      const powerDelta = tileEffect.power
-        ? (tileEffect.power.top || 0) +
-          (tileEffect.power.bottom || 0) +
-          (tileEffect.power.left || 0) +
-          (tileEffect.power.right || 0)
-        : 0;
+      // powerDelta is a PER-SIDE magnitude (largest-magnitude side), NOT the
+      // four-side sum — a +1/side water tile is "+1", not "+4". powerBySide
+      // carries the signed per-side deltas for the client's tick + carets.
+      const sides = tileEffect.power
+        ? [
+            tileEffect.power.top || 0,
+            tileEffect.power.bottom || 0,
+            tileEffect.power.left || 0,
+            tileEffect.power.right || 0,
+          ]
+        : [0];
+      const powerDelta = sides.reduce(
+        (max, v) => (Math.abs(v) > Math.abs(max) ? v : max),
+        0,
+      );
 
       // Update the card's current power after applying tile effect
       card.current_power = updateCurrentPower(card);
@@ -1487,7 +1516,10 @@ export function applyTileEffectsToMovedCard(
         position: newPosition,
         powerDelta,
         powerBySide: tileEffect.power,
-        effectName: tileEffect.animation_label || "Tile Effect",
+        // This is a side effect of a MOVE, not authored by the moving card's
+        // ability — keep the tile's own label instead of being relabeled.
+        preserveEffectName: true,
+        effectName: tileEffectDisplayName(tileEffect.animation_label),
       } as CardPowerChangedEvent);
     }
   }

@@ -22,9 +22,12 @@ import {
 } from "../../src/game-engine/game.utils";
 import { EVENT_TYPES } from "../../src/types";
 import {
+  applyTileEffectsToMovedCard,
   blockTile,
   createOrUpdateBuff,
   createOrUpdateDebuff,
+  debuff,
+  tileEffectDisplayName,
 } from "../../src/game-engine/ability.utils";
 import DailyTaskService from "../../src/services/dailyTask.service";
 import SeasonSoulsService from "../../src/services/seasonSouls.service";
@@ -851,6 +854,141 @@ test("createOrUpdateBuff emits a positive signed powerBySide", () => {
     left: 1,
     right: 1,
   });
+});
+
+// Demon Bane buffs Minamoto itself. When Minamoto is in HAND, the buff must use
+// the in-hand sentinel {x:-1,y:-1} (client shows it only in the owner's hand),
+// NOT context.position — which for an AnyOnFlip trigger is the flipped card's
+// board tile, leaking "Demon Bane" floating text onto the board.
+test("Demon Bane: in-hand Minamoto buffs at the hand sentinel, not the flip tile", () => {
+  const state = makeGameState();
+  const minamoto = makeCard({
+    id: "minamoto",
+    name: "Minamoto",
+    owner: PLAYER_1,
+  });
+  minamoto.base_card_data.special_ability = {
+    ability_id: "minamoto_demon_bane",
+    id: "minamoto_demon_bane",
+    name: "Demon Bane",
+    description: "Gains +1 when any demon is defeated.",
+    triggerMoments: [TriggerMoment.AnyOnFlip],
+    parameters: {},
+  } as InGameCard["base_card_data"]["special_ability"];
+  // Minamoto is in hand (NOT placed on the board).
+  state.hydrated_card_data_cache![minamoto.user_card_instance_id] = minamoto;
+
+  const demon = makeCard({
+    id: "demon",
+    name: "Demon",
+    owner: PLAYER_2,
+    tags: ["demon"],
+  });
+  // The demon was flipped at a real board tile.
+  placeCard(state, { x: 2, y: 2 }, demon);
+
+  const events = abilities["minamoto_demon_bane"]({
+    state,
+    triggerCard: minamoto,
+    triggerMoment: TriggerMoment.AnyOnFlip,
+    position: { x: 2, y: 2 }, // the flipped card's tile (must NOT be used)
+    flippedCard: demon,
+  } as any);
+
+  assert.equal(events.length, 1, "Demon Bane should fire for a defeated demon");
+  const pos = (events[0] as any).position;
+  assert.deepEqual(
+    pos,
+    { x: -1, y: -1 },
+    "in-hand buff must use the hand sentinel, not the flip tile",
+  );
+});
+
+test("Demon Bane: on-board Minamoto buffs at its own tile", () => {
+  const state = makeGameState();
+  const minamoto = makeCard({
+    id: "minamoto-board",
+    name: "Minamoto",
+    owner: PLAYER_1,
+  });
+  placeCard(state, { x: 0, y: 0 }, minamoto);
+
+  const demon = makeCard({
+    id: "demon2",
+    name: "Demon",
+    owner: PLAYER_2,
+    tags: ["demon"],
+  });
+  placeCard(state, { x: 3, y: 3 }, demon);
+
+  const events = abilities["minamoto_demon_bane"]({
+    state,
+    triggerCard: minamoto,
+    triggerMoment: TriggerMoment.AnyOnFlip,
+    position: { x: 3, y: 3 }, // flipped demon's tile
+    flippedCard: demon,
+  } as any);
+
+  assert.equal(events.length, 1);
+  assert.deepEqual(
+    (events[0] as any).position,
+    { x: 0, y: 0 },
+    "on-board buff shows on Minamoto's own tile",
+  );
+});
+
+// Regression (A): debuff()/addTempDebuff callers pass a NEGATIVE magnitude
+// (e.g. Moon's Balance debuff(enemy, -2)). The emitted powerBySide must be
+// negative too — a prior double-negation turned a -2 debuff into a +2 buff in
+// the client's per-side tick, making debuffed power rise on the board.
+test("debuff emits a negative signed powerBySide (no double-negation)", () => {
+  const card = makeCard({ id: "dbf", name: "Target", owner: PLAYER_2 });
+  const event = debuff(card, -2, { name: "Moon's Balance", position: CENTER }) as any;
+
+  assert.deepEqual(event.powerBySide, {
+    top: -2,
+    bottom: -2,
+    left: -2,
+    right: -2,
+  });
+  assert.ok(event.powerDelta < 0, "scalar delta is negative for a debuff");
+});
+
+// Regression (B): a tile-effect picked up while a card MOVES (Nightmarcher onto
+// water) must (1) keep the tile's own label, not be relabeled by the moving
+// card's ability (preserveEffectName), and (2) report a PER-SIDE magnitude, not
+// the four-side sum (a +1/side tile is "+1", not "+4").
+test("applyTileEffectsToMovedCard: per-side delta + preserveEffectName", () => {
+  const board = makeBoard();
+  const card = makeCard({ id: "mover", name: "Mover", owner: PLAYER_1 });
+  card.base_card_data.base_power = { top: 9, right: 9, bottom: 8, left: 6 };
+  const dest: BoardPosition = { x: 2, y: 2 };
+  board[dest.y][dest.x].card = card;
+  board[dest.y][dest.x].tile_effect = {
+    status: TileStatus.Normal,
+    turns_left: 1000,
+    animation_label: "water",
+    power: { top: 1, bottom: 1, left: 1, right: 1 },
+    applies_to_user: PLAYER_1,
+  } as any;
+
+  const events = applyTileEffectsToMovedCard(card, dest, board);
+  assert.equal(events.length, 1, "one tile-effect power change emitted");
+  const e = events[0] as any;
+
+  assert.equal(e.powerDelta, 1, "per-side magnitude, not the 4-side sum (4)");
+  assert.equal(e.effectName, "Water Blessing", "shows the friendly tile label");
+  assert.equal(e.preserveEffectName, true, "must not be relabeled by the ability");
+  assert.deepEqual(e.powerBySide, { top: 1, bottom: 1, left: 1, right: 1 });
+});
+
+test("tileEffectDisplayName maps tile labels to friendly floating text", () => {
+  assert.equal(tileEffectDisplayName("water"), "Water Blessing");
+  assert.equal(tileEffectDisplayName("lava"), "Lava");
+  // Unknown labels pass through unchanged; missing label falls back.
+  assert.equal(tileEffectDisplayName("cursed"), "cursed");
+  assert.equal(tileEffectDisplayName(null), "Tile Effect");
+  assert.equal(tileEffectDisplayName(undefined), "Tile Effect");
 });
 
 after(() => {

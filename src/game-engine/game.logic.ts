@@ -41,6 +41,7 @@ import {
   getCardTotalPower,
   getOpponentId,
   getPositionOfCardById,
+  tileEffectDisplayName,
 } from "./ability.utils";
 
 /**
@@ -400,7 +401,7 @@ export class GameLogic {
           cardId: playedCardData.user_card_instance_id,
           position,
           powerDelta: tileEffectPowerDelta,
-          effectName: existingTileEffect?.animation_label || "Tile Effect",
+          effectName: tileEffectDisplayName(existingTileEffect?.animation_label),
         } as CardPowerChangedEvent);
       }
 

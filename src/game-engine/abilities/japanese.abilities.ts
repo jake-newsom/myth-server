@@ -564,34 +564,32 @@ export const japaneseAbilities: AbilityMap = {
     const {
       triggerCard,
       flippedCard,
-      position,
       state: { board },
     } = context;
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
 
     if (
       flippedCard?.base_card_data.tags?.includes("demon") ||
       flippedCard?.base_card_data.tags?.includes("spirit")
     ) {
-      const triggerPosition =
-        position ||
-        getPositionOfCardById(triggerCard.user_card_instance_id, board);
-      if (triggerPosition) {
-        return [
-          createOrUpdateBuff(
-            triggerCard,
-            1000,
-            1,
-            "Demon Bane",
-            triggerPosition,
-            {
-              actingPlayerId: triggerCard.owner,
-              sourceCard: triggerCard,
-              sourcePlayerId: triggerCard.owner,
-              turnNumber: context.state.turn_number,
-            },
-          ),
-        ];
-      }
+      // Minamoto buffs ITSELF. Point the buff at Minamoto's own tile if it's on
+      // the board, else the in-hand sentinel so the client shows it only in the
+      // owner's hand. Do NOT fall back to context.position — for an AnyOnFlip
+      // trigger that is the *flipped card's* tile, which leaks "Demon Bane"
+      // floating text onto the board (and onto the opponent's flip).
+      const boardPosition = getPositionOfCardById(
+        triggerCard.user_card_instance_id,
+        board,
+      );
+      const buffPosition = boardPosition ?? HAND_POSITION;
+      return [
+        createOrUpdateBuff(triggerCard, 1000, 1, "Demon Bane", buffPosition, {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          turnNumber: context.state.turn_number,
+        }),
+      ];
     }
     return [];
   },

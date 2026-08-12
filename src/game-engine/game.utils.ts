@@ -659,7 +659,11 @@ function stampAbilityMetadata(
     if (ability.sound_effect && !event.soundEffect) {
       event.soundEffect = ability.sound_effect;
     }
-    if (event.type === EVENT_TYPES.CARD_POWER_CHANGED && ability.name) {
+    if (
+      event.type === EVENT_TYPES.CARD_POWER_CHANGED &&
+      ability.name &&
+      !(event as CardPowerChangedEvent).preserveEffectName
+    ) {
       (event as CardPowerChangedEvent).effectName = ability.name;
     }
   }
