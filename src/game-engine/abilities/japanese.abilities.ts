@@ -83,11 +83,14 @@ export const japaneseAbilities: AbilityMap = {
       if (enemyPosition) {
         const maxSidePower = getCardHighestPower(strongestEnemy).value;
         gameEvents.push(
-          debuff(strongestEnemy, -2, {
-            name: "Moon's Balance",
-            animation: "moons-balance",
-            position: enemyPosition,
-            data: {
+          createOrUpdateDebuff(
+            strongestEnemy,
+            1000,
+            2,
+            "Moon's Balance",
+            enemyPosition,
+            {
+              animation: "moons-balance",
               actingPlayerId: triggerCard.owner,
               sourceCard: triggerCard,
               sourcePlayerId: triggerCard.owner,
@@ -95,7 +98,7 @@ export const japaneseAbilities: AbilityMap = {
               targetTotalPowerBefore: getCardTotalPower(strongestEnemy),
               targetMaxSidePowerBefore: maxSidePower,
             },
-          }),
+          ),
         );
       }
     }
