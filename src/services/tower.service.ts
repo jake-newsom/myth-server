@@ -29,6 +29,20 @@ import {
 } from "../game-engine/game.mulligan";
 import { clientSupportsMulligan } from "../utils/clientVersion";
 import CardBackModel from "../models/cardBack.model";
+import FeatureFlagService from "./featureFlag.service";
+import {
+  TowerModifier,
+  validateDeckAgainstModifiers,
+  TowerModifierViolationError,
+  ModifierDeckCard,
+} from "../types/towerModifier.types";
+
+/**
+ * Flag gating every part of Encounter Modifiers. Off => the tower behaves
+ * exactly as it did before the feature: no modifiers in responses, no deck
+ * restrictions enforced, no tower_context written into game_state.
+ */
+export const TOWER_MODIFIERS_FLAG = "tower-encounter-modifiers";
 
 // Constants for reward calculation
 // Linear growth: both gems and fragments scale by (1 + band * GROWTH_SLOPE).
@@ -202,9 +216,27 @@ class TowerService {
   }
 
   /**
-   * Get a specific tower floor
+   * Whether Encounter Modifiers are live for this user.
+   *
+   * FeatureFlagService.isEnabled never throws — a DB failure resolves to false,
+   * i.e. the pre-feature path — so this needs no error handling of its own.
    */
-  async getTowerFloor(floorNumber: number): Promise<TowerFloor | null> {
+  async areModifiersEnabled(userId: string | null | undefined): Promise<boolean> {
+    return FeatureFlagService.isEnabled(userId, TOWER_MODIFIERS_FLAG);
+  }
+
+  /**
+   * Get a specific tower floor
+   *
+   * @param includeModifiers - attach the floor's Encounter Modifiers. Callers on
+   *   a display path pass the user's flag state; the start path passes true and
+   *   gates on the flag itself, so enforcement is never decided by a display
+   *   concern.
+   */
+  async getTowerFloor(
+    floorNumber: number,
+    includeModifiers = false
+  ): Promise<TowerFloor | null> {
     const result = await db.query(
       "SELECT * FROM tower_floors WHERE floor_number = $1 AND is_active = true",
       [floorNumber]
@@ -214,7 +246,7 @@ class TowerService {
       return null;
     }
 
-    return rowToTowerFloor(result.rows[0]);
+    return rowToTowerFloor(result.rows[0], includeModifiers);
   }
 
   /**
@@ -307,8 +339,10 @@ class TowerService {
       [minFloor, maxFloor]
     );
 
+    const showModifiers = await this.areModifiersEnabled(userId);
+
     const floors: TowerFloorWithPreview[] = result.rows.map((row) => {
-      const floor = rowToTowerFloor(row);
+      const floor = rowToTowerFloor(row, showModifiers);
       return {
         ...floor,
         reward_preview: this.getTowerReward(floor.floor_number),
@@ -417,8 +451,11 @@ class TowerService {
       const progress = await this.getUserTowerProgress(userId);
       const floorNumber = progress.current_floor;
 
-      // Get the floor configuration
-      const floor = await this.getTowerFloor(floorNumber);
+      // Get the floor configuration. Modifiers are read only when the flag is
+      // on for this user; with it off `floor.modifiers` stays undefined and
+      // every modifier branch below is skipped.
+      const modifiersEnabled = await this.areModifiersEnabled(userId);
+      const floor = await this.getTowerFloor(floorNumber, modifiersEnabled);
       if (!floor) {
         throw new Error(
           `Floor ${floorNumber} not available. Maximum floor may have been reached.`
@@ -435,8 +472,13 @@ class TowerService {
         throw new Error("Player deck is empty");
       }
 
-      // Validate player deck meets game rules
-      await this.validatePlayerDeckRules(playerDeckId, userId);
+      // Validate player deck meets game rules (plus this floor's restrictions)
+      const activeModifiers = floor.modifiers ?? [];
+      await this.validatePlayerDeckRules(
+        playerDeckId,
+        userId,
+        activeModifiers
+      );
 
       // Validate and get AI deck card instances
       await DeckService.validateAIDeck(floor.ai_deck_id);
@@ -493,6 +535,17 @@ class TowerService {
         supportsMulliganUi
       );
       finalGameState = legacyBootstrap.state;
+
+      // Snapshot the floor's modifiers into the battle. Statuses (poison) are
+      // read from here by the engine; re-authoring the floor later must not
+      // change the rules of a battle already in progress.
+      if (activeModifiers.length > 0) {
+        finalGameState.tower_context = {
+          floor_number: floorNumber,
+          modifiers: activeModifiers,
+        };
+      }
+
       await hydrateGameStateCards(finalGameState);
 
       // Create game record with floor_number
@@ -524,6 +577,9 @@ class TowerService {
             card_count: 20,
           }
           : undefined,
+        // Only present with the flag on, so the response shape is unchanged for
+        // everyone else. Lets GameView show modifiers without a second fetch.
+        ...(modifiersEnabled ? { modifiers: activeModifiers } : {}),
       };
     } finally {
       client.release();
@@ -1050,7 +1106,8 @@ class TowerService {
    */
   private async validatePlayerDeckRules(
     deckId: string,
-    userId: string
+    userId: string,
+    modifiers: TowerModifier[] = []
   ): Promise<void> {
     const client = await db.getClient();
 
@@ -1080,14 +1137,17 @@ class TowerService {
       // Get all cards in the deck with their details
       const cardsResult = await client.query(
         `
-        SELECT 
+        SELECT
           cv.card_variant_id as card_id,
           ch.name,
-          cv.rarity
+          cv.rarity,
+          ch.tags,
+          s.name AS set_name
         FROM deck_cards dc
         JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
         JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
         JOIN characters ch ON cv.character_id = ch.character_id
+        LEFT JOIN sets s ON ch.set_id = s.set_id
         WHERE dc.deck_id = $1
       `,
         [deckId]
@@ -1139,6 +1199,26 @@ class TowerService {
             ", "
           )}`
         );
+      }
+
+      // Rule 4: this floor's Encounter Modifiers. Empty when the flag is off or
+      // the floor has none, so this is a no-op on the pre-feature path.
+      if (modifiers.length > 0) {
+        const modifierCards: ModifierDeckCard[] = cards.map((card) => ({
+          name: card.name,
+          rarity: card.rarity,
+          tags: card.tags ?? [],
+          set_name: card.set_name ?? null,
+        }));
+
+        const modifierViolations = validateDeckAgainstModifiers(
+          modifierCards,
+          modifiers
+        );
+
+        if (modifierViolations.length > 0) {
+          throw new TowerModifierViolationError(modifierViolations);
+        }
       }
 
       // All validations passed

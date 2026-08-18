@@ -260,7 +260,11 @@ const XpService = {
 
       // Get cards and validate ownership
       const query = `
-        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, uoc.is_locked, ch.name, cv.rarity
+        SELECT uoc.user_card_instance_id, uoc.user_id, uoc.level, uoc.xp, uoc.is_locked, ch.name, cv.rarity,
+               EXISTS (
+                 SELECT 1 FROM "deck_cards" dc
+                 WHERE dc.user_card_instance_id = uoc.user_card_instance_id
+               ) AS in_deck
         FROM "user_owned_cards" uoc
         JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
         JOIN "characters" ch ON cv.character_id = ch.character_id
@@ -275,6 +279,15 @@ const XpService = {
       const hasLockedCard = rows.some((card) => card.is_locked);
       if (hasLockedCard) {
         throw new Error("Locked cards cannot be sacrificed");
+      }
+
+      // Deck membership cascades on delete, so sacrificing a deck card would
+      // silently shrink the deck. Block it instead.
+      const hasDeckCard = rows.some((card) => card.in_deck);
+      if (hasDeckCard) {
+        throw new Error(
+          "Cards that are in a deck cannot be sacrificed. Remove them from your deck first."
+        );
       }
 
       // Check all cards have same name
@@ -393,7 +406,11 @@ const XpService = {
           uoc.xp,
           uoc.is_locked,
           ch.name,
-          cv.rarity
+          cv.rarity,
+          EXISTS (
+            SELECT 1 FROM "deck_cards" dc
+            WHERE dc.user_card_instance_id = uoc.user_card_instance_id
+          ) AS in_deck
         FROM "user_owned_cards" uoc
         JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
         JOIN "characters" ch ON cv.character_id = ch.character_id
@@ -416,8 +433,10 @@ const XpService = {
       for (const [baseCardId, cards] of Object.entries(cardsByBaseId)) {
         // Count cards with XP > 0
         const cardsWithXp = cards.filter((card) => card.xp > 0);
+        // Cards that are in a deck are never eligible for sacrifice: deleting them
+        // cascades deck_cards rows away and silently leaves the deck short.
         const cardsWithZeroXp = cards.filter(
-          (card) => card.xp === 0 && !card.is_locked
+          (card) => card.xp === 0 && !card.is_locked && !card.in_deck
         );
 
         // Calculate how many cards we should keep total (at least 2, or all cards with XP if more than 2)
@@ -439,7 +458,8 @@ const XpService = {
         await client.query("ROLLBACK");
         return {
           success: true,
-          message: "No unlocked 0 XP card copies found to sacrifice",
+          message:
+            "No unlocked 0 XP card copies outside your decks found to sacrifice",
           sacrificed_cards: [],
           total_xp_gained: 0,
           total_card_fragments_gained: 0,

@@ -54,6 +54,39 @@ function writeCache(userId: string, enabledKeys: Set<string>): void {
   });
 }
 
+/**
+ * How often expired entries are swept out of `userCache`.
+ *
+ * Eviction is otherwise lazy: `readCache` only drops an entry when that same
+ * user is read again after their TTL lapsed. A user who plays once and never
+ * returns is never read again, so their entry would sit in the map for the
+ * process lifetime. The entries are tiny (a Set of short strings), so this is
+ * slow growth rather than an urgent leak — a sweep well above the 30s TTL is
+ * plenty, and keeps the map proportional to *recently active* users instead of
+ * to every user the process has ever seen.
+ */
+const CACHE_SWEEP_INTERVAL_MS = 5 * 60_000;
+
+let sweepTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Drop every entry whose TTL has lapsed.
+ *
+ * Bounded by the map size and does no I/O, so it is safe to run inline on a
+ * timer. Returns the number of entries removed for logging/tests.
+ */
+function sweepExpired(): number {
+  const now = Date.now();
+  let removed = 0;
+  for (const [userId, entry] of userCache) {
+    if (entry.expiresAt <= now) {
+      userCache.delete(userId);
+      removed++;
+    }
+  }
+  return removed;
+}
+
 const FeatureFlagService = {
   // ---- Read path (the one used by feature code) -----------------------------
 
@@ -148,6 +181,43 @@ const FeatureFlagService = {
    */
   invalidateAll(): void {
     userCache.clear();
+  },
+
+  /**
+   * Begin periodically sweeping expired cache entries. Idempotent — calling it
+   * twice does not stack timers.
+   *
+   * `unref()` so a pending sweep never holds the process open on shutdown; this
+   * is a memory hygiene task, not work that must finish.
+   */
+  startCacheSweeper(): void {
+    if (sweepTimer) return;
+    sweepTimer = setInterval(() => {
+      const removed = sweepExpired();
+      if (removed > 0) {
+        logger.debug("Feature flag cache swept", {
+          removed,
+          remaining: userCache.size,
+        });
+      }
+    }, CACHE_SWEEP_INTERVAL_MS);
+    sweepTimer.unref?.();
+  },
+
+  stopCacheSweeper(): void {
+    if (!sweepTimer) return;
+    clearInterval(sweepTimer);
+    sweepTimer = null;
+  },
+
+  /** Run one sweep immediately. Exposed for tests and manual use. */
+  sweepCacheNow(): number {
+    return sweepExpired();
+  },
+
+  /** Current number of cached users. Exposed for tests and diagnostics. */
+  cacheSize(): number {
+    return userCache.size;
   },
 
   // ---- Admin / management ---------------------------------------------------

@@ -7,6 +7,7 @@ import { AuthenticatedRequest } from "../../types/middleware.types";
 import TowerService from "../../services/tower.service";
 import ChallengeService from "../../services/challenge.service";
 import { getClientVersionFromHeader } from "../../utils/clientVersion";
+import { TowerModifierViolationError } from "../../types/towerModifier.types";
 
 export class TowerController {
   /**
@@ -160,6 +161,16 @@ export class TowerController {
     } catch (error) {
       console.error("Error starting tower game:", error);
 
+      // Encounter modifier rejections carry a structured list so the client can
+      // render each violated restriction rather than re-parsing the sentence.
+      if (error instanceof TowerModifierViolationError) {
+        res.status(400).json({
+          error: error.message,
+          modifier_violations: error.violations,
+        });
+        return;
+      }
+
       if (
         error instanceof Error &&
         (error.message.includes("not available") ||
@@ -205,7 +216,13 @@ export class TowerController {
         return;
       }
 
-      const floor = await TowerService.getTowerFloor(floorNumber);
+      const showModifiers = await TowerService.areModifiersEnabled(
+        req.user?.user_id
+      );
+      const floor = await TowerService.getTowerFloor(
+        floorNumber,
+        showModifiers
+      );
 
       if (!floor) {
         res.status(404).json({

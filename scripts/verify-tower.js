@@ -28,14 +28,17 @@ const CARDS_PER_DECK = 20;
 const AI_POWERUPS_PER_LEVEL = 3;
 const MILESTONE_INTERVAL = 100;
 const MILESTONE_SPIKE = 1.3;
+// Deep floors eased because Encounter Modifiers now add difficulty past 100.
+// Keep in sync with towerGeneration.service.ts and gen-tower-floors.js.
+const DEEP_FLOOR_EASE = 0.9;
 
 function expectedLevel(f) {
   if (f <= 1) return 2.0;
   let base;
   if (f <= 50) base = 2.0 + (f - 1) * 0.05;
   else if (f <= 100) base = 4.5 + (f - 50) * 0.04;
-  else if (f <= 200) base = 6.5 + (f - 100) * 0.04;
-  else base = 10.5 + (f - 200) * 0.045;
+  else if (f <= 200) base = (6.5 + (f - 100) * 0.04) * DEEP_FLOOR_EASE;
+  else base = (10.5 + (f - 200) * 0.045) * DEEP_FLOOR_EASE;
   if (f % MILESTONE_INTERVAL === 0) base *= MILESTONE_SPIKE;
   return base;
 }
@@ -178,6 +181,77 @@ async function main() {
       console.log(`  floor ${String(r.floor_number).padStart(3)}: avg ${got.toFixed(1)} (expected ~${exp.toFixed(1)})${flag}`);
       if (off > 0.4) warns.push(`floor ${r.floor_number} avg level ${got} far from expected ${exp.toFixed(1)}`);
     }
+
+    // 8. Encounter Modifiers (hard failures — a malformed modifier can make a
+    //    floor unenterable, so these are not warnings).
+    const KNOWN_MODIFIER_TYPES = [
+      "max_budget",
+      "single_set",
+      "no_tag",
+      "no_legendary",
+      "poison",
+    ];
+    const KNOWN_SETS = ["norse", "japanese", "polynesian"];
+    // god/human are deliberately not bannable: too large a share of the pool.
+    const BANNABLE_TAGS = [
+      "war", "sea", "mystic", "spirit", "nature", "trickster", "sky",
+      "beast", "dragon", "underworld", "fire", "ice", "demon", "giant",
+    ];
+
+    const modRows = await pool.query(`
+      SELECT floor_number, modifiers
+      FROM tower_floors
+      WHERE modifiers IS NOT NULL
+      ORDER BY floor_number
+    `);
+
+    let modFloors = 0;
+    for (const r of modRows.rows) {
+      const mods = r.modifiers;
+      if (!Array.isArray(mods)) {
+        fails.push(`floor ${r.floor_number}: modifiers is not an array`);
+        continue;
+      }
+      if (mods.length === 0) continue;
+      modFloors++;
+
+      if (mods.length > 2) {
+        fails.push(`floor ${r.floor_number}: ${mods.length} modifiers (max 2)`);
+      }
+      if (r.floor_number <= 100) {
+        fails.push(`floor ${r.floor_number}: modifiers below floor 100`);
+      }
+      if (r.floor_number % 5 !== 0) {
+        fails.push(`floor ${r.floor_number}: modifiers on a non-multiple of 5`);
+      }
+
+      const restrictions = mods.filter((m) => m && m.type !== "poison");
+      if (restrictions.length > 1) {
+        fails.push(
+          `floor ${r.floor_number}: ${restrictions.length} deck restrictions (max 1) — can make the floor unenterable`
+        );
+      }
+
+      for (const m of mods) {
+        if (!m || !KNOWN_MODIFIER_TYPES.includes(m.type)) {
+          fails.push(`floor ${r.floor_number}: unknown modifier type "${m && m.type}"`);
+          continue;
+        }
+        if (!m.label || !m.description) {
+          fails.push(`floor ${r.floor_number}: ${m.type} missing label/description`);
+        }
+        if (m.type === "single_set" && !KNOWN_SETS.includes(m.value)) {
+          fails.push(`floor ${r.floor_number}: unknown set "${m.value}"`);
+        }
+        if (m.type === "no_tag" && !BANNABLE_TAGS.includes(m.value)) {
+          fails.push(`floor ${r.floor_number}: tag "${m.value}" is not bannable`);
+        }
+        if (m.type === "max_budget" && !(Number(m.value) > 0)) {
+          fails.push(`floor ${r.floor_number}: invalid budget "${m.value}"`);
+        }
+      }
+    }
+    console.log(`\nEncounter modifiers: ${modFloors} floor(s) configured`);
 
     // Report
     console.log(`\n${"=".repeat(40)}`);

@@ -26,6 +26,7 @@ import errorHandler from "./api/middlewares/errorHandler.middleware";
 import AIAutomationService from "./services/aiAutomation.service";
 import SessionCleanupService from "./services/sessionCleanup.service";
 import DataRetentionService from "./services/dataRetention.service";
+import FeatureFlagService from "./services/featureFlag.service";
 import DailyRewardsService from "./services/dailyRewards.service";
 import DailyTaskService from "./services/dailyTask.service";
 import StartupService from "./services/startup.service";
@@ -343,6 +344,16 @@ if (require.main === module) {
       console.error("❌ Failed to start Data Retention Service:", error);
     }
 
+    // Sweep expired entries out of the in-process feature flag cache. Purely
+    // local memory hygiene — no DB work, and unrelated to DataRetentionService's
+    // shared-state jobs.
+    try {
+      FeatureFlagService.startCacheSweeper();
+      console.log("🧹 Feature flag cache sweeper started successfully");
+    } catch (error) {
+      console.error("❌ Failed to start feature flag cache sweeper:", error);
+    }
+
     // Start the daily rewards and shop service
     try {
       dailyRewardsSchedulerTasks =
@@ -402,6 +413,7 @@ process.on("SIGTERM", async () => {
   SeasonSoulsService.stop();
   SessionCleanupService.stop();
   DataRetentionService.stop();
+  FeatureFlagService.stopCacheSweeper();
   await redisCache.disconnect();
   process.exit(0);
 });
@@ -429,6 +441,7 @@ process.on("SIGINT", async () => {
   SeasonSoulsService.stop();
   SessionCleanupService.stop();
   DataRetentionService.stop();
+  FeatureFlagService.stopCacheSweeper();
   await redisCache.disconnect();
   process.exit(0);
 });

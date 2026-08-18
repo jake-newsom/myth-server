@@ -2,6 +2,8 @@
  * Infinite Tower Types and Interfaces
  */
 
+import { TowerModifier, normalizeModifiers } from "./towerModifier.types";
+
 // Tower reward tiers based on floor divisibility
 export type TowerTier = "E" | "D" | "C" | "B" | "A" | "S";
 
@@ -32,6 +34,11 @@ export interface TowerFloor {
   is_active: boolean;
   average_card_level?: number; // Average level of cards in the AI deck
   created_at?: Date;
+  /**
+   * Encounter modifiers, max 2. Omitted entirely when the
+   * `tower-encounter-modifiers` flag is off, so old clients see today's shape.
+   */
+  modifiers?: TowerModifier[];
 }
 
 /**
@@ -62,6 +69,11 @@ export interface TowerGameStartResponse {
     name: string;
     card_count: number;
   };
+  /**
+   * The floor's active modifiers, so GameView can render them without a second
+   * fetch (the tower store may be empty on a direct game-screen reload).
+   */
+  modifiers?: TowerModifier[];
 }
 
 /**
@@ -124,6 +136,8 @@ export interface GeneratedFloorDeck {
   deck_name: string; // Name for the AI deck
   cards: GeneratedDeckCard[];
   average_card_level?: number; // Calculated average level of cards in deck
+  /** Encounter modifiers, already sanitized against the catalog. */
+  modifiers?: TowerModifier[];
 }
 
 /**
@@ -187,13 +201,24 @@ export interface TowerFloorRow {
   is_active: boolean;
   average_card_level?: number;
   created_at: string;
+  /** JSONB column; untrusted until run through normalizeModifiers. */
+  modifiers?: unknown;
 }
 
 /**
  * Convert database row to TowerFloor
  */
-export function rowToTowerFloor(row: TowerFloorRow): TowerFloor {
-  return {
+/**
+ * @param includeModifiers - only true when the `tower-encounter-modifiers` flag
+ *   is on for the requesting user. When false the key is left off the object
+ *   entirely (not set to []), so the serialized response is identical to the
+ *   pre-modifiers shape.
+ */
+export function rowToTowerFloor(
+  row: TowerFloorRow,
+  includeModifiers = false
+): TowerFloor {
+  const floor: TowerFloor = {
     floor_number: row.floor_number,
     name: row.name,
     ai_deck_id: row.ai_deck_id,
@@ -201,5 +226,11 @@ export function rowToTowerFloor(row: TowerFloorRow): TowerFloor {
     average_card_level: row.average_card_level,
     created_at: row.created_at ? new Date(row.created_at) : undefined,
   };
+
+  if (includeModifiers) {
+    floor.modifiers = normalizeModifiers(row.modifiers);
+  }
+
+  return floor;
 }
 

@@ -90,6 +90,9 @@ const ALLOW_PARTIAL = process.argv.includes("--allow-partial");
 
 const MILESTONE_INTERVAL = 100;
 const MILESTONE_SPIKE = 1.3;
+// Deep floors eased because Encounter Modifiers now add difficulty past 100.
+// Keep in sync with towerGeneration.service.ts and verify-tower.js.
+const DEEP_FLOOR_EASE = 0.9;
 
 const OUT_DIR = path.join(__dirname, "tower-out");
 const PROMPT_PATH = path.join(OUT_DIR, "prompt.txt");
@@ -104,8 +107,9 @@ function calculateTargetAverageLevel(floorNumber) {
   let base;
   if (floorNumber <= 50) base = 2.0 + (floorNumber - 1) * 0.05;
   else if (floorNumber <= 100) base = 4.5 + (floorNumber - 50) * 0.04;
-  else if (floorNumber <= 200) base = 6.5 + (floorNumber - 100) * 0.04;
-  else base = 10.5 + (floorNumber - 200) * 0.045;
+  else if (floorNumber <= 200)
+    base = (6.5 + (floorNumber - 100) * 0.04) * DEEP_FLOOR_EASE;
+  else base = (10.5 + (floorNumber - 200) * 0.045) * DEEP_FLOOR_EASE;
   if (floorNumber % MILESTONE_INTERVAL === 0) base *= MILESTONE_SPIKE;
   return base;
 }
@@ -350,6 +354,25 @@ DECK DESIGN TIPS:
 - Consider card abilities when choosing levels
 - Give each floor a creative, evocative name (3-6 words), never "Floor X"
 
+ENCOUNTER MODIFIERS:
+- Every 5th floor ABOVE 100 (105, 110, ...) carries Encounter Modifiers — extra
+  rules the PLAYER must play around. All other floors must have "modifiers": [].
+- Max 2 per floor, and AT MOST ONE deck restriction. The optional second slot
+  must be "poison". Never combine two deck restrictions — that can make a floor
+  impossible to enter.
+- Deck restrictions (at most one):
+  * {"type":"no_legendary"}
+  * {"type":"single_set","value":"norse"|"japanese"|"polynesian"}
+  * {"type":"no_tag","value":"<tag>"} — ONLY: war, sea, mystic, spirit, nature,
+    trickster, sky, beast, dragon, underworld, fire, ice, demon, giant.
+    NEVER "god" or "human".
+  * {"type":"max_budget","value":<45-70>} — normal budget is 80
+- Status (optional second slot):
+  * {"type":"poison","value":1|2} — a random card in the player's hand loses that
+    much power each turn. Use 2 only past floor 300.
+- Every modifier needs a short evocative "label" (2-3 words) and a one-sentence
+  player-facing "description". Both are shown verbatim in the app.
+
 OUTPUT FORMAT — output ONLY a JSON array, no other text.
 Refer to each card by its CODE. Do NOT include base power (the tool fills it in).
 [
@@ -357,6 +380,9 @@ Refer to each card by its CODE. Do NOT include base power (the tool fills it in)
     "floor_number": ${startFloor},
     "floor_name": "The Frozen Wastes",
     "deck_name": "Frost Giants Deck",
+    "modifiers": [
+      { "type": "no_legendary", "label": "Mortal Trial", "description": "Legendary cards cannot enter this floor." }
+    ],
     "cards": [
       { "code": "zeusL", "level": 5, "power_ups": {"top": 2, "right": 4, "bottom": 0, "left": 0} }
     ]
@@ -457,12 +483,111 @@ function buildFloorSql(floor, preparedCards, uuidFn) {
   lines.push(`  WHERE ${notExists}`);
   lines.push(`  RETURNING 1`);
   lines.push(`)`);
-  lines.push(`INSERT INTO tower_floors (floor_number, name, ai_deck_id, average_card_level, is_active, created_at)`);
-  lines.push(`SELECT ${fn}, ${sqlStr(floor.floor_name)}, '${deckId}'::uuid, ${floor.average_card_level}, true, NOW()`);
+  const modifiersSql =
+    floor.modifiers && floor.modifiers.length > 0
+      ? `${sqlStr(JSON.stringify(floor.modifiers))}::jsonb`
+      : "NULL";
+  lines.push(`INSERT INTO tower_floors (floor_number, name, ai_deck_id, average_card_level, modifiers, is_active, created_at)`);
+  lines.push(`SELECT ${fn}, ${sqlStr(floor.floor_name)}, '${deckId}'::uuid, ${floor.average_card_level}, ${modifiersSql}, true, NOW()`);
   lines.push(`WHERE ${notExists}`);
   lines.push(`ON CONFLICT (floor_number) DO NOTHING;`);
   lines.push("");
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Encounter modifier sanitization
+//
+// Mirrors sanitizeGeneratedModifiers in towerGeneration.service.ts. The reply is
+// untrusted: anything unknown, out of range, or against the authoring rules is
+// dropped rather than emitted as SQL. Keep the two in sync.
+// ---------------------------------------------------------------------------
+const MODIFIER_INTERVAL = 5;
+const FIRST_MODIFIER_FLOOR = 100;
+const MAX_MODIFIERS_PER_FLOOR = 2;
+const MODIFIER_SETS = ["norse", "japanese", "polynesian"];
+// god/human deliberately excluded — too large a share of the card pool.
+const MODIFIER_BANNABLE_TAGS = [
+  "war", "sea", "mystic", "spirit", "nature", "trickster", "sky",
+  "beast", "dragon", "underworld", "fire", "ice", "demon", "giant",
+];
+
+function floorTakesModifiers(fn) {
+  return fn > FIRST_MODIFIER_FLOOR && fn % MODIFIER_INTERVAL === 0;
+}
+
+function sanitizeModifiers(raw, floorNumber, warn = () => {}) {
+  if (!floorTakesModifiers(floorNumber)) {
+    if (Array.isArray(raw) && raw.length > 0) {
+      warn(`floor ${floorNumber} is not an every-5th floor >100; modifiers dropped`);
+    }
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+
+  const cleaned = [];
+  let restrictions = 0;
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const type = String(entry.type || "");
+    const label = String(entry.label || "").trim();
+    const description = String(entry.description || "").trim();
+    if (!label || !description) {
+      warn(`modifier "${type}" missing label/description (dropped)`);
+      continue;
+    }
+
+    let value;
+    if (type === "no_legendary") {
+      // no value
+    } else if (type === "single_set") {
+      const set = String(entry.value || "").toLowerCase();
+      if (!MODIFIER_SETS.includes(set)) {
+        warn(`unknown set "${entry.value}" (dropped)`);
+        continue;
+      }
+      value = set;
+    } else if (type === "no_tag") {
+      const tag = String(entry.value || "").toLowerCase();
+      if (!MODIFIER_BANNABLE_TAGS.includes(tag)) {
+        warn(`tag "${entry.value}" is not bannable (dropped)`);
+        continue;
+      }
+      value = tag;
+    } else if (type === "max_budget") {
+      const budget = Number(entry.value);
+      if (!Number.isFinite(budget) || budget < 40 || budget > 75) {
+        warn(`budget ${entry.value} out of range 40-75 (dropped)`);
+        continue;
+      }
+      value = Math.round(budget);
+    } else if (type === "poison") {
+      const amount = Number(entry.value);
+      const normalized = Number.isFinite(amount) && amount >= 2 ? 2 : 1;
+      value = floorNumber > 300 ? normalized : 1;
+    } else {
+      warn(`unknown modifier type "${type}" (dropped)`);
+      continue;
+    }
+
+    if (type !== "poison") {
+      if (restrictions >= 1) {
+        warn(`second deck restriction "${type}" dropped (max 1 per floor)`);
+        continue;
+      }
+      restrictions += 1;
+    } else if (cleaned.some((m) => m.type === "poison")) {
+      continue;
+    }
+
+    const modifier = { type, label, description };
+    if (value !== undefined) modifier.value = value;
+    cleaned.push(modifier);
+    if (cleaned.length >= MAX_MODIFIERS_PER_FLOOR) break;
+  }
+
+  return cleaned;
 }
 
 // ---------------------------------------------------------------------------
@@ -636,6 +761,9 @@ async function floorsToSql(floors, startFloor, count, pool) {
           floor_name: floor.floor_name || `Floor ${fn}`,
           deck_name: floor.deck_name || `${floor.floor_name || "Floor " + fn} Deck`,
           average_card_level: avgLevel,
+          modifiers: sanitizeModifiers(floor.modifiers, fn, (w) =>
+            console.log(`  ⚠️  ${w}`)
+          ),
         },
         prepared,
         newUuid

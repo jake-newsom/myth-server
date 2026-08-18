@@ -1,6 +1,7 @@
 import { GameStatus } from "../game-engine/game.logic";
 import { InGameCard, PowerValues } from "./card.types";
 import type { SagaBattleContext } from "./sagaBattle.types";
+import type { TowerBattleContext } from "./towerModifier.types";
 
 // Re-export InGameCard for use in other modules
 export { InGameCard };
@@ -167,6 +168,14 @@ export interface GameState {
   };
   /** Present for Sagas mode battles (Phase 4+) */
   saga_context?: SagaBattleContext;
+  /**
+   * Present for tower battles started on a floor that has Encounter Modifiers
+   * (and only while the `tower-encounter-modifiers` flag is on). Carrying the
+   * modifiers in the battle state means the engine never has to re-read the
+   * floor mid-game, and a floor re-authored later cannot change the rules of an
+   * already-running battle.
+   */
+  tower_context?: TowerBattleContext;
   /**
    * Set when a move is paused awaiting interactive player input (e.g. Frigg).
    * While present, the game is frozen until the choice resolves or times out.

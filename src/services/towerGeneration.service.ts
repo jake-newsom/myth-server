@@ -9,6 +9,10 @@ import {
   CardDataForGeneration,
   ReferenceDeckData,
 } from "../types/tower.types";
+import {
+  TowerModifier,
+  MAX_MODIFIERS_PER_FLOOR,
+} from "../types/towerModifier.types";
 
 // AI Player ID for creating decks
 const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
@@ -91,6 +95,11 @@ function calculateMaxPowerups(level: number, isAI: boolean = true): number {
 const MILESTONE_INTERVAL = 100;
 const MILESTONE_SPIKE = 1.3; // +30% AI level on every 100th floor
 
+// Past floor 100, AI level is eased because Encounter Modifiers now add
+// difficulty on every 5th floor. Applied before MILESTONE_SPIKE so the 100-floor
+// gates stay proportionally as sharp as before.
+const DEEP_FLOOR_EASE = 0.9;
+
 /**
  * Calculate target average card level for a given floor.
  *
@@ -102,6 +111,14 @@ const MILESTONE_SPIKE = 1.3; // +30% AI level on every 100th floor
  *   deep-floor difficulty win comes from removing commons from AI decks (which
  *   were the entire base-power gap), so we avoid stacking two large buffs.
  * - Every 100th floor is a soft-cap gate spiked by MILESTONE_SPIKE.
+ * - Past floor 100 the curve is eased by DEEP_FLOOR_EASE (2026-08): Encounter
+ *   Modifiers now supply difficulty on every 5th floor, so raw AI level no
+ *   longer has to carry deep-floor difficulty on its own. Floors 1-100 are
+ *   untouched because modifiers only start past 100.
+ *
+ * NOTE: this function is triplicated in scripts/gen-tower-floors.js and
+ * scripts/verify-tower.js. Change all three together or verify-tower will warn
+ * on every floor.
  */
 function calculateTargetAverageLevel(floorNumber: number): number {
   if (floorNumber <= 1) {
@@ -116,11 +133,11 @@ function calculateTargetAverageLevel(floorNumber: number): number {
     // Floors 51-100: 4.5 -> ~6.5
     baseLevel = 4.5 + (floorNumber - 50) * 0.04;
   } else if (floorNumber <= 200) {
-    // Floors 101-200: 6.5 -> ~10.5
-    baseLevel = 6.5 + (floorNumber - 100) * 0.04;
+    // Floors 101-200: 6.5 -> ~10.5, eased
+    baseLevel = (6.5 + (floorNumber - 100) * 0.04) * DEEP_FLOOR_EASE;
   } else {
-    // Floors 201+: ~10.5 -> grows ~0.045/floor (floor 500 ~24 before spike)
-    baseLevel = 10.5 + (floorNumber - 200) * 0.045;
+    // Floors 201+: ~10.5 -> grows ~0.045/floor, eased
+    baseLevel = (10.5 + (floorNumber - 200) * 0.045) * DEEP_FLOOR_EASE;
   }
 
   // Soft-cap gate spike on milestone floors
@@ -129,6 +146,139 @@ function calculateTargetAverageLevel(floorNumber: number): number {
   }
 
   return baseLevel;
+}
+
+// ---------------------------------------------------------------------------
+// Encounter Modifiers (generation side)
+// ---------------------------------------------------------------------------
+
+/** Floors carrying modifiers: every 5th floor above 100. */
+const MODIFIER_INTERVAL = 5;
+const FIRST_MODIFIER_FLOOR = 100;
+
+const MODIFIER_BANNABLE_TAGS = [
+  "war", "sea", "mystic", "spirit", "nature", "trickster", "sky",
+  "beast", "dragon", "underworld", "fire", "ice", "demon", "giant",
+];
+const MODIFIER_SETS = ["norse", "japanese", "polynesian"];
+
+export function floorTakesModifiers(floorNumber: number): boolean {
+  return (
+    floorNumber > FIRST_MODIFIER_FLOOR &&
+    floorNumber % MODIFIER_INTERVAL === 0
+  );
+}
+
+/**
+ * Sanitize the `modifiers` array an LLM returned for a floor.
+ *
+ * The model is treated as untrusted, exactly like the powerup totals it returns:
+ * anything malformed, unknown, out of range, or against the authoring rules is
+ * DROPPED rather than written. A bad generation must never be able to produce a
+ * floor that cannot be entered, or one carrying modifiers where the design says
+ * there should be none.
+ */
+export function sanitizeGeneratedModifiers(
+  raw: unknown,
+  floorNumber: number
+): TowerModifier[] {
+  if (!floorTakesModifiers(floorNumber)) return [];
+  if (!Array.isArray(raw)) return [];
+
+  const cleaned: TowerModifier[] = [];
+  let restrictions = 0;
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const candidate = entry as Record<string, unknown>;
+    const type = String(candidate.type ?? "");
+    const label = String(candidate.label ?? "").trim();
+    const description = String(candidate.description ?? "").trim();
+
+    // Display copy is shown verbatim in the app; without it, drop the modifier
+    // rather than invent wording here.
+    if (!label || !description) continue;
+
+    let value: number | string | undefined;
+
+    switch (type) {
+      case "no_legendary":
+        break;
+      case "single_set": {
+        const set = String(candidate.value ?? "").toLowerCase();
+        if (!MODIFIER_SETS.includes(set)) continue;
+        value = set;
+        break;
+      }
+      case "no_tag": {
+        const tag = String(candidate.value ?? "").toLowerCase();
+        // god/human are deliberately never bannable.
+        if (!MODIFIER_BANNABLE_TAGS.includes(tag)) continue;
+        value = tag;
+        break;
+      }
+      case "max_budget": {
+        // Must land strictly below DECK_CONFIG.POWER_BUDGET (40) to restrict
+        // anything at all, with 30 as the tightest cap we allow.
+        const budget = Number(candidate.value);
+        if (!Number.isFinite(budget) || budget < 30 || budget > 39) continue;
+        value = Math.round(budget);
+        break;
+      }
+      case "poison": {
+        const amount = Number(candidate.value);
+        const normalized = Number.isFinite(amount) && amount >= 2 ? 2 : 1;
+        // Poison 2 is reserved for the deepest band.
+        value = floorNumber > 300 ? normalized : 1;
+        break;
+      }
+      default:
+        continue;
+    }
+
+    const isRestriction = type !== "poison";
+    if (isRestriction) {
+      // At most one deck restriction per floor — stacking them can wall a floor.
+      if (restrictions >= 1) continue;
+      restrictions += 1;
+    } else if (cleaned.some((m) => m.type === "poison")) {
+      continue;
+    }
+
+    cleaned.push({
+      type: type as TowerModifier["type"],
+      ...(value !== undefined ? { value } : {}),
+      label,
+      description,
+    });
+
+    if (cleaned.length >= MAX_MODIFIERS_PER_FLOOR) break;
+  }
+
+  return cleaned;
+}
+
+/**
+ * Deterministic modifiers for a floor, used when the LLM is unavailable.
+ *
+ * Delegates to scripts/assign-tower-modifiers.js so the fallback and the
+ * backfill can never drift apart — the script is the single definition of "what
+ * modifiers does floor N get". Required lazily and defensively: this is a
+ * best-effort enrichment, and a resolution failure must not break generation.
+ */
+export function fallbackModifiersForFloor(floorNumber: number): TowerModifier[] {
+  if (!floorTakesModifiers(floorNumber)) return [];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { modifiersForFloor } = require("../../scripts/assign-tower-modifiers.js");
+    return sanitizeGeneratedModifiers(modifiersForFloor(floorNumber), floorNumber);
+  } catch (error) {
+    console.warn(
+      "[TowerGen] Could not load deterministic modifiers; floor will have none",
+      error instanceof Error ? error.message : error
+    );
+    return [];
+  }
 }
 
 class TowerGenerationService {
@@ -448,12 +598,52 @@ ${startingFloor > 50
 - Consider card abilities when choosing levels
 - Make each floor feel unique and challenging
 
+ENCOUNTER MODIFIERS:
+- Every 5th floor ABOVE floor 100 (105, 110, 115, ...) carries Encounter Modifiers:
+  extra rules the PLAYER must play around. Floors at or below 100, and floors not
+  divisible by 5, must have an empty "modifiers": [].
+- Maximum 2 modifiers per floor, and AT MOST ONE deck restriction. The optional
+  second modifier must be the "poison" status. Never combine two deck restrictions
+  — that can make a floor impossible to enter.
+- Deck restrictions (pick at most one):
+  * {"type":"no_legendary"} — no Legendary cards allowed
+  * {"type":"single_set","value":"norse"|"japanese"|"polynesian"} — only that set
+  * {"type":"no_tag","value":"<tag>"} — that tag is banned. Allowed values ONLY:
+    war, sea, mystic, spirit, nature, trickster, sky, beast, dragon, underworld,
+    fire, ice, demon, giant. NEVER use "god" or "human" — too much of the card
+    pool carries them.
+  * {"type":"max_budget","value":<30-39>} — caps the deck power budget (normally 40)
+- Status (optional second slot):
+  * {"type":"poison","value":1|2} — each turn a random card in the player's hand
+    loses that much power. Use 2 only past floor 300.
+- Every modifier MUST include a short evocative "label" (2-3 words) and a plain
+  "description" written for the player. These are shown verbatim in the app, so
+  they must read as finished copy, not as internal notes. Keep the description to
+  one short clause — 8 words or fewer, no lead-in like "On this floor," — because
+  it renders in a narrow chip beside the label.
+- Make the floor_name and deck_name echo the modifier's theme where it fits
+  (e.g. a "no_legendary" floor might be "The Hall of Mortals").
+- Deeper floors should lean toward harsher modifiers (tighter budgets, poison 2).
+
 OUTPUT FORMAT (JSON array):
 [
   {
     "floor_number": ${startingFloor},
     "floor_name": "The Frozen Wastes",
     "deck_name": "Frost Giants Deck",
+    "modifiers": [
+      {
+        "type": "no_legendary",
+        "label": "Mortal Trial",
+        "description": "No Legendary cards."
+      },
+      {
+        "type": "poison",
+        "value": 1,
+        "label": "Creeping Venom",
+        "description": "Hand loses 1 power per turn."
+      }
+    ],
     "cards": [
       {
         "card_name": "Card Name",
@@ -466,11 +656,13 @@ OUTPUT FORMAT (JSON array):
   ...
 ]
 
-IMPORTANT: 
+IMPORTANT:
 - Output ONLY the JSON array, no other text
 - Use exact card names from the available cards list
 - Ensure powerup totals match the level formula: (level - 1) × ${AI_POWERUPS_PER_LEVEL}
 - Focus on creating interesting level distributions within each deck
+- Include a "modifiers" array on every floor (empty [] when the floor is not an
+  every-5th floor above 100)
 
 FLOOR NAMING REQUIREMENTS (CRITICAL):
 - Each floor_name MUST be creative and evocative (3-6 words)
@@ -599,6 +791,10 @@ FLOOR NAMING REQUIREMENTS (CRITICAL):
             deck_name: deckName,
             cards,
             average_card_level,
+            modifiers: sanitizeGeneratedModifiers(
+              floor.modifiers,
+              floorNumber
+            ),
           };
         }
       );
@@ -806,6 +1002,10 @@ FLOOR NAMING REQUIREMENTS (CRITICAL):
         deck_name: `${floorName} Deck`,
         cards: deckCards,
         average_card_level: deckAvgLevel,
+        // Reuse the deterministic backfill generator so a Gemini outage still
+        // produces correctly-shaped modifiers rather than silently creating
+        // modifier-less deep floors.
+        modifiers: fallbackModifiersForFloor(floorNumber),
       });
     }
 
@@ -977,13 +1177,16 @@ FLOOR NAMING REQUIREMENTS (CRITICAL):
 
       // Create tower floor entry
       await client.query(
-        `INSERT INTO tower_floors (floor_number, name, ai_deck_id, average_card_level, is_active, created_at)
-         VALUES ($1, $2, $3, $4, true, NOW())`,
+        `INSERT INTO tower_floors (floor_number, name, ai_deck_id, average_card_level, modifiers, is_active, created_at)
+         VALUES ($1, $2, $3, $4, $5, true, NOW())`,
         [
           floor.floor_number,
           floor.floor_name,
           deckId,
           floor.average_card_level || null,
+          floor.modifiers && floor.modifiers.length > 0
+            ? JSON.stringify(floor.modifiers)
+            : null,
         ]
       );
 

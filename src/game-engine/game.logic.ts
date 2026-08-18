@@ -22,6 +22,7 @@ import {
 } from "./game-events";
 import {
   applyNorseDeckEffect,
+  applyTowerPoisonEffect,
   triggerTerrainDeckEffects,
   triggerCurseDeckEffects,
 } from "./deck.effects";
@@ -932,6 +933,12 @@ export class GameLogic {
 
     // Start-of-turn Norse deck effect: if behind, buff a random card in hand.
     events.push(...applyNorseDeckEffect(newState, newState.current_player_id));
+
+    // Start-of-turn tower Poison modifier: debuff a random card in hand. No-op
+    // unless this battle carries a tower_context with the poison modifier.
+    events.push(
+      ...applyTowerPoisonEffect(newState, newState.current_player_id)
+    );
 
     // Start-of-turn abilities (e.g. Tyr's Binding Justice). The turn has just
     // flipped to newState.current_player_id; these events ride the same batch as

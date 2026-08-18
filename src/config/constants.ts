@@ -15,7 +15,8 @@ export const DECK_CONFIG = {
   DECK_SIZE: 20,
   MAX_IDENTICAL_BASE_CARDS: 2,
   // Total power budget a player deck may spend across its cards.
-  POWER_BUDGET: 80,
+  // Must stay in sync with DECK_POWER_BUDGET in myth/src/utils/card.utils.ts.
+  POWER_BUDGET: 40,
 } as const;
 
 // Power cost per base rarity tier, spent against DECK_CONFIG.POWER_BUDGET.
