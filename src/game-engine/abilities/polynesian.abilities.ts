@@ -294,7 +294,7 @@ export const polynesianAbilities: AbilityMap = {
         gameEvents.push(
           addTempBuff(triggerCard, 1000, tideWardCards.length, {
             name: "Tide Ward",
-            animation: "bubble-swirl",
+            animation: "tide-ward-back",
             position,
           }),
         );
