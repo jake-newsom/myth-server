@@ -24,7 +24,8 @@ import {
   applyNorseDeckEffect,
   applyTowerPoisonEffect,
   triggerTerrainDeckEffects,
-  triggerCurseDeckEffects,
+  triggerJapaneseDeckEffects,
+  triggerDebuffDeckEffects,
 } from "./deck.effects";
 
 import { v4 as uuidv4 } from "uuid";
@@ -408,7 +409,7 @@ export class GameLogic {
 
       // Trigger Japanese deck effect if a curse was transferred to the card
       if (curseTransferred) {
-        events.push(...triggerCurseDeckEffects(newState));
+        events.push(...triggerJapaneseDeckEffects(newState));
       }
 
       newState.board[position.y][position.x] = newBoardCell;
@@ -592,6 +593,18 @@ export class GameLogic {
       if (terrainAddedDuringCombat) {
         events.push(...triggerTerrainDeckEffects(newState));
       }
+
+      // Japanese deck effect: fires when ANY card suffered a negative temporary
+      // effect during this placement (OnPlace abilities, combat, saga mechanics
+      // and tile curses alike). Checked once, at the end of the placement's
+      // event production, so the once-per-round limiter sees the whole move as a
+      // single opportunity rather than racing between stages. The curse-transfer
+      // site above triggers on its own (it emits its own power-change event
+      // rather than going through addTempDebuff) and is a no-op the second time
+      // thanks to that same limiter.
+      events.push(
+        ...triggerDebuffDeckEffects(newState, events.slice(eventsBeforeAbilities))
+      );
 
       const scores = validators.calculateScores(
         newState.board,
@@ -932,6 +945,7 @@ export class GameLogic {
         : newState.player1.user_id;
 
     // Start-of-turn Norse deck effect: if behind, buff a random card in hand.
+    const eventsBeforeNorseEffect = events.length;
     events.push(...applyNorseDeckEffect(newState, newState.current_player_id));
 
     // Start-of-turn tower Poison modifier: debuff a random card in hand. No-op
@@ -1000,6 +1014,15 @@ export class GameLogic {
     if (terrainAddedDuringTurn) {
       events.push(...triggerTerrainDeckEffects(newState));
     }
+
+    // Japanese deck effect: turn-boundary debuffs (tower Poison, OnTurnStart /
+    // OnTurnEnd / OnRound* abilities like Moon's Balance) also count as "a card
+    // was debuffed". Checked before turn_number++ so this shares the round with
+    // the placement that led into it — the once-per-round limiter therefore
+    // still allows at most one trigger per round overall.
+    events.push(
+      ...triggerDebuffDeckEffects(newState, events.slice(eventsBeforeNorseEffect))
+    );
 
     newState.turn_number++;
 

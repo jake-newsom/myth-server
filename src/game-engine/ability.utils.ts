@@ -389,6 +389,7 @@ export function addTempDebuff(
     cardId: card.user_card_instance_id,
     powerDelta: calculatePowerDelta(power, true),
     powerBySide: signedBySide,
+    isNegativeEffect: true,
     effectName: options.name,
     position: options.position,
   } as CardPowerChangedEvent;

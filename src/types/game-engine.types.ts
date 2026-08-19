@@ -89,6 +89,14 @@ export interface CardPowerChangedEvent extends CardEvent {
    * back to `powerDelta`.
    */
   powerBySide?: Partial<PowerValues>;
+  /**
+   * True when this power change is a negative/temporary effect (a debuff, curse
+   * or other penalty) applied to the card. Additive and purely informational to
+   * clients; the engine uses it to detect "a card was debuffed" for the Japanese
+   * deck passive without every emitter having to call a trigger explicitly.
+   * Not set when the target was immune (no effect was actually applied).
+   */
+  isNegativeEffect?: boolean;
   effectName?: string;     // e.g., "Blessing of Amaterasu"
   position: BoardPosition; // Required for power change events
   /**
