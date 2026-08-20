@@ -8,6 +8,8 @@ import AchievementService from "./achievement.service";
 import DailyTaskService from "./dailyTask.service";
 import DeckService from "./deck.service";
 import CardModel from "../models/card.model";
+/** Extra card XP awarded for cards played in online (PvP) games. */
+const PVP_XP_BONUS_MULTIPLIER = 1.05;
 
 export interface GameResult {
   winner: string | null;
@@ -162,6 +164,13 @@ const GameRewardsService = {
       // Victory bonus
       if (winnerId === userId) {
         baseXp += 5; // Extra 5 XP if player wins
+      }
+
+      // Online (PvP) bonus: +5% on top of the base + victory total.
+      // Rounded so the awarded value stays an integer (xp_gained is an int
+      // column); at the current 20/25 base this yields 21/26.
+      if (gameMode === "pvp") {
+        baseXp = Math.round(baseXp * PVP_XP_BONUS_MULTIPLIER);
       }
 
       xpRewards.push({
