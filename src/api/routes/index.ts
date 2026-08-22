@@ -37,6 +37,7 @@ import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
 import matchmakingRoutes from "./matchmaking.routes";
+import rankedDraftRoutes from "./rankedDraft.routes";
 
 const router = Router();
 
@@ -44,6 +45,7 @@ const router = Router();
 router.use("/auth", authRoutes);
 router.use("/games", gameRoutes);
 router.use("/matchmaking", matchmakingRoutes);
+router.use("/ranked-draft", rankedDraftRoutes);
 router.use("/challenges", challengeRoutes);
 router.use("/chat", chatRoutes);
 router.use("/users", userRoutes);

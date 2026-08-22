@@ -58,7 +58,7 @@ export interface GameRecord {
   player2_id: string;
   player1_deck_id: string | null;
   player2_deck_id: string | null;
-  game_mode: string;
+  game_mode: import("./database.types").GameMode;
   game_status: import("../game-engine/game.logic").GameStatus;
   board_layout: string;
   game_state: GameState;

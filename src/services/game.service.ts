@@ -1,4 +1,5 @@
 import db from "../config/db.config";
+import { GameMode, HUMAN_VS_HUMAN_MODES } from "../types/database.types";
 import { GameState, TileStatus } from "../types/game.types"; // Assuming GameState is defined here
 import { GameStatus } from "../game-engine/game.logic";
 
@@ -9,7 +10,7 @@ export interface GameRecord {
   player2_id: string;
   player1_deck_id: string | null;
   player2_deck_id: string | null;
-  game_mode: string;
+  game_mode: GameMode;
   game_status: GameStatus;
   board_layout: string;
   game_state: GameState;
@@ -101,7 +102,7 @@ class GameService {
     player2Id: string,
     player1DeckId: string,
     player2DeckId: string,
-    gameMode: "solo" | "pvp", // Or your specific game modes
+    gameMode: GameMode,
     initialGameState: GameState,
     floorNumber?: number // Optional: tower floor number for tower games
   ): Promise<CreateGameResponse> {
@@ -197,6 +198,47 @@ class GameService {
    * Fetches a game by ID, ensuring the user is a participant.
    * Returns null if not found or access denied.
    */
+  /**
+   * The caller's most recent unfinished game, if any.
+   *
+   * Scoped to real multiplayer modes: solo/tower games are already resumed from
+   * their own screens, and surfacing one here would mean prompting a player to
+   * "rejoin" an AI match they deliberately walked away from. Ranked draft is the
+   * case that motivated this — its game is created server-side when the draft
+   * completes, so a disconnected player may never have learned it exists.
+   *
+   * Returns only what routing and a prompt need; the full state comes from
+   * findGameForUser once the player accepts.
+   */
+  async findActiveGameForUser(userId: string): Promise<{
+    game_id: string;
+    game_mode: string;
+    game_status: string;
+    opponent_username: string;
+    created_at: Date;
+  } | null> {
+    const query = `
+      SELECT g.game_id,
+             g.game_mode,
+             g.game_status,
+             g.created_at,
+             COALESCE(
+               CASE WHEN g.player1_id = $1 THEN p2.username ELSE p1.username END,
+               'Opponent'
+             ) AS opponent_username
+        FROM "games" g
+        LEFT JOIN "users" p1 ON g.player1_id = p1.user_id
+        LEFT JOIN "users" p2 ON g.player2_id = p2.user_id
+       WHERE (g.player1_id = $1 OR g.player2_id = $1)
+         AND g.game_status IN ('pending', 'active', 'mulligan')
+         AND g.game_mode::text = ANY($2::text[])
+       ORDER BY g.created_at DESC
+       LIMIT 1;
+    `;
+    const { rows } = await db.query(query, [userId, HUMAN_VS_HUMAN_MODES]);
+    return rows[0] ?? null;
+  }
+
   async findGameForUser(
     gameId: string,
     userId: string

@@ -42,7 +42,8 @@
     "verify:env": "node scripts/verify-env.js",
     "seed:saga-ragnarok": "node scripts/seed-ragnarok-saga-enemy-decks.js",
     "admin:characters": "ts-node scripts/admin-characters-console.ts",
-    "postinstall": "npm run build"
+    "postinstall": "npm run build",
+    "test:ranked-draft": "node --test --test-force-exit -r ts-node/register src/services/__tests__/rankedDraft.test.ts src/services/__tests__/rankedDraftOrder.test.ts src/services/__tests__/rankedDraftBlock.test.ts"
   },
   "keywords": [],
   "author": "",

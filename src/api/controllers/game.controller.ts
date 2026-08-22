@@ -289,6 +289,37 @@ class GameController {
   /**
    * Get game state by ID
    */
+  /**
+   * The caller's current unfinished game, if any.
+   *
+   * Exists because the client had no server-authoritative answer to "what game
+   * am I in?" — it read a localStorage key written by a socket event, so any
+   * client that missed that event (disconnect, refresh, reinstall, second
+   * device) believed it had no game while the row sat active in the database,
+   * blocking matchmaking.
+   *
+   * Deliberately thin: enough to route and prompt, not a full game payload.
+   * Callers fetch GET /games/:gameId once the player accepts.
+   */
+  async getActiveGame(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = req.user?.user_id;
+      if (!userId) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      const game = await GameService.findActiveGameForUser(userId);
+      // 200 + null rather than 404: "you have no game" is a successful answer
+      // to this question, and a 404 would be indistinguishable from a missing
+      // route on older deployments.
+      res.status(200).json({ game: game ?? null });
+    } catch (error) {
+      console.error("Error fetching active game:", error);
+      res.status(500).json({ error: "Failed to fetch active game" });
+    }
+  }
+
   async getGame(req: Request, res: Response): Promise<void> {
     try {
       const userId = req.user?.user_id;

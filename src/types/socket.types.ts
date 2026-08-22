@@ -78,6 +78,153 @@ export enum PresenceNamespaceEvent {
   CHALLENGE_READY = "challenge:ready",
   CHALLENGE_EXPIRED = "challenge:expired",
   CHALLENGE_CANCELLED = "challenge:cancelled",
+
+  // --- Ranked Draft ---
+  // The ban + draft phases happen BEFORE a `games` row exists, so they cannot
+  // ride the /game namespace: its auth middleware requires a gameId and
+  // authorizes against the games table. /presence is token-only and already
+  // has a per-user room, so it is the correct transport.
+  DRAFT_CLIENT_SUBMIT_BAN = "draft:ban:submit",
+  DRAFT_CLIENT_SUBMIT_PICK = "draft:pick:submit",
+  DRAFT_CLIENT_SUBMIT_BLOCK = "draft:block:submit",
+  DRAFT_CLIENT_ABANDON = "draft:abandon",
+  DRAFT_CLIENT_REJOIN = "draft:rejoin",
+  DRAFT_SERVER_STARTED = "draft:started",
+  DRAFT_SERVER_STATE = "draft:state",
+  // Carries ONLY a boolean. The opponent's banned card id is deliberately not
+  // serialized until both bans are recorded — see DRAFT_SERVER_BAN_REVEALED.
+  DRAFT_SERVER_BAN_SUBMITTED = "draft:ban:opponent_submitted",
+  DRAFT_SERVER_BAN_REVEALED = "draft:ban:revealed",
+  DRAFT_SERVER_TURN = "draft:turn",
+  DRAFT_SERVER_PICK_MADE = "draft:pick:made",
+  // Block phase. Same secrecy rule as bans: the opponent is told only THAT a
+  // block landed, and both values are revealed together.
+  DRAFT_SERVER_BLOCK_STARTED = "draft:block:started",
+  DRAFT_SERVER_BLOCK_SUBMITTED = "draft:block:opponent_submitted",
+  DRAFT_SERVER_BLOCK_REVEALED = "draft:block:revealed",
+  DRAFT_SERVER_COMPLETED = "draft:completed",
+  DRAFT_SERVER_ABORTED = "draft:aborted",
+  DRAFT_SERVER_ERROR = "draft:error",
+}
+
+/** Room grouping both players of one draft session. */
+export const draftRoom = (sessionId: string): string => `draft:${sessionId}`;
+
+export type RankedDraftPhase =
+  | "ban"
+  | "draft"
+  | "block"
+  | "complete"
+  | "aborted";
+
+/**
+ * The draft as one player is allowed to see it.
+ *
+ * `opponentBan` stays null for the whole ban phase — the server does not send
+ * the value it is hiding. `opponentBanSubmitted` is what the client renders a
+ * card back from.
+ */
+export interface RankedDraftStatePayload {
+  sessionId: string;
+  phase: RankedDraftPhase;
+  /** This player's own ban, echoed back so a reconnect can render it. */
+  myBan: string | null;
+  opponentBan: string | null;
+  opponentBanSubmitted: boolean;
+  myPicks: string[];
+  opponentPicks: string[];
+  /** Budget spent by this player, and the cap, both in power. */
+  budgetSpent: number;
+  budgetTotal: number;
+  picksMade: number;
+  picksTotal: number;
+  currentPickerId: string | null;
+  isMyTurn: boolean;
+  /** Cards left to take in the CURRENT player's turn (picks come in blocks). */
+  picksLeftInTurn: number;
+  picksPerTurn: number;
+  /** Absolute epoch ms, so the client renders its own countdown. */
+  deadlineMs: number | null;
+  opponentUsername: string;
+  /** Card ids removed from the pool: both bans (once revealed) + all picks. */
+  unavailableCardIds: string[];
+  /** Up to 20 most-recently drafted variants, surfaced first in the grid. */
+  recentCardIds: string[];
+  /**
+   * This player's cosmetic skin choices, as original_variant_id -> chosen
+   * variant_id. Only ever contains entries where a skin was actually picked, so
+   * a lookup miss means "render the original".
+   *
+   * Sent so the deck preview can show the art the player chose; the pick itself
+   * is still the original printing everywhere else.
+   */
+  myVariants: Record<string, string>;
+  gameId: string | null;
+
+  /**
+   * Block phase. `myBlock` is the card THIS player removed from the opponent's
+   * draft, echoed back so a reconnect can render the choice. `blockedFromMe`
+   * (the opponent's choice against this player) stays null until BOTH blocks
+   * are in — the server does not send the value it is hiding.
+   */
+  myBlock: string | null;
+  blockedFromMe: string | null;
+  opponentBlockSubmitted: boolean;
+
+  /**
+   * True when THIS viewer drafts first (player1).
+   *
+   * The order is 1 / 2,2 / … / 1: the first drafter takes a lone opening pick
+   * and the second drafter takes a lone closing pick. The client renders that
+   * odd slot on the outside edge of each deck row, so this is what tells it
+   * which side to put it on.
+   */
+  iDraftFirst: boolean;
+}
+
+export interface RankedDraftBlockRevealedPayload {
+  sessionId: string;
+  /** The card this player removed from the opponent's deck. */
+  myBlock: string | null;
+  /** The card the opponent removed from THIS player's deck. */
+  blockedFromMe: string | null;
+  /** How long the reveal is held before the game begins. */
+  revealMs: number;
+}
+
+export interface RankedDraftBanRevealedPayload {
+  sessionId: string;
+  myBan: string | null;
+  opponentBan: string | null;
+  nextPickerId: string;
+  deadlineMs: number;
+}
+
+export interface RankedDraftPickMadePayload {
+  sessionId: string;
+  pickerId: string;
+  cardVariantId: string;
+  pickIndex: number;
+  nextPickerId: string | null;
+  deadlineMs: number | null;
+  /** True when the server auto-picked because the clock ran out. */
+  autoPicked: boolean;
+}
+
+export interface RankedDraftCompletedPayload {
+  sessionId: string;
+  gameId: string;
+}
+
+export interface RankedDraftAbortedPayload {
+  sessionId: string;
+  reason: string;
+  /**
+   * True for the player who quit, false for the one who was left. Absent on
+   * system aborts (a phase that could not be resolved), which belong to
+   * neither player.
+   */
+  abandonedByMe?: boolean;
 }
 
 export interface PresencePlayerCountPayload {

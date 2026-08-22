@@ -1,5 +1,13 @@
 import LeaderboardModel from "../models/leaderboard.model";
+import { RANKED_DRAFT_SEASON_PREFIX } from "../config/constants";
 import { redisCache } from "./redis.cache.service";
+import {
+  resolveRank,
+  IMMORTAL_FLOOR,
+  rankProgressFor,
+  rankDistribution,
+  PVP_RANKS,
+} from "../config/pvpRanks";
 import {
   UserRanking,
   UserRankingWithUser,
@@ -32,6 +40,11 @@ interface RankingStatsResponse {
     average_rating: number;
     tier_distribution: Record<string, number>;
     top_players_by_tier: Record<string, UserRankingWithUser[]>;
+    /**
+     * Distribution across the PvP rank ladder, strongest-first. Additive —
+     * `tier_distribution` is unchanged for old clients.
+     */
+    rank_distribution?: Array<{ key: string; label: string; count: number }>;
   };
   season: string;
 }
@@ -46,6 +59,25 @@ interface UserRankingResponse {
     rating_needed_for_next_tier?: number;
     progress_percentage: number;
   };
+  /**
+   * PvP rank badge. Additive — old clients ignore it and keep rendering
+   * `rank_tier`, which is unchanged.
+   */
+  pvp_rank?: {
+    key: string;
+    label: string;
+    division: number;
+    kind: string;
+  };
+  /** Progress toward the next RANK (not the legacy tier). Additive. */
+  pvp_progress?: {
+    current_rank_key: string;
+    current_rank_label: string;
+    next_rank_key: string | null;
+    next_rank_label: string | null;
+    rating_needed: number | null;
+    progress_percentage: number;
+  };
   recent_games: any[];
   season: string;
 }
@@ -55,7 +87,11 @@ const LeaderboardService = {
    * Get season dates for current season
    */
   getSeasonDates(season: string): { start: Date; end: Date } {
-    const [year, quarter] = season.split("-");
+    // Ranked draft keys are `draft-YYYY-QN`; the calendar quarter is the tail.
+    const quarterToken = season.startsWith(RANKED_DRAFT_SEASON_PREFIX)
+      ? season.slice(RANKED_DRAFT_SEASON_PREFIX.length)
+      : season;
+    const [year, quarter] = quarterToken.split("-");
     const yearNum = parseInt(year);
     const quarterNum = parseInt(quarter.replace("Q", ""));
 
@@ -178,7 +214,34 @@ const LeaderboardService = {
       await redisCache.set(standingsCacheKey, standings, 300);
     }
 
-    const { leaderboard, totalPages } = standings;
+    const { totalPages } = standings;
+    // Size of the pool the proportional positional ranks slice into. Read once
+    // per request rather than per row.
+    const positionalPool = await LeaderboardModel.countPlayersAtOrAbove(
+      IMMORTAL_FLOOR,
+      currentSeason
+    );
+    // Decorate each row with its PvP rank badge. Additive: the existing
+    // `rank_tier` field is untouched, so old clients are unaffected.
+    const offsetBase = (page - 1) * limit;
+    const leaderboard = standings.leaderboard.map((entry, index) => {
+      const position = Number(entry.current_rank ?? offsetBase + index + 1);
+      const resolved = resolveRank({
+        rating: entry.rating,
+        rankPosition: position,
+        lastGameAt: entry.last_game_at,
+        poolSize: positionalPool,
+      });
+      return {
+        ...entry,
+        pvp_rank: {
+          key: resolved.rank.key,
+          label: resolved.label,
+          division: resolved.division,
+          kind: resolved.rank.kind,
+        },
+      };
+    });
 
     // Get user-specific data if userId provided
     let userRank: number | undefined;
@@ -224,9 +287,10 @@ const LeaderboardService = {
   async getRankingStats(season?: string): Promise<RankingStatsResponse> {
     const currentSeason = season || LeaderboardModel.getCurrentSeason();
 
-    const [stats, topPlayersByTier] = await Promise.all([
+    const [stats, topPlayersByTier, ratings] = await Promise.all([
       LeaderboardModel.getLeaderboardStats(currentSeason),
       LeaderboardModel.getTopPlayersByTier(currentSeason),
+      LeaderboardModel.getRatingsForSeason(currentSeason),
     ]);
 
     return {
@@ -234,6 +298,7 @@ const LeaderboardService = {
       stats: {
         ...stats,
         top_players_by_tier: topPlayersByTier,
+        rank_distribution: rankDistribution(ratings),
       },
       season: currentSeason,
     };
@@ -262,13 +327,73 @@ const LeaderboardService = {
       userRanking.rank_tier
     );
 
+    const rankPosition = Number(userRanking.current_rank || 0);
+    // Only needed when the player could actually hold a positional rank, so a
+    // rank-and-file lookup does not pay for the count.
+    const positionalPool =
+      userRanking.rating >= IMMORTAL_FLOOR
+        ? await LeaderboardModel.countPlayersAtOrAbove(
+            IMMORTAL_FLOOR,
+            currentSeason
+          )
+        : null;
+    const resolved = resolveRank({
+      rating: userRanking.rating,
+      rankPosition: rankPosition || null,
+      lastGameAt: userRanking.last_game_at,
+      poolSize: positionalPool,
+    });
+
     return {
       success: true,
       user_ranking: userRanking,
-      rank_position: Number(userRanking.current_rank || 0),
+      rank_position: rankPosition,
       rank_progress: rankProgress,
+      pvp_rank: {
+        key: resolved.rank.key,
+        label: resolved.label,
+        division: resolved.division,
+        kind: resolved.rank.kind,
+      },
+      pvp_progress: rankProgressFor(userRanking.rating),
       recent_games: recentGames,
       season: currentSeason,
+    };
+  },
+
+  /**
+   * The rank ladder definition, for clients that want to render the full
+   * progression (thresholds, names, divisions) without hardcoding it.
+   */
+  getRankLadder(): {
+    success: boolean;
+    ranks: Array<{
+      key: string;
+      label: string;
+      kind: string;
+      order: number;
+      min_rating: number;
+      /** null = unbounded (the top band). */
+      max_rating: number | null;
+      max_rank_position: number | null;
+      divisions: number;
+      description: string;
+    }>;
+  } {
+    return {
+      success: true,
+      ranks: PVP_RANKS.map((r) => ({
+        key: r.key,
+        label: r.label,
+        kind: r.kind,
+        order: r.order,
+        min_rating: r.minRating,
+        // Infinity is not valid JSON — send null for the unbounded top band.
+        max_rating: Number.isFinite(r.maxRating) ? r.maxRating : null,
+        max_rank_position: r.maxRankPosition ?? null,
+        divisions: r.divisions,
+        description: r.description,
+      })),
     };
   },
 
@@ -284,7 +409,12 @@ const LeaderboardService = {
     gameDurationSeconds: number,
     season?: string
   ): Promise<GameResult> {
-    const currentSeason = season || LeaderboardModel.getCurrentSeason();
+    // Ranked draft scores against its own ladder. `season` is an opaque
+    // varchar in user_rankings, so a namespaced season string gives the draft
+    // ladder fully independent rating/rank/W-L with no schema change. An
+    // explicit season argument still wins.
+    const currentSeason =
+      season || LeaderboardModel.getSeasonForGameMode(gameMode);
 
     // Record game result and update ratings
     // Note: Full rank position recalculation (updateAllRanks) has been removed

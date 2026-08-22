@@ -1,11 +1,8 @@
 import db from "../../config/db.config";
 import { default as DeckModel } from "../../models/deck.model";
 import { default as UserModel } from "../../models/user.model";
-import { GameLogic } from "../../game-engine/game.logic";
-import { v4 as uuidv4 } from "uuid";
 import { Request, Response, NextFunction } from "express";
 import { Server as IoServer } from "socket.io";
-import { GameState } from "../../types/game.types";
 import DeckService, { DeckBudgetError } from "../../services/deck.service";
 import { DECK_CONFIG } from "../../config/constants";
 import {
@@ -14,6 +11,9 @@ import {
 } from "../../types/socket.types";
 import { userRoom } from "../../sockets/namespace.presence";
 import ChallengeService from "../../services/challenge.service";
+import MatchmakingService, {
+  DeckLookupError,
+} from "../../services/matchmaking.service";
 
 // Define interfaces for queue entries and active matches
 interface QueueEntry {
@@ -130,7 +130,7 @@ const MatchmakingController = {
            SET game_status = 'aborted', completed_at = NOW()
            WHERE (player1_id = $1 OR player2_id = $1)
              AND game_status = 'active'
-             AND game_mode = 'pvp'
+             AND game_mode IN ('pvp', 'ranked_draft')
              AND created_at < NOW() - INTERVAL '${STALE_GAME_THRESHOLD}'
            RETURNING game_id`,
           [userId]
@@ -151,7 +151,9 @@ const MatchmakingController = {
           `SELECT game_id FROM "games"
            WHERE (player1_id = $1 OR player2_id = $1)
              AND game_status = 'active'
-             AND game_mode = 'pvp'
+             -- Ranked draft counts here too: a player already in a ranked game
+             -- must not be able to sit in the unranked queue at the same time.
+             AND game_mode IN ('pvp', 'ranked_draft')
            LIMIT 1`,
           [userId]
         );
@@ -250,130 +252,54 @@ const MatchmakingController = {
           }
 
           // --- Create Game ---
-          const player1Deck = await DeckModel.findDeckWithInstanceDetails(
-            deckId,
-            userId
-          );
-          const player2Deck = await DeckModel.findDeckWithInstanceDetails(
-            opponent.deckId,
-            opponent.userId
-          );
-
-          if (!player1Deck || !player2Deck) {
-            return res.status(400).json({
-              error: { message: "Error retrieving deck information." },
-            });
+          // The heavy lifting lives in MatchmakingService so the upcoming queue
+          // matcher can create games from a scheduler tick, where there is no
+          // HTTP request to hang the logic off.
+          let created;
+          try {
+            created = await MatchmakingService.createPvpGame(
+              userId,
+              deckId,
+              opponent.userId,
+              opponent.deckId
+            );
+          } catch (createError) {
+            if (createError instanceof DeckLookupError) {
+              return res.status(400).json({
+                error: { message: createError.message },
+              });
+            }
+            throw createError;
           }
 
-          // Extract card IDs for the game initialization
-          const p1DeckCardIds = player1Deck.cards.reduce(
-            (acc: string[], card) => {
-              // Each card in the deck is an instance, so we add it once
-              if (card.user_card_instance_id) {
-                acc.push(card.user_card_instance_id);
-              }
-              return acc;
-            },
-            []
-          );
-
-          const p2DeckCardIds = player2Deck.cards.reduce(
-            (acc: string[], card) => {
-              // Each card in the deck is an instance, so we add it once
-              if (card.user_card_instance_id) {
-                acc.push(card.user_card_instance_id);
-              }
-              return acc;
-            },
-            []
-          );
-
-          // Initialize game with the current player as P1, queued player as P2
-          const p1UserIdForGame = userId;
-          const p2UserIdForGame = opponent.userId;
-
-          const initialGameState = await GameLogic.initializeGame(
-            p1DeckCardIds,
-            p2DeckCardIds,
-            p1UserIdForGame,
-            p2UserIdForGame
-          );
-
-          // Player who initiated match often goes first
-          initialGameState.current_player_id = p1UserIdForGame;
-
-          // Attach deck effects based on mythology composition
-          const [p1DeckEffect, p2DeckEffect] = await Promise.all([
-            DeckService.getDeckEffect(deckId),
-            DeckService.getDeckEffect(opponent.deckId),
-          ]);
-
-          if (p1DeckEffect) {
-            initialGameState.player1.deck_effect = p1DeckEffect;
-            initialGameState.player1.deck_effect_state = { last_triggered_round: 0 };
-          }
-          if (p2DeckEffect) {
-            initialGameState.player2.deck_effect = p2DeckEffect;
-            initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
-          }
-          initialGameState.player1.equipped_card_back =
-            player1Deck.equipped_card_back ?? null;
-          initialGameState.player2.equipped_card_back =
-            player2Deck.equipped_card_back ?? null;
-
-          // Create a new game in the database
-          const gameQuery = `
-            INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-            RETURNING game_id;
-          `;
-          const gameValues = [
-            p1UserIdForGame,
-            p2UserIdForGame,
-            deckId,
-            opponent.deckId,
-            "pvp",
-            "active",
-            "4x4",
-            JSON.stringify(initialGameState),
-          ];
-
-          const gameResult = await db.query(gameQuery, gameValues);
-          const newGameId = gameResult.rows[0].game_id;
+          const newGameId = created.gameId;
+          const joiningUsername = created.player1Username;
+          const opponentUsername = created.player2Username;
 
           // Store the match for both players
           activeMatches.set(userId, newGameId);
           activeMatches.set(opponent.userId, newGameId);
 
-          // Look up display names for both players for the response payloads.
-          const [opponentUser, joiningUser] = await Promise.all([
-            UserModel.findById(opponent.userId),
-            UserModel.findById(userId),
-          ]);
-          const opponentUsername = opponentUser
-            ? opponentUser.username
-            : "Opponent";
-          const joiningUsername = joiningUser
-            ? joiningUser.username
-            : "Opponent";
-
-          // Push the match-found event to the user that was already
-          // waiting in the queue. Their /presence socket is the
-          // always-on transport, so they receive it immediately and
-          // don't need to poll. The HTTP response below covers the
-          // user who just joined.
+          // Push match-found to BOTH players over /presence. The waiting player
+          // has no pending HTTP response, so the socket is their only signal;
+          // the joining player also gets the HTTP body below, and receiving the
+          // event as well is harmless (existing clients already handle it) but
+          // means one code path notifies everyone.
           const io = req.app.get("io") as IoServer | undefined;
           if (io) {
-            const payload: MatchmakingFoundPayload = {
-              gameId: newGameId,
-              opponentUsername: joiningUsername,
-            };
-            io.of("/presence")
+            const presence = io.of("/presence");
+            presence
               .to(userRoom(opponent.userId))
-              .emit(
-                PresenceNamespaceEvent.SERVER_MATCHMAKING_FOUND,
-                payload
-              );
+              .emit(PresenceNamespaceEvent.SERVER_MATCHMAKING_FOUND, {
+                gameId: newGameId,
+                opponentUsername: joiningUsername,
+              } as MatchmakingFoundPayload);
+            presence
+              .to(userRoom(userId))
+              .emit(PresenceNamespaceEvent.SERVER_MATCHMAKING_FOUND, {
+                gameId: newGameId,
+                opponentUsername: opponentUsername,
+              } as MatchmakingFoundPayload);
           }
 
           // Return match information to the player who just joined the

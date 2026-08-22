@@ -40,6 +40,31 @@ export const getLeaderboard = async (
 };
 
 /**
+ * Get the PvP rank ladder definition (names, bands, divisions).
+ *
+ * Static data — no DB read, no auth. Lets the client render the full
+ * progression without hardcoding thresholds that would then drift from the
+ * server's.
+ */
+export const getRankLadder = async (_req: Request, res: Response) => {
+  try {
+    const result = LeaderboardService.getRankLadder();
+    const { success, ...flattenedResult } = result;
+    res.status(200).json(flattenedResult);
+  } catch (error) {
+    console.error("Error fetching rank ladder:", error);
+    res.status(500).json({
+      success: false,
+      error: {
+        type: "RANK_LADDER_ERROR",
+        message: "Failed to fetch rank ladder",
+        suggestion: "Please try again later",
+      },
+    });
+  }
+};
+
+/**
  * Get leaderboard statistics and tier information
  */
 export const getLeaderboardStats = async (req: Request, res: Response) => {

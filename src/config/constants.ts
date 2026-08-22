@@ -19,6 +19,105 @@ export const DECK_CONFIG = {
   POWER_BUDGET: 40,
 } as const;
 
+// Ranked Draft Configuration
+//
+// A ranked match is drafted, not brought: players draft 11 cards from the whole
+// catalog, then each removes one card from the OPPONENT's draft in the block
+// phase, leaving 10 cards which are doubled into a 20-card deck. The budget is
+// charged against the 11 PICKS (not the resulting cards), and it is deliberately a
+// separate number from DECK_CONFIG.POWER_BUDGET — changing the unranked budget
+// must never silently retune the draft format, or vice versa.
+//
+// Must stay in sync with RANKED_DRAFT in myth/src/utils/card.utils.ts.
+export const RANKED_DRAFT_CONFIG = {
+  // 11 drafted, minus 1 removed in the block phase = 10 cards in the game.
+  PICKS: 11,
+  // Cards taken per turn in the STEADY state. The first and last turns are
+  // single picks (see pickerForIndex): P1 opens with 1 and P2 closes with 1, so
+  // the 2-card blocks stay aligned and both players still land on PICKS.
+  PICKS_PER_TURN: 2,
+  /** Cards each player removes from the OPPONENT's deck after drafting. */
+  BLOCKS_PER_PLAYER: 1,
+  COPIES_PER_PICK: 2,
+  POWER_BUDGET: 50,
+  BANS_PER_PLAYER: 1,
+  // Clocks, in milliseconds. Persisted as an absolute deadline per session so a
+  // restart recovers the countdown rather than stranding a draft.
+  BAN_MS: 30_000,
+  /** Clock for the block phase (both players choose simultaneously). */
+  BLOCK_MS: 30_000,
+  /** How long the block reveal is held before the game starts. */
+  BLOCK_REVEAL_MS: 5_000,
+  // Per TURN, not per pick: one clock covers the whole PICKS_PER_TURN block, so
+  // a two-card turn is a single shared thinking window rather than two. The
+  // deadline is only re-armed when the turn passes to the other player.
+  //
+  // DEBUG: temporarily 10_000_000ms (~2.8h) so the draft UI can be worked on
+  // without the clock expiring. RESTORE TO 20_000 BEFORE SHIPPING.
+  //
+  // Side effect to be aware of while this is set: an abandoned draft is not
+  // "stuck", it is simply waiting on a deadline hours away, so the sweeper
+  // correctly leaves it alone and it keeps blocking a requeue. Clear it with:
+  //   UPDATE ranked_draft_sessions SET phase='aborted', deadline_at=NULL,
+  //     current_picker_id=NULL WHERE phase IN ('ban','draft');
+  PICK_MS: 10_000_000,
+  // Recently-drafted cards surfaced at the front of the pick grid.
+  RECENT_CARDS_LIMIT: 20,
+  /**
+   * Ranked battles a player may start per day, gated by the
+   * `ranked-draft-daily-limit` flag. Resets at 00:00 UTC ("server time"),
+   * matching every other daily reset in this codebase (daily tasks, shop,
+   * onboarding streaks).
+   *
+   * Counted against ranked_draft GAMES created today, not queue joins: a draft
+   * that never produced a game cost the player nothing, so it must not cost
+   * them an attempt either.
+   */
+  DAILY_BATTLE_LIMIT: 20,
+} as const;
+
+/**
+ * Absolute age after which a ranked_draft game is treated as dead.
+ *
+ * A ranked draft game is bounded by construction: at most
+ * PICKS * COPIES_PER_PICK cards per side, one play per turn, and a per-turn
+ * clock. Even at the worst case that is well under an hour, so anything older
+ * than this can only be a game whose turn clock stopped advancing (client gone,
+ * process restarted mid-game, or a stalled hand-off out of the draft).
+ *
+ * Such a game is unreachable but still counts as "active", which permanently
+ * blocks the player from queueing again — so it must be reaped, not left.
+ */
+export const RANKED_DRAFT_GAME_MAX_AGE_MINUTES = 60;
+
+/** Cards a player keeps after the opponent's block: 11 drafted - 1 blocked. */
+export const RANKED_DRAFT_CARDS_AFTER_BLOCK =
+  RANKED_DRAFT_CONFIG.PICKS - RANKED_DRAFT_CONFIG.BLOCKS_PER_PLAYER;
+
+// Derived: the size of the deck a completed draft produces. Asserted against
+// DECK_CONFIG.DECK_SIZE at draft build time, since the engine and the client
+// both assume every PvP deck is the same size.
+//
+// Derived from the POST-BLOCK count, not PICKS: the block phase removes one card
+// per player, so drafting 11 still yields a 20-card deck.
+export const RANKED_DRAFT_DECK_SIZE =
+  RANKED_DRAFT_CARDS_AFTER_BLOCK * RANKED_DRAFT_CONFIG.COPIES_PER_PICK;
+
+// Ladder namespacing for Ranked Draft.
+//
+// user_rankings is keyed UNIQUE(user_id, season) and `season` is an opaque
+// varchar(20), so prefixing the season string gives the draft ladder a fully
+// independent rating/peak/W-L-D/tier/rank with NO migration and no change to
+// the existing triggers or indexes. Unranked passes no season and keeps the
+// bare quarter string, so it is untouched.
+//
+// Defined here exactly once — never concatenate this prefix inline.
+export const RANKED_DRAFT_SEASON_PREFIX = "draft-";
+
+// user_rankings.season is varchar(20). Overflow would fail at INSERT time, so
+// the helper asserts rather than letting a season silently break the ladder.
+export const SEASON_COLUMN_MAX_LENGTH = 20;
+
 // Power cost per base rarity tier, spent against DECK_CONFIG.POWER_BUDGET.
 // Keyed by base rarity (strip "+" upgrade suffixes before lookup).
 // Keep in sync with the client copy in myth/src/utils/card.utils.ts.

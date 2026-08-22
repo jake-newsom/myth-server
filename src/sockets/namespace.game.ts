@@ -25,6 +25,7 @@ import { TurnManager } from "./turn.manager";
 import { GameLogic, GameStatus } from "../game-engine/game.logic";
 import { AILogic } from "../game-engine/ai.logic";
 import { resolveAIDifficulty } from "../game-engine/ai.difficulty";
+import { GameMode } from "../types/database.types";
 import {
   clearActiveMatch,
   matchmakingQueue,
@@ -406,7 +407,7 @@ export function setupGameNamespace(io: Server): void {
    */
   async function processGameCompletion(
     gameId: string,
-    gameRecord: { created_at: Date; player1_id: string; player2_id: string; player1_deck_id?: string | null; player2_deck_id?: string | null },
+    gameRecord: { created_at: Date; player1_id: string; player2_id: string; player1_deck_id?: string | null; player2_deck_id?: string | null; game_mode?: GameMode },
     completedState: any,
     roomName: string,
     reason: "completed" | "surrender" | "disconnect"
@@ -416,17 +417,22 @@ export function setupGameNamespace(io: Server): void {
     const gameStartTime = gameRecord.created_at;
     const player1Id = gameRecord.player1_id;
     const player2Id = gameRecord.player2_id;
+    // Read the mode off the row rather than assuming "pvp". This path used to
+    // hardcode the literal, which would have silently scored ranked draft games
+    // on the unranked ladder. With the ranked-draft flag off no such rows exist,
+    // so this resolves to "pvp" for every game exactly as before.
+    const gameMode: GameMode = gameRecord.game_mode ?? "pvp";
 
     const [player1Rewards, player2Rewards] = await Promise.all([
       GameRewardsService.processGameCompletion(
-        player1Id, completedState, "pvp", gameStartTime,
+        player1Id, completedState, gameMode, gameStartTime,
         player1Id, player2Id, gameRecord.player1_deck_id!, gameId, isForfeit
       ).catch((err) => {
         console.error(`[namespace.game] Error processing rewards for player1 ${player1Id}:`, err);
         return null;
       }),
       GameRewardsService.processGameCompletion(
-        player2Id, completedState, "pvp", gameStartTime,
+        player2Id, completedState, gameMode, gameStartTime,
         player1Id, player2Id, gameRecord.player2_deck_id!, gameId, isForfeit
       ).catch((err) => {
         console.error(`[namespace.game] Error processing rewards for player2 ${player2Id}:`, err);
@@ -720,15 +726,26 @@ export function setupGameNamespace(io: Server): void {
         }
         meta.clientVersions.set(userId, handshakeClientVersion);
 
-        // If both players are present in the room, bootstrap the next phase
+        // Bootstrap the next phase.
+        //
+        // The mulligan phase is simultaneous, so it still waits for both
+        // players. An ACTIVE game does NOT: its turn clock belongs to whoever
+        // is on turn, and requiring both sockets to be present at the same
+        // instant meant a server restart (which wipes the in-memory
+        // `activeGames` map) could leave a live game with no TurnManager at
+        // all — nobody's clock running, no timeout, no auto-move, until the
+        // stale-game reaper eventually killed it by wall-clock age. Arming on
+        // the first join makes a restart recoverable.
         const room = gameNs.adapter.rooms.get(roomName);
-        if (room && room.size === 2) {
+        const playersPresent = room?.size ?? 0;
+        if (playersPresent >= 1) {
           // Re-fetch fresh record to get current status (avoid race with just-committed mulligan)
           const freshRecord = await gameService.getRawGameRecord(gameId, userId);
           if (!freshRecord) return;
           const currentStatus = freshRecord.game_state.status;
 
-          if (currentStatus === GameStatus.MULLIGAN) {
+          // Simultaneous phase: both players must be here before it starts.
+          if (currentStatus === GameStatus.MULLIGAN && playersPresent === 2) {
             const releaseLock = await acquireActionLock(gameId);
             try {
               // Re-check inside the lock — two simultaneous joins can both pass
@@ -807,7 +824,10 @@ export function setupGameNamespace(io: Server): void {
               releaseLock();
             }
           } else if (currentStatus === GameStatus.ACTIVE && !meta.turnManager) {
-            // Normal active-game bootstrap
+            // Normal active-game bootstrap. Runs on the FIRST join, not only
+            // when both players are present, so a restart re-arms the clock as
+            // soon as anyone reconnects. A MULLIGAN game with one player
+            // present matches neither branch and correctly does nothing.
             const startingPlayer = freshRecord.game_state.current_player_id;
             meta.turnManager = new TurnManager(
               gameNs,

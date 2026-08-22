@@ -55,6 +55,11 @@ export interface SeasonRewardTierRow {
   label: string;
   threshold_kind: "exact_rank" | "percentile";
   threshold_value: number;
+  /**
+   * Percentile tiers only: minimum number of ranks the tier covers, so a small
+   * season still awards it to a sane number of players. NULL = no floor.
+   */
+  min_players: number | null;
   bundle_json: SeasonRewardBundle;
   created_at: Date;
   updated_at: Date;
@@ -75,7 +80,7 @@ const SeasonRewardTierModel = {
       `
       SELECT id, season_id, axis, tier_key, sort_order, label,
              threshold_kind, threshold_value::float8 AS threshold_value,
-             bundle_json, created_at, updated_at
+             min_players, bundle_json, created_at, updated_at
       FROM season_reward_tiers
       WHERE season_id = $1 AND axis = $2
       ORDER BY sort_order ASC;
@@ -99,7 +104,7 @@ const SeasonRewardTierModel = {
       `
       SELECT id, season_id, axis, tier_key, sort_order, label,
              threshold_kind, threshold_value::float8 AS threshold_value,
-             bundle_json, created_at, updated_at
+             min_players, bundle_json, created_at, updated_at
       FROM season_reward_tiers
       WHERE season_id IS NULL AND axis = $1
       ORDER BY sort_order ASC;
@@ -203,6 +208,10 @@ function mapRow(row: Record<string, unknown>): SeasonRewardTierRow {
     label: row.label as string,
     threshold_kind: row.threshold_kind as "exact_rank" | "percentile",
     threshold_value: Number(row.threshold_value),
+    min_players:
+      row.min_players === null || row.min_players === undefined
+        ? null
+        : Number(row.min_players),
     bundle_json: normalizeBundle(row.bundle_json),
     created_at: row.created_at as Date,
     updated_at: row.updated_at as Date,
@@ -238,6 +247,23 @@ function asStringArray(v: unknown): string[] {
 }
 
 /**
+ * Number of ranks a percentile tier covers for a given field size.
+ *
+ * At least one player qualifies for any percentile > 0 (so percentile = 100
+ * covers everyone). A tier with `min_players` covers at least that many ranks
+ * even when the percentage works out smaller — but never more ranks than there
+ * are ranked players, so the floor can't hand the tier to a phantom rank.
+ */
+export function percentileCutoff(
+  tier: Pick<SeasonRewardTierRow, "threshold_value" | "min_players">,
+  totalRanked: number
+): number {
+  const byPercent = Math.ceil((tier.threshold_value / 100) * totalRanked);
+  const floor = tier.min_players && tier.min_players > 0 ? tier.min_players : 1;
+  return Math.min(totalRanked, Math.max(1, byPercent, floor));
+}
+
+/**
  * Given an ordered (prestige-first) tier list, the player's 1-based rank, and
  * the total number of ranked players, return the single tier the player falls
  * into (non-cumulative). Returns null when no tier matches (shouldn't happen if
@@ -256,10 +282,7 @@ export function resolveTierForRank(
     if (tier.threshold_kind === "exact_rank") {
       if (rank <= tier.threshold_value) return tier;
     } else {
-      // percentile: top N% — at least one player always qualifies for any
-      // percentile > 0 via the ceil (so percentile=100 covers everyone).
-      const cutoff = Math.max(1, Math.ceil((tier.threshold_value / 100) * totalRanked));
-      if (rank <= cutoff) return tier;
+      if (rank <= percentileCutoff(tier, totalRanked)) return tier;
     }
   }
   return null;

@@ -20,6 +20,8 @@ interface SeasonRewardTierView {
   label: string;
   threshold_kind: "exact_rank" | "percentile";
   threshold_value: number;
+  /** Percentile tiers: minimum ranks covered regardless of field size. */
+  min_players: number | null;
   bundle: SeasonRewardBundle;
   /** Display data for the bundle's asset IDs (empty arrays until ids assigned). */
   resolved: ResolvedRewardAssets;
@@ -39,6 +41,7 @@ function toTierView(
     label: t.label,
     threshold_kind: t.threshold_kind,
     threshold_value: t.threshold_value,
+    min_players: t.min_players,
     bundle: b,
     resolved: {
       cards: b.card_variant_ids

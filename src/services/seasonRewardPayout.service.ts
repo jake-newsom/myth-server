@@ -11,6 +11,8 @@ import SeasonRewardTierModel, {
 import CardBackModel from "../models/cardBack.model";
 import { QueryExecutor } from "../config/db.config";
 import { MIN_SOULS_FOR_REWARDS } from "../config/constants";
+import RankedDraftRewardsService from "./rankedDraftRewards.service";
+import LeaderboardModel from "../models/leaderboard.model";
 import logger from "../utils/logger";
 
 /**
@@ -107,11 +109,58 @@ const SeasonRewardPayoutService = {
   async payoutSeason(seasonId: string): Promise<PayoutOutcome> {
     const overall = await this.payoutOverallAxis(seasonId);
     const pantheon = await this.payoutPantheonAxis(seasonId);
+    // Axis 3 — the PvP ladder. It rides the same season rows as souls so both
+    // ladders end together; a failure here is logged but must not block the
+    // souls payout from finalizing.
+    const pvp = await this.payoutPvpLadder(seasonId);
     return {
-      paid: overall.paid + pantheon.paid,
-      skipped: overall.skipped + pantheon.skipped,
-      failed: overall.failed + pantheon.failed,
+      paid: overall.paid + pantheon.paid + pvp.paid,
+      skipped: overall.skipped + pantheon.skipped + pvp.skipped,
+      failed: overall.failed + pantheon.failed + pvp.failed,
     };
+  },
+
+  /**
+   * Axis 3 — the Ranked Draft Elo ladder.
+   *
+   * Unlike the souls axes this reads `user_rankings`, not soul contributions,
+   * and it is flag-gated: a disabled flag returns a clean zero outcome rather
+   * than a failure, so the season can still finalize with rewards switched off.
+   */
+  async payoutPvpLadder(seasonId: string): Promise<PayoutOutcome> {
+    try {
+      const result = await RankedDraftRewardsService.runSeasonalPayoutIfEnabled(
+        seasonId
+      );
+      if (!result) return { paid: 0, skipped: 0, failed: 0 };
+
+      // Seed the next season's ladder from this one so a rollover compresses
+      // ratings instead of wiping them. Runs only after a successful payout,
+      // so the standings that were paid are the ones that get carried.
+      await RankedDraftRewardsService.applySoftReset(
+        result.season,
+        LeaderboardModel.getRankedDraftSeason(
+          LeaderboardModel.getCurrentSeason()
+        )
+      ).catch((error) => {
+        // A failed carry leaves the next season starting from base — bad, but
+        // never a reason to un-pay a season that was already delivered.
+        logger.error(
+          "PvP soft reset failed",
+          { seasonId },
+          error instanceof Error ? error : new Error(String(error))
+        );
+      });
+
+      return { paid: result.paid, skipped: result.skipped, failed: 0 };
+    } catch (error) {
+      logger.error(
+        "PvP ladder payout failed",
+        { seasonId },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return { paid: 0, skipped: 0, failed: 1 };
+    }
   },
 
   /**

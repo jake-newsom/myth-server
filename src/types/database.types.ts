@@ -292,13 +292,30 @@ export interface DeckCard {
   user_card_instance_id: string;
 }
 
+/**
+ * Values of the `game_mode` Postgres enum.
+ *
+ * "ranked_draft" was added in migration 1792000000000. It is a PvP-shaped mode
+ * (two humans, Elo, rewards) that differs from "pvp" in how the decks are
+ * built and which ladder it scores against — so code that branches on the mode
+ * must decide about it explicitly rather than treating it as a kind of "pvp".
+ */
+export type GameMode = "solo" | "pvp" | "ranked_draft";
+
+/** Modes that pit two humans against each other. */
+export const HUMAN_VS_HUMAN_MODES: readonly GameMode[] = ["pvp", "ranked_draft"];
+
+export function isHumanVsHumanMode(mode: string): boolean {
+  return (HUMAN_VS_HUMAN_MODES as readonly string[]).includes(mode);
+}
+
 export interface Game {
   game_id: string;
   player1_id: string;
   player2_id: string;
   player1_deck_id: string | null;
   player2_deck_id: string | null;
-  game_mode: "solo" | "pvp";
+  game_mode: GameMode;
   winner_id: string | null;
   game_status: "pending" | "active" | "completed" | "aborted" | "rewarded";
   game_state: Record<string, any>;

@@ -28,6 +28,9 @@ import SessionCleanupService from "./services/sessionCleanup.service";
 import DataRetentionService from "./services/dataRetention.service";
 import FeatureFlagService from "./services/featureFlag.service";
 import DailyRewardsService from "./services/dailyRewards.service";
+import RankedMatchmakingService from "./services/rankedMatchmaking.service";
+import RankedDraftRewardsService from "./services/rankedDraftRewards.service";
+import RankedDraftOrchestrator from "./services/rankedDraftOrchestrator.service";
 import DailyTaskService from "./services/dailyTask.service";
 import StartupService from "./services/startup.service";
 import { redisCache } from "./services/redis.cache.service";
@@ -62,6 +65,8 @@ const app = express();
 // Store the automation scheduler tasks globally
 let automationSchedulerTask: any = null;
 let dailyRewardsSchedulerTasks: any[] = [];
+const RANKED_DRAFT_TICK_MS = 5000;
+let rankedDraftInterval: NodeJS.Timeout | null = null;
 let dailyTaskScheduler: any = null;
 let seasonMaintenanceScheduler: any = null;
 
@@ -386,12 +391,44 @@ if (require.main === module) {
     } catch (error) {
       console.error("❌ Failed to start Daily Task Scheduler:", error);
     }
+
+    // Ranked Draft: pair queued players and resolve any draft whose clock
+    // expired. The sweeper matters most after a restart — draft timers are
+    // in-process, so without it every live draft would stall on redeploy.
+    try {
+      rankedDraftInterval = setInterval(async () => {
+        try {
+          await RankedMatchmakingService.runMatchPass();
+          await RankedDraftOrchestrator.sweepExpiredSessions();
+          await RankedDraftOrchestrator.reapStaleRankedGames();
+        } catch (error) {
+          console.error("❌ Ranked draft tick failed:", error);
+        }
+      }, RANKED_DRAFT_TICK_MS);
+      if (typeof rankedDraftInterval.unref === "function") {
+        rankedDraftInterval.unref();
+      }
+      // Resolve anything stranded by the previous process before the first tick.
+      await RankedDraftOrchestrator.sweepExpiredSessions();
+      await RankedDraftOrchestrator.reapStaleRankedGames();
+      console.log("⚔️  Ranked Draft scheduler started successfully");
+    } catch (error) {
+      console.error("❌ Failed to start Ranked Draft scheduler:", error);
+    }
+
+    // Ranked Draft rewards are NOT scheduled here. The ladder pays out once per
+    // season, driven by SeasonService's maintenance tick via
+    // SeasonRewardPayoutService, so PvP and Season Souls end together.
   });
 }
 
 // Graceful shutdown handler
 process.on("SIGTERM", async () => {
   console.log("🛑 SIGTERM received, shutting down gracefully");
+  if (rankedDraftInterval) {
+    clearInterval(rankedDraftInterval);
+    rankedDraftInterval = null;
+  }
   if (automationSchedulerTask) {
     AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerTask);
   }

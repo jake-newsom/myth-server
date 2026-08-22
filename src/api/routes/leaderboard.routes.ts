@@ -36,6 +36,16 @@ router.get(
 );
 
 /**
+ * GET /api/leaderboard/ranks
+ * The PvP rank ladder definition. Static, public.
+ */
+router.get(
+  "/ranks",
+  lenientRateLimit,
+  leaderboardController.getRankLadder
+);
+
+/**
  * GET /api/leaderboard/me
  * Get current user's detailed ranking information
  * Query params:

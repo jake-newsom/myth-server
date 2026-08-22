@@ -26,6 +26,14 @@ router.post(
 );
 
 // Get game state (moderate rate limiting for reads)
+// MUST precede "/:gameId" — otherwise Express matches "active" as a game id.
+router.get(
+  "/active",
+  authMiddleware.protect,
+  moderateRateLimit,
+  gameController.getActiveGame
+);
+
 router.get(
   "/:gameId",
   authMiddleware.protect,

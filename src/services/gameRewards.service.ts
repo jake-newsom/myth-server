@@ -1,4 +1,6 @@
 import UserModel from "../models/user.model";
+import { GameMode, isHumanVsHumanMode } from "../types/database.types";
+import { resolveDraftXpTargets } from "../game-engine/draftBattle.hydration";
 import XpService from "./xp.service";
 import { XpReward } from "../types/service.types";
 import { GameState } from "../types/game.types";
@@ -10,6 +12,33 @@ import DeckService from "./deck.service";
 import CardModel from "../models/card.model";
 /** Extra card XP awarded for cards played in online (PvP) games. */
 const PVP_XP_BONUS_MULTIPLIER = 1.05;
+/** Ranked draft pays standard XP + 10% (see calculateCardXpRewards). */
+const RANKED_DRAFT_XP_BONUS_MULTIPLIER = 1.1;
+
+/**
+ * XP targets for a finished ranked draft.
+ *
+ * Reads the drafted variants out of the game's own card cache (the synthetic
+ * instances carry their originating card_variant_id as base_card_id) and maps
+ * them to real owned instances.
+ */
+async function resolveDraftXpTargetsForGame(
+  gameState: GameState,
+  userId: string
+): Promise<{ card_id: string; card_name: string }[]> {
+  const cache = gameState.hydrated_card_data_cache ?? {};
+  const variantIds = new Set<string>();
+  for (const card of Object.values(cache)) {
+    // `original_owner` ONLY — `owner` is reassigned when a card is flipped
+    // (game.utils.ts createBoardCell), so matching on it would credit a player
+    // for the opponent's drafted cards that they happened to capture.
+    if (card.original_owner === userId) {
+      variantIds.add(card.base_card_id);
+    }
+  }
+  return resolveDraftXpTargets(userId, [...variantIds]);
+}
+
 
 export interface GameResult {
   winner: string | null;
@@ -92,7 +121,7 @@ const GameRewardsService = {
   calculateCurrencyRewards(
     userId: string,
     winnerId: string | null,
-    gameMode: "solo" | "pvp",
+    gameMode: GameMode,
     gameDurationSeconds: number,
     winStreakMultiplier: number = 1.0,
     isForfeit: boolean = false
@@ -108,8 +137,8 @@ const GameRewardsService = {
         if (gameDurationSeconds < 180) {
           gemsReward += 2;
         }
-      } else if (gameMode === "pvp") {
-        // Higher gem reward for PvP victory
+      } else if (isHumanVsHumanMode(gameMode)) {
+        // Higher gem reward for a win against another player.
         gemsReward = 10;
         // Bonus for quick victory
         if (gameDurationSeconds < 180) {
@@ -122,7 +151,7 @@ const GameRewardsService = {
       // Tie/draw rewards (smaller participation reward)
       gemsReward = gameMode === "solo" ? 2 : 3;
       // Apply win streak multiplier for PvP draws as well
-      if (gameMode === "pvp") {
+      if (isHumanVsHumanMode(gameMode)) {
         gemsReward = Math.floor(gemsReward * winStreakMultiplier);
       }
     } else {
@@ -147,7 +176,7 @@ const GameRewardsService = {
   calculateCardXpRewards(
     userId: string,
     winnerId: string | null,
-    gameMode: "solo" | "pvp",
+    gameMode: GameMode,
     playerDeckCards: { card_id: string; card_name: string }[],
     isForfeit: boolean = false
   ): { card_id: string; card_name: string; xp_gained: number }[] {
@@ -166,11 +195,19 @@ const GameRewardsService = {
         baseXp += 5; // Extra 5 XP if player wins
       }
 
-      // Online (PvP) bonus: +5% on top of the base + victory total.
-      // Rounded so the awarded value stays an integer (xp_gained is an int
-      // column); at the current 20/25 base this yields 21/26.
+      // Online bonus on top of the base + victory total. Rounded so the
+      // awarded value stays an integer (xp_gained is an int column).
+      //
+      // These are deliberately mutually exclusive branches rather than one
+      // widened condition: ranked draft pays MORE than unranked, and an
+      // `else if` makes it structurally impossible for the two multipliers to
+      // compound if someone later widens the "pvp" test.
       if (gameMode === "pvp") {
+        // +5%: at the current 20/25 base this yields 21/26.
         baseXp = Math.round(baseXp * PVP_XP_BONUS_MULTIPLIER);
+      } else if (gameMode === "ranked_draft") {
+        // +10%: drafting is the harder, higher-commitment mode.
+        baseXp = Math.round(baseXp * RANKED_DRAFT_XP_BONUS_MULTIPLIER);
       }
 
       xpRewards.push({
@@ -253,7 +290,7 @@ const GameRewardsService = {
   async processGameCompletion(
     userId: string,
     gameState: GameState,
-    gameMode: "solo" | "pvp",
+    gameMode: GameMode,
     gameStartTime: Date,
     player1Id: string,
     player2Id: string,
@@ -264,11 +301,14 @@ const GameRewardsService = {
     skipCurrency: boolean = false
   ): Promise<GameCompletionResult> {
     try {
-      // === IDEMPOTENCY GATE (PvP only) ===
+      // === IDEMPOTENCY GATE (multiplayer only) ===
       // Claim the reward slot before touching any user state. If the row already
       // exists (double-completion race or retry), skip out immediately so gems/XP
       // are never granted twice (hardening plan 0.3).
-      if (gameMode === "pvp" && gameId) {
+      //
+      // Ranked draft MUST be covered here: it has the same double-completion
+      // races as unranked PvP, and omitting it would double-grant every reward.
+      if (isHumanVsHumanMode(gameMode) && gameId) {
         const { rowCount } = await db.query(
           `INSERT INTO game_rewards_granted (game_id, user_id)
            VALUES ($1, $2)
@@ -291,10 +331,24 @@ const GameRewardsService = {
         player2Id
       );
 
-      // Get cards that were actually used in the game (sync)
-      const usedCards = this.getCardsUsedInGame(gameState, userId);
+      // Which cards earn XP.
+      //
+      // Normally: the cards actually played. For ranked draft that would not
+      // work at all — the instance ids in a draft game are synthetic
+      // ("draft-<variant>-<n>") and match no row in user_owned_cards, so
+      // XpService would filter them all out and silently award nothing.
+      // Instead, resolve the CHARACTERS the player drafted back to their own
+      // owned copies, which is also what the mode promises ("XP to the
+      // characters you choose"). Characters they don't own are skipped.
+      const usedCards =
+        gameMode === "ranked_draft"
+          ? await resolveDraftXpTargetsForGame(gameState, userId)
+          : this.getCardsUsedInGame(gameState, userId);
 
       // === PHASE 2: Get win streak multiplier (needed for reward calculation) ===
+      // Win streaks stay an unranked-PvP concept: ranked draft has its own
+      // Elo ladder as its progression signal, and stacking a streak multiplier
+      // on top would compound two reward curves.
       let winStreakMultiplier = 1.0;
       if (gameMode === "pvp") {
         winStreakMultiplier = await UserModel.getWinStreakMultiplier(userId);
@@ -403,8 +457,9 @@ const GameRewardsService = {
       // These operations don't affect the response data and can run in parallel
       const parallelOps: Promise<any>[] = [];
 
-      // Leaderboard update (PvP only)
-      if (gameMode === "pvp" && gameId && player1Id !== player2Id) {
+      // Leaderboard update. Ranked draft is included but scores against its
+      // own ladder — LeaderboardService picks the season from the game mode.
+      if (isHumanVsHumanMode(gameMode) && gameId && player1Id !== player2Id) {
         parallelOps.push(
           LeaderboardService.processGameCompletion(
             gameId,

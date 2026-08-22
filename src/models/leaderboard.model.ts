@@ -6,6 +6,11 @@ import {
   GameResultWithPlayers,
 } from "../types/database.types";
 import { QueryExecutor } from "../config/db.config";
+import {
+  RANKED_DRAFT_SEASON_PREFIX,
+  SEASON_COLUMN_MAX_LENGTH,
+} from "../config/constants";
+import { kFactorForGamesPlayed } from "../config/pvpRanks";
 
 const LeaderboardModel = {
   /**
@@ -16,6 +21,41 @@ const LeaderboardModel = {
     const year = now.getFullYear();
     const quarter = Math.ceil((now.getMonth() + 1) / 3);
     return `${year}-Q${quarter}`;
+  },
+
+  /**
+   * Season string for the Ranked Draft ladder.
+   *
+   * `user_rankings` is keyed UNIQUE(user_id, season) and `season` is an opaque
+   * varchar(20) with no check constraint, so prefixing it gives the draft
+   * ladder a completely independent rating / peak / W-L-D / tier / rank with no
+   * migration, no new table, and no change to the existing triggers or
+   * indexes. Unranked passes no season at all and keeps the bare quarter, so it
+   * is untouched.
+   *
+   * This is the ONLY place the prefix is applied — never concatenate it inline.
+   */
+  getRankedDraftSeason(base?: string): string {
+    const season = `${RANKED_DRAFT_SEASON_PREFIX}${base || this.getCurrentSeason()}`;
+    if (season.length > SEASON_COLUMN_MAX_LENGTH) {
+      // Would fail at INSERT time and silently break the ladder, so fail here
+      // where the cause is obvious.
+      throw new Error(
+        `[leaderboard] Ranked draft season "${season}" exceeds user_rankings.season ` +
+          `(varchar(${SEASON_COLUMN_MAX_LENGTH})). Shorten RANKED_DRAFT_SEASON_PREFIX.`
+      );
+    }
+    return season;
+  },
+
+  /**
+   * The ladder a finished game scores against: the draft ladder for ranked
+   * draft games, the plain quarterly ladder for everything else.
+   */
+  getSeasonForGameMode(gameMode: string, base?: string): string {
+    return gameMode === "ranked_draft"
+      ? this.getRankedDraftSeason(base)
+      : base || this.getCurrentSeason();
   },
 
   /**
@@ -172,18 +212,29 @@ const LeaderboardModel = {
       const player2Wins = winnerId === player2Id;
 
       // Calculate rating changes
+      // Placement games swing at double K so a new player converges on their
+      // real level in a handful of games instead of a whole season. The count
+      // is read BEFORE this game is recorded, so the Nth placement game still
+      // gets the boosted factor.
+      const player1Games =
+        player1Ranking.wins + player1Ranking.losses + player1Ranking.draws;
+      const player2Games =
+        player2Ranking.wins + player2Ranking.losses + player2Ranking.draws;
+
       const player1Change = this.calculateRatingChange(
         player1Rating,
         player2Rating,
         player1Wins,
-        isDraw
+        isDraw,
+        kFactorForGamesPlayed(player1Games)
       );
 
       const player2Change = this.calculateRatingChange(
         player2Rating,
         player1Rating,
         player2Wins,
-        isDraw
+        isDraw,
+        kFactorForGamesPlayed(player2Games)
       );
 
       // Update both players' rankings
@@ -443,14 +494,14 @@ const LeaderboardModel = {
             SELECT gr.* FROM game_results gr
             WHERE gr.player1_id = $1
             ORDER BY gr.completed_at DESC
-            LIMIT ($2 + $3)
+            LIMIT ($2::int + $3::int)
           )
           UNION ALL
           (
             SELECT gr.* FROM game_results gr
             WHERE gr.player2_id = $1
             ORDER BY gr.completed_at DESC
-            LIMIT ($2 + $3)
+            LIMIT ($2::int + $3::int)
           )
         ) merged
         ORDER BY completed_at DESC
@@ -475,6 +526,28 @@ const LeaderboardModel = {
   /**
    * Get leaderboard stats
    */
+  /**
+   * How many players sit at or above a rating in a season — the pool the
+   * proportional positional ranks (Pantheon) are a slice of.
+   *
+   * Excludes the AI player, matching every other leaderboard count.
+   */
+  async countPlayersAtOrAbove(
+    rating: number,
+    season?: string
+  ): Promise<number> {
+    const currentSeason = season || this.getCurrentSeason();
+    const { rows } = await db.query(
+      `SELECT COUNT(*)::int AS count
+         FROM user_rankings
+        WHERE season = $1
+          AND rating >= $2
+          AND user_id != '00000000-0000-0000-0000-000000000000'`,
+      [currentSeason, rating]
+    );
+    return rows[0]?.count ?? 0;
+  },
+
   async getLeaderboardStats(season?: string): Promise<{
     total_players: number;
     total_games: number;
@@ -524,6 +597,26 @@ const LeaderboardModel = {
       average_rating: Math.round(averageRating),
       tier_distribution: tierDistribution,
     };
+  },
+
+  /**
+   * Every ranked player's rating for a season, for bucketing into PvP ranks.
+   *
+   * The tier distribution is aggregated in SQL by `rank_tier`, but the PvP
+   * rank bands are defined in application code (config/pvpRanks.ts), so the
+   * bucketing has to happen there. Only the rating column is selected to keep
+   * this cheap.
+   */
+  async getRatingsForSeason(season?: string): Promise<number[]> {
+    const currentSeason = season || this.getCurrentSeason();
+    const { rows } = await db.query(
+      `SELECT rating FROM user_rankings
+       WHERE season = $1
+         AND user_id != '00000000-0000-0000-0000-000000000000'
+         AND (wins + losses + draws) > 0;`,
+      [currentSeason]
+    );
+    return rows.map((r) => Number(r.rating));
   },
 
   /**

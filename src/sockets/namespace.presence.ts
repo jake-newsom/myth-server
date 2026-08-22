@@ -7,6 +7,8 @@ import {
 } from "../types/socket.types";
 import logger from "../utils/logger";
 import { registerChatHandlers } from "./chat.handlers";
+import { registerDraftHandlers } from "./draft.handlers";
+import RankedDraftOrchestrator from "../services/rankedDraftOrchestrator.service";
 import chatService from "../services/chat.service";
 
 /**
@@ -44,6 +46,11 @@ export function setupPresenceNamespace(io: Server): void {
   // both entrypoints: dev runs `ts-node src/app.ts` and prod runs
   // `node server.js`, and they don't both call `app.set("io", io)`.
   chatService.setPresenceNamespace(presenceNs);
+
+  // Ranked Draft rides this namespace too, for the same reason chat does, plus
+  // one of its own: a draft precedes the `games` row, so the /game namespace
+  // cannot authorize it.
+  RankedDraftOrchestrator.setPresenceNamespace(presenceNs);
 
   function getUniqueUserCount(): number {
     return userSocketsMap.size;
@@ -84,6 +91,7 @@ export function setupPresenceNamespace(io: Server): void {
 
     // Chat listeners live on this same socket — no second connection.
     registerChatHandlers(authedSocket);
+    registerDraftHandlers(authedSocket);
 
     // Send current count to this socket immediately
     socket.emit(PresenceNamespaceEvent.SERVER_PLAYER_COUNT, {
