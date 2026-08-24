@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { RateLimitError } from "./errorHandler.middleware";
 import { RATE_LIMIT_CONFIG } from "../../config/constants";
+import { getClientIp } from "../../utils/clientIp";
 
 // In-memory rate limiting store (for production, consider Redis)
 interface RateLimitRecord {
@@ -106,7 +107,7 @@ export const createRateLimit = (config: RateLimitConfig) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     // Generate key scoped to this limiter tier so buckets don't bleed into each other
     const userId = req.user?.user_id;
-    const ip = req.ip || req.connection.remoteAddress || "unknown";
+    const ip = getClientIp(req) || "unknown";
     const identity = userId ? `user:${userId}` : `ip:${ip}`;
     const key = `${config.scope}:${identity}`;
 
@@ -174,6 +175,17 @@ export const authRateLimit = createRateLimit({
     "Too many authentication attempts. Please wait 15 minutes before trying again.",
 });
 
+// Account-creation rate limiting (prevent bulk signup abuse).
+// Deliberately separate from authRateLimit so tightening signup does not
+// also throttle logins for everyone behind the same NAT.
+export const registrationRateLimit = createRateLimit({
+  scope: "registration",
+  windowMs: RATE_LIMIT_CONFIG.REGISTRATION.WINDOW_MS,
+  maxRequests: RATE_LIMIT_CONFIG.REGISTRATION.MAX_REQUESTS,
+  message:
+    "Too many accounts created from this network. Please try again later.",
+});
+
 // Pack opening rate limiting (prevent rapid pack opening)
 export const packOpeningRateLimit = createRateLimit({
   scope: "pack-opening",
@@ -205,6 +217,7 @@ export default {
   moderateRateLimit,
   lenientRateLimit,
   authRateLimit,
+  registrationRateLimit,
   packOpeningRateLimit,
   gameActionRateLimit,
   aiActionRateLimit,

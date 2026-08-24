@@ -81,6 +81,35 @@ const RankedDraftSessionModel = {
   },
 
   /**
+   * The caller's most recent session that COMPLETED into a game very recently.
+   *
+   * Recovery only. A client stranded on the block screen (it missed
+   * `draft:completed`, or the session completed while it was disconnected) has
+   * no live session to rejoin, so every recovery path used to answer "no draft"
+   * while a real game sat waiting for it. This finds the game to send them to.
+   *
+   * Bounded by age so it can only ever resolve the hand-off that just happened,
+   * never drag a player back into an older finished draft.
+   */
+  async findRecentlyCompletedForUser(
+    userId: string,
+    maxAgeMinutes: number,
+    executor: QueryExecutor = db
+  ): Promise<RankedDraftSession | null> {
+    const { rows } = await executor.query(
+      `SELECT ${SELECT_COLUMNS} FROM ranked_draft_sessions
+       WHERE (player1_id = $1 OR player2_id = $1)
+         AND phase = 'complete'
+         AND game_id IS NOT NULL
+         AND updated_at > NOW() - ($2 || ' minutes')::interval
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [userId, String(maxAgeMinutes)]
+    );
+    return rows[0] ?? null;
+  },
+
+  /**
    * Serializes concurrent writes to one session.
    *
    * Two picks landing at once must not be able to take the same card, and the

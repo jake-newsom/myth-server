@@ -3,6 +3,7 @@ import express from "express";
 import AuthController from "../controllers/auth.controller";
 import {
   authRateLimit,
+  registrationRateLimit,
   moderateRateLimit,
 } from "../middlewares/rateLimit.middleware";
 import { protect } from "../middlewares/auth.middleware";
@@ -10,7 +11,12 @@ import { protect } from "../middlewares/auth.middleware";
 const router = express.Router();
 
 // Public auth routes - rate limited to prevent brute force attacks
-router.post("/register", authRateLimit, AuthController.register);
+router.post(
+  "/register",
+  authRateLimit,
+  registrationRateLimit,
+  AuthController.register
+);
 router.post("/login", authRateLimit, AuthController.login);
 router.post("/facebook", authRateLimit, AuthController.facebookAuth);
 router.post("/apple", authRateLimit, AuthController.appleAuth);

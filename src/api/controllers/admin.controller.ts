@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import UserModel from "../../models/user.model";
+import SessionService from "../../services/session.service";
 import { AuthenticatedRequest } from "../../types";
 import db from "../../config/db.config";
 import AIAutomationService from "../../services/aiAutomation.service";
@@ -993,6 +994,154 @@ const AdminController = {
       return res
         .status(500)
         .json({ status: "error", message: "Failed to clear cards cache" });
+    }
+  },
+
+  /**
+   * Ban a user account.
+   *
+   * Bans are reversible and non-destructive: the account, its cards, decks and
+   * match history all remain. This exists because the only prior option was the
+   * hard delete in user.controller.ts, which also destroys games belonging to
+   * the banned user's OPPONENTS.
+   */
+  async banUser(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { userId, reason } = req.body;
+
+      if (!userId) {
+        return res
+          .status(400)
+          .json({ status: "error", message: "userId is required" });
+      }
+
+      const target = await UserModel.findById(userId);
+      if (!target) {
+        return res
+          .status(404)
+          .json({ status: "error", message: "User not found" });
+      }
+
+      // Refuse to ban admins. Locking yourself (or a colleague) out of the
+      // admin console is not something a single click should be able to do.
+      if (target.role === "admin") {
+        return res.status(403).json({
+          status: "error",
+          message: "Admin accounts cannot be banned.",
+        });
+      }
+
+      const banned = await UserModel.banUser(
+        userId,
+        typeof reason === "string" && reason.trim() ? reason.trim() : null,
+        req.user?.user_id ?? null
+      );
+
+      // Kick them out now rather than waiting for their access token to expire
+      // (up to 15 minutes). The middleware check is the backstop.
+      await SessionService.invalidateAllUserSessions(userId);
+
+      logger.info("Admin banned user", {
+        adminId: req.user?.user_id,
+        adminUsername: req.user?.username,
+        targetUserId: userId,
+        targetUsername: target.username,
+        reason: reason ?? null,
+      });
+
+      return res.status(200).json({ status: "success", user: banned });
+    } catch (error) {
+      logger.error(
+        "Admin ban user error",
+        { adminId: req.user?.user_id },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to ban user" });
+    }
+  },
+
+  /** Lift a ban. The user can log in again immediately. */
+  async unbanUser(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { userId } = req.body;
+
+      if (!userId) {
+        return res
+          .status(400)
+          .json({ status: "error", message: "userId is required" });
+      }
+
+      const target = await UserModel.findById(userId);
+      if (!target) {
+        return res
+          .status(404)
+          .json({ status: "error", message: "User not found" });
+      }
+
+      const user = await UserModel.unbanUser(userId);
+
+      logger.info("Admin unbanned user", {
+        adminId: req.user?.user_id,
+        adminUsername: req.user?.username,
+        targetUserId: userId,
+        targetUsername: target.username,
+      });
+
+      return res.status(200).json({ status: "success", user });
+    } catch (error) {
+      logger.error(
+        "Admin unban user error",
+        { adminId: req.user?.user_id },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to unban user" });
+    }
+  },
+
+  /** List currently banned accounts, newest ban first. */
+  async listBannedUsers(req: AuthenticatedRequest, res: Response) {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 100, 500);
+      const offset = Math.max(Number(req.query.offset) || 0, 0);
+      const users = await UserModel.listBanned(limit, offset);
+      return res.status(200).json({ status: "success", users });
+    } catch (error) {
+      logger.error(
+        "Admin list banned users error",
+        { adminId: req.user?.user_id },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to list banned users" });
+    }
+  },
+
+  /** Username search, so the console can find a user to ban without an id. */
+  async searchUsers(req: AuthenticatedRequest, res: Response) {
+    try {
+      const term = String(req.query.q ?? "").trim();
+      if (term.length < 2) {
+        return res.status(400).json({
+          status: "error",
+          message: "Search term must be at least 2 characters",
+        });
+      }
+      const users = await UserModel.searchByUsername(term);
+      return res.status(200).json({ status: "success", users });
+    } catch (error) {
+      logger.error(
+        "Admin search users error",
+        { adminId: req.user?.user_id },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return res
+        .status(500)
+        .json({ status: "error", message: "Failed to search users" });
     }
   },
 };

@@ -14,6 +14,7 @@ import logger from "../../utils/logger";
 import { User } from "../../types/database.types";
 import { AuthenticatedRequest } from "../../types/middleware.types";
 import { USER_LIMITS } from "../../config/constants";
+import { checkUsername } from "../../services/usernameFilter.service";
 
 // Define a more specific User type that includes password_hash
 interface UserWithPassword extends User {
@@ -90,6 +91,27 @@ function verifyFacebookSignedRequest(
   }
 }
 
+/**
+ * Reject a login for a banned account.
+ *
+ * Every token-issuing path must call this: the auth middleware only guards
+ * requests made WITH a token, so without this a banned user could still mint a
+ * fresh session through login or any social provider.
+ *
+ * Returns true when the response has been sent and the caller must stop.
+ */
+function rejectIfBanned(user: any, res: Response): boolean {
+  if (!user?.banned_at) return false;
+  logger.info("Login blocked for banned account", { userId: user.user_id });
+  res.status(403).json({
+    error: {
+      code: "ACCOUNT_BANNED",
+      message: user.banned_reason || "This account has been suspended.",
+    },
+  });
+  return true;
+}
+
 const AuthController = {
   register: async (req: Request, res: Response, next: NextFunction) => {
     const client = await db.getClient();
@@ -109,6 +131,24 @@ const AuthController = {
         return res.status(400).json({
           error: {
             message: `Username must be ${USER_LIMITS.MAX_USERNAME_LENGTH} characters or less.`,
+          },
+        });
+      }
+
+      // Username content filter. Applies to NEW registrations only -- existing
+      // accounts are never re-validated. Lists live in
+      // config/profanity/wordLists.ts and can be tuned without touching this.
+      const usernameCheck = checkUsername(username);
+      if (!usernameCheck.allowed) {
+        logger.info("Registration rejected by username filter", {
+          reason: usernameCheck.reason,
+        });
+        // Deliberately vague and identical across reasons: naming the matched
+        // term just tells someone probing the filter exactly what to edit.
+        return res.status(400).json({
+          error: {
+            message:
+              "That username isn't available. Please choose a different one.",
           },
         });
       }
@@ -217,6 +257,11 @@ const AuthController = {
         });
       }
 
+      // Banned accounts cannot obtain fresh tokens. Checked AFTER the password
+      // comparison on purpose: answering before it would turn this endpoint
+      // into an oracle for which usernames are banned.
+      if (rejectIfBanned(user, res)) return;
+
       // Update last login
       await UserModel.updateLastLogin(user.user_id);
 
@@ -277,6 +322,12 @@ const AuthController = {
           error: { message: "Invalid or expired refresh token." },
         });
       }
+
+      // A valid refresh token must not outlive a ban: without this check a
+      // banned user could keep minting access tokens for the life of the
+      // refresh token (90 days).
+      const refreshUser = await UserModel.findById(session.user_id);
+      if (rejectIfBanned(refreshUser, res)) return;
 
       // Rotate tokens
       const newTokens = await SessionService.rotateTokens(
@@ -396,6 +447,8 @@ const AuthController = {
       let user = await UserModel.findByFacebookId(facebookProfile.id);
 
       if (user) {
+        if (rejectIfBanned(user, res)) return;
+
         // User exists, log them in
         await UserModel.updateLastLogin(user.user_id);
 
@@ -894,6 +947,8 @@ const AuthController = {
       let user = await UserModel.findByAppleId(appleProfile.sub);
 
       if (user) {
+        if (rejectIfBanned(user, res)) return;
+
         // User exists, log them in
         await UserModel.updateLastLogin(user.user_id);
 
@@ -1201,6 +1256,8 @@ const AuthController = {
       let user = await UserModel.findByGoogleId(googleProfile.sub);
 
       if (user) {
+        if (rejectIfBanned(user, res)) return;
+
         // User exists, log them in
         await UserModel.updateLastLogin(user.user_id);
 

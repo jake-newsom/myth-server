@@ -110,9 +110,74 @@ const UserModel = {
     userId: string,
     executor: QueryExecutor = db
   ): Promise<User | null> {
-    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, role, in_game_currency, gems, fate_coins, card_fragments, echoes, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, completed_feature_tutorials, created_at, last_login as last_login_at FROM "users" WHERE user_id = $1;`;
+    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, role, in_game_currency, gems, fate_coins, card_fragments, echoes, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, completed_feature_tutorials, created_at, last_login as last_login_at, banned_at, banned_reason, banned_by FROM "users" WHERE user_id = $1;`;
     const { rows } = await executor.query(query, [userId]);
     return rows[0] || null;
+  },
+
+  /**
+   * Ban a user. Idempotent-ish: re-banning an already-banned user refreshes the
+   * reason and actor but keeps semantics simple for the caller.
+   *
+   * Does NOT invalidate sessions — that is the caller's job (see
+   * AdminController.banUser), because session invalidation lives in
+   * SessionService and the model layer stays IO-scoped to the users table.
+   */
+  async banUser(
+    userId: string,
+    reason: string | null,
+    bannedBy: string | null
+  ): Promise<User | null> {
+    const query = `
+      UPDATE "users"
+         SET banned_at = NOW(), banned_reason = $2, banned_by = $3
+       WHERE user_id = $1
+      RETURNING user_id, username, banned_at, banned_reason, banned_by;
+    `;
+    const { rows } = await db.query(query, [userId, reason, bannedBy]);
+    return rows[0] || null;
+  },
+
+  /** Lift a ban, clearing the reason and actor along with it. */
+  async unbanUser(userId: string): Promise<User | null> {
+    const query = `
+      UPDATE "users"
+         SET banned_at = NULL, banned_reason = NULL, banned_by = NULL
+       WHERE user_id = $1
+      RETURNING user_id, username, banned_at;
+    `;
+    const { rows } = await db.query(query, [userId]);
+    return rows[0] || null;
+  },
+
+  /** Banned accounts, newest first, with the admin who actioned each. */
+  async listBanned(limit = 100, offset = 0): Promise<any[]> {
+    const query = `
+      SELECT u.user_id, u.username, u.banned_at, u.banned_reason,
+             u.banned_by, a.username AS banned_by_username,
+             u.created_at, u.last_login
+        FROM "users" u
+        LEFT JOIN "users" a ON a.user_id = u.banned_by
+       WHERE u.banned_at IS NOT NULL
+       ORDER BY u.banned_at DESC
+       LIMIT $1 OFFSET $2;
+    `;
+    const { rows } = await db.query(query, [limit, offset]);
+    return rows;
+  },
+
+  /** Username search for the admin ban UI. Prefix-anchored, case-insensitive. */
+  async searchByUsername(term: string, limit = 25): Promise<any[]> {
+    const query = `
+      SELECT user_id, username, created_at, last_login, total_xp,
+             banned_at, banned_reason
+        FROM "users"
+       WHERE username ILIKE $1
+       ORDER BY (lower(username) = lower($2)) DESC, username
+       LIMIT $3;
+    `;
+    const { rows } = await db.query(query, [`%${term}%`, term, limit]);
+    return rows;
   },
 
   async updateLastLogin(userId: string): Promise<void> {

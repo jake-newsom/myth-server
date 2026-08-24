@@ -54,6 +54,39 @@ async function requireOwnSession(userId: string, sessionId: string) {
   return session;
 }
 
+/**
+ * How far back a completed draft may be re-announced to a returning client.
+ *
+ * Long enough to cover a reconnect across the hand-off, short enough that it can
+ * never pull a player into a draft they already finished playing.
+ */
+const COMPLETION_REPLAY_WINDOW_MINUTES = 10;
+
+/**
+ * Re-sends `draft:completed` for a draft that finished while this client was
+ * not listening, so it can route into the game instead of sitting on the last
+ * draft screen it rendered.
+ */
+async function replayRecentCompletion(
+  socket: Socket,
+  userId: string
+): Promise<void> {
+  const finished = await RankedDraftSessionModel.findRecentlyCompletedForUser(
+    userId,
+    COMPLETION_REPLAY_WINDOW_MINUTES
+  );
+  if (!finished?.game_id) return;
+  logger.info("[draft.handlers] replaying completion to a returning client", {
+    sessionId: finished.session_id,
+    gameId: finished.game_id,
+    userId,
+  });
+  socket.emit(PresenceNamespaceEvent.DRAFT_SERVER_COMPLETED, {
+    sessionId: finished.session_id,
+    gameId: finished.game_id,
+  });
+}
+
 export function registerDraftHandlers(socket: AuthenticatedSocket): void {
   const userId = socket.user.user_id;
 
@@ -64,7 +97,14 @@ export function registerDraftHandlers(socket: AuthenticatedSocket): void {
         return;
       }
       const found = await RankedDraftSessionModel.findLiveForUser(userId);
-      if (!found) return;
+      if (!found) {
+        // No live draft, but the player may be stranded on the block screen of
+        // a draft that already became a game (a missed `draft:completed`, or a
+        // disconnect across the hand-off). Re-send it rather than answering
+        // with silence, which is what left them there indefinitely.
+        await replayRecentCompletion(socket, userId);
+        return;
+      }
       // Heal a stuck turn on reconnect, so a player who backs out and returns
       // is enough to unblock a wedged draft.
       const session = await Orchestrator.reconcileSession(found);
@@ -73,6 +113,13 @@ export function registerDraftHandlers(socket: AuthenticatedSocket): void {
         session.phase !== "draft" &&
         session.phase !== "block"
       ) {
+        // reconcileSession just finished the draft: hand over the game it made.
+        if (session.phase === "complete" && session.game_id) {
+          socket.emit(PresenceNamespaceEvent.DRAFT_SERVER_COMPLETED, {
+            sessionId: session.session_id,
+            gameId: session.game_id,
+          });
+        }
         return;
       }
 

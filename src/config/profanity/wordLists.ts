@@ -73,3 +73,53 @@ export const MASKABLE_WORDS: readonly string[] = [
   "dumbass",
   "jackass",
 ];
+
+/**
+ * Username-only — sensitive terms.
+ *
+ * NOT profanity, and deliberately kept out of both tiers above so this list can
+ * never affect chat. Masking or hard-blocking these in chat would be actively
+ * harmful: it would censor or silence a player trying to talk about self-harm.
+ *
+ * Here the concern is different and narrower: display names appear on
+ * leaderboards, match history and mail, where a name like "suicide17" is
+ * distressing to unrelated players who never opted into seeing it.
+ *
+ * Matched as a SUBSTRING (see isUsernameAllowed), so "suicidefullx465..." and
+ * "xxsuicidexx" are caught, not just the bare word.
+ */
+export const SENSITIVE_USERNAME_TERMS: readonly string[] = [
+  "suicide",
+  "suicidal",
+  "killyourself",
+  "kysyourself",
+  "selfharm",
+];
+
+/**
+ * Username-only — substring-matched slurs.
+ *
+ * Usernames have no spaces, so the word-boundary matching used for chat misses
+ * evasion by concatenation ("xxfaggotxx"). This list is therefore matched as a
+ * substring, which reintroduces Scunthorpe-class false positives — so it is a
+ * CURATED SUBSET of HARD_BLOCKED_WORDS, excluding short terms that appear
+ * inside innocuous words:
+ *
+ *   "spic"  -> suspicious, spice     "chink" -> chinkara
+ *   "kys"   -> ky, sky-               "paki" -> pakistan (a legitimate demonym)
+ *
+ * Those stay word-boundary-only via the chat list. Add here only when a term
+ * is long/distinctive enough that a substring hit is almost certainly deliberate.
+ */
+export const USERNAME_BLOCKED_SUBSTRINGS: readonly string[] = [
+  "nigger",
+  "nigga",
+  "faggot",
+  "tranny",
+  "wetback",
+  "raghead",
+  "towelhead",
+  "beaner",
+  "shemale",
+  "retard",
+];

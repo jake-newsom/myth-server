@@ -71,7 +71,14 @@ let dailyTaskScheduler: any = null;
 let seasonMaintenanceScheduler: any = null;
 
 // Trust the first proxy hop (Render's load balancer) so req.ip / X-Forwarded-*
-// reflect the real client. Required for accurate rate limiting and IP logging.
+// unwind that hop.
+//
+// NOTE: Cloudflare sits in front of Render, so this single hop is NOT enough to
+// reach the real client — req.ip resolves to the Cloudflare edge node
+// (104.22.x / 104.23.x). Deliberately left at 1: widening it would let a client
+// forge X-Forwarded-For and pick its own identity. Anything that needs the real
+// client IP must use getClientIp() (utils/clientIp.ts), which prefers the
+// Cloudflare-set CF-Connecting-IP header.
 app.set("trust proxy", 1);
 
 // Middleware

@@ -33,6 +33,15 @@ router.post("/set-pack-quantity", AdminController.setUserPackQuantity);
  */
 router.get("/user-pack-count/:userId", AdminController.getUserPackCount);
 
+/**
+ * User moderation. Bans are reversible and non-destructive — unlike the
+ * account-deletion path, which also removes the opponents' match history.
+ */
+router.get("/users/search", AdminController.searchUsers);
+router.get("/users/banned", AdminController.listBannedUsers);
+router.post("/users/ban", AdminController.banUser);
+router.post("/users/unban", AdminController.unbanUser);
+
 // ============================================================================
 // AUTOMATION TRIGGER ENDPOINTS (for manual override of scheduled tasks)
 // ============================================================================

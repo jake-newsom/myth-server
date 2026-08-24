@@ -109,8 +109,26 @@ export async function reconcileSession(
 ): Promise<RankedDraftSession> {
   // A block phase with both choices in but no game yet (e.g. the reveal hold
   // was lost to a restart) must still finish, or the session strands.
+  //
+  // But it must NOT jump the reveal. While revealBlocksAndStartGame is holding,
+  // the row still reads phase='block' with both blocks in, so a rejoin or a
+  // sweep landing in that window used to complete the draft out from under the
+  // hold — creating the game while one client was still on the block screen.
+  // Only step in once the hold can no longer be running: either this process
+  // owns no timer for the session (a restart lost it), or the reveal window has
+  // already elapsed.
   if (session.phase === "block") {
     if (blocksComplete(session)) {
+      if (timers.has(session.session_id)) return session;
+      const revealedAtMs = session.updated_at.getTime();
+      const holdRemaining =
+        revealedAtMs + RANKED_DRAFT_CONFIG.BLOCK_REVEAL_MS - Date.now();
+      if (holdRemaining > 0) {
+        // Another process (or a lost timer) is mid-hold: re-arm locally so the
+        // game still starts on schedule rather than only on the next read.
+        scheduleRevealCompletion(session.session_id, holdRemaining);
+        return session;
+      }
       await completeDraft(session);
       return (
         (await RankedDraftSessionModel.findById(session.session_id)) ?? session
@@ -466,6 +484,35 @@ export async function submitBlock(
 }
 
 /**
+ * Arms the post-reveal hold that starts the game.
+ *
+ * Shared by the reveal itself and by reconcileSession, which re-arms it when a
+ * read finds a mid-hold session this process has no timer for (another node, or
+ * a restart that lost it). Registered in `timers` so reconcileSession can tell
+ * "a hold is running" from "the hold was lost", and so abandon/abort still
+ * cancel it. completeDraft is guarded by the phase re-read below, and the
+ * sweeper remains the backstop if this never fires.
+ */
+function scheduleRevealCompletion(sessionId: string, delayMs: number): void {
+  clearTimer(sessionId);
+  const timer = setTimeout(() => {
+    timers.delete(sessionId);
+    (async () => {
+      const latest = await RankedDraftSessionModel.findById(sessionId);
+      if (!latest || latest.phase !== "block") return;
+      await completeDraft(latest);
+    })().catch((error) => {
+      logger.error("[rankedDraft] post-reveal game start failed", {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }, Math.max(0, delayMs));
+  if (typeof timer.unref === "function") timer.unref();
+  timers.set(sessionId, timer);
+}
+
+/**
  * Both blocks are in: reveal them together, hold, then start the game.
  *
  * The hold is what makes the reveal readable — dropping straight into the game
@@ -496,23 +543,11 @@ async function revealBlocksAndStartGame(
   });
 
   // The hold is server-side so both clients enter the game together regardless
-  // of when each rendered the reveal. completeDraft is idempotent-ish via the
-  // phase check inside it, and the sweeper is a backstop if this never fires.
-  const timer = setTimeout(() => {
-    timers.delete(session.session_id);
-    (async () => {
-      const latest = await RankedDraftSessionModel.findById(session.session_id);
-      if (!latest || latest.phase !== "block") return;
-      await completeDraft(latest);
-    })().catch((error) => {
-      logger.error("[rankedDraft] post-reveal game start failed", {
-        sessionId: session.session_id,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
-  }, RANKED_DRAFT_CONFIG.BLOCK_REVEAL_MS);
-  if (typeof timer.unref === "function") timer.unref();
-  timers.set(session.session_id, timer);
+  // of when each rendered the reveal.
+  scheduleRevealCompletion(
+    session.session_id,
+    RANKED_DRAFT_CONFIG.BLOCK_REVEAL_MS
+  );
 }
 
 /** Builds the game from the finished draft and hands both players to it. */

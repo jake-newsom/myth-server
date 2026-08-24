@@ -71,6 +71,25 @@ const protect = async (
         return;
       }
 
+      // Banned accounts are cut off here, on every authenticated request.
+      // The check is free: findById already returns banned_at, so this adds no
+      // query. Sessions are invalidated at ban time too, but this is the
+      // backstop that also covers a ban applied directly in the database.
+      if (user.banned_at) {
+        res.status(403).json({
+          error: {
+            // `code` lets the client show a real "account suspended" screen
+            // instead of bouncing the user through a login loop.
+            code: "ACCOUNT_BANNED",
+            message:
+              user.banned_reason ||
+              "This account has been suspended.",
+            statusCode: 403,
+          },
+        });
+        return;
+      }
+
       // Update last used timestamp for the session
       await SessionService.updateLastUsed(session.session_id);
 

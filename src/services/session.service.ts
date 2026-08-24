@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import db from "../config/db.config";
 import config from "../config";
 import { Request } from "express";
+import { getClientIp } from "../utils/clientIp";
 
 export interface SessionData {
   session_id: string;
@@ -99,8 +100,7 @@ class SessionService {
    */
   extractSessionMetadata(req: Request): SessionMetadata {
     const userAgent = req.get("User-Agent");
-    const ipAddress =
-      req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
+    const ipAddress = getClientIp(req);
 
     // Simple device type detection based on user agent
     let deviceType = "unknown";

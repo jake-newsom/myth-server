@@ -25,6 +25,9 @@ import { PVP_MIN_GAMES_FOR_REWARDS } from "../../config/pvpRanks";
  * the mode does not exist as far as any client can tell.
  */
 
+/** Matches draft.handlers: how far back a completion may be re-announced. */
+const COMPLETION_REPLAY_WINDOW_MINUTES = 10;
+
 async function requireFlag(userId: string, res: Response): Promise<boolean> {
   if (await FeatureFlagService.isEnabled(userId, RANKED_DRAFT_FLAG)) {
     return true;
@@ -170,6 +173,19 @@ const RankedDraftController = {
 
       const found = await RankedDraftSessionModel.findLiveForUser(userId);
       if (!found) {
+        // A draft that just became a game is not "no active draft" — answering
+        // 404 here is what stranded a client whose `draft:completed` went
+        // missing. Point it at the game instead.
+        const finished =
+          await RankedDraftSessionModel.findRecentlyCompletedForUser(
+            userId,
+            COMPLETION_REPLAY_WINDOW_MINUTES
+          );
+        if (finished?.game_id) {
+          return res
+            .status(200)
+            .json({ phase: "complete", gameId: finished.game_id });
+        }
         return res.status(404).json({ error: { message: "No active draft." } });
       }
       // Same self-heal as the socket path, so a plain page refresh also
@@ -180,6 +196,11 @@ const RankedDraftController = {
         session.phase !== "draft" &&
         session.phase !== "block"
       ) {
+        if (session.phase === "complete" && session.game_id) {
+          return res
+            .status(200)
+            .json({ phase: "complete", gameId: session.game_id });
+        }
         return res.status(404).json({ error: { message: "No active draft." } });
       }
       const opponentId =

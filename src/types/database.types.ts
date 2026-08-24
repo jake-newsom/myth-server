@@ -28,6 +28,10 @@ export interface User {
   completed_feature_tutorials: string[];
   created_at: Date;
   last_login: Date;
+  /** Set when the account is banned; NULL means active. Source of truth. */
+  banned_at?: Date | null;
+  banned_reason?: string | null;
+  banned_by?: string | null;
 }
 
 export interface UserCardXpPool {

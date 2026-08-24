@@ -44,10 +44,24 @@ export const RANKED_DRAFT_CONFIG = {
   // Clocks, in milliseconds. Persisted as an absolute deadline per session so a
   // restart recovers the countdown rather than stranding a draft.
   BAN_MS: 30_000,
-  /** Clock for the block phase (both players choose simultaneously). */
-  BLOCK_MS: 30_000,
-  /** How long the block reveal is held before the game starts. */
-  BLOCK_REVEAL_MS: 5_000,
+  /**
+   * Clock for the block phase (both players choose simultaneously).
+   *
+   * DEBUG: temporarily 10_000_000ms (~2.8h), matching PICK_MS, so the block UI
+   * can be inspected without the clock expiring. RESTORE TO 30_000 BEFORE
+   * SHIPPING. Same requeue caveat as PICK_MS below — an abandoned draft sits on
+   * a deadline hours away rather than being swept, so clear it with the same
+   * UPDATE (add 'block' to the phase list).
+   */
+  BLOCK_MS: 10_000_000,
+  /**
+   * The planning beat after both blocks are revealed, before the game starts.
+   *
+   * Server-side and shared, so both players enter the game together regardless
+   * of when each client rendered the reveal. Sent to the client as `revealMs`
+   * so it can count the same window down.
+   */
+  BLOCK_REVEAL_MS: 10_000,
   // Per TURN, not per pick: one clock covers the whole PICKS_PER_TURN block, so
   // a two-card turn is a single shared thinking window rather than two. The
   // deadline is only re-armed when the turn passes to the other player.
@@ -353,6 +367,16 @@ export const RATE_LIMIT_CONFIG = {
   AI_ACTION: {
     WINDOW_MS: 1 * 1000, // 1 second
     MAX_REQUESTS: 40,
+  },
+  // Account creation, keyed on the real client IP (see utils/clientIp.ts).
+  // Sized against an observed abuse batch that registered ~20 accounts at
+  // 2-4 minute intervals: 3/hour stops that while leaving room for shared
+  // networks (households, schools, cafes) where several people may sign up.
+  // Env-overridable so the threshold can be loosened without a redeploy if
+  // it proves too tight for legitimate players.
+  REGISTRATION: {
+    WINDOW_MS: Number(process.env.REGISTRATION_RATE_LIMIT_WINDOW_MS) || 60 * 60 * 1000,
+    MAX_REQUESTS: Number(process.env.REGISTRATION_RATE_LIMIT_MAX) || 3,
   },
 } as const;
 
