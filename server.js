@@ -103,6 +103,23 @@ httpServer.listen(PORT, async () => {
     console.error("❌ Failed to start AI Automation Service:", error);
   }
 
+  // Start the Ranked Draft scheduler.
+  //
+  // MUST be started here as well as in app.ts: this file is the production
+  // entrypoint and only *imports* dist/app, so app.ts's
+  // `require.main === module` block never runs in prod. Without this line the
+  // matchmaking widening pass, the expired-draft sweeper and the stale-game
+  // reaper were all dev-only. startRankedDraftScheduler is idempotent.
+  try {
+    const {
+      startRankedDraftScheduler,
+    } = require("./dist/services/rankedDraftScheduler.service");
+    startRankedDraftScheduler();
+    console.log("⚔️  Ranked Draft scheduler started successfully");
+  } catch (error) {
+    console.error("❌ Failed to start Ranked Draft scheduler:", error);
+  }
+
   // Start the daily rewards scheduler
   try {
     const DailyRewardsService =
@@ -137,6 +154,14 @@ process.on("SIGTERM", () => {
     SeasonService.stopMaintenanceScheduler(seasonMaintenanceScheduler);
   }
   try {
+    const {
+      stopRankedDraftScheduler,
+    } = require("./dist/services/rankedDraftScheduler.service");
+    stopRankedDraftScheduler();
+  } catch (error) {
+    console.error("⚠️ Failed to stop Ranked Draft scheduler:", error);
+  }
+  try {
     const SeasonSoulsService =
       require("./dist/services/seasonSouls.service").default;
     SeasonSoulsService.flushNow().catch(() => {});
@@ -166,6 +191,14 @@ process.on("SIGINT", () => {
   if (seasonMaintenanceScheduler) {
     const SeasonService = require("./dist/services/season.service").default;
     SeasonService.stopMaintenanceScheduler(seasonMaintenanceScheduler);
+  }
+  try {
+    const {
+      stopRankedDraftScheduler,
+    } = require("./dist/services/rankedDraftScheduler.service");
+    stopRankedDraftScheduler();
+  } catch (error) {
+    console.error("⚠️ Failed to stop Ranked Draft scheduler:", error);
   }
   try {
     const SeasonSoulsService =

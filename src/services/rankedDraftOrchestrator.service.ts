@@ -245,6 +245,63 @@ export async function reconcileSession(
   return repaired;
 }
 
+/**
+ * Per-session cache of the two things in a state payload that never change
+ * during the draft: each player's username, and their recently-drafted cards.
+ *
+ * pushStateToBoth previously re-read both for BOTH viewers on every push — six
+ * queries per push (2 users + 2 recents + 2 budget), on every ban, pick, block
+ * and reveal, i.e. 20+ pushes per draft. Usernames are stable for the session,
+ * and recents are only written by completeDraft (after which no push follows),
+ * so caching them for the session's lifetime is safe.
+ *
+ * Cleared when the session ends, so it cannot outlive the draft.
+ */
+interface SessionViewerCache {
+  /** userId -> their display name. */
+  usernames: Map<string, string>;
+  /** userId -> their recent card ids. */
+  recentCards: Map<string, string[]>;
+}
+const viewerCaches = new Map<string, SessionViewerCache>();
+
+function clearViewerCache(sessionId: string): void {
+  viewerCaches.delete(sessionId);
+}
+
+async function getViewerExtras(
+  session: RankedDraftSession,
+  viewerId: string,
+  opponentId: string
+): Promise<{ opponentUsername: string; recentCardIds: string[] }> {
+  let cache = viewerCaches.get(session.session_id);
+  if (!cache) {
+    cache = { usernames: new Map(), recentCards: new Map() };
+    viewerCaches.set(session.session_id, cache);
+  }
+
+  const needsUsername = !cache.usernames.has(opponentId);
+  const needsRecents = !cache.recentCards.has(viewerId);
+
+  if (needsUsername || needsRecents) {
+    const [opponent, recentCardIds] = await Promise.all([
+      needsUsername ? UserModel.findById(opponentId) : Promise.resolve(null),
+      needsRecents
+        ? RankedDraft.getRecentCards(viewerId)
+        : Promise.resolve<string[]>([]),
+    ]);
+    if (needsUsername) {
+      cache.usernames.set(opponentId, opponent?.username ?? "Opponent");
+    }
+    if (needsRecents) cache.recentCards.set(viewerId, recentCardIds);
+  }
+
+  return {
+    opponentUsername: cache.usernames.get(opponentId) ?? "Opponent",
+    recentCardIds: cache.recentCards.get(viewerId) ?? [],
+  };
+}
+
 /** Sends each player their own redacted view of the session. */
 export async function pushStateToBoth(
   session: RankedDraftSession
@@ -252,14 +309,8 @@ export async function pushStateToBoth(
   for (const viewerId of [session.player1_id, session.player2_id]) {
     const opponentId =
       viewerId === session.player1_id ? session.player2_id : session.player1_id;
-    const [opponent, recentCardIds] = await Promise.all([
-      UserModel.findById(opponentId),
-      RankedDraft.getRecentCards(viewerId),
-    ]);
-    const payload = await toStatePayload(session, viewerId, {
-      opponentUsername: opponent?.username ?? "Opponent",
-      recentCardIds,
-    });
+    const extras = await getViewerExtras(session, viewerId, opponentId);
+    const payload = await toStatePayload(session, viewerId, extras);
     emitToUser(viewerId, PresenceNamespaceEvent.DRAFT_SERVER_STATE, payload);
   }
 }
@@ -382,7 +433,20 @@ export async function submitPick(
   sessionId: string,
   userId: string,
   cardVariantId: string,
-  options: { autoPicked?: boolean; chosenVariantId?: string | null } = {}
+  options: {
+    autoPicked?: boolean;
+    chosenVariantId?: string | null;
+    /**
+     * Skip the full state push after this pick.
+     *
+     * Only for the auto-pick batch on a turn timeout, which fills every card
+     * still owed: pushing the whole redacted state after each one meant a
+     * two-card timeout sent two complete payloads to both players when only
+     * the last is current. The lightweight PICK_MADE event is still emitted
+     * for each pick, so the animation sequence is unchanged.
+     */
+    skipStatePush?: boolean;
+  } = {}
 ): Promise<void> {
   const client = await db.getClient();
   let updated: RankedDraftSession;
@@ -461,7 +525,16 @@ export async function submitPick(
     autoPicked: options.autoPicked ?? false,
   };
   emitToBoth(updated, PresenceNamespaceEvent.DRAFT_SERVER_PICK_MADE, payload);
-  await pushStateToBoth(updated);
+  // The caller pushes once at the end of a batch. A completed draft still
+  // pushes here, because beginBlockPhase below depends on both clients having
+  // the final draft state before the phase flips.
+  const draftNowComplete = isDraftComplete(
+    updated.player1_picks.length,
+    updated.player2_picks.length
+  );
+  if (!options.skipStatePush || draftNowComplete) {
+    await pushStateToBoth(updated);
+  }
 
   if (
     isDraftComplete(
@@ -655,6 +728,27 @@ async function completeDraft(session: RankedDraftSession): Promise<void> {
   let gameId: string;
   try {
     await client.query("BEGIN");
+    // Serialize against the other completeDraft entry points (the reveal hold,
+    // a rejoin's reconcileSession, the block deadline). Taken BEFORE the
+    // insert so a loser of the race blocks here and then finds the phase
+    // already moved on, rather than inserting a second orphaned game.
+    await RankedDraftSessionModel.lock(session.session_id, client);
+
+    // Re-read under the lock: the winner may have completed this session while
+    // we were waiting for it.
+    const fresh = await RankedDraftSessionModel.findById(
+      session.session_id,
+      client
+    );
+    if (!fresh || fresh.phase === "complete" || fresh.phase === "aborted") {
+      await client.query("ROLLBACK").catch(() => undefined);
+      logger.info("[rankedDraft] completion skipped, session already settled", {
+        sessionId: session.session_id,
+        phase: fresh?.phase ?? "missing",
+      });
+      return;
+    }
+
     const { rows } = await client.query(
       `INSERT INTO "games"
          (player1_id, player2_id, player1_deck_id, player2_deck_id,
@@ -670,7 +764,20 @@ async function completeDraft(session: RankedDraftSession): Promise<void> {
     );
     gameId = rows[0].game_id;
 
-    await RankedDraftSessionModel.complete(session.session_id, gameId, client);
+    // Phase-guarded: returns null if something settled the session between the
+    // re-read above and here, in which case the whole transaction is discarded.
+    const completed = await RankedDraftSessionModel.complete(
+      session.session_id,
+      gameId,
+      client
+    );
+    if (!completed) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      logger.warn("[rankedDraft] completion lost a race, rolled back", {
+        sessionId: session.session_id,
+      });
+      return;
+    }
 
     // Recency is written once, here, so an abandoned draft leaves no trace.
     await RankedDraft.recordRecentCards(
@@ -691,6 +798,8 @@ async function completeDraft(session: RankedDraftSession): Promise<void> {
   } finally {
     client.release();
   }
+
+  clearViewerCache(session.session_id);
 
   const payload: RankedDraftCompletedPayload = {
     sessionId: session.session_id,
@@ -789,6 +898,7 @@ export async function abandonSession(
   }
 
   clearTimer(sessionId);
+  clearViewerCache(sessionId);
   const aborted = await RankedDraftSessionModel.abort(sessionId);
   // Already finished or aborted: nothing to do, and no message to send. This
   // is also what keeps the forfeit exactly-once — `abort` only returns a row
@@ -841,6 +951,7 @@ export async function abortSession(
   reason: string
 ): Promise<void> {
   clearTimer(sessionId);
+  clearViewerCache(sessionId);
   const aborted = await RankedDraftSessionModel.abort(sessionId);
   if (!aborted) return;
   const payload: RankedDraftAbortedPayload = { sessionId, reason };
@@ -956,7 +1067,19 @@ export async function onDeadlineExpired(sessionId: string): Promise<void> {
       await abortSession(sessionId, "No legal card remained to auto-pick.");
       return;
     }
-    await submitPick(sessionId, pickerId, auto, { autoPicked: true });
+    // Only the last pick of the batch pushes full state; the intermediate
+    // ones would be immediately superseded.
+    await submitPick(sessionId, pickerId, auto, {
+      autoPicked: true,
+      skipStatePush: i < owed - 1,
+    });
+  }
+
+  // The loop may have exited early (turn moved on, draft ended) after a
+  // suppressed push, so make sure both clients end on current state.
+  const settled = await RankedDraftSessionModel.findById(sessionId);
+  if (settled && settled.phase === "draft") {
+    await pushStateToBoth(settled);
   }
 }
 

@@ -229,20 +229,31 @@ const RankedDraftSessionModel = {
     return rows[0];
   },
 
+  /**
+   * Finishes a session into its game.
+   *
+   * Guarded on the live phases and returning null otherwise, exactly like
+   * `abort` — this is what makes completion exactly-once. completeDraft is
+   * reachable from the reveal hold, a rejoin's reconcileSession and the block
+   * deadline, each a check-then-act with awaits in between; without the guard
+   * two racers both INSERT a games row and the second overwrites game_id,
+   * orphaning one game and potentially pointing the two players at different
+   * ones.
+   */
   async complete(
     sessionId: string,
     gameId: string,
     executor: QueryExecutor = db
-  ): Promise<RankedDraftSession> {
+  ): Promise<RankedDraftSession | null> {
     const { rows } = await executor.query(
       `UPDATE ranked_draft_sessions
        SET phase = 'complete', game_id = $2, current_picker_id = NULL,
            deadline_at = NULL, updated_at = NOW()
-       WHERE session_id = $1
+       WHERE session_id = $1 AND phase IN ('ban', 'draft', 'block')
        RETURNING ${SELECT_COLUMNS}`,
       [sessionId, gameId]
     );
-    return rows[0];
+    return rows[0] ?? null;
   },
 
   async abort(

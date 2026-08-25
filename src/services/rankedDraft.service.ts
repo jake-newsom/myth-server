@@ -177,19 +177,50 @@ export function isLastPickOfTurn(pickIndex: number): boolean {
 }
 
 
+/**
+ * card_variant_id -> rarity, memoized for the process.
+ *
+ * A variant's rarity is immutable catalog data, and budgetSpentFor is on the
+ * hottest path in the mode: it runs inside toStatePayload, which runs twice per
+ * pushStateToBoth, which runs on every ban, pick, block and reveal. Caching
+ * turns ~22 identical catalog reads per draft into one per distinct card.
+ */
+const rarityCache = new Map<string, string>();
+
+/** Test/ops seam — lets a catalog change be picked up without a restart. */
+export function _clearRarityCache(): void {
+  rarityCache.clear();
+}
+
+/** Loads any rarities not already cached. */
+async function loadRarities(cardVariantIds: string[]): Promise<void> {
+  const missing = [...new Set(cardVariantIds)].filter(
+    (id) => !rarityCache.has(id)
+  );
+  if (missing.length === 0) return;
+  const { rows } = await db.query(
+    `SELECT card_variant_id, rarity FROM card_variants
+      WHERE card_variant_id = ANY($1::uuid[])`,
+    [missing]
+  );
+  for (const row of rows as { card_variant_id: string; rarity: string }[]) {
+    rarityCache.set(row.card_variant_id, row.rarity);
+  }
+}
+
 /** Cost of a set of picks, by card_variant_id. */
 export async function budgetSpentFor(
   cardVariantIds: string[]
 ): Promise<number> {
   if (cardVariantIds.length === 0) return 0;
-  const { rows } = await db.query(
-    `SELECT rarity FROM card_variants WHERE card_variant_id = ANY($1::uuid[])`,
-    [cardVariantIds]
-  );
-  return rows.reduce(
-    (total: number, r: { rarity: string }) => total + cardPowerCost(r.rarity),
-    0
-  );
+  await loadRarities(cardVariantIds);
+  // Unknown ids are skipped rather than defaulted: cardPowerCost is the thing
+  // that must stay strict about an unknown RARITY, but an id that matched no
+  // row never contributed to the old SUM either.
+  return cardVariantIds.reduce((total: number, id: string) => {
+    const rarity = rarityCache.get(id);
+    return rarity === undefined ? total : total + cardPowerCost(rarity);
+  }, 0);
 }
 
 function picksOf(session: RankedDraftSession, userId: string): string[] {
