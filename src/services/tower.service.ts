@@ -506,10 +506,17 @@ class TowerService {
       initialGameState.current_player_id = startingPlayerId;
 
       // Attach deck effects based on mythology composition
-      const [playerDeckEffect, aiDeckEffect] = await Promise.all([
-        DeckService.getDeckEffect(playerDeckId),
-        DeckService.getDeckEffect(floor.ai_deck_id),
-      ]);
+      const [playerDeckEffect, aiDeckEffect, playerCardBack, aiCardBack] =
+        await Promise.all([
+          DeckService.getDeckEffect(playerDeckId),
+          DeckService.getDeckEffect(floor.ai_deck_id),
+          CardBackModel.resolveEquippedBackForDeck(playerDeckId),
+          CardBackModel.resolveEquippedBackForDeck(floor.ai_deck_id),
+        ]);
+
+      // Each side's equipped card back, so board flips show the correct back.
+      initialGameState.player1.equipped_card_back = playerCardBack;
+      initialGameState.player2.equipped_card_back = aiCardBack;
 
       if (playerDeckEffect) {
         initialGameState.player1.deck_effect = playerDeckEffect;

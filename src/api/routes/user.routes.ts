@@ -14,6 +14,12 @@ router.patch(
   UserController.updateAccountDetails
 );
 router.delete("/me", authMiddleware.protect, UserController.deleteAccount);
+// Settles the first-run username prompt when the user declines to rename.
+router.post(
+  "/me/username-prompt-dismissed",
+  authMiddleware.protect,
+  UserController.dismissUsernamePrompt
+);
 router.get(
   "/me/cards",
   authMiddleware.protect,

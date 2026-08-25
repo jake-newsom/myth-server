@@ -49,6 +49,7 @@ import { resolveAIDifficulty } from "../../game-engine/ai.difficulty";
 import { DECK_CONFIG } from "../../config/constants";
 import ChallengeService from "../../services/challenge.service";
 import FeatureFlagService from "../../services/featureFlag.service";
+import CardBackModel from "../../models/cardBack.model";
 
 // Initialize ability registry
 // AbilityRegistry.initialize();
@@ -168,12 +169,24 @@ class GameController {
       initialGameState.current_player_id = startingPlayerId;
 
       // 4. Attach deck effects based on mythology composition
-      const [playerDeckEffect, aiDeckEffect, opponentMythology] =
-        await Promise.all([
+      const [
+        playerDeckEffect,
+        aiDeckEffect,
+        opponentMythology,
+        playerCardBack,
+        aiCardBack,
+      ] = await Promise.all([
           DeckService.getDeckEffect(deckId),
           DeckService.getDeckEffect(aiDeckIdToUse),
           DeckService.getDeckDominantMythology(aiDeckIdToUse),
+          CardBackModel.resolveEquippedBackForDeck(deckId),
+          CardBackModel.resolveEquippedBackForDeck(aiDeckIdToUse),
         ]);
+
+      // Each side's equipped card back, so board flips show the correct back.
+      // Null (no back equipped) leaves the client on its default asset.
+      initialGameState.player1.equipped_card_back = playerCardBack;
+      initialGameState.player2.equipped_card_back = aiCardBack;
 
       if (playerDeckEffect) {
         initialGameState.player1.deck_effect = playerDeckEffect;

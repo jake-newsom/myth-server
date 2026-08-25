@@ -1,5 +1,6 @@
 import FriendshipModel from "../models/friendship.model";
 import UserModel from "../models/user.model";
+import CardBackModel from "../models/cardBack.model";
 import {
   Friendship,
   FriendshipWithUser,
@@ -561,10 +562,21 @@ class FriendsService {
       initialGameState.current_player_id = challengerId;
 
       // Attach deck effects based on mythology composition
-      const [challengerDeckEffect, friendDeckEffect] = await Promise.all([
+      const [
+        challengerDeckEffect,
+        friendDeckEffect,
+        challengerCardBack,
+        friendCardBack,
+      ] = await Promise.all([
         DeckService.getDeckEffect(deckId),
         DeckService.getDeckEffect(friendDeckId),
+        CardBackModel.resolveEquippedBackForDeck(deckId),
+        CardBackModel.resolveEquippedBackForDeck(friendDeckId),
       ]);
+
+      // Each side's equipped card back, so board flips show the correct back.
+      initialGameState.player1.equipped_card_back = challengerCardBack;
+      initialGameState.player2.equipped_card_back = friendCardBack;
 
       if (challengerDeckEffect) {
         initialGameState.player1.deck_effect = challengerDeckEffect;

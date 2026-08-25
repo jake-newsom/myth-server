@@ -19,6 +19,7 @@ import RankedDraft, {
   chooseAutoBlock,
 } from "./rankedDraft.service";
 import { buildDraftGameState } from "./draftBattle.service";
+import LeaderboardService from "./leaderboard.service";
 import {
   RANKED_DRAFT_CONFIG,
   RANKED_DRAFT_GAME_MAX_AGE_MINUTES,
@@ -61,6 +62,73 @@ function clearTimer(sessionId: string): void {
     clearTimeout(t);
     timers.delete(sessionId);
   }
+}
+
+/**
+ * userId -> pending "they disconnected" abandon timer.
+ *
+ * Keyed by user rather than session because the trigger is a user's sockets
+ * going away, and a user is in at most one live draft at a time.
+ */
+const disconnectTimers = new Map<string, NodeJS.Timeout>();
+
+/**
+ * Cancel a pending abandon because the player came back.
+ *
+ * Called on every presence connect, not just a draft rejoin: reconnecting at
+ * all is the proof we were waiting for, and making this depend on the client
+ * remembering to send a draft-specific message would put the draft's survival
+ * back in the hands of the thing that just failed.
+ */
+export function cancelDisconnectAbandon(userId: string): void {
+  const t = disconnectTimers.get(userId);
+  if (t) {
+    clearTimeout(t);
+    disconnectTimers.delete(userId);
+    logger.info("[rankedDraft] player reconnected, abandon cancelled", {
+      userId,
+    });
+  }
+}
+
+/**
+ * A player's last socket went away. Abandon their live draft unless they come
+ * back inside the grace window.
+ *
+ * This is what makes quitting the app during a draft behave like leaving it.
+ * Without it the session just goes quiet, the clock runs down, and the deadline
+ * handler AUTO-PICKS the absent player a full deck and starts a real game that
+ * neither player is in — which is exactly the state this fixes.
+ *
+ * Safe to call for any user: it no-ops when there is no live draft.
+ */
+export function scheduleDisconnectAbandon(userId: string): void {
+  cancelDisconnectAbandon(userId);
+
+  const timer = setTimeout(() => {
+    disconnectTimers.delete(userId);
+    void (async () => {
+      try {
+        const session = await RankedDraftSessionModel.findLiveForUser(userId);
+        // Nothing live: they finished, already aborted, or the draft became a
+        // game while we were waiting. All fine, nothing to abandon.
+        if (!session) return;
+        await abandonSession(session.session_id, userId);
+        logger.info("[rankedDraft] draft abandoned after disconnect", {
+          sessionId: session.session_id,
+          userId,
+        });
+      } catch (error) {
+        logger.error("[rankedDraft] disconnect abandon failed", {
+          userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
+  }, RANKED_DRAFT_CONFIG.DISCONNECT_GRACE_MS);
+
+  if (typeof timer.unref === "function") timer.unref();
+  disconnectTimers.set(userId, timer);
 }
 
 function scheduleTimer(sessionId: string, deadline: Date): void {
@@ -637,12 +705,76 @@ async function completeDraft(session: RankedDraftSession): Promise<void> {
 }
 
 /**
+ * Writes the forfeit as a real, already-finished game.
+ *
+ * Rating lives in `game_results`, whose `game_id` is NOT NULL with a FK to
+ * `games` — so a rated forfeit needs a games row to hang off. It is inserted
+ * already `completed` with the winner set and an empty board: no one ever
+ * loads it, it exists to carry the result.
+ *
+ * Writing a real row also makes the forfeit consume one of the day's battles,
+ * because the allowance is counted straight off `games` rows for the day
+ * (see countBattlesToday) — quitting can't be used to dodge the cap.
+ *
+ * Returns the new game id.
+ */
+async function recordAbandonForfeit(
+  session: RankedDraftSession,
+  quitterId: string
+): Promise<string> {
+  const winnerId =
+    session.player1_id === quitterId ? session.player2_id : session.player1_id;
+
+  const client = await db.getClient();
+  let gameId: string;
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query(
+      `INSERT INTO "games"
+         (player1_id, player2_id, player1_deck_id, player2_deck_id,
+          game_mode, game_status, board_layout, game_state, winner_id,
+          created_at, completed_at)
+       VALUES ($1, $2, NULL, NULL, 'ranked_draft', 'completed', '4x4',
+               $3, $4, NOW(), NOW())
+       RETURNING game_id`,
+      [
+        session.player1_id,
+        session.player2_id,
+        JSON.stringify({ abandoned: true, abandoned_by: quitterId }),
+        winnerId,
+      ]
+    );
+    gameId = rows[0].game_id;
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  // Outside the transaction: this opens its own connection and takes an
+  // advisory lock on the game id, so nesting it would deadlock against the
+  // insert above.
+  await LeaderboardService.processGameCompletion(
+    gameId,
+    session.player1_id,
+    session.player2_id,
+    winnerId,
+    "ranked_draft",
+    0
+  );
+
+  return gameId;
+}
+
+/**
  * A player quits the draft.
  *
- * Deliberately records NO result: the abandoner has no legal deck yet (they may
- * hold 3 of 11 cards), and `game_results.game_id` is NOT NULL with a FK to
- * `games`, so a rated forfeit would mean fabricating a game row with no state.
- * Ending cleanly also removes any incentive to farm losses off a quit.
+ * Scored like a played game: the quitter takes the loss and the opponent the
+ * win, at the normal Elo weight. Joining a draft already spends one of the
+ * day's battles, so an abandon that cost nothing would make quitting the
+ * cheapest way out of a draft going badly.
  *
  * Each side is told who quit so the messaging can differ.
  */
@@ -658,24 +790,50 @@ export async function abandonSession(
 
   clearTimer(sessionId);
   const aborted = await RankedDraftSessionModel.abort(sessionId);
-  // Already finished or aborted: nothing to do, and no message to send.
+  // Already finished or aborted: nothing to do, and no message to send. This
+  // is also what keeps the forfeit exactly-once — `abort` only returns a row
+  // for a session still in a live phase, so a double disconnect or a racing
+  // explicit quit cannot score twice.
   if (!aborted) return;
 
   const opponentId =
     aborted.player1_id === userId ? aborted.player2_id : aborted.player1_id;
 
+  // Rating must not be able to strand the abort: the session is already dead,
+  // so a failure here is logged and the players are still told what happened.
+  let ratingRecorded = false;
+  try {
+    await recordAbandonForfeit(aborted, userId);
+    ratingRecorded = true;
+  } catch (error) {
+    logger.error("[rankedDraft] failed to record abandon forfeit", {
+      sessionId,
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const ratedSuffix = ratingRecorded ? " The match counts as a loss." : "";
+  const opponentSuffix = ratingRecorded ? " The match counts as a win." : "";
+
   emitToUser(userId, PresenceNamespaceEvent.DRAFT_SERVER_ABORTED, {
     sessionId,
-    reason: "You left the draft.",
+    reason: `You left the draft.${ratedSuffix}`,
     abandonedByMe: true,
+    rated: ratingRecorded,
   });
   emitToUser(opponentId, PresenceNamespaceEvent.DRAFT_SERVER_ABORTED, {
     sessionId,
-    reason: "Your opponent left the draft.",
+    reason: `Your opponent left the draft.${opponentSuffix}`,
     abandonedByMe: false,
+    rated: ratingRecorded,
   });
 
-  logger.info("[rankedDraft] session abandoned", { sessionId, userId });
+  logger.info("[rankedDraft] session abandoned", {
+    sessionId,
+    userId,
+    ratingRecorded,
+  });
 }
 
 export async function abortSession(
@@ -878,6 +1036,8 @@ export default {
   submitBlock,
   abandonSession,
   abortSession,
+  scheduleDisconnectAbandon,
+  cancelDisconnectAbandon,
   pushStateToBoth,
   reconcileSession,
   sweepExpiredSessions,

@@ -159,6 +159,14 @@ export interface RankedDraftStatePayload {
    * is still the original printing everywhere else.
    */
   myVariants: Record<string, string>;
+  /**
+   * The OPPONENT's skin choices, same shape as `myVariants`.
+   *
+   * Cosmetic only — the pick identity is still the original printing — so
+   * revealing it leaks nothing the opponent's picks don't already show. Sent so
+   * each client renders the art the other player actually chose.
+   */
+  opponentVariants: Record<string, string>;
   gameId: string | null;
 
   /**
@@ -225,6 +233,12 @@ export interface RankedDraftAbortedPayload {
    * neither player.
    */
   abandonedByMe?: boolean;
+  /**
+   * True when the abandon was scored as a played game (loss for the quitter,
+   * win for the opponent). Absent/false on a system abort, which is nobody's
+   * fault and costs nobody rating.
+   */
+  rated?: boolean;
 }
 
 export interface PresencePlayerCountPayload {

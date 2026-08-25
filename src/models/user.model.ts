@@ -110,7 +110,7 @@ const UserModel = {
     userId: string,
     executor: QueryExecutor = db
   ): Promise<User | null> {
-    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, role, in_game_currency, gems, fate_coins, card_fragments, echoes, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, completed_feature_tutorials, created_at, last_login as last_login_at, banned_at, banned_reason, banned_by FROM "users" WHERE user_id = $1;`;
+    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, role, in_game_currency, gems, fate_coins, card_fragments, echoes, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, completed_feature_tutorials, username_chosen_at, created_at, last_login as last_login_at, banned_at, banned_reason, banned_by FROM "users" WHERE user_id = $1;`;
     const { rows } = await executor.query(query, [userId]);
     return rows[0] || null;
   },
@@ -453,6 +453,13 @@ const UserModel = {
       username?: string;
       email?: string;
       password?: string;
+      /**
+       * Stamps username_chosen_at = NOW(). Set by the first-run username
+       * prompt (both when a name is picked and when the prompt is declined)
+       * so it is never shown again. Independent of `username` so declining
+       * can stamp the flag without touching the name.
+       */
+      markUsernameChosen?: boolean;
     }
   ): Promise<User | null> {
     const setClauses: string[] = [];
@@ -469,6 +476,12 @@ const UserModel = {
       setClauses.push(`email = $${paramIndex}`);
       values.push(updates.email);
       paramIndex++;
+    }
+
+    if (updates.markUsernameChosen) {
+      // NOW() rather than a bound value: the stamp is a server-side fact and
+      // must not be spoofable by a client-supplied timestamp.
+      setClauses.push("username_chosen_at = NOW()");
     }
 
     if (updates.password !== undefined) {
@@ -489,7 +502,7 @@ const UserModel = {
       UPDATE "users" 
       SET ${setClauses.join(", ")}
       WHERE user_id = $1
-      RETURNING user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login as last_login_at;
+      RETURNING user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, username_chosen_at, created_at, last_login as last_login_at;
     `;
 
     const { rows } = await db.query(query, values);

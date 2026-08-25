@@ -273,6 +273,8 @@ export async function toStatePayload(
     unavailableCardIds: unavailableCardIds(session),
     recentCardIds: extras.recentCardIds,
     myVariants: (isP1 ? session.player1_variants : session.player2_variants) ?? {},
+    opponentVariants:
+      (isP1 ? session.player2_variants : session.player1_variants) ?? {},
     iDraftFirst: isP1,
     myBlock: myBlock ?? null,
     blockedFromMe: blocksRevealed ? (theirBlock ?? null) : null,

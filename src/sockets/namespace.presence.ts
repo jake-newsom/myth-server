@@ -74,6 +74,11 @@ export function setupPresenceNamespace(io: Server): void {
     }
     socketsForUser.add(socket.id);
 
+    // They're back (or newly here) — call off any pending draft abandon armed
+    // when their last socket dropped. Unconditional: a reconnect is the proof,
+    // and it no-ops when nothing is pending.
+    RankedDraftOrchestrator.cancelDisconnectAbandon(userId);
+
     // Join a per-user room so other parts of the server (e.g. the
     // matchmaking controller) can target a specific user with
     // `presenceNs.to(`user:${userId}`).emit(...)` without having to
@@ -116,6 +121,10 @@ export function setupPresenceNamespace(io: Server): void {
           // Last socket for this user is gone — drop their cached chat state
           // so the map doesn't grow with every user who has ever connected.
           chatService.releaseUserState(userId);
+          // ...and start the clock on abandoning any draft they were in. Only
+          // on the LAST socket: a second tab or device means they're still
+          // here. Cancelled if they reconnect inside the grace window.
+          RankedDraftOrchestrator.scheduleDisconnectAbandon(userId);
         }
       }
 
