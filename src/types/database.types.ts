@@ -26,6 +26,12 @@ export interface User {
   tower_floor: number; // Current unbeaten tower floor for the user (default: 1)
   tutorial_completed_at: Date | null;
   completed_feature_tutorials: string[];
+  /**
+   * Set when the user deliberately picked their own username, or explicitly
+   * declined the first-run prompt. NULL means neither has happened yet and is
+   * the only signal the prompt keys off.
+   */
+  username_chosen_at?: Date | null;
   created_at: Date;
   last_login: Date;
   /** Set when the account is banned; NULL means active. Source of truth. */

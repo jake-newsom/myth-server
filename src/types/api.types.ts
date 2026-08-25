@@ -46,6 +46,8 @@ export interface UserProfile {
   pack_count: number;
   tutorial_completed_at?: string | null;
   completed_feature_tutorials: string[];
+  /** ISO date; NULL means the user has never chosen or declined a username. */
+  username_chosen_at?: string | null;
   created_at: string; // ISO Date string
   last_login_at: string; // ISO Date string
 }

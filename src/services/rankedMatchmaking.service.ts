@@ -116,11 +116,17 @@ export async function runMatchPass(now: number = Date.now()): Promise<number> {
   for (const [a, b] of pairs) {
     leaveQueue(a.userId);
     leaveQueue(b.userId);
+    // Coin-flip the seats. `pairs` is built off a rating-ascending sort, so `a`
+    // is always the lower-rated player -- and seat 1 carries both first draft
+    // pick and the first turn of the resulting game (buildDraftGameState seeds
+    // current_player_id from player1Id). Seating in queue order would hand that
+    // advantage to the lower-rated player in every single match.
+    const [first, second] = Math.random() < 0.5 ? [a, b] : [b, a];
     try {
-      await Orchestrator.startSession(a.userId, b.userId);
+      await Orchestrator.startSession(first.userId, second.userId);
       logger.info("[rankedMatchmaking] paired", {
-        p1: a.userId,
-        p2: b.userId,
+        p1: first.userId,
+        p2: second.userId,
         ratingGap: Math.abs(a.rating - b.rating),
       });
     } catch (error) {

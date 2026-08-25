@@ -75,6 +75,16 @@ export const RANKED_DRAFT_CONFIG = {
   //   UPDATE ranked_draft_sessions SET phase='aborted', deadline_at=NULL,
   //     current_picker_id=NULL WHERE phase IN ('ban','draft');
   PICK_MS: 10_000_000,
+  /**
+   * How long a draft survives after a player's last socket goes away.
+   *
+   * Not zero: a refresh, an app backgrounding, or a brief network drop all
+   * look identical to quitting at the socket layer, and the client reconnects
+   * and rejoins on its own. This window is what separates "gone" from
+   * "blinked" — long enough to ride out a reconnect, short enough that the
+   * player who stayed is not left staring at a dead draft.
+   */
+  DISCONNECT_GRACE_MS: 15_000,
   // Recently-drafted cards surfaced at the front of the pick grid.
   RECENT_CARDS_LIMIT: 20,
   /**

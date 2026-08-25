@@ -17,6 +17,7 @@ import {
   TriggerMoment,
 } from "../../types";
 import { USER_LIMITS } from "../../config/constants";
+import { checkUsername } from "../../services/usernameFilter.service";
 
 // Helper function to transform CardResponse to UserCard
 const transformToUserCard = (card: CardResponse): UserCard => ({
@@ -80,6 +81,43 @@ const UserController = {
         return;
       }
       res.status(200).json(userProfile);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Settle the first-run username prompt without changing the name.
+   *
+   * The prompt is skippable and asks exactly once, so declining has to be
+   * durable server-side — a device-local flag would re-prompt on reinstall or
+   * a second device. Idempotent: re-calling on an already-stamped account is a
+   * no-op that still returns 200, so a retried request is harmless.
+   *
+   * @route POST /api/users/me/username-prompt-dismissed
+   */
+  async dismissUsernamePrompt(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "User not authenticated." } });
+        return;
+      }
+
+      // Only stamp if unset, so declining never overwrites the timestamp of a
+      // name the user actually chose earlier.
+      const query = `
+        UPDATE "users"
+           SET username_chosen_at = NOW()
+         WHERE user_id = $1
+           AND username_chosen_at IS NULL;
+      `;
+      await db.query(query, [req.user.user_id]);
+
+      res.status(200).json({ success: true });
     } catch (error) {
       next(error);
     }
@@ -314,6 +352,11 @@ const UserController = {
       }
 
       const { username, email, password } = req.body;
+      // Opt-in marker sent by the first-run username prompt. Only that caller
+      // sets it, so the profanity check below (which is NEW validation on an
+      // existing field) applies to the new flow and never to the long-standing
+      // profile rename, which must keep accepting exactly what it accepts today.
+      const fromFirstRunPrompt = req.body.first_run_username_prompt === true;
 
       // At least one field must be provided for update
       if (!username && !email && !password) {
@@ -345,6 +388,28 @@ const UserController = {
             },
           });
           return;
+        }
+
+        // The registration path has always run this filter; PATCH never did,
+        // so a user could rename to anything the signup form would reject.
+        // Applying it unconditionally here would tighten validation on a live
+        // request field, so it is scoped to the new first-run prompt for now.
+        if (fromFirstRunPrompt) {
+          const usernameCheck = checkUsername(username);
+          if (!usernameCheck.allowed) {
+            logger.info("Username change rejected by username filter", {
+              reason: usernameCheck.reason,
+              userId: req.user.user_id,
+            });
+            res.status(400).json({
+              error: {
+                message:
+                  "That username isn't available. Please choose a different one.",
+                code: "USERNAME_NOT_ALLOWED",
+              },
+            });
+            return;
+          }
         }
 
         const existingUserByUsername = await UserModel.findByUsername(username);
@@ -391,9 +456,16 @@ const UserController = {
       }
 
       // Update account details
-      const updates: { username?: string; email?: string; password?: string } =
-        {};
+      const updates: {
+        username?: string;
+        email?: string;
+        password?: string;
+        markUsernameChosen?: boolean;
+      } = {};
       if (username) updates.username = username;
+      // Picking a name through the prompt also settles the prompt, so it never
+      // reappears on another device or after a reinstall.
+      if (username && fromFirstRunPrompt) updates.markUsernameChosen = true;
       if (email) updates.email = email;
       if (password) updates.password = password;
 
