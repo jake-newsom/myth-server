@@ -128,6 +128,7 @@ const DailyTaskService = {
       let cardDetails: {
         card_id: string;
         name: string;
+        description: string | null;
         rarity: string;
         image_url: string;
       } | null = null;
@@ -189,15 +190,23 @@ const DailyTaskService = {
   async pickRandomCardForDailyTask(): Promise<{
     card_id: string;
     name: string;
+    description: string | null;
     rarity: string;
     image_url: string;
   } | null> {
     try {
+      // Match on the BASE rarity so full-art variants ("common+", "rare+++")
+      // are eligible too -- rarity stores the variant tier in the string
+      // itself, so an exact IN (...) list silently excluded every variant.
+      const rarityFilter = `
+        regexp_replace(cv.rarity::text, '\\+*$', '') IN ('common', 'uncommon', 'rare')
+      `;
+
       const countQuery = `
         SELECT COUNT(*)::int as total
         FROM card_variants cv
         JOIN characters ch ON ch.character_id = cv.character_id
-        WHERE cv.rarity IN ('common', 'uncommon', 'rare')
+        WHERE ${rarityFilter}
           AND cv.is_exclusive = false
           AND cv.released_at <= NOW()
           AND ch.released_at <= NOW();
@@ -210,10 +219,11 @@ const DailyTaskService = {
 
       const randomOffset = Math.floor(Math.random() * total);
       const query = `
-        SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url
+        SELECT cv.card_variant_id as card_id, ch.name, ch.description,
+               cv.rarity, cv.image_url
         FROM card_variants cv
         JOIN characters ch ON cv.character_id = ch.character_id
-        WHERE cv.rarity IN ('common', 'uncommon', 'rare')
+        WHERE ${rarityFilter}
           AND cv.is_exclusive = false
           AND cv.released_at <= NOW()
           AND ch.released_at <= NOW()
@@ -229,6 +239,7 @@ const DailyTaskService = {
       return {
         card_id: card.card_id,
         name: card.name,
+        description: card.description ?? null,
         rarity: card.rarity,
         image_url: card.image_url,
       };

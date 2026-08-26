@@ -183,6 +183,8 @@ export interface BaseCard {
    */
   character_id?: string;
   name: string;
+  /** Mythological character description (HTML), from `characters.description`. */
+  description?: string;
   tags: string[];
   rarity: Rarity;
   image_url: string;

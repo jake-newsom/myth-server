@@ -228,6 +228,16 @@ const PATCHES: AssetPatch[] = [
       "sha256:d6970463ecd1112a8e201005b3e6548b1814cee07fa5fffaee1019fc1627dd2d",
     size: 1181805,
     description: "s2 rewards part 1",
+  },
+  {
+    id: "quotes-1",
+    version: 1,
+    type: "graphics",
+    r2Key: "patches/quotes-1.zip",
+    checksum:
+      "sha256:172e0329cc42502bbb60da1d85227c957008e63aedbe873cff56d584bec9536a",
+    size: 582128,
+    description: "sfx updates",
   }
 ];
 
