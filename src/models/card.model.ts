@@ -1201,7 +1201,13 @@ const CardModel = {
   async getUserCardsAtLevelByRarity(
     userId: string
   ): Promise<Record<string, Record<number, number>>> {
-    // The window sums each rarity's per-level counts from the highest level
+    // Rarity is normalised to its base tier first: "+" / "++" / "+++" variants
+    // are cosmetic upgrades of the same tier (see RarityUtils.getBaseRarity and
+    // getUserUniqueCardCountByRarity above), so a levelled "epic++" must count
+    // toward the epic achievements. Matching the raw enum would silently ignore
+    // every upgraded card a player owns.
+    //
+    // The window then sums each rarity's per-level counts from the highest level
     // downward, so every row carries the total at-or-above its own level.
     const query = `
       SELECT
@@ -1214,7 +1220,7 @@ const CardModel = {
         ) AS at_or_above
       FROM (
         SELECT
-          cv.rarity AS rarity,
+          replace(cv.rarity::text, '+', '') AS rarity,
           uoc.level AS level,
           COUNT(*) AS level_count
         FROM "user_owned_cards" uoc
@@ -1222,10 +1228,10 @@ const CardModel = {
         JOIN "characters" ch ON cv.character_id = ch.character_id
         WHERE uoc.user_id = $1
           AND uoc.level >= 2
-          AND cv.rarity IN ('rare', 'epic', 'legendary')
+          AND replace(cv.rarity::text, '+', '') IN ('rare', 'epic', 'legendary')
           AND cv.released_at <= NOW()
           AND ch.released_at <= NOW()
-        GROUP BY cv.rarity, uoc.level
+        GROUP BY replace(cv.rarity::text, '+', ''), uoc.level
       ) per_level;
     `;
     const { rows } = await db.query(query, [userId]);
