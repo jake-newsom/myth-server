@@ -613,7 +613,74 @@ const AchievementService = {
       }
     }
 
+    // Meta-achievements ("complete N achievements") count the rows this pass just
+    // completed, so they run last and only when something actually completed.
+    if (result.newlyCompleted.length > 0) {
+      await this.syncCompletionistProgress(event.userId, result);
+    }
+
     return result;
+  },
+
+  /**
+   * Sync the completionist family ("Complete N achievements") to the user's
+   * current completed count.
+   *
+   * Every tier is written, resolved through getTieredAchievementsByBaseKey like
+   * every other tiered family. This previously wrote the single hardcoded key
+   * "completionist" behind a `>= 50` gate from inside claimAchievementRewards,
+   * which left completionist_25 / _100 / _200 (added later by
+   * scripts/achievements-rework.sql) with no writer at all, and made the one
+   * wired tier update only when rewards were claimed rather than when
+   * achievements were completed.
+   *
+   * Deliberately excluded from its own count: completing a completionist tier
+   * raises the completed total, which would re-trigger this and can cascade
+   * across tiers in a single pass. Counting only non-completionist achievements
+   * keeps the number stable and matches what players read it to mean.
+   */
+  async syncCompletionistProgress(
+    userId: string,
+    result: AchievementCompletionResult
+  ): Promise<void> {
+    try {
+      const tiers = await AchievementModel.getTieredAchievementsByBaseKey(
+        "completionist"
+      );
+      if (tiers.length === 0) {
+        return;
+      }
+
+      const completedCount =
+        await AchievementModel.getCompletedAchievementCountExcludingBase(
+          userId,
+          "completionist"
+        );
+
+      const updates: BatchedAchievementUpdate[] = [];
+      const keysToFetch: string[] = [];
+
+      for (const tier of tiers) {
+        // Absolute recount, so "set" (GREATEST semantics in the model).
+        updates.push({
+          achievement_key: tier.achievement_key,
+          mode: "set",
+          value: completedCount,
+        });
+        keysToFetch.push(tier.achievement_key);
+      }
+
+      await this.applyBatchedUpdatesAndCollectDetails(
+        userId,
+        updates,
+        keysToFetch,
+        result
+      );
+    } catch (error) {
+      // Never let meta-achievement bookkeeping fail the underlying event that
+      // earned the achievement.
+      console.error("Error syncing completionist progress:", error);
+    }
   },
 
   async applyBatchedUpdatesAndCollectDetails(
@@ -1109,7 +1176,17 @@ const AchievementService = {
     const keysToFetch: string[] = [];
     const updates: BatchedAchievementUpdate[] = [];
 
-    // Track card leveling by rarity achievements
+    // Track card leveling by rarity achievements.
+    //
+    // tier.level_requirement is the level each card must reach; tier.target_value
+    // is how many cards must reach it. Progress is the card count, so the bar
+    // reads "5 / 20" and completion (current_progress >= target_value, applied
+    // uniformly in AchievementModel) means what the description says.
+    //
+    // This previously read the level out of target_value and wrote a flat 1 only
+    // once the count already hit a hardcoded 20 — so these achievements showed 0
+    // until the instant they would complete, and would have completed at progress
+    // 2 against a target of 2 regardless of how many cards the player owned.
     if (cardsAtLevelByRarity) {
       for (const [rarity, levels] of Object.entries(cardsAtLevelByRarity)) {
         const baseKey = `level_${rarity}`;
@@ -1118,23 +1195,35 @@ const AchievementService = {
         );
 
         for (const tier of tiers) {
-          // tier.target_value contains the level requirement (2, 3, 4, 5)
-          // Ensure target_value is a number
-          const targetLevel =
-            typeof tier.target_value === "string"
-              ? parseInt(tier.target_value)
-              : tier.target_value;
-          const countAtLevel =
-            (levels as Record<number, number>)[targetLevel] || 0;
+          const requiredLevel =
+            typeof tier.level_requirement === "string"
+              ? parseInt(tier.level_requirement, 10)
+              : tier.level_requirement;
 
-          if (countAtLevel >= 20) {
-            updates.push({
-              achievement_key: tier.achievement_key,
-              mode: "set",
-              value: 1,
-            });
-            keysToFetch.push(tier.achievement_key);
+          // Rows predating the level_requirement migration would otherwise index
+          // the level map with NaN and silently report 0 forever.
+          if (!requiredLevel) {
+            console.warn(
+              `Achievement ${tier.achievement_key} has no level_requirement; skipping progress update.`
+            );
+            continue;
           }
+
+          // Cumulative: cards at requiredLevel OR ABOVE (see
+          // CardModel.getUserCardsAtLevelByRarity).
+          const countAtOrAboveLevel =
+            (levels as Record<number, number>)[requiredLevel] || 0;
+
+          // "set" rather than "increment" because this is an absolute recount of
+          // the player's collection, not a delta. The model's set path takes
+          // GREATEST(existing, new), so a count that drops (sacrificing a levelled
+          // card) never walks progress backward.
+          updates.push({
+            achievement_key: tier.achievement_key,
+            mode: "set",
+            value: countAtOrAboveLevel,
+          });
+          keysToFetch.push(tier.achievement_key);
         }
       }
     }
@@ -2113,14 +2202,9 @@ const AchievementService = {
 
       const updatedUser = await UserModel.findById(userId);
 
-      const stats = await AchievementModel.getUserAchievementStats(userId);
-      if (stats.completed_achievements >= 50) {
-        await AchievementModel.setUserAchievementProgress(
-          userId,
-          "completionist",
-          stats.completed_achievements
-        );
-      }
+      // Completionist progress is synced on COMPLETION (see
+      // syncCompletionistProgress), not here on claim. Claiming does not change
+      // how many achievements a player has completed.
 
       return {
         success: grantResult.success,

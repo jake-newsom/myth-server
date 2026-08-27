@@ -144,6 +144,9 @@ const DailyShopModel = {
       card: row.card_name
         ? {
             card_id: row.card_card_id,
+            // Clients key ownership ("NEW" badge) off base_card_id, the variant
+            // UUID. Emitted alongside card_id, which older clients still read.
+            base_card_id: row.card_card_id,
             name: row.card_name,
             description: row.card_description ?? null,
             rarity: row.card_rarity,

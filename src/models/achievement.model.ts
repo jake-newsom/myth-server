@@ -1540,6 +1540,36 @@ const AchievementModel = {
   },
 
   /**
+   * Count a user's completed achievements, excluding one base family.
+   *
+   * Used by the completionist meta-achievements to count everything EXCEPT
+   * themselves — completing "Complete 25 achievements" would otherwise raise the
+   * number it is measured against and cascade through the tiers in one pass.
+   *
+   * Counts character achievements alongside standard ones, unlike
+   * getUserAchievementStats (which filters to achievement_kind = 'standard').
+   * Character achievements are achievements a player completes and sees in the
+   * same list, so excluding them would make the total read lower than the count
+   * the app shows elsewhere.
+   */
+  async getCompletedAchievementCountExcludingBase(
+    userId: string,
+    excludedBaseKey: string
+  ): Promise<number> {
+    const query = `
+      SELECT COUNT(*) AS count
+      FROM user_achievements ua
+      JOIN achievements a ON a.id = ua.achievement_id
+      WHERE ua.user_id = $1
+        AND ua.is_completed = true
+        AND a.is_active = true
+        AND (a.base_achievement_key IS DISTINCT FROM $2);
+    `;
+    const { rows } = await db.query(query, [userId, excludedBaseKey]);
+    return parseInt(rows[0].count, 10);
+  },
+
+  /**
    * Get all tiers for multiple base achievement keys in a single query
    * Returns a map of base_key -> Achievement[]
    * This is more efficient than calling getTieredAchievementsByBaseKey multiple times

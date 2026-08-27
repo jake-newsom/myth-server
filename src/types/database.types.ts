@@ -475,6 +475,12 @@ export interface Achievement {
   | "story_mode";
   type: "single" | "progress" | "milestone";
   target_value: number;
+  /**
+   * For achievements requiring N cards to reach a given level (the level_rare /
+   * level_epic / level_legendary families), the level each card must reach.
+   * target_value holds N. NULL on every other achievement.
+   */
+  level_requirement?: number | null;
   rarity: Rarity;
   reward_gems: number;
   reward_fate_coins?: number; // Optional until DB migration adds this column

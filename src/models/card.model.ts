@@ -1184,25 +1184,49 @@ const CardModel = {
   },
 
   /**
-   * Get count of cards at specific level by rarity for a user
+   * Get count of cards at OR ABOVE each level, by rarity, for a user.
+   *
+   * The returned map is cumulative: result.epic[2] is the number of epic cards
+   * at level 2 or higher, not the number sitting exactly at level 2. This is
+   * what the level_* achievements mean by "reach level 2 with 20 epic cards" —
+   * a card levelled to 5 has self-evidently reached level 2.
+   *
+   * This used to bucket by exact level, which made leveling a card REMOVE it
+   * from every lower tier's count and left those achievements permanently
+   * unreachable for active players.
+   *
+   * Levels below 2 are excluded because no achievement targets them; level 1 is
+   * the default state of every owned card.
    */
   async getUserCardsAtLevelByRarity(
     userId: string
   ): Promise<Record<string, Record<number, number>>> {
+    // The window sums each rarity's per-level counts from the highest level
+    // downward, so every row carries the total at-or-above its own level.
     const query = `
-      SELECT 
-        cv.rarity,
-        uoc.level,
-        COUNT(*) as count
-      FROM "user_owned_cards" uoc
-      JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
-      JOIN "characters" ch ON cv.character_id = ch.character_id
-      WHERE uoc.user_id = $1
-        AND uoc.level >= 2
-        AND cv.rarity IN ('rare', 'epic', 'legendary')
-        AND cv.released_at <= NOW()
-        AND ch.released_at <= NOW()
-      GROUP BY cv.rarity, uoc.level;
+      SELECT
+        rarity,
+        level,
+        SUM(level_count) OVER (
+          PARTITION BY rarity
+          ORDER BY level DESC
+          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS at_or_above
+      FROM (
+        SELECT
+          cv.rarity AS rarity,
+          uoc.level AS level,
+          COUNT(*) AS level_count
+        FROM "user_owned_cards" uoc
+        JOIN "card_variants" cv ON uoc.card_variant_id = cv.card_variant_id
+        JOIN "characters" ch ON cv.character_id = ch.character_id
+        WHERE uoc.user_id = $1
+          AND uoc.level >= 2
+          AND cv.rarity IN ('rare', 'epic', 'legendary')
+          AND cv.released_at <= NOW()
+          AND ch.released_at <= NOW()
+        GROUP BY cv.rarity, uoc.level
+      ) per_level;
     `;
     const { rows } = await db.query(query, [userId]);
 
@@ -1215,10 +1239,32 @@ const CardModel = {
     for (const row of rows) {
       const rarity = row.rarity.toLowerCase();
       const level = parseInt(row.level, 10);
-      const count = parseInt(row.count, 10);
+      const atOrAbove = parseInt(row.at_or_above, 10);
 
       if (result[rarity]) {
-        result[rarity][level] = count;
+        result[rarity][level] = atOrAbove;
+      }
+    }
+
+    // Only levels a user actually owns cards at appear above, so a gap leaves a
+    // hole: owning legendaries at 5 and 6 but none at 3 or 4 yields keys 5 and 6
+    // and nothing at 3, even though "3 or above" is 2. Fill every level from 2 up
+    // to the highest seen so callers can index any level directly.
+    for (const rarity of Object.keys(result)) {
+      const levels = result[rarity];
+      const owned = Object.keys(levels).map((lvl) => parseInt(lvl, 10));
+      if (owned.length === 0) continue;
+
+      const highest = Math.max(...owned);
+      // Walk downward carrying the running total, so each missing level inherits
+      // the count from the next level up.
+      let carried = 0;
+      for (let level = highest; level >= 2; level--) {
+        if (levels[level] !== undefined) {
+          carried = levels[level];
+        } else {
+          levels[level] = carried;
+        }
       }
     }
 
