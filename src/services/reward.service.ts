@@ -2,6 +2,7 @@ import db, { QueryExecutor, PoolClient } from "../config/db.config";
 import UserModel from "../models/user.model";
 import CardModel from "../models/card.model";
 import BorderService from "./border.service";
+import EmberService from "./ember.service";
 import CardBackModel from "../models/cardBack.model";
 import { cacheInvalidation } from "./cache.invalidation.service";
 import logger from "../utils/logger";
@@ -41,6 +42,7 @@ interface AggregatedRewards {
   fate_coins: number;
   card_fragments: number;
   packs: number;
+  embers: number;
   card_variant_ids: string[];
   border_grants: BorderGrant[];
   card_back_ids: string[];
@@ -53,6 +55,7 @@ function emptyAggregate(): AggregatedRewards {
     fate_coins: 0,
     card_fragments: 0,
     packs: 0,
+    embers: 0,
     card_variant_ids: [],
     border_grants: [],
     card_back_ids: [],
@@ -77,6 +80,9 @@ function aggregate(items: RewardItem[]): AggregatedRewards {
         break;
       case "packs":
         totals.packs += item.amount;
+        break;
+      case "embers":
+        totals.embers += item.amount;
         break;
       case "card":
         totals.card_variant_ids.push(item.card_variant_id);
@@ -192,6 +198,12 @@ const RewardService = {
     if (totals.packs !== 0) {
       await UserModel.addPacks(userId, totals.packs, client);
     }
+    if (totals.embers !== 0) {
+      // Deliberately uncapped: rewards are one of the two paths allowed to push
+      // a balance past the regeneration cap. Regeneration idles until the
+      // player spends back under it.
+      await EmberService.grant(userId, totals.embers, client);
+    }
 
     // Cards: bulk insert in a single round-trip.
     let cardInstanceMap: Array<{
@@ -280,6 +292,7 @@ const RewardService = {
         fate_coins: totals.fate_coins,
         card_fragments: totals.card_fragments,
         packs: totals.packs,
+        embers: totals.embers,
         cards: totals.card_variant_ids.length,
         borders: totals.border_grants.length,
         card_backs: totals.card_back_ids.length,
@@ -291,6 +304,7 @@ const RewardService = {
             fate_coins: updatedUser.fate_coins,
             card_fragments: updatedUser.card_fragments,
             pack_count: updatedUser.pack_count,
+            embers: updatedUser.embers,
           }
         : undefined,
     };
@@ -303,6 +317,7 @@ const RewardService = {
       fate_coins: 0,
       card_fragments: 0,
       packs: 0,
+      embers: 0,
       cards: 0,
       borders: 0,
       card_backs: 0,

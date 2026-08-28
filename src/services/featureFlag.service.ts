@@ -140,6 +140,32 @@ const FeatureFlagService = {
   },
 
   /**
+   * The flag's GLOBAL state, ignoring per-user overrides.
+   *
+   * For work that has no user to evaluate against — the nightly shop rotation,
+   * a cron, a startup task. A per-user check is meaningless there, and calling
+   * `isEnabled(null, ...)` would silently return false forever.
+   *
+   * Uncached and never throws: a failed lookup resolves to `false`, i.e. run
+   * the old code path, matching `isEnabled`'s contract.
+   */
+  async isEnabledGlobally(key: string): Promise<boolean> {
+    const normalized = normalizeKey(key);
+    if (!normalized) return false;
+    try {
+      const flag = await FeatureFlagModel.findByKey(normalized);
+      return Boolean(flag?.enabled_globally);
+    } catch (error) {
+      logger.error(
+        "Global feature flag lookup failed; defaulting to disabled",
+        { key: normalized },
+        error instanceof Error ? error : new Error(String(error))
+      );
+      return false;
+    }
+  },
+
+  /**
    * Resolve a flag for a user AND report why. Powers the admin evaluate
    * endpoint — "is it on for jake, and is that because of the global switch or
    * his override?" — so it deliberately bypasses the cache and re-reads.

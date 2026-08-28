@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import DailyShopService from "../../services/dailyShop.service";
 import DailyShopModel from "../../models/dailyShop.model";
 import { AuthenticatedRequest } from "../../types/middleware.types";
-import { ShopItemType } from "../../types/database.types";
+import { ShopItemType, ShopTab } from "../../types/database.types";
 import db from "../../config/db.config";
 
 const DailyShopController = {
@@ -20,7 +20,20 @@ const DailyShopController = {
         });
       }
 
-      const shopData = await DailyShopService.getUserShopData(userId);
+      // `?tabs=daily,soul` is opt-in. Omitted => daily only, which is exactly
+      // the flat `offerings[]` shipped clients already render. The Soul Shop
+      // is hundreds of rows and must never be pushed at a client that would
+      // draw them all in one list.
+      const requestedTabs = String(req.query.tabs ?? "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t): t is ShopTab => t === "daily" || t === "soul");
+      const tabs: ShopTab[] = requestedTabs.length > 0 ? requestedTabs : ["daily"];
+
+      const [shopData, paidListings] = await Promise.all([
+        DailyShopService.getUserShopData(userId, tabs),
+        DailyShopService.getPaidShopListings(userId),
+      ]);
 
       return res.status(200).json({
         status: "success",
@@ -31,6 +44,10 @@ const DailyShopController = {
           purchase_limits: shopData.purchaseLimits,
           reset_costs: shopData.resetCosts,
           user_currencies: shopData.userCurrencies,
+          // Additive fields. Absent/empty on the flag-off path, and ignored
+          // outright by shipped clients.
+          reset_state: shopData.resetState ?? null,
+          paid_listings: paidListings,
         },
         timestamp: new Date().toISOString(),
       });
@@ -100,6 +117,10 @@ const DailyShopController = {
           new_currency_balance: result.newCurrencyBalance,
           card_received: result.cardReceived,
           packs_received: result.packsReceived,
+          // Additive: old clients ignore these.
+          embers_received: result.embersReceived,
+          fragments_received: result.fragmentsReceived,
+          fate_coins_received: result.fateCoinsReceived,
         },
         timestamp: new Date().toISOString(),
       });
@@ -109,6 +130,59 @@ const DailyShopController = {
         status: "error",
         message: "Failed to process purchase",
         error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+
+  /**
+   * Pay gems to reroll a shop tab.
+   */
+  async resetTab(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.user_id;
+      if (!userId) {
+        return res.status(401).json({
+          status: "error",
+          message: "User not authenticated",
+        });
+      }
+
+      const { shop_tab } = req.body;
+      if (!shop_tab || typeof shop_tab !== "string") {
+        return res.status(400).json({
+          status: "error",
+          message: "shop_tab is required",
+        });
+      }
+
+      const result = await DailyShopService.resetTab(userId, shop_tab);
+
+      if (!result.success) {
+        return res.status(400).json({
+          status: "error",
+          message: result.message,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: result.message,
+        data: {
+          shop_tab,
+          resets_used: result.resetsUsed,
+          next_reset_cost: result.nextResetCost,
+          gems_spent: result.gemsSpent,
+          new_gem_balance: result.newGemBalance,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Error resetting shop tab:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to reset shop",
         timestamp: new Date().toISOString(),
       });
     }

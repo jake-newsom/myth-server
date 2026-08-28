@@ -32,6 +32,7 @@ export interface AchievementAdminInput {
   reward_fate_coins?: number;
   reward_packs?: number;
   reward_card_fragments?: number;
+  reward_embers?: number | null;
   reward_border_id?: string | null;
   icon_url?: string | null;
   is_active?: boolean;
@@ -55,6 +56,7 @@ export interface AchievementAdminUpdate {
   reward_fate_coins?: number;
   reward_packs?: number;
   reward_card_fragments?: number;
+  reward_embers?: number | null;
   reward_border_id?: string | null;
   icon_url?: string | null;
   is_active?: boolean;
@@ -182,6 +184,7 @@ const AchievementModel = {
         reward_fate_coins,
         reward_packs,
         reward_card_fragments,
+        reward_embers,
         reward_border_id,
         icon_url,
         is_active,
@@ -192,7 +195,7 @@ const AchievementModel = {
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
       )
       RETURNING *;
     `;
@@ -211,6 +214,7 @@ const AchievementModel = {
       input.reward_fate_coins ?? 0,
       input.reward_packs ?? 0,
       input.reward_card_fragments ?? 0,
+      input.reward_embers ?? null,
       input.reward_border_id ?? null,
       input.icon_url ?? null,
       input.is_active ?? true,
@@ -262,6 +266,8 @@ const AchievementModel = {
       assign("reward_packs", updates.reward_packs);
     if (updates.reward_card_fragments !== undefined)
       assign("reward_card_fragments", updates.reward_card_fragments);
+    if (updates.reward_embers !== undefined)
+      assign("reward_embers", updates.reward_embers);
     if (updates.reward_border_id !== undefined)
       assign("reward_border_id", updates.reward_border_id);
     if (updates.icon_url !== undefined) assign("icon_url", updates.icon_url);
@@ -424,6 +430,7 @@ const AchievementModel = {
         reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
         reward_card_fragments: row.reward_card_fragments || undefined,
+        reward_embers: row.reward_embers || undefined,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
@@ -511,6 +518,7 @@ const AchievementModel = {
           reward_fate_coins: row.reward_fate_coins || undefined,
           reward_packs: row.reward_packs,
           reward_card_fragments: row.reward_card_fragments || undefined,
+          reward_embers: row.reward_embers || undefined,
           icon_url: row.icon_url,
           is_active: row.is_active,
           sort_order: row.sort_order,
@@ -583,6 +591,7 @@ const AchievementModel = {
         a.reward_fate_coins,
         a.reward_packs,
         a.reward_card_fragments,
+        a.reward_embers,
         a.icon_url,
         a.is_active,
         a.sort_order,
@@ -640,6 +649,7 @@ const AchievementModel = {
         reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
         reward_card_fragments: row.reward_card_fragments || undefined,
+        reward_embers: row.reward_embers || undefined,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
@@ -752,6 +762,7 @@ const AchievementModel = {
         reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
         reward_card_fragments: row.reward_card_fragments || undefined,
+        reward_embers: row.reward_embers || undefined,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,
@@ -863,6 +874,7 @@ const AchievementModel = {
         reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
         reward_card_fragments: row.reward_card_fragments || undefined,
+        reward_embers: row.reward_embers || undefined,
         reward_border_id: row.reward_border_id ?? null,
         reward_border: row.border_id
           ? {
@@ -992,6 +1004,7 @@ const AchievementModel = {
         reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
         reward_card_fragments: row.reward_card_fragments || undefined,
+        reward_embers: row.reward_embers || undefined,
         reward_border_id: row.reward_border_id ?? null,
         reward_border: row.border_id
           ? {
@@ -1294,6 +1307,7 @@ const AchievementModel = {
       fate_coins: number;
       packs: number;
       card_fragments: number;
+      embers: number;
       border_id?: string | null;
     };
   }> {
@@ -1376,6 +1390,7 @@ const AchievementModel = {
         fate_coins: achievement.reward_fate_coins || 0,
         packs: achievement.reward_packs,
         card_fragments: achievement.reward_card_fragments || 0,
+        embers: achievement.reward_embers || 0,
         border_id: achievement.reward_border_id ?? null,
       },
     };
@@ -1674,6 +1689,7 @@ const AchievementModel = {
         a.reward_fate_coins,
         a.reward_packs,
         a.reward_card_fragments,
+        a.reward_embers,
         a.icon_url,
         a.is_active,
         a.sort_order,
@@ -1722,6 +1738,7 @@ const AchievementModel = {
         reward_fate_coins: row.reward_fate_coins || undefined,
         reward_packs: row.reward_packs,
         reward_card_fragments: row.reward_card_fragments || undefined,
+        reward_embers: row.reward_embers || undefined,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,

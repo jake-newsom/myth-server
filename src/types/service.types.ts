@@ -411,6 +411,7 @@ export type RewardItem =
   | { type: "fate_coins"; amount: number }
   | { type: "card_fragments"; amount: number }
   | { type: "packs"; amount: number }
+  | { type: "embers"; amount: number }
   | { type: "card"; card_variant_id: string }
   | { type: "border"; border_id: string; character_id?: string | null }
   | { type: "card_back"; back_id: string };
@@ -433,6 +434,7 @@ export interface GrantRewardsResult {
     fate_coins: number;
     card_fragments: number;
     packs: number;
+    embers: number;
     cards: number;
     borders: number;
     card_backs: number;
@@ -443,6 +445,7 @@ export interface GrantRewardsResult {
     fate_coins: number;
     card_fragments: number;
     pack_count: number;
+    embers: number;
   };
   error?: string;
 }

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import UserModel from "../../models/user.model";
+import EmberService from "../../services/ember.service";
 import db from "../../config/db.config";
 
 // Pack prices (can be configured)
@@ -14,6 +15,10 @@ export const getCurrencies = async (req: Request, res: Response) => {
       return res.status(401).json({ error: "User not authenticated" });
     }
 
+    // Settle regeneration first, so this read reports the live ember balance
+    // rather than whatever the last sweep left behind.
+    const emberState = await EmberService.settle(userId);
+
     const user = await UserModel.findById(userId);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
@@ -26,6 +31,11 @@ export const getCurrencies = async (req: Request, res: Response) => {
       echoes: user.echoes,
       pack_count: user.pack_count,
       total_xp: user.total_xp,
+      // Additive: old clients ignore these.
+      embers: emberState.embers,
+      next_ember_in_ms: emberState.next_ember_in_ms,
+      ember_regen_cap: emberState.regen_cap,
+      ember_regen_interval_ms: emberState.regen_interval_ms,
       // Legacy field for backward compatibility
       in_game_currency: user.in_game_currency,
     });

@@ -18,7 +18,7 @@ export interface SeasonRewardBundle {
   };
 }
 
-export type SeasonRewardAxis = "overall" | "pantheon";
+export type SeasonRewardAxis = "overall" | "pantheon" | "ranked_draft";
 
 /** Resolved display data for the asset IDs referenced by a tier bundle. */
 export interface ResolvedRewardCard {
@@ -309,6 +309,26 @@ export function resolvePantheonTier(
     }
   }
   return best;
+}
+
+/**
+ * Resolve the ranked-draft tier for a finishing PvP rank.
+ *
+ * This axis does NOT use thresholds. The ranked ladder already computes a rank
+ * (see resolveRank in config/pvpRanks) from rating, ladder position and pool
+ * size, and the payout is keyed to that rank directly — `tier_key` holds the
+ * pvpRanks key. Matching on the key keeps the reward bands and the rank badge
+ * the player actually sees from drifting apart, which is what a parallel
+ * threshold definition here would eventually allow.
+ *
+ * Returns null when the rank has no configured tier, so callers can decide
+ * between skipping the player and falling back to a default.
+ */
+export function resolveTierForRankKey(
+  tiers: SeasonRewardTierRow[],
+  rankKey: string
+): SeasonRewardTierRow | null {
+  return tiers.find((t) => t.tier_key === rankKey) ?? null;
 }
 
 export default SeasonRewardTierModel;

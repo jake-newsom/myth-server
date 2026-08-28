@@ -13,6 +13,17 @@ paths:
         - Daily Shop
       security:
         - bearerAuth: []
+      parameters:
+        - name: tabs
+          in: query
+          required: false
+          schema:
+            type: string
+            example: "daily,soul"
+          description: >-
+            Comma-separated shop tabs to include. Omitted defaults to `daily`,
+            which is the pre-overhaul response. Ask for `soul` only when the
+            Soul Shop catalogue (hundreds of offerings) will actually be shown.
       responses:
         "200":
           description: Daily shop data retrieved successfully
@@ -51,6 +62,22 @@ paths:
                         description: Gem cost to reset purchase limits per item type
                       user_currencies:
                         $ref: "#/components/schemas/UserCurrencies"
+                      reset_state:
+                        type: object
+                        nullable: true
+                        additionalProperties:
+                          $ref: "#/components/schemas/TabResetState"
+                        description: >-
+                          Per-tab paid-reset state, keyed by tab. Null when the
+                          `shop-overhaul` flag is off for this user. Additive —
+                          older clients ignore it.
+                      paid_listings:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PaidShopListing"
+                        description: >-
+                          Mock in-app-purchase listings. Empty unless the
+                          `iap-store` flag is on. Nothing here is purchasable.
                   timestamp:
                     type: string
                     format: date-time
@@ -124,6 +151,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /api/daily-shop/reset:
+    post:
+      summary: Pay gems to reroll a shop tab
+      description: >-
+        Rerolls one shop tab for the calling player. The price doubles with each
+        reset within the tab's own reset period (50, 100, 200, 400 …) and the
+        counter clears at that period's server reset — daily for `daily`/`soul`,
+        weekly for `saga`. Requires the `shop-overhaul` flag.
+      tags:
+        - Daily Shop
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - shop_tab
+              properties:
+                shop_tab:
+                  type: string
+                  enum: [daily, soul, saga]
+      responses:
+        "200":
+          description: Shop tab reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      shop_tab:
+                        type: string
+                      resets_used:
+                        type: integer
+                      next_reset_cost:
+                        type: integer
+                      gems_spent:
+                        type: integer
+                      new_gem_balance:
+                        type: integer
+                  timestamp:
+                    type: string
+                    format: date-time
+        "400":
+          description: Unknown tab, insufficient gems, or the feature is off
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "500":
@@ -426,7 +513,56 @@ components:
         - epic_card
         - enhanced_card
         - pack
-      description: Type of item available in the daily shop
+        - ember_bundle
+        - fragment_bundle
+        - fate_coin_bundle
+        - soul_card
+      description: Type of item available in the shop
+
+    ShopTab:
+      type: string
+      enum: [daily, soul]
+      description: >-
+        Which tab of the unified shop an offering belongs to. Absent on rows
+        written before the overhaul; treat as `daily`.
+
+    TabResetState:
+      type: object
+      properties:
+        shop_tab:
+          type: string
+        resets_used:
+          type: integer
+          description: Paid resets bought on this tab in the current period.
+        next_reset_cost:
+          type: integer
+          description: Gems the next reset costs (doubles each time).
+        resets_at:
+          type: string
+          format: date-time
+          description: When this tab's period ends and the counter clears.
+
+    PaidShopListing:
+      type: object
+      description: >-
+        Mock in-app-purchase listing. There is no grant path — this is
+        placeholder data behind the `iap-store` flag.
+      properties:
+        product_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        price_label:
+          type: string
+        grants:
+          type: object
+          additionalProperties:
+            type: integer
+        badge:
+          type: string
+          nullable: true
 
     CurrencyType:
       type: string
@@ -462,6 +598,8 @@ components:
           $ref: "#/components/schemas/CurrencyType"
         slot_number:
           type: integer
+        shop_tab:
+          $ref: "#/components/schemas/ShopTab"
     card:
       type: object
       nullable: true

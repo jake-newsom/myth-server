@@ -412,6 +412,98 @@ export const CURRENCY_CONFIG = {
   PACK_COST_GEMS: 10,
 } as const;
 
+/**
+ * Embers — the entry currency for solo and Ascendant's Spire games.
+ *
+ * Starting a solo or tower game spends one. A game that spent one awards card
+ * XP and contributes its souls to the season total; a game started on an empty
+ * balance plays normally but does neither. Embers are not spent by PvP, ranked
+ * draft, or Sagas.
+ *
+ * REGEN_CAP is a ceiling on *regeneration*, not on the balance. Purchases and
+ * rewards can push a player above it, and regeneration simply contributes
+ * nothing until they spend back down under it — it must never claw a balance
+ * back down to the cap.
+ *
+ * The economy is gated by the `embers-economy` feature flag (EMBERS_FLAG). With
+ * it off nothing is spent and every game is treated as funded, which is exactly
+ * the behaviour that predates embers.
+ */
+export const EMBER_CONFIG = {
+  /** Regeneration ceiling. Balances above this are left alone. */
+  REGEN_CAP: 60,
+  /** One ember per this many milliseconds. */
+  REGEN_INTERVAL_MS: 10 * 60 * 1000,
+  /** Spent to start an ember-funded solo or tower game. */
+  GAME_COST: 1,
+  /** Embers granted by one daily shop bundle purchase. */
+  SHOP_BUNDLE_AMOUNT: 60,
+} as const;
+
+/** Feature flag gating ember spending and the XP/souls withholding. */
+export const EMBERS_FLAG = "embers-economy";
+
+/**
+ * Shop overhaul configuration.
+ *
+ * Flag-off (`SHOP_CONFIG.FLAG` disabled) is byte-identical to the pre-overhaul
+ * behaviour: the old index-based rotation, no Soul Shop, no tab resets, and no
+ * guaranteed art variant in a 10-pack. That is what makes this revertible
+ * without a redeploy.
+ */
+export const SHOP_CONFIG = {
+  /** Gates the rotation change, the Soul Shop, tab resets, and the 10-pack pity. */
+  FLAG: "shop-overhaul",
+  /** Gates the paid ("Vault") tab. Mock listings until real IAP ships. */
+  IAP_FLAG: "iap-store",
+
+  /** Card fragments granted by one fragment_bundle purchase. */
+  FRAGMENT_BUNDLE_AMOUNT: 150,
+  /** Fate coins granted by one fate_coin_bundle purchase. */
+  FATE_COIN_BUNDLE_AMOUNT: 5,
+
+  /**
+   * Soul Shop prices, in card fragments.
+   *
+   * Commons only. Rares moved to the daily tab's rotation (`rare_card`), so
+   * listing them here as well would undercut it — the Forge is exhaustive, and
+   * a card available every day is never worth waiting a rotation for.
+   */
+  SOUL_SHOP_PRICES: {
+    common: 10,
+  } as Record<string, number>,
+
+  /**
+   * Paid tab reset pricing: 50, 100, 200, 400 … doubling with each reset within
+   * the same period. Deliberately unbounded — the doubling makes it
+   * self-limiting long before any cap would bite.
+   */
+  RESET_BASE_GEMS: 50,
+
+  /**
+   * Minimum packs in one open for the guaranteed art variant.
+   *
+   * The point of the guarantee is to give the 10-pack button a reason to exist
+   * over ten single opens, so it is deliberately not prorated to smaller opens.
+   */
+  VARIANT_PITY_MIN_PACKS: 10,
+
+  /**
+   * Base-rarity weights used when the pity pass has to mint a variant. Mirrors
+   * `getPackRateConfiguration().variant_base_tier_chances`, so a pity variant
+   * is distributed like a naturally rolled one.
+   */
+  VARIANT_PITY_BASE_WEIGHTS: {
+    common: 35,
+    rare: 30,
+    epic: 20,
+    legendary: 15,
+  } as Record<string, number>,
+} as const;
+
+/** Mythology sets the daily rotation cycles through. */
+export const SHOP_MYTHOLOGIES = ["norse", "japanese", "polynesian"] as const;
+
 // User Limits Configuration
 export const USER_LIMITS = {
   MAX_USERNAME_LENGTH: 32,

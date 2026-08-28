@@ -16,6 +16,7 @@ import {
   rowToTowerFloor,
 } from "../types/tower.types";
 import DeckService from "./deck.service";
+import { spendEmberForGame } from "./ember.service";
 import { RarityUtils } from "../types/card.types";
 import { DECK_CONFIG, CHAT_CONFIG } from "../config/constants";
 import { pickRandomVariantByRarity } from "../utils/cardVariant.helpers";
@@ -555,6 +556,15 @@ class TowerService {
 
       await hydrateGameStateCards(finalGameState);
 
+      // Spend the entry ember. Placed after every validation that can reject
+      // the challenge (deck rules, modifiers, floor availability) so a rejected
+      // start never costs the player an ember.
+      //
+      // An empty balance does not block the climb — the floor is still played,
+      // it just earns no card XP and its souls stay out of the season total.
+      const emberFunded = await spendEmberForGame(userId);
+      finalGameState.ember_funded = emberFunded;
+
       // Create game record with floor_number
       const createdGame = await this.createTowerGameRecord(
         userId,
@@ -562,7 +572,8 @@ class TowerService {
         playerDeckId,
         floor.ai_deck_id,
         floorNumber,
-        finalGameState
+        finalGameState,
+        emberFunded
       );
 
       // Get AI deck info for preview and opponent mythology in parallel
@@ -587,6 +598,8 @@ class TowerService {
         // Only present with the flag on, so the response shape is unchanged for
         // everyone else. Lets GameView show modifiers without a second fetch.
         ...(modifiersEnabled ? { modifiers: activeModifiers } : {}),
+        // Additive: lets the client tell the player this climb earns no XP.
+        ember_funded: emberFunded,
       };
     } finally {
       client.release();
@@ -602,11 +615,13 @@ class TowerService {
     player1DeckId: string,
     player2DeckId: string,
     floorNumber: number,
-    initialGameState: any
+    initialGameState: any,
+    /** Defaults true so any caller that predates embers keeps paying out. */
+    emberFunded: boolean = true
   ): Promise<{ game_id: string }> {
     const query = `
-      INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, floor_number, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, floor_number, ember_funded, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
       RETURNING game_id;
     `;
     const values = [
@@ -619,6 +634,7 @@ class TowerService {
       "4x4",
       JSON.stringify(initialGameState),
       floorNumber,
+      emberFunded,
     ];
     const { rows } = await db.query(query, values);
     return { game_id: rows[0].game_id };

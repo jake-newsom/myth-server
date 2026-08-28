@@ -48,6 +48,7 @@ import {
 import { resolveAIDifficulty } from "../../game-engine/ai.difficulty";
 import { DECK_CONFIG } from "../../config/constants";
 import ChallengeService from "../../services/challenge.service";
+import { spendEmberForGame } from "../../services/ember.service";
 import FeatureFlagService from "../../services/featureFlag.service";
 import CardBackModel from "../../models/cardBack.model";
 
@@ -219,7 +220,19 @@ class GameController {
       events.push(...legacyBootstrap.events);
       await hydrateGameStateCards(finalGameState);
 
-      // 5. Create game record in database
+      // 5. Spend an ember, then create the game record.
+      //
+      // Running out of embers is not an error: the game still starts, it just
+      // won't award card XP and its souls won't reach the season total. The
+      // spend happens here — after every validation that can reject the request
+      // — so a rejected create never costs the player an ember.
+      const emberFunded = await spendEmberForGame(userId);
+
+      // The engine reads this while the game is being played (souls are tracked
+      // per flip, not at completion), so the decision has to travel in the
+      // state, not just the games row.
+      finalGameState.ember_funded = emberFunded;
+
       const createdGameResponse: CreateGameResponse =
         await GameService.createGameRecord(
           userId,
@@ -227,7 +240,9 @@ class GameController {
           deckId,
           aiDeckIdToUse,
           "solo",
-          finalGameState
+          finalGameState,
+          undefined,
+          emberFunded
         );
 
       // game_state from createGameRecord (via DB) is a JSON string. Parse it.
@@ -244,6 +259,8 @@ class GameController {
         opponent_mythology: opponentMythology,
         current_user_id: userId,
         events,
+        // Additive: lets the client tell the player this run earns no XP.
+        ember_funded: emberFunded,
       });
     } catch (error) {
       console.error("Error creating solo game:", error);
@@ -624,6 +641,14 @@ class GameController {
               userId,
               gameId,
               won
+            );
+            // Saga bypasses processGameCompletion, which is the only other
+            // place achievement events are fired. Without this, no achievement
+            // tracks in saga mode. Never throws.
+            await GameRewardsService.processSagaAchievements(
+              userId,
+              updatedGameState,
+              winner_id_for_db
             );
             gameCompletionResult = {
               game_result: {
@@ -1022,6 +1047,12 @@ class GameController {
                 gameId,
                 wonAI
               );
+            // See the matching call in the other saga branch above.
+            await GameRewardsService.processSagaAchievements(
+              userId,
+              updatedGameState,
+              winner_id_for_db
+            );
             gameCompletionResult = {
               game_result: {
                 winner: winner_id_for_db,

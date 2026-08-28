@@ -20,6 +20,14 @@ export interface User {
   fate_coins: number;
   card_fragments: number;
   echoes: number;
+  /**
+   * Entry currency for solo and tower games. Regenerates +1 per 10 minutes up
+   * to EMBER_REGEN_CAP; purchases and rewards may push it above that, and
+   * regeneration simply idles while it is over.
+   */
+  embers: number;
+  /** High-water mark that ember regeneration has been credited through. */
+  embers_last_regen_at: Date;
   total_xp: number;
   pack_count: number;
   win_streak_multiplier: number; // Win streak multiplier for online games (1.0 - 5.0)
@@ -331,6 +339,12 @@ export interface Game {
   game_state: Record<string, any>;
   board_layout: "4x4" | "3x3";
   is_tutorial: boolean;
+  /**
+   * Whether this game paid an ember at creation. FALSE means it awards no card
+   * XP and its souls are excluded from the season total. Only solo/tower game
+   * creation can set it FALSE; everything else is funded by definition.
+   */
+  ember_funded: boolean;
   created_at: Date;
   completed_at: Date | null;
 }
@@ -486,6 +500,7 @@ export interface Achievement {
   reward_fate_coins?: number; // Optional until DB migration adds this column
   reward_packs: number;
   reward_card_fragments?: number; // Optional until DB migration adds this column
+  reward_embers?: number | null; // NULL/0 grants none
   reward_border_id?: string | null; // References card_borders table
   icon_url?: string;
   is_active: boolean;
@@ -573,8 +588,23 @@ export interface UserCardPowerUp {
 export type ShopItemType =
   | "legendary_card"
   | "epic_card"
+  | "rare_card"
   | "enhanced_card"
-  | "pack";
+  | "pack"
+  | "ember_bundle"
+  | "fragment_bundle"
+  | "fate_coin_bundle"
+  | "soul_card";
+
+/**
+ * Which tab of the unified shop an offering belongs to.
+ *
+ * `daily` is the default for every pre-overhaul row, so the legacy read path
+ * (which filters to `daily`) sees exactly the offerings it always saw. `soul`
+ * is the fragment-priced card catalogue. Saga and the paid tab are served by
+ * their own endpoints and never appear in this table.
+ */
+export type ShopTab = "daily" | "soul";
 export type CurrencyType = "gems" | "card_fragments" | "fate_coins";
 
 export interface DailyShopConfig {
@@ -599,6 +629,8 @@ export interface DailyShopOffering {
   price: number;
   currency: CurrencyType;
   slot_number: number;
+  /** Defaults to "daily" for rows written before the overhaul. */
+  shop_tab?: ShopTab;
   created_at: Date;
 }
 
@@ -640,6 +672,23 @@ export interface DailyShopPurchase {
   purchased_at: Date;
 }
 
+/**
+ * A player's paid-reset counter for one shop tab within one reset period.
+ *
+ * `period_key` is the shop date (YYYY-MM-DD) for daily tabs and the ISO week
+ * (YYYY-Www) for weekly ones, so "resets clear at the server reset" needs no
+ * cleanup job — a new period simply has no row.
+ */
+export interface ShopTabReset {
+  reset_id: string;
+  user_id: string;
+  shop_tab: string;
+  period_key: string;
+  resets_used: number;
+  gems_spent: number;
+  updated_at: Date;
+}
+
 export interface DailyShopRotation {
   rotation_id: string;
   mythology: string;
@@ -655,7 +704,8 @@ export type MonthlyRewardType =
   | "card_fragments"
   | "card_pack"
   | "enhanced_card"
-  | "border";
+  | "border"
+  | "embers";
 
 export interface MonthlyLoginConfig {
   config_id: string;

@@ -8,6 +8,11 @@ import {
   IMMORTAL_FLOOR,
   softResetRating,
 } from "../config/pvpRanks";
+import SeasonRewardTierModel, {
+  SeasonRewardBundle,
+  resolveTierForRankKey,
+} from "../models/seasonRewardTier.model";
+import CardBackModel from "../models/cardBack.model";
 import logger from "../utils/logger";
 
 /**
@@ -71,6 +76,68 @@ export function tierForRankKey(rankKey: string): SeasonalRewardTier | null {
 }
 
 /**
+ * A payout band resolved for one rank, whatever its source.
+ *
+ * The bundle carries the cosmetic half (cards / borders / card backs); the
+ * hardcoded fallback has none, so a fallback payout is currency-only —
+ * identical to what this job delivered before it was configurable.
+ */
+export interface ResolvedRankedTier {
+  label: string;
+  gems: number;
+  packs: number;
+  bundle: SeasonRewardBundle | null;
+}
+
+/** Bundle -> band, for a DB-configured tier. */
+function bundleToTier(
+  label: string,
+  bundle: SeasonRewardBundle
+): ResolvedRankedTier {
+  return { label, gems: bundle.gems, packs: bundle.packs, bundle };
+}
+
+/** The hardcoded band for a rank, in ResolvedRankedTier shape. */
+function fallbackTier(rankKey: string): ResolvedRankedTier | null {
+  const t = tierForRankKey(rankKey);
+  return t ? { label: t.label, gems: t.gems, packs: t.packs, bundle: null } : null;
+}
+
+/**
+ * Load the season's configured payout bands, keyed by pvpRanks rank key.
+ *
+ * Read ONCE per payout run rather than per player — the ladder can be
+ * thousands of rows and the config is the same for all of them.
+ *
+ * Returns an empty map when the axis has no rows or the read fails, which the
+ * caller reads as "use the hardcoded bands". That is the whole safety property
+ * of this design: a misconfigured, emptied or unreachable table degrades to the
+ * payouts this job has always made, never to paying nothing.
+ */
+async function loadConfiguredTiers(
+  seasonId: string
+): Promise<Map<string, ResolvedRankedTier>> {
+  const byRank = new Map<string, ResolvedRankedTier>();
+  try {
+    const rows = await SeasonRewardTierModel.getTiersForSeason(
+      seasonId,
+      "ranked_draft"
+    );
+    for (const row of rows) {
+      const tier = resolveTierForRankKey([row], row.tier_key);
+      if (tier) byRank.set(row.tier_key, bundleToTier(tier.label, tier.bundle_json));
+    }
+  } catch (error) {
+    logger.error("[rankedDraftRewards] tier config read failed; using defaults", {
+      seasonId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return new Map();
+  }
+  return byRank;
+}
+
+/**
  * How far down the ladder the payout job reads.
  *
  * Still bounded — the job sends mail per row, so an unbounded read is a
@@ -85,22 +152,61 @@ async function insertRewardMail(
   reward: {
     subject: string;
     content: string;
-    gems: number;
-    packs: number;
+    gems?: number;
+    packs?: number;
+    cardIds?: string[];
+    borderId?: string | null;
   }
 ): Promise<string> {
   const { rows } = await exec.query(
     `INSERT INTO mail (
        user_id, mail_type, subject, content, sender_id, sender_name,
        has_rewards, reward_gold, reward_gems, reward_packs, reward_fate_coins,
-       expires_at
+       reward_card_ids, reward_border_id, expires_at
      )
      VALUES ($1, 'reward', $2, $3, NULL, 'Ranked Rewards',
-             true, 0, $4, $5, 0, NULL)
+             true, 0, $4, $5, 0, $6, $7, NULL)
      RETURNING id;`,
-    [userId, reward.subject, reward.content, reward.gems, reward.packs]
+    [
+      userId,
+      reward.subject,
+      reward.content,
+      reward.gems ?? 0,
+      reward.packs ?? 0,
+      reward.cardIds ?? [],
+      reward.borderId ?? null,
+    ]
   );
   return rows[0].id;
+}
+
+/**
+ * Deliver a tier's cosmetics alongside the primary reward mail.
+ *
+ * Mirrors seasonRewardPayout.deliverToUser exactly, because these are the same
+ * assets reaching the same client screens: card backs have no mail/claim path
+ * so they are granted directly, cards ride the primary mail's reward_card_ids,
+ * and a mail row carries only ONE border — so the first rides the primary mail
+ * and each extra needs its own.
+ *
+ * Runs inside the caller's transaction, so the claim row, the mail and these
+ * grants all commit together or not at all.
+ */
+async function deliverCosmetics(
+  client: QueryExecutor,
+  userId: string,
+  bundle: SeasonRewardBundle
+): Promise<{ cardIds: string[]; firstBorderId: string | null; extraBorderIds: string[] }> {
+  for (const backId of bundle.card_back_ids) {
+    await CardBackModel.grantToUser(userId, backId, client);
+  }
+  const borders = [...bundle.border_ids];
+  const firstBorderId = borders.shift() ?? null;
+  return {
+    cardIds: [...bundle.card_variant_ids],
+    firstBorderId,
+    extraBorderIds: borders,
+  };
 }
 
 export interface SeasonalPayoutResult {
@@ -145,6 +251,16 @@ export async function runSeasonalPayout(
     (r: { rating: number }) => r.rating >= IMMORTAL_FLOOR
   ).length;
 
+  // Read the admin-configured bands once for the whole run. Empty => the
+  // hardcoded SEASONAL_REWARD_TIERS are used for every player.
+  const configuredTiers = await loadConfiguredTiers(seasonId);
+  if (configuredTiers.size === 0) {
+    logger.info(
+      "[rankedDraftRewards] no ranked_draft tier config; using built-in bands",
+      { seasonId }
+    );
+  }
+
   for (const row of standings) {
     const rank = Number(row.rank_position);
 
@@ -157,7 +273,8 @@ export async function runSeasonalPayout(
       poolSize: positionalPool,
     });
 
-    const tier = tierForRankKey(finalRank.rank.key);
+    const tier =
+      configuredTiers.get(finalRank.rank.key) ?? fallbackTier(finalRank.rank.key);
     if (!tier) continue;
 
     const client = await db.getClient();
@@ -168,13 +285,14 @@ export async function runSeasonalPayout(
       const claim = await client.query(
         `INSERT INTO ranked_draft_season_payouts
            (season_id, user_id, season, rank_position, rating, tier_label,
-            rank_key, reward_gems, reward_packs)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            rank_key, reward_gems, reward_packs, bundle_json)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
          ON CONFLICT (season_id, user_id) DO NOTHING
          RETURNING id`,
         [
           seasonId, row.user_id, season, rank, row.rating,
           tier.label, finalRank.rank.key, tier.gems, tier.packs,
+          tier.bundle ? JSON.stringify(tier.bundle) : null,
         ]
       );
 
@@ -184,6 +302,13 @@ export async function runSeasonalPayout(
         continue;
       }
 
+      // Cosmetics first: the card-back grants and the border split must be
+      // settled before the primary mail is written, since that mail carries
+      // the card ids and the first border.
+      const cosmetics = tier.bundle
+        ? await deliverCosmetics(client, row.user_id, tier.bundle)
+        : { cardIds: [], firstBorderId: null, extraBorderIds: [] };
+
       const mailId = await insertRewardMail(client, row.user_id, {
         subject: `Ranked Draft — ${tier.label}`,
         content:
@@ -192,7 +317,18 @@ export async function runSeasonalPayout(
           `Claim your rewards below.`,
         gems: tier.gems,
         packs: tier.packs,
+        cardIds: cosmetics.cardIds,
+        borderId: cosmetics.firstBorderId,
       });
+
+      // A mail row carries a single border, so extras get their own.
+      for (const borderId of cosmetics.extraBorderIds) {
+        await insertRewardMail(client, row.user_id, {
+          subject: `Ranked Draft — cosmetic`,
+          content: "An additional ranked season cosmetic reward awaits.",
+          borderId,
+        });
+      }
 
       await client.query(
         `UPDATE ranked_draft_season_payouts SET mail_id = $2 WHERE id = $1`,

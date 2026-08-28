@@ -21,6 +21,13 @@ router.post(
   DailyShopController.purchaseItem
 );
 
+router.post(
+  "/reset",
+  authenticateJWT,
+  moderateRateLimit,
+  DailyShopController.resetTab
+);
+
 // Admin endpoints (require authentication + admin role)
 router.get(
   "/admin/config",

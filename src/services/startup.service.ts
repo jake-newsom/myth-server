@@ -55,6 +55,21 @@ const StartupService = {
         logger.info(
           `✅ Found ${offerings.length} existing offerings for ${shopDate}`
         );
+
+        // The day already has offerings, but a newly-introduced item type
+        // (e.g. the ember bundle) has no row in it and would not get one until
+        // the next midnight rotation. Fill only the gaps — rebuilding the day
+        // here would reroll cards players are looking at and orphan the
+        // offering ids their purchases reference.
+        try {
+          await DailyShopService.backfillMissingOfferings(shopDate);
+        } catch (error) {
+          logger.error(
+            "❌ Failed to backfill missing shop offerings:",
+            error as any
+          );
+          // Don't throw - let the server continue running
+        }
       }
     } catch (error) {
       logger.error("❌ Error initializing daily shop:", error as any);

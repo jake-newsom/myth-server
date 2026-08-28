@@ -74,6 +74,12 @@ export interface TowerGameStartResponse {
    * fetch (the tower store may be empty on a direct game-screen reload).
    */
   modifiers?: TowerModifier[];
+  /**
+   * Whether this climb paid an ember. False means it awards no card XP and its
+   * souls stay out of the season total. Absent on older responses; treat an
+   * absent value as funded.
+   */
+  ember_funded?: boolean;
 }
 
 /**

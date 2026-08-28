@@ -7,7 +7,8 @@ import { RarityUtils } from "../types/card.types";
 import logger from "../utils/logger";
 import DailyTaskService from "./dailyTask.service";
 import { cacheInvalidation } from "./cache.invalidation.service";
-import { USER_LIMITS } from "../config/constants";
+import { USER_LIMITS, SHOP_CONFIG } from "../config/constants";
+import FeatureFlagService from "./featureFlag.service";
 
 const CARDS_PER_PACK = 5;
 const GOD_PACK_CHANCE = 1 / 1200; // 1 in 1500 chance
@@ -690,6 +691,87 @@ const PackService = {
     return selectedRarity;
   },
 
+  /**
+   * Guarantee at least one rare art variant in a 10-pack open.
+   *
+   * Each of the 50 cards is rolled independently, and the combined `+`/`++`/
+   * `+++` weight is 3.5% — so a 10-pack comes up with no variant at all around
+   * 17% of the time. That is exactly the outcome that makes the 10-pack button
+   * feel identical to ten single opens, which is the thing this is meant to fix.
+   *
+   * The pass runs AFTER all packs are generated but BEFORE anything is written:
+   * the swap has to be visible to the collection insert, the achievement
+   * counts, the fate pick and the reveal, or the player is shown a card they do
+   * not own.
+   *
+   * Mutates `packs` in place and returns whether a swap happened.
+   *
+   * Design notes:
+   *  - **Only when there is genuinely none.** A pack that already rolled a
+   *    variant is left completely untouched, so this changes the distribution
+   *    only in the tail it is meant to cover — it does not inflate the average
+   *    variant rate for lucky opens.
+   *  - **Base rarity is weighted, not uniform.** A pity variant is drawn with
+   *    the same base-tier weights as a naturally rolled one, so the guarantee
+   *    cannot become a backdoor legendary faucet.
+   *  - **Never invents a card.** It only ever picks a variant that actually
+   *    exists in this pack's pool; the granted `card_variant_id` is what the
+   *    player receives, so relabelling a base card would grant the wrong thing.
+   *    If the pool has no variants at all, it does nothing.
+   */
+  _applyTenPackVariantPity(
+    packs: CardWithAbility[][],
+    packCards: CardWithAbility[],
+  ): boolean {
+    const hasVariant = packs.some((pack) =>
+      pack.some((card) => String(card.rarity).includes("+")),
+    );
+    if (hasVariant) return false;
+
+    const variantPool = packCards.filter((card) =>
+      String(card.rarity).includes("+"),
+    );
+    if (variantPool.length === 0) return false;
+
+    // Group the available variants by base tier so the weighted pick can only
+    // land on a tier that actually has stock.
+    const byBaseTier: Record<string, CardWithAbility[]> = {};
+    for (const card of variantPool) {
+      const base = RarityUtils.getBaseRarity(card.rarity as any);
+      (byBaseTier[base] ??= []).push(card);
+    }
+
+    const weights = Object.entries(SHOP_CONFIG.VARIANT_PITY_BASE_WEIGHTS).filter(
+      ([tier]) => (byBaseTier[tier]?.length ?? 0) > 0,
+    );
+    if (weights.length === 0) return false;
+
+    const totalWeight = weights.reduce((sum, [, w]) => sum + w, 0);
+    let roll = Math.random() * totalWeight;
+    let chosenTier = weights[0][0];
+    for (const [tier, weight] of weights) {
+      roll -= weight;
+      if (roll <= 0) {
+        chosenTier = tier;
+        break;
+      }
+    }
+
+    const candidates = byBaseTier[chosenTier];
+    const replacement = { ...candidates[Math.floor(Math.random() * candidates.length)] };
+
+    // Replace one card in a random pack, at a random position: always
+    // overwriting the last card of the first pack would make the guarantee
+    // visually obvious and predictable in the reveal.
+    const packIndex = Math.floor(Math.random() * packs.length);
+    const targetPack = packs[packIndex];
+    if (targetPack.length === 0) return false;
+    const cardIndex = Math.floor(Math.random() * targetPack.length);
+    targetPack[cardIndex] = replacement;
+
+    return true;
+  },
+
   getPackRateConfiguration() {
     return {
       cards_per_pack: CARDS_PER_PACK,
@@ -837,14 +919,17 @@ const PackService = {
         throw new Error("No cards available in this pack");
       }
 
-      // Process each pack
+      // Roll every pack's contents FIRST, without persisting anything.
+      //
+      // The variant guarantee is a property of the whole batch, so it cannot be
+      // decided until all packs are rolled — and it has to be applied before
+      // the cards are written, because the collection insert, the achievement
+      // counts and the fate pick all read the same arrays.
       for (let i = 0; i < count; i++) {
-        // Open pack using core function
-        const { selectedCards, isGodPack } = await this._openSinglePackCore(
-          userId,
-          packId,
-          packCards,
-        );
+        const isGodPack = this.isGodPack();
+        const selectedCards = isGodPack
+          ? this.selectGodPackCards(packCards, CARDS_PER_PACK)
+          : this.selectRandomCards(packCards, CARDS_PER_PACK);
 
         if (isGodPack) {
           logger.info("God Pack opened in multiple pack opening!", {
@@ -855,14 +940,43 @@ const PackService = {
           godPacks.push(i); // Track this pack as a God Pack (0-indexed)
         }
 
+        packs.push(selectedCards);
+      }
+
+      // 10-pack guarantee. Flag-gated: off, the batch is exactly what the rolls
+      // produced, which is today's behaviour.
+      if (
+        count >= SHOP_CONFIG.VARIANT_PITY_MIN_PACKS &&
+        (await FeatureFlagService.isEnabled(userId, SHOP_CONFIG.FLAG))
+      ) {
+        const applied = this._applyTenPackVariantPity(packs, packCards);
+        if (applied) {
+          logger.info("10-pack variant pity applied", { userId, packId, count });
+        }
+      }
+
+      // Now persist: grant the cards, log the opening, create the fate pick.
+      for (let i = 0; i < packs.length; i++) {
+        const selectedCards = packs[i];
+
+        await this.addCardsToUserCollection(userId, selectedCards);
+        const packOpeningId = await this.logPackOpening(
+          userId,
+          packId,
+          selectedCards,
+        );
+        await this.createFatePickForOpening(
+          packOpeningId,
+          userId,
+          selectedCards,
+          packId,
+        );
+
         // Count cards by rarity for this pack
         const packRarityCounts = this._countCardsByRarity(selectedCards);
         for (const [rarity, count] of Object.entries(packRarityCounts)) {
           totalRarityCounts[rarity] = (totalRarityCounts[rarity] || 0) + count;
         }
-
-        // Add this pack's cards to the result
-        packs.push(selectedCards);
       }
 
       // Invalidate user's card cache since collection changed

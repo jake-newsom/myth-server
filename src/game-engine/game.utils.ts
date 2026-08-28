@@ -613,7 +613,13 @@ export function flipCard(
           defeatingPlayerId,
           setId!
         ).catch(() => { });
-        SeasonSoulsService.trackDefeat(defeatingPlayerId);
+        // Souls are counted per flip, as they happen — there is no end-of-game
+        // tally to filter — so a game that never paid its ember has to be
+        // excluded right here. Absent means funded: PvP, ranked draft, Sagas
+        // and every game predating embers leave the field unset.
+        if (state.ember_funded !== false) {
+          SeasonSoulsService.trackDefeat(defeatingPlayerId);
+        }
         AchievementService.triggerAchievementEvent({
           userId: defeatingPlayerId,
           eventType: "card_flipped",

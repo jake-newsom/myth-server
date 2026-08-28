@@ -21,6 +21,7 @@ export interface AchievementRewardFields {
   reward_fate_coins?: number;
   reward_packs?: number;
   reward_card_fragments?: number;
+  reward_embers?: number | null;
   reward_border_id?: string | null;
   /** When set, the border grant is scoped to this character only. */
   character_id?: string | null;
@@ -33,7 +34,8 @@ export interface MonthlyLoginRewardFields {
     | "card_fragments"
     | "card_pack"
     | "enhanced_card"
-    | "border";
+    | "border"
+    | "embers";
   amount?: number | null;
   card_id?: string | null;
   reward_border_id?: string | null;
@@ -94,6 +96,9 @@ export function achievementRewardsToItems(
       amount: achievement.reward_card_fragments,
     });
   }
+  if (achievement.reward_embers && achievement.reward_embers > 0) {
+    items.push({ type: "embers", amount: achievement.reward_embers });
+  }
   if (achievement.reward_border_id) {
     items.push({
       type: "border",
@@ -116,6 +121,8 @@ export function monthlyLoginRewardToItems(
       return amount > 0 ? [{ type: "fate_coins", amount }] : [];
     case "card_fragments":
       return amount > 0 ? [{ type: "card_fragments", amount }] : [];
+    case "embers":
+      return amount > 0 ? [{ type: "embers", amount }] : [];
     case "card_pack":
       return amount > 0 ? [{ type: "packs", amount }] : [];
     case "enhanced_card":

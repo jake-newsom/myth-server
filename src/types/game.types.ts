@@ -181,6 +181,19 @@ export interface GameState {
    * While present, the game is frozen until the choice resolves or times out.
    */
   pending_choice?: PendingChoice;
+  /**
+   * Whether this game paid an ember at creation, mirroring games.ember_funded.
+   *
+   * It lives in the state as well as the row because souls are tracked *during*
+   * play — once per card flip, in game.utils — and the engine has no game row
+   * to consult there. `false` withholds card XP at completion and keeps this
+   * game's souls out of the season total.
+   *
+   * Absent means funded: every mode that does not spend embers (PvP, ranked
+   * draft, Sagas, tutorials) and every game that predates embers leaves it
+   * unset, and must keep paying out.
+   */
+  ember_funded?: boolean;
 }
 
 export interface GameAction {

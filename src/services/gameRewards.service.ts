@@ -11,9 +11,9 @@ import DailyTaskService from "./dailyTask.service";
 import DeckService from "./deck.service";
 import CardModel from "../models/card.model";
 /** Extra card XP awarded for cards played in online (PvP) games. */
-const PVP_XP_BONUS_MULTIPLIER = 1.05;
+const PVP_XP_BONUS_MULTIPLIER = 1.10;
 /** Ranked draft pays standard XP + 10% (see calculateCardXpRewards). */
-const RANKED_DRAFT_XP_BONUS_MULTIPLIER = 1.1;
+const RANKED_DRAFT_XP_BONUS_MULTIPLIER = 1.2;
 
 /**
  * XP targets for a finished ranked draft.
@@ -67,6 +67,12 @@ export interface GameRewards {
 export interface GameCompletionResult {
   game_result: GameResult;
   rewards: GameRewards;
+  /**
+   * False when this game was started with no embers, meaning it awarded no card
+   * XP and its souls were excluded from the season total. Absent on results
+   * that predate embers; treat absent as funded.
+   */
+  ember_funded?: boolean;
   updated_currencies: {
     gems: number;
     total_xp: number;
@@ -367,14 +373,27 @@ const GameRewardsService = {
           isForfeit
         );
 
-      // Calculate XP rewards (sync)
-      const cardXpRewards = this.calculateCardXpRewards(
-        userId,
-        gameResult.winner,
-        gameMode,
-        usedCards,
-        isForfeit
-      );
+      // Calculate XP rewards (sync).
+      //
+      // A solo or tower game started on an empty ember balance earns no card
+      // XP. Read from the state rather than re-querying the games row: the
+      // state is the same object the engine played with, and the row may
+      // already have been rewritten by the time we get here.
+      //
+      // Absent means funded, so PvP, ranked draft, Sagas and every game that
+      // predates embers are unaffected.
+      const emberFunded = (gameState as { ember_funded?: boolean })
+        .ember_funded !== false;
+
+      const cardXpRewards = emberFunded
+        ? this.calculateCardXpRewards(
+          userId,
+          gameResult.winner,
+          gameMode,
+          usedCards,
+          isForfeit
+        )
+        : [];
 
       // === PHASE 3: Award core rewards (must complete before response) ===
       // These operations modify user data and must complete
@@ -545,6 +564,7 @@ const GameRewardsService = {
 
       return {
         game_result: gameResult,
+        ember_funded: emberFunded,
         rewards: {
           currency: currencyRewards,
           card_xp_rewards: xpResults,
@@ -579,6 +599,72 @@ const GameRewardsService = {
         },
         win_streak_info: undefined,
       };
+    }
+  },
+
+  /**
+   * Fire achievement events for a completed SAGA battle.
+   *
+   * Saga games never reach processGameCompletion — the controller takes a
+   * dedicated branch that calls SagaBattleService.processBattleCompletion and
+   * hand-builds its result — so until this existed no achievement of any kind
+   * tracked in saga mode.
+   *
+   * Saga has its own separate currency economy (SagaCurrencyService), which is
+   * why it bypasses the normal reward path. Achievements grant independently
+   * through RewardService on claim, so triggering them here cannot double-grant
+   * saga currency or gems.
+   *
+   * gameMode is deliberately NOT passed as "solo" even though saga rows are
+   * stored with game_mode = 'solo'. handleGameVictory branches on it to
+   * increment solo_wins / solo_master, and saga battles should not inflate solo
+   * ladder counts. Passing "saga" means the mode-agnostic achievements
+   * (first_victory, perfect_game, score-margin ones) track, and the mode-gated
+   * ones correctly do not.
+   *
+   * Never throws: a failure here must not break saga battle completion.
+   */
+  async processSagaAchievements(
+    userId: string,
+    gameState: GameState,
+    winnerId: string | null
+  ): Promise<void> {
+    try {
+      const player1Id = gameState.player1?.user_id;
+      const won = !!winnerId && winnerId === userId;
+
+      await AchievementService.triggerAchievementEvent({
+        userId,
+        eventType: "game_completion",
+        eventData: {
+          gameMode: "saga",
+          winnerId,
+        },
+      });
+
+      if (!won) return;
+
+      const isPlayer1 = userId === player1Id;
+      const winnerScore = isPlayer1
+        ? gameState.player1.score
+        : gameState.player2.score;
+      const loserScore = isPlayer1
+        ? gameState.player2.score
+        : gameState.player1.score;
+
+      await AchievementService.triggerAchievementEvent({
+        userId,
+        eventType: "game_victory",
+        eventData: {
+          gameMode: "saga",
+          isWinStreak: false,
+          winStreakCount: 0,
+          winnerScore,
+          loserScore,
+        },
+      });
+    } catch (error) {
+      console.error("Error processing saga achievement events:", error);
     }
   },
 };

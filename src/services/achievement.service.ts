@@ -41,6 +41,8 @@ interface ClaimRewardsResult {
     fate_coins: number;
     packs: number;
     card_fragments: number;
+    /** Additive; 0 for every achievement that grants no embers. */
+    embers: number;
     borders: number;
   };
   grantedItems?: GrantedReward[];
@@ -49,6 +51,7 @@ interface ClaimRewardsResult {
     fate_coins: number;
     pack_count: number;
     card_fragments: number;
+    embers: number;
     total_xp: number;
   };
 }
@@ -906,8 +909,16 @@ const AchievementService = {
       }
     }
 
-    // Perfect game (won 16-0, meaning opponent has no cards on the board)
-    if (winnerScore === 16 && loserScore === 0) {
+    // Flawless victory: the opponent finished owning no cards on the board.
+    //
+    // calculateScores counts cards owned on the board, so `loserScore === 0` is
+    // the whole condition. This used to also require `winnerScore === 16`, which
+    // demanded a completely full 4x4 board — it could never fire on a 3x3 board
+    // (only 9 tiles), nor on any 4x4 win that left a tile empty. A 12-0 or 6-0
+    // shutout is exactly as flawless as a 16-0 one.
+    //
+    // winnerScore > 0 only guards the degenerate empty-board case.
+    if (loserScore === 0 && winnerScore > 0) {
       updates.push({
         achievement_key: "perfect_game",
         mode: "increment",
@@ -2184,6 +2195,7 @@ const AchievementService = {
           reward_fate_coins: a.reward_fate_coins,
           reward_packs: a.reward_packs,
           reward_card_fragments: a.reward_card_fragments,
+          reward_embers: a.reward_embers ?? null,
           reward_border_id: a.reward_border_id ?? null,
           character_id:
             a.achievement_kind === "character" ? (a.character_id ?? null) : null,
@@ -2197,6 +2209,7 @@ const AchievementService = {
         fate_coins: grantResult.totals.fate_coins,
         packs: grantResult.totals.packs,
         card_fragments: grantResult.totals.card_fragments,
+        embers: grantResult.totals.embers,
         borders: grantResult.totals.borders,
       };
 
@@ -2216,6 +2229,7 @@ const AchievementService = {
           fate_coins: updatedUser?.fate_coins || 0,
           pack_count: updatedUser?.pack_count || 0,
           card_fragments: updatedUser?.card_fragments || 0,
+          embers: updatedUser?.embers || 0,
           total_xp: updatedUser?.total_xp || 0,
         },
       };
@@ -2229,6 +2243,7 @@ const AchievementService = {
           fate_coins: 0,
           packs: 0,
           card_fragments: 0,
+          embers: 0,
           borders: 0,
         },
       };

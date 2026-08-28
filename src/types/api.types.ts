@@ -152,7 +152,8 @@ export interface MonthlyLoginStatusResponse {
       | "card_fragments"
       | "card_pack"
       | "enhanced_card"
-      | "border";
+      | "border"
+      | "embers";
     amount: number;
     is_claimed: boolean;
     can_claim: boolean;
@@ -173,7 +174,8 @@ export interface ClaimMonthlyRewardResponse {
       | "card_fragments"
       | "card_pack"
       | "enhanced_card"
-      | "border";
+      | "border"
+      | "embers";
     amount: number;
     card_id?: string; // user_card_instance_id for enhanced_card rewards
     border_id?: string; // border_id for border rewards

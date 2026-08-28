@@ -110,7 +110,7 @@ const UserModel = {
     userId: string,
     executor: QueryExecutor = db
   ): Promise<User | null> {
-    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, role, in_game_currency, gems, fate_coins, card_fragments, echoes, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, completed_feature_tutorials, username_chosen_at, created_at, last_login as last_login_at, banned_at, banned_reason, banned_by FROM "users" WHERE user_id = $1;`;
+    const query = `SELECT user_id, username, email, facebook_id, apple_id, google_id, auth_provider, role, in_game_currency, gems, fate_coins, card_fragments, echoes, embers, embers_last_regen_at, total_xp, pack_count, win_streak_multiplier, tower_floor, tutorial_completed_at, completed_feature_tutorials, username_chosen_at, created_at, last_login as last_login_at, banned_at, banned_reason, banned_by FROM "users" WHERE user_id = $1;`;
     const { rows } = await executor.query(query, [userId]);
     return rows[0] || null;
   },

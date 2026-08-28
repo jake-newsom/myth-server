@@ -26,6 +26,7 @@ import errorHandler from "./api/middlewares/errorHandler.middleware";
 import AIAutomationService from "./services/aiAutomation.service";
 import SessionCleanupService from "./services/sessionCleanup.service";
 import DataRetentionService from "./services/dataRetention.service";
+import EmberService from "./services/ember.service";
 import FeatureFlagService from "./services/featureFlag.service";
 import DailyRewardsService from "./services/dailyRewards.service";
 import RankedDraftRewardsService from "./services/rankedDraftRewards.service";
@@ -356,6 +357,16 @@ if (require.main === module) {
       console.error("❌ Failed to start Data Retention Service:", error);
     }
 
+    // Start the ember regeneration sweep. Lazy settling on read already keeps
+    // an active player's balance correct; this keeps it correct for players who
+    // aren't looking, and for code that reads users.embers directly.
+    try {
+      EmberService.start();
+      console.log("🔥 Ember Regeneration Service started successfully");
+    } catch (error) {
+      console.error("❌ Failed to start Ember Regeneration Service:", error);
+    }
+
     // Sweep expired entries out of the in-process feature flag cache. Purely
     // local memory hygiene — no DB work, and unrelated to DataRetentionService's
     // shared-state jobs.
@@ -437,6 +448,7 @@ process.on("SIGTERM", async () => {
   SeasonSoulsService.stop();
   SessionCleanupService.stop();
   DataRetentionService.stop();
+  EmberService.stop();
   FeatureFlagService.stopCacheSweeper();
   await redisCache.disconnect();
   process.exit(0);
@@ -466,6 +478,7 @@ process.on("SIGINT", async () => {
   SeasonSoulsService.stop();
   SessionCleanupService.stop();
   DataRetentionService.stop();
+  EmberService.stop();
   FeatureFlagService.stopCacheSweeper();
   await redisCache.disconnect();
   process.exit(0);

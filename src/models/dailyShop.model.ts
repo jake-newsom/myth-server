@@ -6,8 +6,11 @@ import {
   DailyShopPurchase,
   DailyShopRotation,
   ShopItemType,
+  ShopTab,
+  ShopTabReset,
   CurrencyType,
 } from "../types/database.types";
+import { QueryExecutor } from "../config/db.config";
 
 const DailyShopModel = {
   // Configuration Management
@@ -93,13 +96,23 @@ const DailyShopModel = {
   },
 
   // Shop Offerings Management
+  /**
+   * Today's offerings, optionally restricted to a set of tabs.
+   *
+   * The default is `["daily"]` rather than "everything": the Soul Shop puts
+   * hundreds of rows in this table per day, and shipped clients render
+   * `offerings[]` as one flat list. Callers that want the soul catalogue ask
+   * for it explicitly.
+   */
   async getTodaysOfferings(
-    shopDate: string
+    shopDate: string,
+    tabs: ShopTab[] = ["daily"]
   ): Promise<DailyShopOfferingWithCard[]> {
     const query = `
       SELECT 
         dso.offering_id, dso.shop_date, dso.item_type, dso.card_id, 
-        dso.mythology, dso.price, dso.currency, dso.slot_number, dso.created_at,
+        dso.mythology, dso.price, dso.currency, dso.slot_number,
+        dso.shop_tab, dso.created_at,
         cv.card_variant_id as card_card_id, ch.name as card_name, cv.rarity as card_rarity, 
         cv.image_url as card_image_url, ch.tags as card_tags, ch.set_id as card_set_id,
         ch.description as card_description,
@@ -117,6 +130,7 @@ const DailyShopModel = {
       LEFT JOIN characters ch ON cv.character_id = ch.character_id
       LEFT JOIN special_abilities sa ON ch.special_ability_id = sa.ability_id
       WHERE dso.shop_date = $1
+        AND dso.shop_tab = ANY($2::text[])
         AND (
           dso.card_id IS NULL
           OR (
@@ -129,7 +143,7 @@ const DailyShopModel = {
       ORDER BY dso.item_type, dso.slot_number;
     `;
 
-    const { rows } = await db.query(query, [shopDate]);
+    const { rows } = await db.query(query, [shopDate, tabs]);
 
     return rows.map((row) => ({
       offering_id: row.offering_id,
@@ -140,6 +154,7 @@ const DailyShopModel = {
       price: row.price,
       currency: row.currency,
       slot_number: row.slot_number,
+      shop_tab: row.shop_tab ?? "daily",
       created_at: row.created_at,
       card: row.card_name
         ? {
@@ -180,15 +195,16 @@ const DailyShopModel = {
   },
 
   async createOffering(
-    offering: Omit<DailyShopOffering, "offering_id" | "created_at">
+    offering: Omit<DailyShopOffering, "offering_id" | "created_at">,
+    executor: QueryExecutor = db
   ): Promise<DailyShopOffering> {
     const query = `
-      INSERT INTO daily_shop_offerings (shop_date, item_type, card_id, mythology, price, currency, slot_number)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING offering_id, shop_date, item_type, card_id, mythology, price, currency, slot_number, created_at;
+      INSERT INTO daily_shop_offerings (shop_date, item_type, card_id, mythology, price, currency, slot_number, shop_tab)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING offering_id, shop_date, item_type, card_id, mythology, price, currency, slot_number, shop_tab, created_at;
     `;
 
-    const { rows } = await db.query(query, [
+    const { rows } = await executor.query(query, [
       offering.shop_date,
       offering.item_type,
       offering.card_id,
@@ -196,14 +212,70 @@ const DailyShopModel = {
       offering.price,
       offering.currency,
       offering.slot_number,
+      offering.shop_tab ?? "daily",
     ]);
 
     return rows[0];
   },
 
-  async clearOfferingsForDate(shopDate: string): Promise<void> {
-    const query = `DELETE FROM daily_shop_offerings WHERE shop_date = $1;`;
-    await db.query(query, [shopDate]);
+  /**
+   * Bulk-insert offerings in a single round trip.
+   *
+   * The Soul Shop writes the entire common+rare pool every day — hundreds of
+   * rows — and one INSERT per card is hundreds of sequential round trips on the
+   * daily rotation path.
+   */
+  async createOfferingsBulk(
+    offerings: Omit<DailyShopOffering, "offering_id" | "created_at">[],
+    executor: QueryExecutor = db
+  ): Promise<number> {
+    if (offerings.length === 0) return 0;
+
+    const query = `
+      INSERT INTO daily_shop_offerings
+        (shop_date, item_type, card_id, mythology, price, currency, slot_number, shop_tab)
+      SELECT * FROM UNNEST(
+        $1::date[], $2::shop_item_type[], $3::uuid[], $4::varchar[],
+        $5::integer[], $6::currency_type[], $7::integer[], $8::varchar[]
+      );
+    `;
+
+    await executor.query(query, [
+      offerings.map((o) => o.shop_date),
+      offerings.map((o) => o.item_type),
+      offerings.map((o) => o.card_id ?? null),
+      offerings.map((o) => o.mythology ?? null),
+      offerings.map((o) => o.price),
+      offerings.map((o) => o.currency),
+      offerings.map((o) => o.slot_number),
+      offerings.map((o) => o.shop_tab ?? "daily"),
+    ]);
+
+    return offerings.length;
+  },
+
+  /**
+   * Clear a date's offerings, optionally only for some tabs.
+   *
+   * Tab-scoped by default at the call sites so regenerating the daily rotation
+   * cannot wipe the soul catalogue (or vice versa) as a side effect.
+   */
+  async clearOfferingsForDate(
+    shopDate: string,
+    tabs?: ShopTab[],
+    executor: QueryExecutor = db
+  ): Promise<void> {
+    if (tabs && tabs.length > 0) {
+      await executor.query(
+        `DELETE FROM daily_shop_offerings WHERE shop_date = $1 AND shop_tab = ANY($2::text[]);`,
+        [shopDate, tabs]
+      );
+      return;
+    }
+    await executor.query(
+      `DELETE FROM daily_shop_offerings WHERE shop_date = $1;`,
+      [shopDate]
+    );
   },
 
   // Purchase Management
@@ -363,6 +435,126 @@ const DailyShopModel = {
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     return shuffled.slice(0, limit);
+  },
+
+  /**
+   * Every released card at a given BASE rarity, across all sets.
+   *
+   * Base rarity, not exact rarity: `rarity` packs the tier and the cosmetic
+   * upgrade (`rare`, `rare+`, `rare++`…), so an exact comparison would silently
+   * drop every upgraded printing. The Soul Shop stocks the plain printing only
+   * — `rarity::text = $1` with no suffix — because that is the one every player
+   * needs for a collection achievement, and it keeps the catalogue a fixed size.
+   *
+   * Ordered by card_variant_id so the catalogue is stable day to day.
+   */
+  async getCardsByBaseRarity(baseRarity: string): Promise<any[]> {
+    const query = `
+      SELECT cv.card_variant_id as card_id, ch.name, cv.rarity, cv.image_url,
+             ch.tags, s.name as set_name
+      FROM card_variants cv
+      JOIN characters ch ON cv.character_id = ch.character_id
+      LEFT JOIN sets s ON ch.set_id = s.set_id
+      WHERE cv.rarity::text = $1
+        AND COALESCE(cv.is_exclusive, false) = false
+        AND cv.released_at <= NOW()
+        AND ch.released_at <= NOW()
+      ORDER BY cv.card_variant_id;
+    `;
+    const { rows } = await db.query(query, [baseRarity]);
+    return rows;
+  },
+
+  // Tab Reset Management
+  /**
+   * Every reset counter a player currently holds, keyed by tab.
+   *
+   * Reads by period_key rather than deleting stale rows: an expired period is
+   * simply never queried again, so there is no cleanup job and no window where
+   * a reset count is wrong because a sweep has not run yet.
+   */
+  async getTabResets(
+    userId: string,
+    periodKeys: Record<string, string>
+  ): Promise<Record<string, ShopTabReset>> {
+    const tabs = Object.keys(periodKeys);
+    if (tabs.length === 0) return {};
+
+    const query = `
+      SELECT reset_id, user_id, shop_tab, period_key, resets_used, gems_spent, updated_at
+      FROM shop_tab_resets
+      WHERE user_id = $1
+        AND (shop_tab, period_key) IN (
+          SELECT * FROM UNNEST($2::text[], $3::text[])
+        );
+    `;
+    const { rows } = await db.query(query, [
+      userId,
+      tabs,
+      tabs.map((t) => periodKeys[t]),
+    ]);
+
+    const byTab: Record<string, ShopTabReset> = {};
+    for (const row of rows) {
+      byTab[row.shop_tab] = row;
+    }
+    return byTab;
+  },
+
+  /**
+   * Increment a tab's reset counter and return the new state.
+   *
+   * The whole read-modify-write is one statement so two concurrent resets
+   * cannot both read the same count and charge the same price twice.
+   */
+  async incrementTabReset(
+    userId: string,
+    shopTab: string,
+    periodKey: string,
+    gemsSpent: number,
+    executor: QueryExecutor = db
+  ): Promise<ShopTabReset> {
+    const query = `
+      INSERT INTO shop_tab_resets (user_id, shop_tab, period_key, resets_used, gems_spent, updated_at)
+      VALUES ($1, $2, $3, 1, $4, current_timestamp)
+      ON CONFLICT (user_id, shop_tab, period_key)
+      DO UPDATE SET
+        resets_used = shop_tab_resets.resets_used + 1,
+        gems_spent = shop_tab_resets.gems_spent + EXCLUDED.gems_spent,
+        updated_at = current_timestamp
+      RETURNING reset_id, user_id, shop_tab, period_key, resets_used, gems_spent, updated_at;
+    `;
+    const { rows } = await executor.query(query, [
+      userId,
+      shopTab,
+      periodKey,
+      gemsSpent,
+    ]);
+    return rows[0];
+  },
+
+  /**
+   * Drop a user's purchases for one tab's offerings on a date.
+   *
+   * A paid reset has to clear the per-item purchase records too, otherwise the
+   * rerolled shop would come back already "sold out" for the item types the
+   * player had bought. Scoped to the offerings of that tab and that date only.
+   */
+  async clearUserPurchasesForTab(
+    userId: string,
+    shopDate: string,
+    shopTab: string,
+    executor: QueryExecutor = db
+  ): Promise<void> {
+    const query = `
+      DELETE FROM daily_shop_purchases dsp
+      USING daily_shop_offerings dso
+      WHERE dsp.offering_id = dso.offering_id
+        AND dsp.user_id = $1
+        AND dsp.shop_date = $2
+        AND dso.shop_tab = $3;
+    `;
+    await executor.query(query, [userId, shopDate, shopTab]);
   },
 
   // Admin Methods

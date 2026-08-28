@@ -1,5 +1,6 @@
 // src/api/controllers/user.controller.ts
 import UserModel from "../../models/user.model";
+import EmberService from "../../services/ember.service";
 import CardModel from "../../models/card.model";
 import DeckModel from "../../models/deck.model";
 import GameService from "../../services/game.service";
@@ -76,12 +77,23 @@ const UserController = {
         res.status(401).json({ error: { message: "User not authenticated." } });
         return;
       }
+      // Settle ember regeneration before reading, so the balance and the
+      // client's countdown are correct at this instant rather than as of the
+      // last sweep. Additive fields only — an old client ignores them.
+      const emberState = await EmberService.settle(req.user.user_id);
+
       const userProfile = await UserModel.findById(req.user.user_id); // Ensure UserModel.findById is updated if needed
       if (!userProfile) {
         res.status(404).json({ error: { message: "User not found." } });
         return;
       }
-      res.status(200).json(userProfile);
+      res.status(200).json({
+        ...userProfile,
+        embers: emberState.embers,
+        next_ember_in_ms: emberState.next_ember_in_ms,
+        ember_regen_cap: emberState.regen_cap,
+        ember_regen_interval_ms: emberState.regen_interval_ms,
+      });
     } catch (error) {
       next(error);
     }

@@ -104,17 +104,24 @@ class GameService {
     player2DeckId: string,
     gameMode: GameMode,
     initialGameState: GameState,
-    floorNumber?: number // Optional: tower floor number for tower games
+    floorNumber?: number, // Optional: tower floor number for tower games
+    /**
+     * Whether this game paid an ember. Defaults true, which is what every mode
+     * that does not spend embers (PvP, ranked draft, tutorial) and every caller
+     * that predates embers means — the column records "pays out XP and souls",
+     * and only a solo/tower game started on an empty balance is false.
+     */
+    emberFunded: boolean = true
   ): Promise<CreateGameResponse> {
     const query = floorNumber !== undefined
       ? `
-        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, floor_number, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, floor_number, ember_funded, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
         RETURNING game_id, game_state, game_status;
       `
       : `
-        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, ember_funded, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
         RETURNING game_id, game_state, game_status;
       `;
     const values = floorNumber !== undefined
@@ -128,6 +135,7 @@ class GameService {
         "4x4", // Assuming '4x4' as default or pass as param if variable
         JSON.stringify(initialGameState),
         floorNumber,
+        emberFunded,
       ]
       : [
         player1Id,
@@ -138,6 +146,7 @@ class GameService {
         GameStatus.ACTIVE, // Initial status
         "4x4", // Assuming '4x4' as default or pass as param if variable
         JSON.stringify(initialGameState),
+        emberFunded,
       ];
     // One game in progress at a time: retire any earlier AI game for this
     // player in the same transaction as the insert, so a create can never
