@@ -21,7 +21,7 @@ export interface User {
   card_fragments: number;
   echoes: number;
   /**
-   * Entry currency for solo and tower games. Regenerates +1 per 10 minutes up
+   * Entry currency for solo and tower games. Regenerates +1 per 30 minutes up
    * to EMBER_REGEN_CAP; purchases and rewards may push it above that, and
    * regeneration simply idles while it is over.
    */

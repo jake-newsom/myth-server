@@ -15,7 +15,7 @@ import FeatureFlagService from "./featureFlag.service";
  * sweep last ran — a player who has been away for six hours sees the right
  * number the moment they open the app, not ten minutes later.
  *
- * The sweep (`runOnce`, every 10 minutes) exists so the number is also right
+ * The sweep (`runOnce`, every 30 minutes) exists so the number is also right
  * for players who are *not* looking: leaderboards, admin views, and anything
  * that reads `users.embers` directly without going through this service. It is
  * the same arithmetic applied in bulk, so the two can never disagree.

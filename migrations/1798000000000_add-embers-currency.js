@@ -9,7 +9,7 @@
  * its souls never reach the player's season total. Embers are not involved in
  * PvP, ranked draft, or Sagas.
  *
- * Regeneration: +1 every 10 minutes up to a soft cap of 60. The cap is a
+ * Regeneration: +1 every 30 minutes up to a soft cap of 60. The cap is a
  * regeneration ceiling, not a hard maximum — purchases and rewards can push the
  * balance above it, and regeneration simply stops contributing while it is over.
  *
@@ -54,7 +54,7 @@ exports.up = (pgm) => {
       notNull: true,
       default: 60,
       comment:
-        "Entry currency for solo and tower games. Regenerates +1 per 10 " +
+        "Entry currency for solo and tower games. Regenerates +1 per 30 " +
         "minutes up to 60; purchases and rewards may push it above that.",
     },
     embers_last_regen_at: {

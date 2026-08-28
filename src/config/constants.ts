@@ -433,7 +433,7 @@ export const EMBER_CONFIG = {
   /** Regeneration ceiling. Balances above this are left alone. */
   REGEN_CAP: 60,
   /** One ember per this many milliseconds. */
-  REGEN_INTERVAL_MS: 10 * 60 * 1000,
+  REGEN_INTERVAL_MS: 30 * 60 * 1000,
   /** Spent to start an ember-funded solo or tower game. */
   GAME_COST: 1,
   /** Embers granted by one daily shop bundle purchase. */
