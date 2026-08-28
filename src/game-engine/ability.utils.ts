@@ -1025,11 +1025,31 @@ export const releaseLocksAppliedBy = (
 ): void => {
   const lockedCards = getCardsByCondition(
     board,
-    (card) => card.lockedBy === sourceCardInstanceId && card.lockedTurns > 0,
+    (card) =>
+      (card.lockedBy === sourceCardInstanceId && card.lockedTurns > 0) ||
+      (card.temporary_effects ?? []).some(
+        (effect) =>
+          effect.type === EffectType.BlockDefeat &&
+          effect.sourceCardInstanceId === sourceCardInstanceId,
+      ),
   );
   for (const card of lockedCards) {
-    card.lockedTurns = 0;
-    card.lockedBy = null;
+    if (card.lockedBy === sourceCardInstanceId) {
+      card.lockedTurns = 0;
+      card.lockedBy = null;
+    }
+    // The lock is mirrored as a BlockDefeat effect (see hel_soul); clearing
+    // only lockedTurns/lockedBy would leave that effect behind and the card
+    // would keep defending after its binder is gone.
+    if (card.temporary_effects) {
+      card.temporary_effects = card.temporary_effects.filter(
+        (effect) =>
+          !(
+            effect.type === EffectType.BlockDefeat &&
+            effect.sourceCardInstanceId === sourceCardInstanceId
+          ),
+      );
+    }
   }
 };
 
