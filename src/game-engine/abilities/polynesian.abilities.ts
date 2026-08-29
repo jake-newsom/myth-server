@@ -198,7 +198,7 @@ export const polynesianAbilities: AbilityMap = {
         board,
       );
       if (allyPosition) {
-        return [cleanseDebuffs(randomAlly, 1000, allyPosition, "nature-swirl")];
+        return [cleanseDebuffs(randomAlly, 1000, allyPosition, "bloom")];
       }
     }
     return [];
