@@ -196,21 +196,44 @@ export const norseAbilities: AbilityMap = {
       }
     }
 
-    const player =
-      triggerCard.original_owner === player1.user_id ? player1 : player2;
+    // Baldr bounces to whoever currently controls him, not his original owner.
+    const returnToPlayerId = triggerCard.owner;
+
+    const player = returnToPlayerId === player1.user_id ? player1 : player2;
     player.hand.push(triggerCard.user_card_instance_id);
+
+    // The hand holds only ids; the playable card is read back out of
+    // hydrated_card_data_cache, and placeCard rebuilds the board copy from that
+    // entry. The board copy is what carried the buffs, so write its state back
+    // or the bounce silently wipes them.
+    const cached =
+      context.state.hydrated_card_data_cache?.[
+        triggerCard.user_card_instance_id
+      ];
+    if (cached) {
+      // Deep-copy: a shallow spread would leave `power` (and `data`) shared
+      // with the discarded board card, so later mutations would leak in.
+      cached.temporary_effects = triggerCard.temporary_effects
+        ? structuredClone(triggerCard.temporary_effects)
+        : [];
+      cached.power_enhancements = { ...triggerCard.power_enhancements };
+      cached.current_power = { ...triggerCard.current_power };
+      // placeCard rejects a card whose cached owner is not the player placing
+      // it, so a captured Baldr would be stuck in hand otherwise.
+      cached.owner = returnToPlayerId;
+    }
 
     gameEvents.push({
       type: EVENT_TYPES.CARD_DRAWN,
       eventId: uuidv4(),
       timestamp: Date.now(),
       cardId: triggerCard.user_card_instance_id,
-      sourcePlayerId: triggerCard.original_owner,
+      sourcePlayerId: returnToPlayerId,
     } as CardEvent);
 
     if (!simulationContext.isInSimulation()) {
       AchievementService.triggerAchievementEvent({
-        userId: triggerCard.original_owner,
+        userId: returnToPlayerId,
         eventType: "power_buff_applied",
         eventData: {
           source_card_id: triggerCard.user_card_instance_id,
