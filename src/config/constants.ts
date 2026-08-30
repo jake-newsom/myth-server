@@ -460,7 +460,7 @@ export const SHOP_CONFIG = {
   /** Card fragments granted by one fragment_bundle purchase. */
   FRAGMENT_BUNDLE_AMOUNT: 150,
   /** Fate coins granted by one fate_coin_bundle purchase. */
-  FATE_COIN_BUNDLE_AMOUNT: 5,
+  FATE_COIN_BUNDLE_AMOUNT: 2,
 
   /**
    * Soul Shop prices, in card fragments.
