@@ -216,6 +216,7 @@ const DailyShopService = {
       offerings: offerings.map((offering) => ({
         ...offering,
         shop_date: this.getCurrentShopDate(), // Ensure consistent UTC date string
+        grant_amount: this.getBundleGrantAmount(offering.item_type),
       })),
       userPurchases,
       purchaseLimits,
@@ -227,6 +228,26 @@ const DailyShopService = {
       },
       resetState,
     };
+  },
+
+  /**
+   * Units granted by one purchase of a cardless bundle.
+   *
+   * The single server-side source for the amounts the client used to mirror in
+   * its own table. Returns undefined for offerings that grant a card or a pack,
+   * where the quantity is not a bundle size.
+   */
+  getBundleGrantAmount(itemType: ShopItemType): number | undefined {
+    switch (itemType) {
+      case "ember_bundle":
+        return EMBER_CONFIG.SHOP_BUNDLE_AMOUNT;
+      case "fragment_bundle":
+        return SHOP_CONFIG.FRAGMENT_BUNDLE_AMOUNT;
+      case "fate_coin_bundle":
+        return SHOP_CONFIG.FATE_COIN_BUNDLE_AMOUNT;
+      default:
+        return undefined;
+    }
   },
 
   /**

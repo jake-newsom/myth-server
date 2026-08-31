@@ -501,6 +501,96 @@ export const SHOP_CONFIG = {
   } as Record<string, number>,
 } as const;
 
+/**
+ * The Forge: craft any card by paying card fragments for how *specific* the
+ * result is.
+ *
+ * The price is a product of two independent choices, which is what makes the
+ * economy legible to a player mid-save-up:
+ *
+ *   price = TIER_COST[tier] × (character chosen ? CHARACTER_MULT : 1) × VARIANT_MULT[upgrade]
+ *
+ * Rather than store that product, the two axes are stored separately so the
+ * cost summary can show its own arithmetic ("Legendary 80 × specific 2.5 ×
+ * ++ 2.0"). CHARACTER_COST is expressed as an absolute price per tier rather
+ * than a multiplier because the design brief fixes both numbers independently
+ * (common: 10 random / 30 specific — a 3× ratio; legendary: 80 / 200 — 2.5×).
+ *
+ * Worked example from the brief: a specific legendary character with `++`
+ * artwork costs 200 × 2 = 400; a random legendary `++` costs 80 × 2 = 160.
+ *
+ * The Forge tab itself is already gated by SHOP_CONFIG.FLAG (the shop
+ * overhaul), which is what makes this revertible: with that flag off the tab
+ * is not rendered and none of these numbers are read. A second flag of its own
+ * would gate an already-gated surface.
+ */
+export const FORGE_CONFIG = {
+  /** Tiers the Forge can craft, in display order. */
+  TIERS: ["common", "rare", "epic", "legendary"] as const,
+
+  /** Cosmetic upgrade suffixes, in display order. "" is the base artwork. */
+  UPGRADES: ["", "+", "++", "+++"] as const,
+
+  /** Fragment cost of a RANDOM card of the given base tier, base artwork. */
+  TIER_COST: {
+    common: 10,
+    rare: 20,
+    epic: 40,
+    legendary: 80,
+  } as Record<string, number>,
+
+  /** Fragment cost when the player names the exact character in that tier. */
+  CHARACTER_COST: {
+    common: 30,
+    rare: 50,
+    epic: 100,
+    legendary: 200,
+  } as Record<string, number>,
+
+  /**
+   * Multiplier applied for the chosen artwork upgrade. Base art is free; the
+   * `+` tiers cost 2× / 3× / 4×.
+   *
+   * Deliberately identical to UPGRADE_SHARD_MULTIPLIER: a cosmetic upgrade is
+   * worth the same moving into the Forge (sacrifice) as out of it (craft). An
+   * earlier draft charged 1.5×/2×/3× here while sacrifice paid 2×/3×/4×, which
+   * made base-art duplicates the cheapest fuel and upgraded cards the cheapest
+   * product — backwards from the intent that good art is the reward. Keep
+   * these two tables in step if either moves.
+   */
+  VARIANT_MULTIPLIER: {
+    "": 1,
+    "+": 2,
+    "++": 3,
+    "+++": 4,
+  } as Record<string, number>,
+
+  /**
+   * Fragments granted for sacrificing one card, by base rarity, multiplied by
+   * UPGRADE_SHARD_MULTIPLIER for `+` cards.
+   *
+   * Replaces the flat 1-fragment-per-card rule, which priced a sacrificed
+   * legendary the same as a duplicate common and made the Forge's larger
+   * numbers unreachable. Uncommon is absent from the brief's table and sits
+   * between common and rare.
+   */
+  SACRIFICE_SHARDS: {
+    common: 1,
+    uncommon: 3,
+    rare: 5,
+    epic: 12,
+    legendary: 25,
+  } as Record<string, number>,
+
+  /** Sacrifice payout multiplier for `+` / `++` / `+++` cards. */
+  UPGRADE_SHARD_MULTIPLIER: {
+    "": 1,
+    "+": 2,
+    "++": 3,
+    "+++": 4,
+  } as Record<string, number>,
+} as const;
+
 /** Mythology sets the daily rotation cycles through. */
 export const SHOP_MYTHOLOGIES = ["norse", "japanese", "polynesian"] as const;
 
