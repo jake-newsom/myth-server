@@ -645,7 +645,7 @@ export const FORGE_CONFIG = {
     MAX_LOCKS: 3,
 
     /**
-     * Cost of one reroll: a 30 base plus 15 per locked side.
+     * Cost of one reroll: a 10 base plus 5 per locked side.
      *
      * Index = lock count. Locking is what makes reforging a strategy rather
      * than a slot machine — holding a good edge and rerolling the rest costs
@@ -658,7 +658,7 @@ export const FORGE_CONFIG = {
      * is, so it is worth the same on a common as a legendary, and the tier
      * premium is already paid by the craft itself.
      */
-    COST_BY_LOCKS: [30, 45, 60, 75] as ReadonlyArray<number>,
+    COST_BY_LOCKS: [10, 15, 20, 25] as ReadonlyArray<number>,
   },
 } as const;
 
