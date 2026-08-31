@@ -11,12 +11,25 @@ import { FORGE_CONFIG } from "../constants";
  * matters because they are the numbers a player's fragments are spent against.
  */
 
+/*
+ * Pricing ignores the reforge fields entirely — the roll is an offset applied
+ * after the craft is paid for — so they are filled with their neutral values
+ * rather than parameterised.
+ */
 const draft = (
   tier: string,
   character_id: string | null,
   upgrade: string,
   card_variant_id: string | null = null
-) => ({ tier, character_id, upgrade, card_variant_id });
+) => ({
+  tier,
+  character_id,
+  upgrade,
+  card_variant_id,
+  roll: { top: 0, right: 0, bottom: 0, left: 0 },
+  has_roll: false,
+  locks: { top: false, right: false, bottom: false, left: false },
+});
 
 describe("forge pricing", () => {
   test("random pick of each tier costs the tier price", () => {

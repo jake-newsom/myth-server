@@ -589,6 +589,77 @@ export const FORGE_CONFIG = {
     "++": 3,
     "+++": 4,
   } as Record<string, number>,
+
+  /**
+   * Reforging: rerolling a forged card's four edge powers before minting it.
+   *
+   * Gated by SHOP_CONFIG.FLAG along with the rest of the Forge — reforging is
+   * part of the forging flow, not a separate surface, so it rides the same
+   * switch rather than adding a second gate over an already-gated tab.
+   * Flag-off: no reforge row renders, the endpoint refuses, drafts carry no
+   * roll, and every card mints at its catalogue stats, byte-identical to
+   * today.
+   */
+  REFORGE: {
+    /**
+     * The reroll distribution, as offsets against the card's catalogue power
+     * with their weights. Weights are relative and need not sum to 100 — the
+     * roller normalises — but they are written as percentages to stay legible
+     * against the design brief.
+     *
+     * Skewed upward on purpose: EV is about +0.29 per edge, ~+1.2 across a
+     * whole card, so reforging is a modest power upgrade rather than a lateral
+     * reroll. That is the intended reward for the fragments it costs. Shifting
+     * weight toward the negatives is how to make it EV-neutral if that changes.
+     */
+    DISTRIBUTION: [
+      { offset: -2, weight: 5 },
+      { offset: -1, weight: 15 },
+      { offset: 0, weight: 50 },
+      { offset: 1, weight: 25 },
+      { offset: 2, weight: 4 },
+      { offset: 3, weight: 1 },
+    ] as ReadonlyArray<{ offset: number; weight: number }>,
+
+    /** Hard bounds, enforced independently of the table above. */
+    MIN_OFFSET: -2,
+    MAX_OFFSET: 3,
+
+    /**
+     * A rolled edge never drops below this, however bad the roll.
+     *
+     * A 1-power edge rolling -2 would otherwise reach -1, and a negative edge
+     * is not a value the combat maths is written for. Clamped server-side at
+     * generation so the stored roll is already legal, and the client's mirror
+     * of it never has to disagree.
+     */
+    MIN_RESULTING_POWER: 1,
+
+    /**
+     * The most edges a player may hold through a reroll.
+     *
+     * One short of all four: holding every edge leaves nothing to roll, so it
+     * would take fragments and change nothing. COST_BY_LOCKS is indexed by
+     * lock count and therefore has exactly MAX_LOCKS + 1 entries.
+     */
+    MAX_LOCKS: 3,
+
+    /**
+     * Cost of one reroll: a 30 base plus 15 per locked side.
+     *
+     * Index = lock count. Locking is what makes reforging a strategy rather
+     * than a slot machine — holding a good edge and rerolling the rest costs
+     * more than throwing all four — but the increment is flat rather than
+     * steepening, so protecting a lucky roll stays an ordinary move instead of
+     * a punishing one. A four-lock entry is absent: there would be nothing
+     * left to roll (see MAX_LOCKS).
+     *
+     * Flat per-tier: the roll is an offset against whatever the card's base
+     * is, so it is worth the same on a common as a legendary, and the tier
+     * premium is already paid by the craft itself.
+     */
+    COST_BY_LOCKS: [30, 45, 60, 75] as ReadonlyArray<number>,
+  },
 } as const;
 
 /** Mythology sets the daily rotation cycles through. */

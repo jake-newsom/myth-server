@@ -13,6 +13,7 @@ import { DeckDetailResponse, CardResponse } from "../types/api.types"; // For fo
 import CardModel from "./card.model"; // For fetching base card details for validation
 import { PowerValues } from "../types/card.types"; // Import PowerValues if needed, though CardResponse includes it
 import PowerUpService from "../services/powerUp.service";
+import StatRollService from "../services/statRoll.service";
 
 // Helper to format card instances for deck response (similar to the one in CardModel)
 const formatDeckCardInstanceResponse = (
@@ -165,6 +166,11 @@ const DeckModel = {
     const powerUpsMap = await PowerUpService.getPowerUpsByCardInstances(
       allInstanceIds
     );
+    // Reforge offsets, folded into base_power below. Fetched alongside the
+    // power-ups (not per row) to keep this a two-query hydration.
+    const statRollsMap = await StatRollService.getByCardInstances(
+      allInstanceIds
+    );
 
     const cardsByDeckId = new Map<string, CardResponse[]>();
     for (const row of cardsResult.rows) {
@@ -174,12 +180,20 @@ const DeckModel = {
         name: row.name,
         rarity: row.rarity,
         image_url: row.image_url,
-        base_power: {
-          top: parseInt(row.base_power_top, 10),
-          right: parseInt(row.base_power_right, 10),
-          bottom: parseInt(row.base_power_bottom, 10),
-          left: parseInt(row.base_power_left, 10),
-        },
+        // The catalogue power with this instance's reforge roll already
+        // summed in. Folding it here rather than shipping a third field keeps
+        // every existing consumer — the engine, the client mirror, GameCard,
+        // and ALREADY-SHIPPED builds — correct without changes, since they all
+        // compute base_power + power_enhancements.
+        base_power: StatRollService.applyToBasePower(
+          {
+            top: parseInt(row.base_power_top, 10),
+            right: parseInt(row.base_power_right, 10),
+            bottom: parseInt(row.base_power_bottom, 10),
+            left: parseInt(row.base_power_left, 10),
+          },
+          statRollsMap.get(row.user_card_instance_id)
+        ),
         special_ability_id: row.special_ability_id,
         set_id: row.set_id,
         tags: row.tags,
@@ -292,6 +306,9 @@ const DeckModel = {
     const powerUpsMap = await PowerUpService.getPowerUpsByCardInstances(
       instanceIds
     );
+    // Reforge offsets, folded into base_power below. Fetched alongside the
+    // power-ups (not per row) to keep this a two-query hydration.
+    const statRollsMap = await StatRollService.getByCardInstances(instanceIds);
 
     const cardDetails = cardsResult.rows.map((row) => {
       const baseCard: BaseCard = {
@@ -300,12 +317,20 @@ const DeckModel = {
         name: row.name,
         rarity: row.rarity,
         image_url: row.image_url,
-        base_power: {
-          top: parseInt(row.base_power_top, 10),
-          right: parseInt(row.base_power_right, 10),
-          bottom: parseInt(row.base_power_bottom, 10),
-          left: parseInt(row.base_power_left, 10),
-        },
+        // The catalogue power with this instance's reforge roll already
+        // summed in. Folding it here rather than shipping a third field keeps
+        // every existing consumer — the engine, the client mirror, GameCard,
+        // and ALREADY-SHIPPED builds — correct without changes, since they all
+        // compute base_power + power_enhancements.
+        base_power: StatRollService.applyToBasePower(
+          {
+            top: parseInt(row.base_power_top, 10),
+            right: parseInt(row.base_power_right, 10),
+            bottom: parseInt(row.base_power_bottom, 10),
+            left: parseInt(row.base_power_left, 10),
+          },
+          statRollsMap.get(row.user_card_instance_id)
+        ),
         special_ability_id: row.special_ability_id,
         set_id: row.set_id,
         tags: row.tags,

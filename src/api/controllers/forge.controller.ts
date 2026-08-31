@@ -45,6 +45,12 @@ const ForgeController = {
             tier_cost: FORGE_CONFIG.TIER_COST,
             character_cost: FORGE_CONFIG.CHARACTER_COST,
             variant_multiplier: FORGE_CONFIG.VARIANT_MULTIPLIER,
+            // Reroll prices by lock count, so the button can show the cost of
+            // the next roll without a round-trip. Display only, like the rest
+            // of this block — `reforge` re-prices server-side.
+            reforge_cost_by_locks: FORGE_CONFIG.REFORGE.COST_BY_LOCKS,
+            reforge_min_offset: FORGE_CONFIG.REFORGE.MIN_OFFSET,
+            reforge_max_offset: FORGE_CONFIG.REFORGE.MAX_OFFSET,
           },
         },
       });
@@ -104,6 +110,44 @@ const ForgeController = {
     }
   },
 
+  /**
+   * Reroll the unlocked edge powers of the saved draft.
+   *
+   * The client sends only which edges are locked; the offsets themselves are
+   * generated server-side, since they decide combat power and the odds must
+   * not be reachable from a modified client.
+   */
+  async reforge(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.user_id;
+      if (!userId) {
+        return res
+          .status(401)
+          .json({ status: "error", message: "User not authenticated" });
+      }
+
+      if (!(await ForgeService.isEnabled(userId))) {
+        return res
+          .status(403)
+          .json({ status: "error", message: "Reforging is not available." });
+      }
+
+      const result = await ForgeService.reforge(userId, req.body?.locks);
+
+      // Same shape as craft: a refused reroll is a 400 with success:false,
+      // which the panel surfaces as a toast rather than an error state.
+      return res.status(result.success ? 200 : 400).json({
+        status: result.success ? "success" : "error",
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ status: "error", message: "Reforging failed" });
+    }
+  },
+
   /** Spend the fragments and mint the card. */
   async craft(req: AuthenticatedRequest, res: Response) {
     try {
@@ -118,6 +162,7 @@ const ForgeController = {
         tier: req.body?.tier,
         character_id: req.body?.character_id ?? null,
         upgrade: req.body?.upgrade,
+        card_variant_id: req.body?.card_variant_id ?? null,
       });
 
       // A failed craft is a spent-nothing outcome the panel shows as a toast,

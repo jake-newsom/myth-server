@@ -2,8 +2,10 @@ import db from "../config/db.config";
 import CardModel from "../models/card.model";
 import UserModel from "../models/user.model";
 import FeatureFlagService from "./featureFlag.service";
+import StatRollService, { EDGES, Edge } from "./statRoll.service";
 import { cacheInvalidation } from "./cache.invalidation.service";
 import { FORGE_CONFIG, SHOP_CONFIG } from "../config/constants";
+import { PowerValues } from "../types";
 import { logger } from "../utils/logger";
 
 /**
@@ -40,6 +42,22 @@ export interface ForgeDraft {
    * than one art, so `upgrade` alone cannot identify which the player picked.
    */
   card_variant_id: string | null;
+  /**
+   * The reforged edge offsets, signed deltas against the variant's catalogue
+   * power. Meaningless unless `has_roll`; see below.
+   */
+  roll: PowerValues;
+  /**
+   * Whether a reroll has happened at all.
+   *
+   * NOT derivable from `roll` being non-zero: every edge rolling 0 is a
+   * perfectly ordinary outcome (50% each), and it still counts as reforged —
+   * the player paid for it, it blocks a tier change without a warning, and it
+   * must write a stat-roll row at craft time.
+   */
+  has_roll: boolean;
+  /** Edges held through the next reroll, which also price it. */
+  locks: Record<Edge, boolean>;
 }
 
 /** A price broken into the parts the cost summary displays. */
@@ -59,6 +77,18 @@ export interface ForgeDraftState extends ForgeDraft {
   /** Whether the player can afford it right now. */
   affordable: boolean;
   card_fragments: number;
+  /** Cost of the NEXT reroll at the current lock count. */
+  reforge_cost: number;
+  /** Whether the reforge feature is on for this player. */
+  reforge_enabled: boolean;
+}
+
+export interface ForgeReforgeResult {
+  success: boolean;
+  message: string;
+  /** The new offsets, on success. */
+  roll?: PowerValues;
+  new_fragment_balance?: number;
 }
 
 export interface ForgeCraftResult {
@@ -112,7 +142,47 @@ const ForgeService = {
       // DB question, not a shape question) — an id that does not match the
       // chosen tier/character/upgrade is ignored rather than trusted.
       card_variant_id: input?.card_variant_id || null,
+      // Clamped, never trusted: the roll decides combat power, so a
+      // client-supplied value has to be bounded even though the only writer
+      // is meant to be the reforge endpoint.
+      roll: this.normalizeRoll(input?.roll),
+      has_roll: input?.has_roll === true,
+      locks: this.normalizeLocks(input?.locks),
     };
+  },
+
+  /** Clamp a roll to the configured offset range, defaulting to all zeroes. */
+  normalizeRoll(input: Partial<PowerValues> | null | undefined): PowerValues {
+    const { MIN_OFFSET, MAX_OFFSET } = FORGE_CONFIG.REFORGE;
+    const clamp = (value: unknown): number => {
+      const n = Math.round(Number(value));
+      if (!Number.isFinite(n)) return 0;
+      return Math.min(Math.max(n, MIN_OFFSET), MAX_OFFSET);
+    };
+
+    return {
+      top: clamp(input?.top),
+      right: clamp(input?.right),
+      bottom: clamp(input?.bottom),
+      left: clamp(input?.left),
+    };
+  },
+
+  /** Coerce a locks object to four booleans. */
+  normalizeLocks(
+    input: Partial<Record<Edge, boolean>> | null | undefined
+  ): Record<Edge, boolean> {
+    return {
+      top: input?.top === true,
+      right: input?.right === true,
+      bottom: input?.bottom === true,
+      left: input?.left === true,
+    };
+  },
+
+  /** How many edges are currently held. */
+  lockCount(locks: Record<Edge, boolean>): number {
+    return EDGES.filter((edge) => locks[edge]).length;
   },
 
   /**
@@ -165,7 +235,9 @@ const ForgeService = {
   /** Load a player's saved draft, or null when they have none. */
   async getDraft(userId: string): Promise<ForgeDraft | null> {
     const { rows } = await db.query(
-      `SELECT tier, character_id, upgrade, card_variant_id
+      `SELECT tier, character_id, upgrade, card_variant_id,
+              roll_top, roll_right, roll_bottom, roll_left, has_roll,
+              lock_top, lock_right, lock_bottom, lock_left
        FROM "forge_drafts" WHERE user_id = $1`,
       [userId]
     );
@@ -175,6 +247,19 @@ const ForgeService = {
       character_id: rows[0].character_id,
       upgrade: rows[0].upgrade,
       card_variant_id: rows[0].card_variant_id,
+      roll: {
+        top: rows[0].roll_top,
+        right: rows[0].roll_right,
+        bottom: rows[0].roll_bottom,
+        left: rows[0].roll_left,
+      },
+      has_roll: rows[0].has_roll,
+      locks: {
+        top: rows[0].lock_top,
+        right: rows[0].lock_right,
+        bottom: rows[0].lock_bottom,
+        left: rows[0].lock_left,
+      },
     };
   },
 
@@ -195,6 +280,8 @@ const ForgeService = {
       quote,
       affordable: fragments >= quote.total_cost,
       card_fragments: fragments,
+      reforge_cost: StatRollService.costForLocks(this.lockCount(draft.locks)),
+      reforge_enabled: await this.isEnabled(userId),
     };
   },
 
@@ -210,6 +297,21 @@ const ForgeService = {
     input: Partial<ForgeDraft>
   ): Promise<ForgeDraftState> {
     const draft = this.normalizeDraft(input);
+
+    /*
+     * The roll is SERVER-OWNED: it is never read from the request.
+     *
+     * Clients do not send it (the panel only ever posts the build), so taking
+     * it from `input` would zero a paid-for roll on the next autosave — and
+     * `craft` calls this with a build-only payload, which would have wiped
+     * the roll at the exact moment it was about to be minted. Reading it back
+     * from the stored row instead makes the reforge endpoint the only writer,
+     * which is also what stops a modified client posting its own stats.
+     */
+    const stored = await this.getDraft(userId);
+    draft.roll = stored?.roll ?? this.normalizeRoll(null);
+    draft.has_roll = stored?.has_roll ?? false;
+    draft.locks = stored?.locks ?? this.normalizeLocks(null);
 
     // A named character must actually be of the chosen tier, or the price the
     // player was quoted would not match the card they receive.
@@ -227,18 +329,49 @@ const ForgeService = {
       if (!ok) draft.card_variant_id = null;
     }
 
+    /*
+     * A roll belongs to the card it was rolled ON.
+     *
+     * The stored value is an OFFSET against a specific variant's catalogue
+     * power, so carrying it across a change of tier or character would apply
+     * a "+3 top" rolled on a common to a legendary — a different card, and a
+     * price the player never paid. Changing the build therefore discards the
+     * roll and its locks, which is exactly what the client warns about before
+     * letting the change through.
+     *
+     * Enforced HERE as well as in the UI: the warning is a courtesy, this is
+     * the guarantee. A client that skips the dialog still cannot smuggle a
+     * roll onto a card it was not rolled for.
+     */
+    if (stored?.has_roll && this.buildChanged(stored, draft)) {
+      draft.roll = this.normalizeRoll(null);
+      draft.has_roll = false;
+      draft.locks = this.normalizeLocks(null);
+    }
+
     const quote = this.quote(draft);
 
     await db.query(
       `INSERT INTO "forge_drafts"
-         (user_id, tier, character_id, upgrade, card_variant_id, quoted_price)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (user_id, tier, character_id, upgrade, card_variant_id, quoted_price,
+          roll_top, roll_right, roll_bottom, roll_left, has_roll,
+          lock_top, lock_right, lock_bottom, lock_left)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        ON CONFLICT (user_id) DO UPDATE
          SET tier = EXCLUDED.tier,
              character_id = EXCLUDED.character_id,
              upgrade = EXCLUDED.upgrade,
              card_variant_id = EXCLUDED.card_variant_id,
              quoted_price = EXCLUDED.quoted_price,
+             roll_top = EXCLUDED.roll_top,
+             roll_right = EXCLUDED.roll_right,
+             roll_bottom = EXCLUDED.roll_bottom,
+             roll_left = EXCLUDED.roll_left,
+             has_roll = EXCLUDED.has_roll,
+             lock_top = EXCLUDED.lock_top,
+             lock_right = EXCLUDED.lock_right,
+             lock_bottom = EXCLUDED.lock_bottom,
+             lock_left = EXCLUDED.lock_left,
              updated_at = current_timestamp`,
       [
         userId,
@@ -247,10 +380,170 @@ const ForgeService = {
         draft.upgrade,
         draft.card_variant_id,
         quote.total_cost,
+        draft.roll.top,
+        draft.roll.right,
+        draft.roll.bottom,
+        draft.roll.left,
+        draft.has_roll,
+        draft.locks.top,
+        draft.locks.right,
+        draft.locks.bottom,
+        draft.locks.left,
       ]
     );
 
     return this.getDraftState(userId);
+  },
+
+  /**
+   * Whether a save invalidates an existing roll.
+   *
+   * Only tier and character matter. A roll is an offset against the card's
+   * catalogue power, and `base_power` lives on `characters` — every artwork
+   * variant of one character shares it — so switching art (or upgrade level)
+   * leaves the numbers the roll was computed against completely unchanged.
+   * Dropping the roll there would have charged the player again for a reroll
+   * that nothing about the card had invalidated.
+   *
+   * Tier still counts even at the same character: it selects a different
+   * variant row, and a draft is priced and resolved by tier.
+   *
+   * Locks and the roll itself are excluded on purpose — rerolling or toggling
+   * a lock must not count as changing the build, or a reroll would wipe its
+   * own result.
+   */
+  buildChanged(previous: ForgeDraft, next: ForgeDraft): boolean {
+    return (
+      previous.tier !== next.tier ||
+      previous.character_id !== next.character_id
+    );
+  },
+
+  /**
+   * Roll the unlocked edges of a player's draft, charging for it.
+   *
+   * The roll is generated HERE, never accepted from the client: it decides
+   * combat power, so the odds have to live somewhere the player cannot edit.
+   * The client sends only which edges are locked.
+   *
+   * Charged and stored in one transaction with a conditional debit, the same
+   * concurrency guard `craft` uses: two simultaneous rerolls cannot both pass
+   * the balance check, so a player cannot get two rolls for one payment.
+   */
+  async reforge(
+    userId: string,
+    locks: Partial<Record<Edge, boolean>> | null | undefined
+  ): Promise<ForgeReforgeResult> {
+    if (!(await this.isEnabled(userId))) {
+      return { success: false, message: "Reforging is not available." };
+    }
+
+    const draft = this.normalizeDraft(await this.getDraft(userId));
+    const nextLocks = this.normalizeLocks(locks);
+
+    // At most three edges may be held: a fourth leaves nothing to reroll, so
+    // it would charge fragments for a guaranteed no-op. The panel does not
+    // offer the fourth lock; this is the guarantee behind that.
+    if (this.lockCount(nextLocks) > FORGE_CONFIG.REFORGE.MAX_LOCKS) {
+      return {
+        success: false,
+        message: "Unlock at least one power to reforge.",
+      };
+    }
+
+    // The roll is an offset against a REAL card's power, so the draft has to
+    // resolve to one first. A random-character draft has no fixed base power
+    // to roll against, which is why the panel requires a named character.
+    const variantId = await this.resolveVariant(draft);
+    if (!variantId) {
+      return {
+        success: false,
+        message: "Choose a character before reforging.",
+      };
+    }
+
+    const basePower = await this.variantBasePower(variantId);
+    if (!basePower) {
+      return { success: false, message: "That card cannot be reforged." };
+    }
+
+    const cost = StatRollService.costForLocks(this.lockCount(nextLocks));
+
+    const client = await db.getClient();
+    try {
+      await client.query("BEGIN");
+
+      const { rows: spent } = await client.query(
+        `UPDATE "users"
+         SET card_fragments = card_fragments - $2
+         WHERE user_id = $1 AND card_fragments >= $2
+         RETURNING card_fragments`,
+        [userId, cost]
+      );
+      if (spent.length === 0) {
+        await client.query("ROLLBACK");
+        return { success: false, message: "Not enough card fragments." };
+      }
+
+      const roll = StatRollService.roll(basePower, nextLocks, draft.roll);
+
+      await client.query(
+        `UPDATE "forge_drafts"
+         SET roll_top = $2, roll_right = $3, roll_bottom = $4, roll_left = $5,
+             has_roll = true,
+             lock_top = $6, lock_right = $7, lock_bottom = $8, lock_left = $9,
+             updated_at = current_timestamp
+         WHERE user_id = $1`,
+        [
+          userId,
+          roll.top,
+          roll.right,
+          roll.bottom,
+          roll.left,
+          nextLocks.top,
+          nextLocks.right,
+          nextLocks.bottom,
+          nextLocks.left,
+        ]
+      );
+
+      await client.query("COMMIT");
+
+      await cacheInvalidation.invalidateAfterShopPurchase(userId, "forge_reforge");
+
+      return {
+        success: true,
+        message: "Reforged!",
+        roll,
+        new_fragment_balance: spent[0].card_fragments,
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      logger.error("Forge reforge failed", { userId, error });
+      return { success: false, message: "Reforging failed. Please try again." };
+    } finally {
+      client.release();
+    }
+  },
+
+  /** A variant's catalogue edge powers, or null when it does not exist. */
+  async variantBasePower(variantId: string): Promise<PowerValues | null> {
+    const { rows } = await db.query(
+      `SELECT ch.base_power
+       FROM "card_variants" cv
+       JOIN "characters" ch ON cv.character_id = ch.character_id
+       WHERE cv.card_variant_id = $1`,
+      [variantId]
+    );
+    if (rows.length === 0) return null;
+
+    const power = rows[0].base_power ?? {};
+    return {
+      top: Number(power.top ?? 0),
+      right: Number(power.right ?? 0),
+      bottom: Number(power.bottom ?? 0),
+      left: Number(power.left ?? 0),
+    };
   },
 
   /** Drop a player's draft (the "start over" action). */
@@ -428,6 +721,26 @@ const ForgeService = {
       }
 
       const card = await CardModel.addCardToUser(userId, variantId, client);
+
+      /*
+       * Carry the draft's roll onto the card that was just minted.
+       *
+       * Copied verbatim rather than re-rolled: the player was shown these
+       * stats and paid to roll them, so redemption must not be another throw
+       * of the dice. `has_roll` (not a non-zero test) decides whether to write
+       * at all — an all-zero roll is a real, paid-for outcome and gets its row
+       * like any other.
+       *
+       * Inside the craft transaction, so a card can never exist without the
+       * stats it was bought with.
+       */
+      if (draft.has_roll) {
+        await StatRollService.create(
+          card.user_card_instance_id,
+          draft.roll,
+          client
+        );
+      }
 
       // The draft has been redeemed; the player starts fresh next visit.
       await client.query(`DELETE FROM "forge_drafts" WHERE user_id = $1`, [

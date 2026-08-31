@@ -24,7 +24,7 @@
     "test-surrender": "node tests/surrender.test.js",
     "test-rate-limit": "node tests/rate-limit.test.js",
     "test-ai-drawing": "node tests/ai-card-drawing.test.js",
-    "test:forge": "node --test --test-force-exit -r ts-node/register src/config/__tests__/forgePricing.test.ts",
+    "test:forge": "node --test --test-force-exit -r ts-node/register src/config/__tests__/forgePricing.test.ts src/services/__tests__/statRoll.test.ts",
     "test:abilities": "node --test --test-force-exit -r ts-node/register tests/game-engine/abilities.edge.test.ts src/game-engine/__tests__/norse.abilities.test.ts src/game-engine/__tests__/polynesian.abilities.test.ts",
     "test:tower-modifiers": "node --test --test-force-exit -r ts-node/register src/types/__tests__/towerModifier.test.ts src/game-engine/__tests__/tower.poison.test.ts",
     "test:chat": "node --test --test-force-exit -r ts-node/register src/services/__tests__/profanityFilter.test.ts src/services/__tests__/chat.service.test.ts src/services/__tests__/chat.broadcast.test.ts src/services/__tests__/chat.pipeline.test.ts",
