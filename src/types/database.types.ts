@@ -635,6 +635,13 @@ export interface DailyShopOffering {
 }
 
 export interface DailyShopOfferingWithCard extends DailyShopOffering {
+  /**
+   * Units granted by one purchase of a cardless bundle (embers, fragments,
+   * fate coins). Additive and optional: shipped clients ignore it and fall
+   * back to their own mirrored constants, which is exactly the drift this
+   * field exists to end. Absent for card and pack offerings.
+   */
+  grant_amount?: number;
   card?: {
     card_id: string;
     name: string;

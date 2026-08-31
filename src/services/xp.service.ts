@@ -11,6 +11,7 @@ import {
 } from "../types/service.types";
 import { XP_CONFIG, RARITY_MULTIPLIERS } from "../config/constants";
 import DailyTaskService from "./dailyTask.service";
+import ForgeService from "./forge.service";
 import { cacheInvalidation } from "./cache.invalidation.service";
 
 const XpService = {
@@ -297,12 +298,23 @@ const XpService = {
       }
       const cardName = cardNames[0];
 
-      // Calculate total XP value and card fragments
+      // Calculate total XP value and card fragments.
+      //
+      // Fragments used to be a flat 1 per card, which priced a sacrificed
+      // legendary the same as a duplicate common and left the Forge's prices
+      // unreachable. Behind the shop overhaul's flag the payout scales with
+      // rarity (and again for `+` artwork); flag-off it stays exactly 1 per
+      // card, so turning the shop off restores the old economy without a
+      // redeploy.
+      const forgeEnabled = await ForgeService.isEnabled(userId);
       let totalXpValue = 0;
-      const totalCardFragments = cardIds.length; // 1 fragment per card sacrificed
+      let totalCardFragments = 0;
       const sacrificedCards = [];
 
       for (const card of rows) {
+        totalCardFragments += forgeEnabled
+          ? ForgeService.sacrificeShards(card.rarity)
+          : 1;
         const xpValue = this.calculateSacrificeValue(
           card.xp,
           card.level,
@@ -488,7 +500,14 @@ const XpService = {
       });
 
       let totalXpGained = 0;
-      const totalCardFragments = cardsToSacrifice.length; // 1 fragment per card sacrificed
+      // Same rarity-scaled payout as the single sacrifice path, behind the
+      // same flag; see the note in sacrificeCards.
+      const forgeEnabled = await ForgeService.isEnabled(userId);
+      const totalCardFragments = cardsToSacrifice.reduce(
+        (sum, card) =>
+          sum + (forgeEnabled ? ForgeService.sacrificeShards(card.rarity) : 1),
+        0
+      );
       const sacrificedCardsByBaseId = [];
       const poolUpdates: { [name: string]: number } = {};
 
