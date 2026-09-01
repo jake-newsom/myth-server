@@ -163,17 +163,29 @@ function inSimulation(fn: () => void) {
   }
 }
 
-/** Baldr, captured by p2, on the board carrying a buff and an enhancement. */
-function setupCapturedBaldr() {
+/**
+ * Baldr on the board, buffed, being defeated by `attacker`.
+ *
+ * `controller` is who held him when the hit landed. resolveCombat reassigns
+ * `owner` to the attacker BEFORE OnFlipped fires, so these fixtures reproduce
+ * that: `owner` is already the attacker and the pre-flip controller arrives
+ * only via `defeatedOriginalOwner`.
+ */
+function setupBaldr(params: {
+  controller: string;
+  attacker: string;
+  originalOwner?: string;
+}) {
   const board = createEmptyBoard();
 
   const baldr = createTestCard({
     id: "baldr",
-    owner: "p1",
+    owner: params.originalOwner ?? "p1",
     abilityId: "baldr_immune",
   });
-  // p2 has flipped him: current controller is p2, original owner still p1.
-  baldr.owner = "p2";
+  baldr.original_owner = params.originalOwner ?? "p1";
+  // Post-flip state as OnFlipped actually sees it.
+  baldr.owner = params.attacker;
   baldr.temporary_effects = [
     {
       type: EffectType.Buff,
@@ -188,7 +200,10 @@ function setupCapturedBaldr() {
   placeCardOnBoard(board, { x: 1, y: 1 }, baldr);
 
   // The hand/cache copy is the pristine card, as it was before it hit the board.
-  const cached = createTestCard({ id: "baldr", owner: "p1" });
+  const cached = createTestCard({
+    id: "baldr",
+    owner: params.originalOwner ?? "p1",
+  });
 
   const state = createTestGameState({
     board,
@@ -197,39 +212,60 @@ function setupCapturedBaldr() {
     hydrated: { baldr: cached },
   });
 
-  return { board, baldr, cached, state };
-}
-
-function triggerBaldr(state: any, baldr: any) {
-  return norseAbilities.baldr_immune({
+  const events = norseAbilities.baldr_immune({
     state,
     triggerCard: baldr,
     triggerMoment: TriggerMoment.OnFlipped,
+    defeatedOriginalOwner: params.controller,
     position: { x: 1, y: 1 },
   });
+
+  return { board, baldr, cached, state, events };
 }
 
-test("baldr_immune returns to the current owner, not the original owner", () => {
+test("baldr_immune returns to his owner when his own card is defeated", () => {
   inSimulation(() => {
-    const { baldr, cached, state } = setupCapturedBaldr();
+    // p1's Baldr, defeated by p2. He belongs to p1 and goes back to p1.
+    const { cached, state } = setupBaldr({ controller: "p1", attacker: "p2" });
 
-    triggerBaldr(state, baldr);
+    assert.deepEqual(state.player1.hand, ["baldr"]);
+    assert.deepEqual(state.player2.hand, []);
+    assert.equal(cached.owner, "p1");
+    assert.equal(state.board[1][1].card, null);
+  });
+});
 
-    // Current controller p2 gets him, not original owner p1.
+test("baldr_immune returns to the CURRENT controller, not the original owner", () => {
+  inSimulation(() => {
+    // p1's Baldr was silenced and captured, so p2 now controls him. p1 defeats
+    // him: he must return to p2's hand, not back to original owner p1.
+    const { cached, state } = setupBaldr({
+      controller: "p2",
+      attacker: "p1",
+      originalOwner: "p1",
+    });
+
     assert.deepEqual(state.player2.hand, ["baldr"]);
     assert.deepEqual(state.player1.hand, []);
     // Cached owner follows, or placeCard would reject him from p2's hand.
     assert.equal(cached.owner, "p2");
-    // And he is off the board.
-    assert.equal(state.board[1][1].card, null);
+    assert.equal(cached.original_owner, "p1");
+  });
+});
+
+test("baldr_immune does not bounce to the attacker", () => {
+  inSimulation(() => {
+    // Guard against reading the post-flip `triggerCard.owner`, which is the
+    // attacker by the time OnFlipped fires.
+    const { state } = setupBaldr({ controller: "p1", attacker: "p2" });
+
+    assert.deepEqual(state.player2.hand, []);
   });
 });
 
 test("baldr_immune keeps buffs and debuffs when it bounces to hand", () => {
   inSimulation(() => {
-    const { baldr, cached, state } = setupCapturedBaldr();
-
-    triggerBaldr(state, baldr);
+    const { cached } = setupBaldr({ controller: "p1", attacker: "p2" });
 
     // Board state is written back into the cache the hand reads from.
     assert.equal(cached.temporary_effects.length, 1);
@@ -246,26 +282,10 @@ test("baldr_immune keeps buffs and debuffs when it bounces to hand", () => {
 
 test("baldr_immune copies effects rather than sharing them", () => {
   inSimulation(() => {
-    const { baldr, cached, state } = setupCapturedBaldr();
-
-    triggerBaldr(state, baldr);
+    const { baldr, cached } = setupBaldr({ controller: "p1", attacker: "p2" });
 
     // Mutating the old board card must not reach back into the hand copy.
     baldr.temporary_effects[0].power.top = 99;
     assert.equal(cached.temporary_effects[0].power.top, 2);
-  });
-});
-
-test("baldr_immune returns an uncaptured Baldr to his owner", () => {
-  inSimulation(() => {
-    const { baldr, cached, state } = setupCapturedBaldr();
-    // Never flipped: controller is still the original owner.
-    baldr.owner = "p1";
-
-    triggerBaldr(state, baldr);
-
-    assert.deepEqual(state.player1.hand, ["baldr"]);
-    assert.equal(cached.owner, "p1");
-    assert.equal(cached.temporary_effects.length, 1);
   });
 });

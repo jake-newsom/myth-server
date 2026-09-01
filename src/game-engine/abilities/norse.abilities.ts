@@ -196,8 +196,16 @@ export const norseAbilities: AbilityMap = {
       }
     }
 
-    // Baldr bounces to whoever currently controls him, not his original owner.
-    const returnToPlayerId = triggerCard.owner;
+    // Baldr bounces to whoever controlled him at the moment he was defeated,
+    // which is not necessarily his original owner: if he is silenced when
+    // defeated this ability never fires, so he stays on the board and flips to
+    // the attacker — and a later defeat must return him to that new controller.
+    //
+    // `triggerCard.owner` is NOT that player: resolveCombat reassigns it to the
+    // attacker before OnFlipped fires. `defeatedOriginalOwner` is captured
+    // pre-flip for exactly this reason.
+    const returnToPlayerId =
+      context.defeatedOriginalOwner ?? triggerCard.original_owner;
 
     const player = returnToPlayerId === player1.user_id ? player1 : player2;
     player.hand.push(triggerCard.user_card_instance_id);
