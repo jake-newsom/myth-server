@@ -749,6 +749,18 @@ const ForgeService = {
 
       await client.query("COMMIT");
 
+      /*
+       * A craft mints a card, so the user's card cache MUST be dropped.
+       *
+       * `invalidateAfterShopPurchase` only purges for three hardcoded item
+       * types ('legendary_card', 'epic_card', 'enhanced_card') and silently
+       * does nothing for anything else — so the "forge_craft" call it used to
+       * make was a no-op, and a freshly forged card did not appear in the
+       * gallery until the cache expired or the app restarted. Call the card
+       * invalidation directly rather than adding another magic string to that
+       * list, where the next new card source would hit the same trap.
+       */
+      await cacheInvalidation.invalidateUserCards(userId);
       await cacheInvalidation.invalidateAfterShopPurchase(userId, "forge_craft");
 
       return {

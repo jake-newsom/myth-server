@@ -30,6 +30,7 @@ import {
 
 import { v4 as uuidv4 } from "uuid";
 import PowerUpService from "../services/powerUp.service";
+import StatRollService from "../services/statRoll.service";
 import logger from "../utils/logger";
 import { GAME_CONFIG } from "../config/constants";
 import AchievementService from "../services/achievement.service";
@@ -149,16 +150,29 @@ export class GameLogic {
       const powerUpsMap = await PowerUpService.getPowerUpsByCardInstances(
         instanceIds
       );
+      // Reforge offsets, folded into base_power below.
+      //
+      // This is a SEPARATE hydration path from card.model/deck.model — it
+      // builds the in-game card straight from `characters.base_power` rather
+      // than going through CardModel — so it needs its own fold. Without it a
+      // forged card showed its rolled stats everywhere in the UI and then
+      // played at its catalogue stats, which is the worst of both.
+      const statRollsMap = await StatRollService.getByCardInstances(
+        instanceIds
+      );
 
       for (const row of rows) {
         const levelBonus = 0; // Keep consistent with single hydration
 
-        const basePower = {
-          top: parseInt(row.base_power_top, 10),
-          right: parseInt(row.base_power_right, 10),
-          bottom: parseInt(row.base_power_bottom, 10),
-          left: parseInt(row.base_power_left, 10),
-        };
+        const basePower = StatRollService.applyToBasePower(
+          {
+            top: parseInt(row.base_power_top, 10),
+            right: parseInt(row.base_power_right, 10),
+            bottom: parseInt(row.base_power_bottom, 10),
+            left: parseInt(row.base_power_left, 10),
+          },
+          statRollsMap.get(row.user_card_instance_id)
+        );
 
         // Get power up data for this instance
         const powerUp = powerUpsMap.get(row.user_card_instance_id);
