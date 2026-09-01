@@ -207,6 +207,8 @@ export type UserCard = {
   xp: number;
   is_locked: boolean;
   power_enhancements: PowerValues;
+  /** Carries a Forge reforge roll; drives the signed-foil card treatment. */
+  is_forged?: boolean;
   equipped_border?: import("./database.types").EquippedBorder | null;
 };
 

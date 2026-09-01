@@ -50,6 +50,9 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
   level: card.level!,
   xp: card.xp!,
   is_locked: card.is_locked ?? false,
+  // Instance-level, so it rides on the UserCard rather than base_card_data:
+  // two owners of the same variant differ here.
+  is_forged: card.is_forged ?? false,
   power_enhancements: card.power_enhancements || {
     top: 0,
     right: 0,
