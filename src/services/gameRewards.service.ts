@@ -10,10 +10,35 @@ import AchievementService from "./achievement.service";
 import DailyTaskService from "./dailyTask.service";
 import DeckService from "./deck.service";
 import CardModel from "../models/card.model";
+import FeatureFlagService from "./featureFlag.service";
+import {
+  EMBER_FRAGMENT_REWARD,
+  FRAGMENT_REWARD_FLAG,
+} from "../config/constants";
 /** Extra card XP awarded for cards played in online (PvP) games. */
 const PVP_XP_BONUS_MULTIPLIER = 1.10;
 /** Ranked draft pays standard XP + 10% (see calculateCardXpRewards). */
 const RANKED_DRAFT_XP_BONUS_MULTIPLIER = 1.2;
+
+/**
+ * Roll the fragment drop for an ember-funded win.
+ *
+ * Weighted rather than uniform so the common outcome stays small: see
+ * EMBER_FRAGMENT_REWARD. Returns a count in [0, WEIGHTS.length - 1].
+ */
+function rollFragmentReward(): number {
+  const weights = EMBER_FRAGMENT_REWARD.WEIGHTS;
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (total <= 0) return 0;
+
+  let roll = Math.random() * total;
+  for (let amount = 0; amount < weights.length; amount++) {
+    roll -= weights[amount];
+    if (roll < 0) return amount;
+  }
+  // Only reachable through floating-point slop on the final bucket.
+  return weights.length - 1;
+}
 
 /**
  * XP targets for a finished ranked draft.
@@ -48,6 +73,12 @@ export interface GameResult {
 
 export interface CurrencyRewards {
   gems: number;
+  /**
+   * Card fragments from the ember-funded win drop. Additive and optional:
+   * absent whenever the drop did not apply (flag off, unfunded game, a loss,
+   * or a roll of zero), so old clients that never read it are unaffected.
+   */
+  card_fragments?: number;
 }
 
 export interface RareCardReward {
@@ -76,6 +107,8 @@ export interface GameCompletionResult {
   updated_currencies: {
     gems: number;
     total_xp: number;
+    /** Present only when this game's fragment drop paid out. */
+    card_fragments?: number;
   };
   win_streak_info?: {
     multiplier_applied: number;
@@ -472,6 +505,34 @@ const GameRewardsService = {
         }
       }
 
+      // === PHASE 3.6: Fragment drop for ember-funded wins ===
+      //
+      // Only a win on a game that actually spent an ember rolls fragments, so
+      // this never pays out for PvP, Sagas, games that predate embers, or a
+      // solo run started on an empty balance. The whole thing is behind
+      // FRAGMENT_REWARD_FLAG: with the flag off nothing is rolled, nothing is
+      // written, and the response field is omitted.
+      let fragmentReward = 0;
+      if (emberFunded && gameResult.winner === userId && !isForfeit) {
+        try {
+          const dropOn = await FeatureFlagService.isEnabled(
+            userId,
+            FRAGMENT_REWARD_FLAG
+          );
+          if (dropOn) {
+            const rolled = rollFragmentReward();
+            if (rolled > 0) {
+              await UserModel.updateCardFragments(userId, rolled);
+              fragmentReward = rolled;
+            }
+          }
+        } catch (error) {
+          // A failed fragment drop must never cost the player the rest of
+          // their rewards; it is a bonus on top of an already-earned result.
+          console.error("Error awarding ember fragment reward:", error);
+        }
+      }
+
       // === PHASE 4: Parallel non-blocking operations ===
       // These operations don't affect the response data and can run in parallel
       const parallelOps: Promise<any>[] = [];
@@ -566,13 +627,20 @@ const GameRewardsService = {
         game_result: gameResult,
         ember_funded: emberFunded,
         rewards: {
-          currency: currencyRewards,
+          currency: fragmentReward > 0
+            ? { ...currencyRewards, card_fragments: fragmentReward }
+            : currencyRewards,
           card_xp_rewards: xpResults,
           rare_card_drop: rareCardDrop,
         },
         updated_currencies: {
           gems: updatedUser?.gems || 0,
           total_xp: updatedUser?.total_xp || 0,
+          // The fragment credit is awaited in PHASE 3.6, before PHASE 4 reads
+          // the user row, so this balance already includes it.
+          ...(fragmentReward > 0
+            ? { card_fragments: updatedUser?.card_fragments || 0 }
+            : {}),
         },
         win_streak_info: winStreakInfo,
       };

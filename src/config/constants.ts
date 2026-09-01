@@ -444,6 +444,30 @@ export const EMBER_CONFIG = {
 export const EMBERS_FLAG = "embers-economy";
 
 /**
+ * Card fragments dropped for winning an ember-funded game.
+ *
+ * A small, low-variance sweetener on top of the existing gem/XP rewards: an
+ * ember-funded win rolls 0-5 fragments, weighted so that most wins pay nothing
+ * or one fragment and a 5 is a genuine surprise. WEIGHTS is indexed by the
+ * fragment amount (index 0 => 0 fragments) and the entries are relative, not
+ * percentages, so the table can be retuned without keeping a sum in your head.
+ *
+ * Expected value at the default weights is ~1.1 fragments per ember-funded win,
+ * which is deliberately below one Forge craft's worth per session — this is
+ * meant to accelerate the Forge slightly, not replace its other faucets.
+ *
+ * Gated by FRAGMENT_REWARD_FLAG. Flag-off awards nothing and the response field
+ * is omitted entirely, which is exactly the behaviour that predates this drop.
+ */
+export const EMBER_FRAGMENT_REWARD = {
+  /** Relative weight of each outcome, indexed by fragment count (0-5). */
+  WEIGHTS: [30, 30, 20, 10, 7, 3],
+} as const;
+
+/** Feature flag gating the ember-funded win fragment drop. */
+export const FRAGMENT_REWARD_FLAG = "ember-fragment-rewards";
+
+/**
  * Shop overhaul configuration.
  *
  * Flag-off (`SHOP_CONFIG.FLAG` disabled) is byte-identical to the pre-overhaul
@@ -525,6 +549,17 @@ export const SHOP_CONFIG = {
  * would gate an already-gated surface.
  */
 export const FORGE_CONFIG = {
+  /**
+   * Lock freshly forged cards so they cannot be sacrificed (or spent as an XP
+   * transfer source) by accident right after being paid for.
+   *
+   * A toggle rather than a hardcoded true so the behaviour can be turned off
+   * without a client release; flipping it back to false restores the previous
+   * behaviour exactly (new crafts mint unlocked; already-locked cards stay
+   * locked and can be unlocked by the player as usual).
+   */
+  LOCK_CRAFTED_CARDS: true,
+
   /** Tiers the Forge can craft, in display order. */
   TIERS: ["common", "rare", "epic", "legendary"] as const,
 

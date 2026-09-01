@@ -94,6 +94,24 @@ export interface CardResponse {
   power_enhancements?: PowerValues;
   attack_animation?: string;
   is_exclusive?: boolean;
+  /**
+   * True when this instance carries a Forge reforge roll, for cosmetic
+   * "signed by the owner" treatment on the card face.
+   *
+   * DERIVED, not stored: it is the presence of the instance's
+   * `user_card_stat_rolls` row, which every hydration path already fetches to
+   * fold into `base_power` — so this costs no extra query and needs no
+   * migration.
+   *
+   * Note the set is REFORGED cards, not all Forge-crafted ones: craft only
+   * writes a roll row when the player paid to reroll (`draft.has_roll` in
+   * ForgeService.craft), so a plain crafted card reads false. That is the
+   * intended prototype scope; widening it means always writing a roll row at
+   * craft rather than changing anything here.
+   *
+   * Optional and additive: old clients ignore it.
+   */
+  is_forged?: boolean;
   equipped_border?: import("./database.types").EquippedBorder | null;
 }
 

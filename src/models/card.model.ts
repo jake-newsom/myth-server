@@ -61,7 +61,14 @@ function formatUserCardInstanceResponse(
   baseCard: BaseCard,
   instance: UserCardInstance,
   ability: SpecialAbility | null,
-  equippedBorder: EquippedBorder | null = null
+  equippedBorder: EquippedBorder | null = null,
+  /**
+   * Whether this instance has a reforge roll — i.e. whether the stat-roll map
+   * the caller already fetched has a row for it. Passed in rather than looked
+   * up here so this stays a pure formatter and the batched call sites keep
+   * their single lookup.
+   */
+  isForged = false
 ): CardResponse {
   return {
     user_card_instance_id: instance.user_card_instance_id,
@@ -95,6 +102,9 @@ function formatUserCardInstanceResponse(
     ...(baseCard.is_exclusive !== undefined && {
       is_exclusive: baseCard.is_exclusive,
     }),
+    // Only emitted when true, like the other optional flags above: every
+    // non-forged card's payload is byte-identical to before this change.
+    ...(isForged && { is_forged: true }),
     equipped_border: equippedBorder,
   };
 }
@@ -238,7 +248,8 @@ const CardModel = {
         baseCard,
         instance,
         ability,
-        rowToEquippedBorder(row)
+        rowToEquippedBorder(row),
+        statRollsMap.has(row.user_card_instance_id)
       );
     });
   },
@@ -378,7 +389,8 @@ const CardModel = {
       baseCard,
       instance,
       ability,
-      rowToEquippedBorder(row)
+      rowToEquippedBorder(row),
+      statRoll !== null
     );
   },
 
@@ -821,7 +833,8 @@ const CardModel = {
         baseCard,
         instance,
         ability,
-        rowToEquippedBorder(row)
+        rowToEquippedBorder(row),
+        statRollsMap.has(row.user_card_instance_id)
       );
     });
   },
@@ -1070,7 +1083,8 @@ const CardModel = {
           baseCard,
           instance,
           ability,
-          rowToEquippedBorder(row)
+          rowToEquippedBorder(row),
+          statRollsMap.has(row.user_card_instance_id)
         );
       });
 
@@ -1092,16 +1106,23 @@ const CardModel = {
   async addCardToUser(
     userId: string,
     cardVariantId: string,
-    client?: QueryExecutor
+    client?: QueryExecutor,
+    options?: { isLocked?: boolean }
   ): Promise<UserCardInstance> {
     const exec = client ?? db;
     const query = `
-      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp)
-      VALUES ($1, $2, 1, 0)
+      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, is_locked)
+      VALUES ($1, $2, 1, 0, $3)
       RETURNING user_card_instance_id, user_id, card_variant_id, level, xp, is_locked, created_at;
     `;
 
-    const { rows } = await exec.query(query, [userId, cardVariantId]);
+    // Defaults to false, i.e. the column default, so every existing caller
+    // keeps minting unlocked cards.
+    const { rows } = await exec.query(query, [
+      userId,
+      cardVariantId,
+      options?.isLocked === true,
+    ]);
     return rows[0];
   },
 

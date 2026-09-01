@@ -720,7 +720,11 @@ const ForgeService = {
         };
       }
 
-      const card = await CardModel.addCardToUser(userId, variantId, client);
+      // Locked on mint (config-gated): a just-forged card is the easiest one
+      // to lose to a stray sacrifice, and the player can unlock it any time.
+      const card = await CardModel.addCardToUser(userId, variantId, client, {
+        isLocked: FORGE_CONFIG.LOCK_CRAFTED_CARDS,
+      });
 
       /*
        * Carry the draft's roll onto the card that was just minted.
