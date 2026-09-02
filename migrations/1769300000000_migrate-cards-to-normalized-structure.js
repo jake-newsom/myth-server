@@ -43,7 +43,11 @@ exports.up = (pgm) => {
       ch.character_id,
       c.rarity::text as rarity,
       c.image_url,
-      c.attack_animation,
+      -- cards.attack_animation was dropped when the baseline migration was
+      -- consolidated, so the column no longer exists on a fresh database.
+      -- This is a no-op data migration there (cards is empty at this point);
+      -- variants get their animation from later migrations/seed data instead.
+      NULL::text as attack_animation,
       NOW() as created_at
     FROM cards c
     JOIN characters ch ON 
