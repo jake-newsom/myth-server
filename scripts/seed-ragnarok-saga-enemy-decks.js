@@ -106,10 +106,17 @@ const SEASON_VARIANTS = [
   },
 ];
 
-/** Map design-doc names to catalog character names when they differ. */
+/**
+ * Map design-doc names to catalog character names when they differ.
+ * Keys are the spellings used in DECK_DEFINITIONS below (taken from the GDD);
+ * values must match `characters.name` in the database exactly.
+ */
 const CARD_NAME_ALIASES = {
   "Ragnarök (Season Card)": "Ragnarök",
-  "Jormungandr": "Jörmungandr",
+  // The GDD uses the Old Norse spellings; the card catalog drops the umlaut
+  // and uses "Drengr".
+  "Jörmungandr": "Jormungandr",
+  "Drenger": "Drengr",
 };
 
 /**
