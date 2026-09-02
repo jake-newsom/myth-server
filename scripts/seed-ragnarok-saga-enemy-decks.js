@@ -405,13 +405,20 @@ async function getNorseSet(client) {
   return rows[0];
 }
 
+/**
+ * Look up a character by its GDD name.
+ *
+ * Resolves CARD_NAME_ALIASES here rather than at each call site: the deck
+ * definitions, SEASON_VARIANTS and the boss card all name characters, and
+ * missing the alias in any one of them fails the whole seed.
+ */
 async function findCharacterByName(client, characterName) {
   const { rows } = await client.query(
     `SELECT character_id, special_ability_id
      FROM characters
      WHERE name = $1
      LIMIT 1`,
-    [characterName]
+    [resolveCardName(characterName)]
   );
   return rows[0] || null;
 }
