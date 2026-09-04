@@ -112,9 +112,11 @@ const SEASON_VARIANTS = [
  * values must match `characters.name` in the database exactly.
  */
 const CARD_NAME_ALIASES = {
-  "Ragnarök (Season Card)": "Ragnarök",
   // The GDD uses the Old Norse spellings; the card catalog drops the umlaut
-  // and uses "Drengr".
+  // and uses "Drengr". Display strings (deck names, card back, border) keep
+  // the umlaut -- only `characters.name` is plain ASCII.
+  "Ragnarök (Season Card)": "Ragnarok",
+  "Ragnarök": "Ragnarok",
   "Jörmungandr": "Jormungandr",
   "Drenger": "Drengr",
 };
@@ -363,13 +365,31 @@ const DECK_DEFINITIONS = [
   },
 ];
 
+// Managed Postgres providers (Render, Railway, Neon, Supabase) all require TLS
+// but present certs this client has no CA bundle for; local Postgres has no TLS
+// at all. Detect the host rather than relying on NODE_ENV being set correctly.
+const MANAGED_DB_HOSTS = [
+  "render.com",
+  "railway.app",
+  "rlwy.net",
+  "neon.tech",
+  "supabase.co",
+];
+
+function needsSsl(connectionString) {
+  if (process.env.PGSSL === "0") return false;
+  if (process.env.PGSSL === "1") return true;
+  if (process.env.NODE_ENV === "production") return true;
+  const url = connectionString ?? "";
+  if (/[?&]sslmode=require/.test(url)) return true;
+  return MANAGED_DB_HOSTS.some((host) => url.includes(host));
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl:
-    process.env.DATABASE_URL?.includes("render.com") ||
-    process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
-      : false,
+  ssl: needsSsl(process.env.DATABASE_URL)
+    ? { rejectUnauthorized: false }
+    : false,
 });
 
 function deckDisplayName(def) {
@@ -378,6 +398,15 @@ function deckDisplayName(def) {
 
 function resolveCardName(name) {
   return CARD_NAME_ALIASES[name] ?? name;
+}
+
+/** Normalize for comparison: strip diacritics, lowercase, collapse whitespace. */
+function foldName(name) {
+  return String(name)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 function isLegendaryRarity(rarity) {
@@ -413,14 +442,26 @@ async function getNorseSet(client) {
  * missing the alias in any one of them fails the whole seed.
  */
 async function findCharacterByName(client, characterName) {
+  const resolved = resolveCardName(characterName);
+  // Match accent-insensitively: an unresolved umlaut spelling must never fall
+  // through to the INSERT branch and create a duplicate character row.
+  // Folding is done in JS rather than via the `unaccent` extension, which is
+  // contrib and not guaranteed to be installed on a fresh database.
   const { rows } = await client.query(
-    `SELECT character_id, special_ability_id
+    `SELECT character_id, special_ability_id, name
      FROM characters
-     WHERE name = $1
-     LIMIT 1`,
-    [resolveCardName(characterName)]
+     WHERE name = $1 OR LOWER(TRIM(name)) = LOWER(TRIM($1))`,
+    [resolved]
   );
-  return rows[0] || null;
+  if (rows.length) {
+    return rows.find((r) => r.name === resolved) ?? rows[0];
+  }
+
+  const target = foldName(resolved);
+  const { rows: all } = await client.query(
+    `SELECT character_id, special_ability_id, name FROM characters`
+  );
+  return all.find((r) => foldName(r.name) === target) || null;
 }
 
 async function loadCardBackRow(client, backId) {
@@ -581,7 +622,7 @@ async function ensureSeasonBossCard(client, setId) {
        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7::text[], NOW(), NOW())
        RETURNING character_id`,
       [
-        SEASON_BOSS_CARD.character_name,
+        resolveCardName(SEASON_BOSS_CARD.character_name),
         `Ragnarök is the story of the end of the world in Norse mythology. It begins after a long, terrible winter called Fimbulwinter, when the sun disappears, the cold becomes harsh, and people turn against each other. The gods know that a great battle is coming, but they cannot stop it. Powerful enemies, including giants and monsters, break free and march toward Asgard, the home of the gods.
 
 In the final battle, many famous figures face their enemies. Odin fights the giant wolf Fenrir, Thor battles the huge serpent Jormungandr, and Loki joins the enemies of the gods. The fighting is fierce, and many gods and monsters die. The world is then covered in fire and swallowed by the sea, making it seem like everything has ended.
@@ -595,7 +636,11 @@ But Ragnarök is not only a story about destruction. After the world is ruined, 
       ]
     );
     characterId = insertedCharacter.rows[0].character_id;
-    console.log(`Created seasonal boss character: ${SEASON_BOSS_CARD.character_name}`);
+    console.log(
+      `Created seasonal boss character: ${resolveCardName(
+        SEASON_BOSS_CARD.character_name
+      )}`
+    );
   } else {
     await client.query(
       `UPDATE characters

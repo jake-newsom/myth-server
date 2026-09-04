@@ -155,15 +155,15 @@ describe("forge draft normalization", () => {
 describe("sacrifice payouts", () => {
   test("base rarities pay the brief's values", () => {
     assert.equal(ForgeService.sacrificeShards("common"), 1);
-    assert.equal(ForgeService.sacrificeShards("rare"), 5);
-    assert.equal(ForgeService.sacrificeShards("epic"), 12);
-    assert.equal(ForgeService.sacrificeShards("legendary"), 25);
+    assert.equal(ForgeService.sacrificeShards("rare"), 3);
+    assert.equal(ForgeService.sacrificeShards("epic"), 6);
+    assert.equal(ForgeService.sacrificeShards("legendary"), 12);
   });
 
   test("upgraded cards pay 2x / 3x / 4x their tier", () => {
-    assert.equal(ForgeService.sacrificeShards("legendary+"), 50);
-    assert.equal(ForgeService.sacrificeShards("legendary++"), 75);
-    assert.equal(ForgeService.sacrificeShards("legendary+++"), 100);
+    assert.equal(ForgeService.sacrificeShards("legendary+"), 24);
+    assert.equal(ForgeService.sacrificeShards("legendary++"), 36);
+    assert.equal(ForgeService.sacrificeShards("legendary+++"), 48);
     assert.equal(ForgeService.sacrificeShards("common+++"), 4);
   });
 

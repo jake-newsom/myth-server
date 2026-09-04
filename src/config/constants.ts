@@ -44,16 +44,8 @@ export const RANKED_DRAFT_CONFIG = {
   // Clocks, in milliseconds. Persisted as an absolute deadline per session so a
   // restart recovers the countdown rather than stranding a draft.
   BAN_MS: 30_000,
-  /**
-   * Clock for the block phase (both players choose simultaneously).
-   *
-   * DEBUG: temporarily 10_000_000ms (~2.8h), matching PICK_MS, so the block UI
-   * can be inspected without the clock expiring. RESTORE TO 30_000 BEFORE
-   * SHIPPING. Same requeue caveat as PICK_MS below — an abandoned draft sits on
-   * a deadline hours away rather than being swept, so clear it with the same
-   * UPDATE (add 'block' to the phase list).
-   */
-  BLOCK_MS: 10_000_000,
+  /** Clock for the block phase (both players choose simultaneously). */
+  BLOCK_MS: 30_000,
   /**
    * The planning beat after both blocks are revealed, before the game starts.
    *
@@ -66,15 +58,7 @@ export const RANKED_DRAFT_CONFIG = {
   // a two-card turn is a single shared thinking window rather than two. The
   // deadline is only re-armed when the turn passes to the other player.
   //
-  // DEBUG: temporarily 10_000_000ms (~2.8h) so the draft UI can be worked on
-  // without the clock expiring. RESTORE TO 20_000 BEFORE SHIPPING.
-  //
-  // Side effect to be aware of while this is set: an abandoned draft is not
-  // "stuck", it is simply waiting on a deadline hours away, so the sweeper
-  // correctly leaves it alone and it keeps blocking a requeue. Clear it with:
-  //   UPDATE ranked_draft_sessions SET phase='aborted', deadline_at=NULL,
-  //     current_picker_id=NULL WHERE phase IN ('ban','draft');
-  PICK_MS: 10_000_000,
+  PICK_MS: 30_000,
   /**
    * How long a draft survives after a player's last socket goes away.
    *
@@ -611,10 +595,10 @@ export const FORGE_CONFIG = {
    */
   SACRIFICE_SHARDS: {
     common: 1,
-    uncommon: 3,
-    rare: 5,
-    epic: 12,
-    legendary: 25,
+    uncommon: 2,
+    rare: 3,
+    epic: 6,
+    legendary: 12,
   } as Record<string, number>,
 
   /** Sacrifice payout multiplier for `+` / `++` / `+++` cards. */
@@ -642,18 +626,18 @@ export const FORGE_CONFIG = {
      * roller normalises — but they are written as percentages to stay legible
      * against the design brief.
      *
-     * Skewed upward on purpose: EV is about +0.29 per edge, ~+1.2 across a
-     * whole card, so reforging is a modest power upgrade rather than a lateral
-     * reroll. That is the intended reward for the fragments it costs. Shifting
-     * weight toward the negatives is how to make it EV-neutral if that changes.
+     * Mildly skewed upward: EV is about +0.15 per edge, ~+0.6 across a whole
+     * card, so reforging is a slight power upgrade rather than a lateral
+     * reroll, with a real chance of coming out behind. Shifting weight toward
+     * the negatives is how to make it EV-neutral if that changes.
      */
     DISTRIBUTION: [
-      { offset: -2, weight: 5 },
-      { offset: -1, weight: 15 },
-      { offset: 0, weight: 50 },
-      { offset: 1, weight: 25 },
-      { offset: 2, weight: 4 },
-      { offset: 3, weight: 1 },
+      { offset: -2, weight: 10 },
+      { offset: -1, weight: 25 },
+      { offset: 0, weight: 30 },
+      { offset: 1, weight: 20 },
+      { offset: 2, weight: 10 },
+      { offset: 3, weight: 5 },
     ] as ReadonlyArray<{ offset: number; weight: number }>,
 
     /** Hard bounds, enforced independently of the table above. */
