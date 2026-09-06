@@ -6,6 +6,11 @@ import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../../types/middleware.types";
 import TowerService from "../../services/tower.service";
 import ChallengeService from "../../services/challenge.service";
+import {
+  isUserInAnyMatchmakingQueue,
+  QUEUE_CONFLICT_MESSAGE,
+  QUEUE_CONFLICT_CODE,
+} from "../../services/queueGuard.service";
 import { getClientVersionFromHeader } from "../../utils/clientVersion";
 import { TowerModifierViolationError } from "../../types/towerModifier.types";
 
@@ -134,6 +139,14 @@ export class TowerController {
         res.status(409).json({
           error:
             "You have a pending challenge. Cancel it before starting another game.",
+        });
+        return;
+      }
+
+      if (isUserInAnyMatchmakingQueue(userId)) {
+        res.status(409).json({
+          error: QUEUE_CONFLICT_MESSAGE,
+          code: QUEUE_CONFLICT_CODE,
         });
         return;
       }

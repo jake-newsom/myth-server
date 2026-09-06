@@ -15,6 +15,11 @@ import type {
 } from "../../types/sagaReward.types";
 import { getClientVersionFromHeader } from "../../utils/clientVersion";
 import {
+  isUserInAnyMatchmakingQueue,
+  QUEUE_CONFLICT_MESSAGE,
+  QUEUE_CONFLICT_CODE,
+} from "../../services/queueGuard.service";
+import {
   CreateSagaCardInput,
   CreateSagaRunInput,
   CreateSagaSeasonInput,
@@ -114,6 +119,15 @@ export const SagaController = {
         res.status(401).json({ status: "error", message: "Not authenticated" });
         return;
       }
+      if (isUserInAnyMatchmakingQueue(userId)) {
+        res.status(409).json({
+          status: "error",
+          message: QUEUE_CONFLICT_MESSAGE,
+          code: QUEUE_CONFLICT_CODE,
+        });
+        return;
+      }
+
       const { season_id } = req.body as { season_id: string };
       if (!season_id) {
         res.status(400).json({ status: "error", message: "season_id is required" });
@@ -558,6 +572,15 @@ export const SagaController = {
         res.status(401).json({ status: "error", message: "Not authenticated" });
         return;
       }
+      if (isUserInAnyMatchmakingQueue(userId)) {
+        res.status(409).json({
+          status: "error",
+          message: QUEUE_CONFLICT_MESSAGE,
+          code: QUEUE_CONFLICT_CODE,
+        });
+        return;
+      }
+
       const { node_id } = req.body as { node_id: string };
       if (!node_id) {
         res.status(400).json({ status: "error", message: "node_id is required" });

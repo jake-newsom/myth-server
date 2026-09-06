@@ -24,6 +24,8 @@ interface ChallengeRecord {
 }
 
 type QueueStatusResolver = (userId: string) => boolean;
+/** Removes a user from every matchmaking queue. Returns true if any entry was removed. */
+type QueueLeaveHandler = (userId: string) => boolean;
 type PresenceEmitter = (
   userId: string,
   event: PresenceNamespaceEvent,
@@ -47,10 +49,15 @@ class ChallengeService {
   private activeChallengeByUser = new Map<string, string>();
   private expiryTimers = new Map<string, NodeJS.Timeout>();
   private queueStatusResolver: QueueStatusResolver = () => false;
+  private queueLeaveHandler: QueueLeaveHandler = () => false;
   private presenceEmitter?: PresenceEmitter;
 
   setQueueStatusResolver(resolver: QueueStatusResolver): void {
     this.queueStatusResolver = resolver;
+  }
+
+  setQueueLeaveHandler(handler: QueueLeaveHandler): void {
+    this.queueLeaveHandler = handler;
   }
 
   setPresenceEmitter(emitter: PresenceEmitter): void {
@@ -182,6 +189,18 @@ class ChallengeService {
     }
 
     challenge.status = "accepted_waiting_decks";
+
+    // Accepting a direct challenge takes precedence over waiting for a random
+    // opponent: pull BOTH players out of whichever queue they are sitting in,
+    // so the pending match cannot pair them into a second game.
+    for (const id of [challenge.challengerId, challenge.opponentId]) {
+      if (this.queueLeaveHandler(id)) {
+        logger.info(
+          `Removed user ${id} from matchmaking queue: accepted challenge ${challenge.challengeId}`
+        );
+      }
+    }
+
     this.emit(
       challenge.challengerId,
       PresenceNamespaceEvent.CHALLENGE_ACCEPTED,

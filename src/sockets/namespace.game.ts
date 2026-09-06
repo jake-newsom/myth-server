@@ -64,6 +64,11 @@ export function setupGameNamespace(io: Server): void {
     playerIds: [string, string];
     turnManager: TurnManager | null;
     mulliganTimer: NodeJS.Timeout | null;
+    /**
+     * Grace timer that arms the mulligan phase when only ONE player has
+     * joined. See armMulliganPhase.
+     */
+    mulliganArmTimer: NodeJS.Timeout | null;
     graceTimers: Map<string, NodeJS.Timeout>;
     clientVersions: Map<string, string | undefined>;
     actionLock: Promise<void>;
@@ -71,10 +76,13 @@ export function setupGameNamespace(io: Server): void {
 
   const activeGames: Map<string, GameRoomMeta> = new Map();
 
-  const bothPlayersSupportMulligan = (meta: GameRoomMeta): boolean =>
-    meta.playerIds.every((pid) =>
-      clientSupportsMulligan(meta.clientVersions.get(pid))
-    );
+  /**
+   * How long a lone joiner waits for the opponent before the mulligan phase
+   * starts anyway. Short enough that a stranded player is not left staring at
+   * a dead screen, long enough that the normal case — both clients landing
+   * within a few hundred ms of each other — still starts the phase together.
+   */
+  const MULLIGAN_SOLO_ARM_DELAY_MS = 3000;
 
   /**
    * Acquire a per-game lock to serialize action processing.
@@ -395,6 +403,10 @@ export function setupGameNamespace(io: Server): void {
       clearTimeout(meta.mulliganTimer);
       meta.mulliganTimer = null;
     }
+    if (meta.mulliganArmTimer) {
+      clearTimeout(meta.mulliganArmTimer);
+      meta.mulliganArmTimer = null;
+    }
     for (const timer of meta.graceTimers.values()) clearTimeout(timer);
     meta.graceTimers.clear();
     activeGames.delete(gameId);
@@ -459,6 +471,101 @@ export function setupGameNamespace(io: Server): void {
     teardownGame(gameId);
     clearActiveMatch(player1Id);
     clearActiveMatch(player2Id);
+  }
+
+  /**
+   * Starts the mulligan phase: stamps a deadline, tells the room, and arms the
+   * expiry timer that auto-commits whoever has not acted.
+   *
+   * `presentPlayerIds` is who is actually in the room. It matters because the
+   * legacy-client check below can only be made about players we have actually
+   * seen: an absent player has no advertised version, and an unknown version
+   * reads as "legacy" (see clientSupportsMulligan). Asking about an absent
+   * player would therefore take the legacy SKIP branch and blow past the
+   * mulligan for a present, modern client. So we ask only about who is here,
+   * and a solo arm is judged on that one player alone.
+   *
+   * Callers hold no lock; this takes the action lock itself.
+   */
+  async function armMulliganPhase(
+    gameId: string,
+    roomName: string,
+    meta: GameRoomMeta,
+    presentPlayerIds: string[]
+  ): Promise<void> {
+    const releaseLock = await acquireActionLock(gameId);
+    try {
+      // Re-check inside the lock — two simultaneous joins can both pass
+      // the outer guard, so only the first one through should arm the timer.
+      if (meta.mulliganTimer) return;
+
+      const latest = await gameService.getRawGameRecord(
+        gameId,
+        meta.playerIds[0]
+      );
+      if (!latest || latest.game_state.status !== GameStatus.MULLIGAN) {
+        return;
+      }
+
+      const presentSupportMulligan =
+        presentPlayerIds.length > 0 &&
+        presentPlayerIds.every((pid) =>
+          clientSupportsMulligan(meta.clientVersions.get(pid))
+        );
+
+      if (presentSupportMulligan) {
+        // Every client here supports mulligan — run the timed phase.
+        const deadlineMs = Date.now() + MULLIGAN_DURATION_SECONDS * 1000;
+        const stateWithDeadline = {
+          ...latest.game_state,
+          mulligan_state: {
+            ...latest.game_state.mulligan_state!,
+            deadline_ms: deadlineMs,
+          },
+        };
+        await gameService.updateGameAfterAction(
+          gameId,
+          stateWithDeadline,
+          GameStatus.MULLIGAN,
+          null
+        );
+        gameNs.to(roomName).emit(GameNamespaceEvent.SERVER_MULLIGAN_START, {
+          deadline_ms: deadlineMs,
+          duration_seconds: MULLIGAN_DURATION_SECONDS,
+        });
+        meta.mulliganTimer = setTimeout(
+          () =>
+            onMulliganExpire(gameId, roomName).catch((err) =>
+              console.error("[namespace.game] onMulliganExpire error", err)
+            ),
+          MULLIGAN_DURATION_SECONDS * 1000
+        );
+      } else {
+        // Legacy client in match — skip mulligan immediately (no 30s wait).
+        const skipped = skipMulliganPhase(latest.game_state, meta.playerIds);
+        await gameService.updateGameAfterAction(
+          gameId,
+          skipped.state,
+          skipped.state.status,
+          skipped.state.winner ?? null
+        );
+        await emitGameStateSanitized(gameNs, roomName, skipped.state, {
+          events: skipped.events,
+        });
+        if (skipped.state.status === GameStatus.ACTIVE && !meta.turnManager) {
+          meta.turnManager = new TurnManager(
+            gameNs,
+            roomName,
+            skipped.state.current_player_id,
+            meta.playerIds,
+            makeOnTurnTimeout(gameId, roomName, meta)
+          );
+          meta.turnManager.startTurn(skipped.state.current_player_id, true);
+        }
+      }
+    } finally {
+      releaseLock();
+    }
   }
 
   /**
@@ -718,6 +825,7 @@ export function setupGameNamespace(io: Server): void {
             playerIds: [game.player1_id, game.player2_id],
             turnManager: null,
             mulliganTimer: null,
+            mulliganArmTimer: null,
             graceTimers: new Map(),
             clientVersions: new Map(),
             actionLock: Promise.resolve(), // Initialize with resolved promise
@@ -744,90 +852,51 @@ export function setupGameNamespace(io: Server): void {
           if (!freshRecord) return;
           const currentStatus = freshRecord.game_state.status;
 
-          // Simultaneous phase: both players must be here before it starts.
-          if (currentStatus === GameStatus.MULLIGAN && playersPresent === 2) {
-            const releaseLock = await acquireActionLock(gameId);
-            try {
-              // Re-check inside the lock — two simultaneous joins can both pass
-              // the outer guard, so only the first one through should arm the timer.
-              if (meta.mulliganTimer) return;
-
-              const latest = await gameService.getRawGameRecord(
-                gameId,
-                meta.playerIds[0]
-              );
-              if (!latest || latest.game_state.status !== GameStatus.MULLIGAN) {
-                return;
-              }
-
-              if (bothPlayersSupportMulligan(meta)) {
-                // Both clients support mulligan — run timed phase for new clients.
-                const deadlineMs =
-                  Date.now() + MULLIGAN_DURATION_SECONDS * 1000;
-                const stateWithDeadline = {
-                  ...latest.game_state,
-                  mulligan_state: {
-                    ...latest.game_state.mulligan_state!,
-                    deadline_ms: deadlineMs,
-                  },
-                };
-                await gameService.updateGameAfterAction(
-                  gameId,
-                  stateWithDeadline,
-                  GameStatus.MULLIGAN,
-                  null
-                );
-                gameNs.to(roomName).emit(GameNamespaceEvent.SERVER_MULLIGAN_START, {
-                  deadline_ms: deadlineMs,
-                  duration_seconds: MULLIGAN_DURATION_SECONDS,
-                });
-                meta.mulliganTimer = setTimeout(
-                  () =>
-                    onMulliganExpire(gameId, roomName).catch((err) =>
-                      console.error("[namespace.game] onMulliganExpire error", err)
-                    ),
-                  MULLIGAN_DURATION_SECONDS * 1000
-                );
-              } else {
-                // Legacy client in match — skip mulligan immediately (no 30s wait).
-                const skipped = skipMulliganPhase(
-                  latest.game_state,
-                  meta.playerIds
-                );
-                await gameService.updateGameAfterAction(
-                  gameId,
-                  skipped.state,
-                  skipped.state.status,
-                  skipped.state.winner ?? null
-                );
-                await emitGameStateSanitized(gameNs, roomName, skipped.state, {
-                  events: skipped.events,
-                });
-                if (
-                  skipped.state.status === GameStatus.ACTIVE &&
-                  !meta.turnManager
-                ) {
-                  meta.turnManager = new TurnManager(
-                    gameNs,
-                    roomName,
-                    skipped.state.current_player_id,
-                    meta.playerIds,
-                    makeOnTurnTimeout(gameId, roomName, meta)
-                  );
-                  meta.turnManager.startTurn(
-                    skipped.state.current_player_id,
-                    true
-                  );
+          // Simultaneous phase. It normally waits for both players, but it
+          // must not wait FOREVER: if the opponent never arrives (a client that
+          // failed to navigate into the game, a crash, a force-quit) the player
+          // who did show up used to sit on the mulligan screen with no timer
+          // running until the stale-game reaper eventually killed the match.
+          //
+          // So a lone joiner arms the phase after a short grace period. The
+          // expiry handler already auto-commits whoever has not acted, which is
+          // exactly the right outcome for an absent player.
+          if (currentStatus === GameStatus.MULLIGAN) {
+            const presentPlayerIds = () =>
+              meta!.playerIds.filter(
+                (pid) => {
+                  const sid = userGameSocketMap.get(pid);
+                  return !!sid && (gameNs.adapter.rooms.get(roomName)?.has(sid) ?? false);
                 }
+              );
+
+            if (playersPresent >= 2) {
+              if (meta.mulliganArmTimer) {
+                clearTimeout(meta.mulliganArmTimer);
+                meta.mulliganArmTimer = null;
               }
-            } finally {
-              releaseLock();
+              await armMulliganPhase(gameId, roomName, meta, presentPlayerIds());
+            } else if (!meta.mulliganTimer && !meta.mulliganArmTimer) {
+              const metaRef = meta;
+              metaRef.mulliganArmTimer = setTimeout(() => {
+                metaRef.mulliganArmTimer = null;
+                // Re-read presence at fire time: the opponent may have joined
+                // during the grace window, in which case their join already
+                // armed the phase and armMulliganPhase no-ops on mulliganTimer.
+                armMulliganPhase(
+                  gameId,
+                  roomName,
+                  metaRef,
+                  presentPlayerIds()
+                ).catch((err) =>
+                  console.error("[namespace.game] armMulliganPhase error", err)
+                );
+              }, MULLIGAN_SOLO_ARM_DELAY_MS);
             }
           } else if (currentStatus === GameStatus.ACTIVE && !meta.turnManager) {
             // Normal active-game bootstrap. Runs on the FIRST join, not only
             // when both players are present, so a restart re-arms the clock as
-            // soon as anyone reconnects. A MULLIGAN game with one player
-            // present matches neither branch and correctly does nothing.
+            // soon as anyone reconnects.
             const startingPlayer = freshRecord.game_state.current_player_id;
             meta.turnManager = new TurnManager(
               gameNs,

@@ -6,6 +6,7 @@ import RankedDraft, {
   toStatePayload,
 } from "../../services/rankedDraft.service";
 import RankedMatchmaking from "../../services/rankedMatchmaking.service";
+import { isUserInMatchmakingQueue } from "./matchmaking.controller";
 import RankedDraftOrchestrator from "../../services/rankedDraftOrchestrator.service";
 import FeatureFlagService from "../../services/featureFlag.service";
 import LeaderboardModel from "../../models/leaderboard.model";
@@ -42,6 +43,17 @@ const RankedDraftController = {
     try {
       const userId = req.user.user_id;
       if (!(await requireFlag(userId, res))) return;
+
+      // One queue at a time: the unranked queue is a separate in-memory list,
+      // so sitting in both would let one player be matched twice.
+      if (isUserInMatchmakingQueue(userId)) {
+        return res.status(409).json({
+          error: {
+            message: "You are already in the unranked queue.",
+            code: "IN_OTHER_QUEUE",
+          },
+        });
+      }
 
       // A live draft or an unfinished ranked game must block a second queue.
       const live = await RankedDraftSessionModel.findLiveForUser(userId);

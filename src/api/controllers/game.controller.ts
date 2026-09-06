@@ -48,6 +48,11 @@ import {
 import { resolveAIDifficulty } from "../../game-engine/ai.difficulty";
 import { DECK_CONFIG } from "../../config/constants";
 import ChallengeService from "../../services/challenge.service";
+import {
+  isUserInAnyMatchmakingQueue,
+  QUEUE_CONFLICT_MESSAGE,
+  QUEUE_CONFLICT_CODE,
+} from "../../services/queueGuard.service";
 import { spendEmberForGame } from "../../services/ember.service";
 import FeatureFlagService from "../../services/featureFlag.service";
 import CardBackModel from "../../models/cardBack.model";
@@ -88,6 +93,14 @@ class GameController {
         res.status(409).json({
           error:
             "You have a pending challenge. Cancel it before starting another game.",
+        });
+        return;
+      }
+
+      if (isUserInAnyMatchmakingQueue(userId)) {
+        res.status(409).json({
+          error: QUEUE_CONFLICT_MESSAGE,
+          code: QUEUE_CONFLICT_CODE,
         });
         return;
       }

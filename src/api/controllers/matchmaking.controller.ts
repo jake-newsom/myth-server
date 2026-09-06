@@ -11,6 +11,10 @@ import {
 } from "../../types/socket.types";
 import { userRoom } from "../../sockets/namespace.presence";
 import ChallengeService from "../../services/challenge.service";
+import {
+  isUserInRankedQueue,
+  leaveQueue as leaveRankedQueue,
+} from "../../services/rankedMatchmaking.service";
 import MatchmakingService, {
   DeckLookupError,
 } from "../../services/matchmaking.service";
@@ -29,10 +33,34 @@ const activeMatches = new Map<string, string>(); // Stores gameId by userId if t
 export const isUserInMatchmakingQueue = (userId: string): boolean =>
   matchmakingQueue.some((entry) => entry.userId === userId);
 
+/**
+ * Drop a user from the unranked queue, wherever that is decided.
+ *
+ * Exported so flows outside this controller (accepting a direct challenge)
+ * can pull a player out of the queue. Returns true if an entry was removed.
+ * Does not touch activeMatches: a player already paired into a game is past
+ * the point where leaving the queue means anything.
+ */
+export const removeUserFromMatchmakingQueue = (userId: string): boolean => {
+  const index = matchmakingQueue.findIndex((entry) => entry.userId === userId);
+  if (index === -1) return false;
+  matchmakingQueue.splice(index, 1);
+  return true;
+};
+
 // Lock set to prevent race conditions when the same user sends concurrent joinQueue requests
 const joinInProgress = new Set<string>();
 
 ChallengeService.setQueueStatusResolver(isUserInMatchmakingQueue);
+
+// Accepting a direct challenge drops the player from BOTH queues. Registered
+// here (rather than imported inside challenge.service) to keep that service
+// free of queue imports, matching the resolver above.
+ChallengeService.setQueueLeaveHandler((userId: string) => {
+  const leftUnranked = removeUserFromMatchmakingQueue(userId);
+  const leftRanked = leaveRankedQueue(userId);
+  return leftUnranked || leftRanked;
+});
 
 // --- Match Cleanup Function ---
 function clearActiveMatch(userId: string) {
@@ -167,6 +195,17 @@ const MatchmakingController = {
               code: "ACTIVE_GAME_EXISTS",
             },
             gameId: existingGameId,
+          });
+        }
+
+        // One queue at a time: the ranked queue is a separate in-memory list,
+        // so sitting in both would let one player be matched twice.
+        if (isUserInRankedQueue(userId)) {
+          return res.status(409).json({
+            error: {
+              message: "You are already in the ranked queue.",
+              code: "IN_OTHER_QUEUE",
+            },
           });
         }
 
@@ -422,10 +461,8 @@ const MatchmakingController = {
   async leaveQueue(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user.user_id;
-      const index = matchmakingQueue.findIndex((p) => p.userId === userId);
 
-      if (index > -1) {
-        matchmakingQueue.splice(index, 1);
+      if (removeUserFromMatchmakingQueue(userId)) {
         res.status(200).json({
           status: "left_queue",
           message: "Removed from matchmaking queue.",
