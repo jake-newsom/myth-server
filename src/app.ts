@@ -14,6 +14,10 @@ import * as cron from "node-cron";
 // Load environment variables
 dotenv.config();
 
+import { startIapRetries, stopIapRetries } from "./services/iap.service";
+import { validateIapConfig } from './config/iap.config';
+validateIapConfig();
+
 // Load version from package.json
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(__dirname, "../package.json"), "utf8"),
@@ -301,6 +305,7 @@ if (require.main === module) {
   }
 
   httpServer.listen(PORT, async () => {
+    startIapRetries();
     console.log(`Server is running on port ${PORT}`);
     console.log(`Access at http://localhost:${PORT}`);
 
@@ -427,6 +432,7 @@ if (require.main === module) {
 process.on("SIGTERM", async () => {
   console.log("🛑 SIGTERM received, shutting down gracefully");
   stopRankedDraftScheduler();
+  stopIapRetries();
   if (automationSchedulerTask) {
     AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerTask);
   }
@@ -457,6 +463,7 @@ process.on("SIGTERM", async () => {
 process.on("SIGINT", async () => {
   console.log("🛑 SIGINT received, shutting down gracefully");
   stopRankedDraftScheduler();
+  stopIapRetries();
   if (automationSchedulerTask) {
     AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerTask);
   }

@@ -40,7 +40,10 @@ import errorHandler from "../middlewares/errorHandler.middleware";
 import matchmakingRoutes from "./matchmaking.routes";
 import rankedDraftRoutes from "./rankedDraft.routes";
 
+import iapRoutes from "./iap.routes";
+
 const router = Router();
+router.use("/iap", iapRoutes);
 
 // API Routes
 router.use("/auth", authRoutes);

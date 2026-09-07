@@ -1,3 +1,4 @@
+import { IapModel } from "../../models/iap.model";
 // src/api/controllers/user.controller.ts
 import UserModel from "../../models/user.model";
 import EmberService from "../../services/ember.service";
@@ -583,6 +584,9 @@ const UserController = {
       await client.query("BEGIN");
 
       try {
+        // Serialize account removal with purchase fulfillment before scrubbing financial records.
+        await client.query("SELECT user_id FROM users WHERE user_id=$1 FOR NO KEY UPDATE", [targetUserId]);
+
         // Delete all user-related data
         // Note: Many tables have CASCADE delete, but we explicitly delete for clarity
 
@@ -823,6 +827,9 @@ const UserController = {
       await client.query("BEGIN");
 
       try {
+        // Serialize account removal with purchase fulfillment before scrubbing financial records.
+        await client.query("SELECT user_id FROM users WHERE user_id=$1 FOR NO KEY UPDATE", [userId]);
+
         // Delete all user-related data
         // Note: Many tables have CASCADE delete, but we explicitly delete for clarity
 
@@ -907,6 +914,7 @@ const UserController = {
         await client.query(`DELETE FROM "user_sessions" WHERE user_id = $1`, [userId]);
 
         // Finally, delete the user record itself
+        await IapModel.scrubUser(client, userId);
         await client.query(`DELETE FROM "users" WHERE user_id = $1`, [userId]);
 
         await client.query("COMMIT");

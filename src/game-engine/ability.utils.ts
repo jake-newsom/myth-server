@@ -1,3 +1,4 @@
+import { claimMechanicTileEffect, refreshMechanicTilePower } from "./battleMechanic.power";
 import {
   EffectType,
   InGameCard,
@@ -137,6 +138,10 @@ export function updateCurrentPower(
   card: InGameCard,
   board?: GameBoard,
 ): PowerValues {
+  if (board) {
+    const cell = board.flat().find(cell => cell.card?.user_card_instance_id === card.user_card_instance_id);
+    refreshMechanicTilePower(card, cell?.tile_enabled ? cell.mechanic_effect : undefined);
+  }
   const currentPower: PowerValues = structuredClone(
     card.base_card_data.base_power,
   );
@@ -574,6 +579,13 @@ export function createOrUpdateDebuff(
     cardId: card.user_card_instance_id,
     powerDelta: calculatePowerDelta(power, true),
     powerBySide: appliedBySide,
+    // Matches addTempDebuff. This is what marks the event as an actual debuff
+    // for batchContainsDebuff (and therefore the Japanese deck passive); without
+    // it, every debuff routed through createOrUpdateDebuff — Frigg's hand
+    // debuff, Moon's Balance, and the stacking debuffs generally — was silently
+    // uncounted. Guarded on a real negative delta so a zero-magnitude
+    // initialization call (see addTempDebuff(…, 0, …) above) is not counted.
+    isNegativeEffect: calculatePowerDelta(power, true) < 0,
     effectName: name,
     position,
   } as CardPowerChangedEvent;
@@ -1504,6 +1516,30 @@ export function applyTileEffectsToMovedCard(
 ): BaseGameEvent[] {
   const events: BaseGameEvent[] = [];
   const newTile = getTileAtPosition(newPosition, board);
+  if (newTile?.mechanic_effect || card.temporary_effects.some(effect => effect.data?.battleMechanic === "haunted")) {
+    const previousPower = { ...card.current_power };
+    card.current_power = updateCurrentPower(card, board);
+    const powerBySide = {
+      top: card.current_power.top - previousPower.top,
+      right: card.current_power.right - previousPower.right,
+      bottom: card.current_power.bottom - previousPower.bottom,
+      left: card.current_power.left - previousPower.left,
+    };
+    const powerDelta = Object.values(powerBySide).reduce((a, b) => Math.abs(b) > Math.abs(a) ? b : a, 0);
+    if (powerDelta !== 0) {
+      events.push({ type: EVENT_TYPES.CARD_POWER_CHANGED, eventId: uuidv4(), timestamp: Date.now(),
+        cardId: card.user_card_instance_id, position: newPosition, powerDelta, powerBySide,
+        effectName: "Haunted", preserveEffectName: true,
+        animation: "haunt" } as CardPowerChangedEvent);
+    }
+
+    // Moving onto a haunted tile spends it, exactly as placing onto one does:
+    // the bonus becomes permanent on this card and the tile is cleared.
+    if (newTile?.mechanic_effect) {
+      claimMechanicTileEffect(card);
+      newTile.mechanic_effect = undefined;
+    }
+  }
 
   if (newTile?.tile_effect) {
     const tileEffect = newTile.tile_effect;
@@ -1596,6 +1632,22 @@ export function pushCardAway(
   // Move the card
   const currentTile = getTileAtPosition(cardPosition, board);
   const newTile = getTileAtPosition(newPosition, board);
+  const previousPower = { ...card.current_power };
+  card.current_power = updateCurrentPower(card, board);
+  const powerBySide = {
+    top: card.current_power.top - previousPower.top,
+    right: card.current_power.right - previousPower.right,
+    bottom: card.current_power.bottom - previousPower.bottom,
+    left: card.current_power.left - previousPower.left,
+  };
+  const powerDelta = Object.values(powerBySide).reduce((a, b) => Math.abs(b) > Math.abs(a) ? b : a, 0);
+  if (powerDelta !== 0) {
+    events.push({ type: EVENT_TYPES.CARD_POWER_CHANGED, eventId: uuidv4(), timestamp: Date.now(),
+      cardId: card.user_card_instance_id, position: newPosition, powerDelta, powerBySide,
+      effectName: "Haunted", preserveEffectName: true,
+      animation: "haunt" } as CardPowerChangedEvent);
+  }
+
 
   if (currentTile && newTile) {
     newTile.card = card;

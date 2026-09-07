@@ -1,3 +1,4 @@
+import { IapService } from "./iap.service";
 import DailyShopModel from "../models/dailyShop.model";
 import UserModel from "../models/user.model";
 import CardModel from "../models/card.model";
@@ -1227,62 +1228,15 @@ const DailyShopService = {
     }
   },
 
-  /**
-   * Mock paid-shop ("Vault") listings.
-   *
-   * Placeholder data until real in-app purchases ship — see
-   * docs/iap-implementation-plan.md, whose product IDs and contents these
-   * mirror so the eventual swap to a live catalogue is a data change, not a
-   * UI change. Nothing here can be purchased: there is no grant path, and the
-   * whole tab is behind the `iap-store` flag.
-   */
+  /** Additive, flag-gated listings for both old and current clients. */
   async getPaidShopListings(userId: string): Promise<any[]> {
-    if (!(await FeatureFlagService.isEnabled(userId, SHOP_CONFIG.IAP_FLAG))) {
-      return [];
-    }
-
-    return [
-      {
-        product_id: "gems_small",
-        name: "Pouch of Gems",
-        description: "100 gems",
-        price_label: "$1.99",
-        grants: { gems: 100 },
-        badge: null,
-      },
-      {
-        product_id: "gems_medium",
-        name: "Chest of Gems",
-        description: "550 gems",
-        price_label: "$9.99",
-        grants: { gems: 550 },
-        badge: "Popular",
-      },
-      {
-        product_id: "gems_large",
-        name: "Hoard of Gems",
-        description: "1,200 gems",
-        price_label: "$19.99",
-        grants: { gems: 1200 },
-        badge: "Best value",
-      },
-      {
-        product_id: "starter_bundle",
-        name: "Starter Bundle",
-        description: "300 gems + 5 packs",
-        price_label: "$4.99",
-        grants: { gems: 300, packs: 5 },
-        badge: "One per account",
-      },
-      {
-        product_id: "myth_pass_monthly",
-        name: "Myth Pass",
-        description: "Monthly rewards, delivered to your mail",
-        price_label: "$4.99 / month",
-        grants: { gems: 250, fate_coins: 500, packs: 3 },
-        badge: "Subscription",
-      },
-    ];
+    const products = await IapService.catalog(userId);
+    return products.map(p => ({
+      product_id: p.internal_id, store_product_id: p.product_id,
+      name: p.display_name, description: p.description,
+      price_label: "", grants: { gems: p.grant_gems, card_fragments: p.grant_card_fragments },
+      badge: p.badge,
+    }));
   },
 
   /**

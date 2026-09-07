@@ -47,6 +47,7 @@ We reserve the right to suspend or terminate accounts, with or without notice, i
 
 - Violated these Terms
 - Engaged in cheating, exploitation, or abuse
+- Obtained refunds for virtual currency or items that have already been used or consumed
 - Used offensive or inappropriate account names
 - Interfered with the integrity or operation of the Game
 
@@ -77,6 +78,8 @@ The Game may offer virtual items, currency, or content for purchase through the 
 - Purchases are **non-refundable**, except as required by applicable law or the policies of Apple or Google.
 - We do not control payment processing; all payments are handled by the platform provider.
 - We reserve the right to **modify, rebalance, replace, or remove** virtual items at any time.
+
+If you obtain a refund for a purchase after the associated virtual currency or items have been used or consumed, we reserve the right to remove the corresponding items, suspend your access to purchasing, or suspend or terminate your account, in accordance with Section 3(C).
 
 ---
 

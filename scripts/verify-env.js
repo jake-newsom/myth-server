@@ -12,6 +12,9 @@ console.log('=' .repeat(50));
 
 // Define required environment variables
 const requiredEnvVars = [
+  { name: 'REVENUECAT_WEBHOOK_AUTH', required: process.env.IAP_ENABLED === 'true', sensitive: true, description: 'IAP webhook authorization' },
+  { name: 'REVENUECAT_APP_IDS', required: process.env.IAP_ENABLED === 'true', description: 'Allowed RevenueCat app IDs' },
+  { name: 'IAP_ENVIRONMENT', required: process.env.IAP_ENABLED === 'true', description: 'SANDBOX or PRODUCTION' },
   {
     name: 'NODE_ENV',
     expected: 'production',

@@ -52,6 +52,7 @@ export interface TileEffect {
 export interface BoardCell {
   card: InGameCard | null;
   tile_enabled: boolean;
+  mechanic_effect?: import("./battleMechanic.types").MechanicTileEffect;
   tile_effect?: TileEffect;
 }
 
@@ -145,6 +146,7 @@ export interface PendingChoice {
 
 export interface GameState {
   board: GameBoard;
+  mechanics?: import("./battleMechanic.types").BattleMechanicState[];
   player1: Player;
   player2: Player;
   current_player_id: string;

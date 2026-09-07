@@ -1,0 +1,8 @@
+[
+  {"product_id":"com.myth.gems.small","internal_id":"gems_small","grant_gems":100,"grant_card_fragments":0,"display_name":"Pouch of Gems","description":"100 gems","badge":null,"sort_order":10},
+  {"product_id":"com.myth.gems.medium","internal_id":"gems_medium","grant_gems":550,"grant_card_fragments":0,"display_name":"Chest of Gems","description":"550 gems","badge":"Popular","sort_order":20},
+  {"product_id":"com.myth.gems.large","internal_id":"gems_large","grant_gems":1200,"grant_card_fragments":0,"display_name":"Hoard of Gems","description":"1,200 gems","badge":"Best value","sort_order":30},
+  {"product_id":"com.myth.fragments.small","internal_id":"fragments_small","grant_gems":0,"grant_card_fragments":400,"display_name":"Fragment Cache","description":"400 fragments","badge":null,"sort_order":40},
+  {"product_id":"com.myth.fragments.medium","internal_id":"fragments_medium","grant_gems":0,"grant_card_fragments":1000,"display_name":"Fragment Trove","description":"1,000 fragments","badge":null,"sort_order":50},
+  {"product_id":"com.myth.fragments.large","internal_id":"fragments_large","grant_gems":0,"grant_card_fragments":3000,"display_name":"Fragment Vault","description":"3,000 fragments","badge":null,"sort_order":60}
+]

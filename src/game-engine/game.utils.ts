@@ -1,3 +1,4 @@
+import { refreshMechanicTilePower } from "./battleMechanic.power";
 import {
   GameState,
   BoardPosition,
@@ -858,6 +859,7 @@ export function updateAllHandCards(gameState: GameState) {
   for (const cardId of gameState.player1.hand) {
     const card = gameState.hydrated_card_data_cache?.[cardId];
     if (card) {
+      refreshMechanicTilePower(card);
       card.current_power = updateCurrentPower(card);
     }
   }
@@ -866,6 +868,7 @@ export function updateAllHandCards(gameState: GameState) {
   for (const cardId of gameState.player2.hand) {
     const card = gameState.hydrated_card_data_cache?.[cardId];
     if (card) {
+      refreshMechanicTilePower(card);
       card.current_power = updateCurrentPower(card);
     }
   }

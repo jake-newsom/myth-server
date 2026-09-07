@@ -17,6 +17,11 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: IAP_ENABLED
+        value: "false"
+      - key: IAP_ENVIRONMENT
+        value: PRODUCTION
+      # Set REVENUECAT_APP_IDS and REVENUECAT_WEBHOOK_AUTH before enabling IAP.
       - key: PORT
         value: 10000 # Render uses port 10000 by default
       # All other environment variables (JWT_SECRET, JWT_EXPIRES_IN, BCRYPT_SALT_ROUNDS, etc.)

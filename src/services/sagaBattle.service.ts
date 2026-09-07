@@ -1,3 +1,5 @@
+import { initializeBattleMechanics } from "../game-engine/battleMechanics";
+import { resolveSagaMechanics } from "../game-engine/sagaBattle.configuration";
 import _ from "lodash";
 import db from "../config/db.config";
 import { AI_PLAYER_ID } from "../api/controllers/game.controller";
@@ -240,7 +242,7 @@ const SagaBattleService = {
       aiInstanceIds,
       playerCache,
       aiCache,
-      preDestroyed,
+      0,
       { forcedAiOpeningCardInstanceId: forcedAiOpeningCardInstanceId ?? undefined }
     );
     gameState.player2.equipped_card_back = enemyCardBack;
@@ -262,10 +264,6 @@ const SagaBattleService = {
         node.battle_difficulty ?? (node.type === "boss" ? "hard" : "easy"),
       enemy_stat_bonus: floorConfig.enemy_stat_bonus,
       ai_profile: floorConfig.ai_profile,
-      worlds_end: {
-        defeats_per_destroy: worldsEndThreshold,
-        defeats_since_destroy: 0,
-      },
       slayer_applied: {},
       player_cards_played: {},
       forced_ai_opening_card_instance_id: forcedAiOpeningCardInstanceId ?? undefined,
@@ -273,6 +271,10 @@ const SagaBattleService = {
     };
 
     gameState.saga_context = sagaContext;
+    initializeBattleMechanics(gameState, resolveSagaMechanics(season.seasonal_mechanic, {
+      defeats_per_destroy: worldsEndThreshold,
+      pre_destroyed_tiles: preDestroyed,
+    }));
 
     const startingPlayerId =
       Math.random() < 0.5 ? playerId : AI_PLAYER_ID;

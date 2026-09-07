@@ -14,7 +14,8 @@ export interface SagaBattleContext {
   battle_difficulty: SagaBattleDifficulty;
   enemy_stat_bonus: number;
   ai_profile: "basic" | "intermediate" | "advanced";
-  worlds_end: SagaWorldsEndState;
+  /** Legacy persisted battles only. New battles use GameState.mechanics. */
+  worlds_end?: SagaWorldsEndState;
   /** saga_card_id -> true if slayer buff already applied this battle */
   slayer_applied?: Record<string, boolean>;
   /** user_id -> number of cards placed this battle */

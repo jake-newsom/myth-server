@@ -1,3 +1,5 @@
+import { applyBattleMechanicsAfterDefeats } from "./battleMechanics";
+import { claimMechanicTileEffect } from "./battleMechanic.power";
 import {
   GameState,
   BoardPosition,
@@ -392,11 +394,17 @@ export class GameLogic {
       );
       if (!canPlace) throw new Error(errorMessage);
 
+      // Start of this placement's event production. The debuff scan at the end
+      // of placeCard anchors here rather than at eventsBeforeAbilities so that
+      // debuffs landing BEFORE abilities run — notably a negative tile effect
+      // transferred onto the card as it is placed — are still seen.
+      const eventsBeforePlacement = events.length;
+
       // Get existing tile effect before placing the card
       const existingTileEffect =
         newState.board[position.y][position.x]?.tile_effect;
 
-      const { boardCell: newBoardCell, tileEffectTransferred, curseTransferred } =
+      const { boardCell: newBoardCell, tileEffectTransferred } =
         gameUtils.createBoardCell(playedCardData, playerId, existingTileEffect);
       player.hand.splice(cardIndexInHand, 1);
 
@@ -417,16 +425,47 @@ export class GameLogic {
           cardId: playedCardData.user_card_instance_id,
           position,
           powerDelta: tileEffectPowerDelta,
+          // A transferred tile effect that lowers the card's power IS a debuff.
+          // Flagging it here is what lets the generic debuff scanner
+          // (batchContainsDebuff) see it — this event is hand-rolled rather
+          // than produced by addTempDebuff, so without the flag it was
+          // invisible. This subsumes the old curse-only special case: a cursed
+          // tile always carries negative power, and so do non-curse negative
+          // terrain effects, which previously never triggered the passive.
+          isNegativeEffect: tileEffectPowerDelta < 0,
           effectName: tileEffectDisplayName(existingTileEffect?.animation_label),
         } as CardPowerChangedEvent);
       }
 
-      // Trigger Japanese deck effect if a curse was transferred to the card
-      if (curseTransferred) {
-        events.push(...triggerJapaneseDeckEffects(newState));
-      }
-
+      newBoardCell.mechanic_effect = newState.board[position.y][position.x].mechanic_effect;
       newState.board[position.y][position.x] = newBoardCell;
+      gameUtils.updateAllBoardCards(newState);
+
+      let hauntedPowerChange: { cardId: string; amount: number } | null = null;
+      // A haunted tile is spent by the first card to occupy it: bake the bonus
+      // into the card permanently, then clear the tile so the haunting does not
+      // linger under it (and cannot be inherited by a later occupant).
+      // Must run after updateAllBoardCards, which is what applies the bonus.
+      // The cleared tile reaches the client through normal board-state
+      // reconciliation (the client reads `mechanic_effect` off the cell), so
+      // no dedicated event is needed — TileEvent cannot carry it in any case.
+      if (newBoardCell.mechanic_effect && newBoardCell.card) {
+        const hauntedCard = newBoardCell.card;
+        const hauntedEffect = newBoardCell.mechanic_effect;
+        claimMechanicTileEffect(hauntedCard);
+        newBoardCell.mechanic_effect = undefined;
+
+        // Work out the haunting's power change now (while the tile data is
+        // still in hand), but emit it AFTER CARD_PLACED — the client awaits the
+        // card-slam animation inside its CARD_PLACED handler, so anything queued
+        // before it would play underneath the slam and be half missed.
+        const matches = hauntedCard.base_card_data.tags?.includes(hauntedEffect.tag);
+        const amount = matches ? hauntedEffect.matching_bonus : hauntedEffect.other_bonus;
+        const immune = amount < 0 && hauntedCard.saga_rune_type === "iron";
+        if (amount !== 0 && !immune) {
+          hauntedPowerChange = { cardId: hauntedCard.user_card_instance_id, amount };
+        }
+      }
       events.push({
         type: EVENT_TYPES.CARD_PLACED,
         eventId: uuidv4(),
@@ -442,6 +481,31 @@ export class GameLogic {
           ? { ...newBoardCell.card.current_power }
           : undefined,
       } as CardPlacedEvent);
+
+      // Now that the slam has landed (CARD_PLACED above carries its own
+      // delayAfterMs, and the client awaits the slam animation before returning
+      // from that handler), play the haunting on the settled card.
+      if (hauntedPowerChange) {
+        events.push({
+          type: EVENT_TYPES.CARD_POWER_CHANGED,
+          eventId: uuidv4(),
+          timestamp: Date.now(),
+          cardId: hauntedPowerChange.cardId,
+          position,
+          powerDelta: hauntedPowerChange.amount,
+          powerBySide: {
+            top: hauntedPowerChange.amount,
+            right: hauntedPowerChange.amount,
+            bottom: hauntedPowerChange.amount,
+            left: hauntedPowerChange.amount,
+          },
+          effectName: "Haunted",
+          preserveEffectName: true,
+          animation: "haunt",
+          // Let the ~2.7s spirits flipbook breathe before combat resolves.
+          delayAfterMs: EFFECT_BEAT_MS,
+        } as CardPowerChangedEvent);
+      }
 
       // Minamoto achievement: only when card is played and the Demon Bane
       // temporary effect has reached +10 (all sides are symmetric for this buff).
@@ -566,8 +630,6 @@ export class GameLogic {
         const {
           applySlayerOnDefeat,
           applyThornsOnFlips,
-          applyWorldsEndAfterFlips,
-          countFlipEvents,
           refreshDynamicBlessings,
         } = await import("./sagaBattle.mechanics");
 
@@ -586,15 +648,14 @@ export class GameLogic {
         newState = thorns.state;
         events.push(...thorns.events);
 
-        const flipCount = countFlipEvents(defeatEvents);
-        const worldsEnd = applyWorldsEndAfterFlips(newState, flipCount);
-        newState = worldsEnd.state;
-        events.push(...worldsEnd.events);
-
         const postCombatBlessings = refreshDynamicBlessings(newState);
         newState = postCombatBlessings.state;
         events.push(...postCombatBlessings.events);
       }
+
+      events.push(...applyBattleMechanicsAfterDefeats(newState,
+        [...abilityEvents, ...combatResult.events].filter(event => event.type === EVENT_TYPES.CARD_FLIPPED).length
+      ).events);
 
       // Check if any combat/flip abilities added terrain effects (for Polynesian deck effect)
       // This catches abilities like "Feast or Famine" that trigger on flip
@@ -609,15 +670,14 @@ export class GameLogic {
       }
 
       // Japanese deck effect: fires when ANY card suffered a negative temporary
-      // effect during this placement (OnPlace abilities, combat, saga mechanics
-      // and tile curses alike). Checked once, at the end of the placement's
+      // effect during this placement (tile effects, OnPlace abilities, combat
+      // and saga mechanics alike). Checked once, at the end of the placement's
       // event production, so the once-per-round limiter sees the whole move as a
-      // single opportunity rather than racing between stages. The curse-transfer
-      // site above triggers on its own (it emits its own power-change event
-      // rather than going through addTempDebuff) and is a no-op the second time
-      // thanks to that same limiter.
+      // single opportunity rather than racing between stages. Scans from
+      // eventsBeforePlacement — NOT eventsBeforeAbilities — so a debuff applied
+      // by the tile the card landed on is included.
       events.push(
-        ...triggerDebuffDeckEffects(newState, events.slice(eventsBeforeAbilities))
+        ...triggerDebuffDeckEffects(newState, events.slice(eventsBeforePlacement))
       );
 
       const scores = validators.calculateScores(
@@ -808,6 +868,13 @@ export class GameLogic {
         newState.hydrated_card_data_cache[chosenCardId] = chosenCard;
       }
     }
+
+    // Japanese deck effect: a reveal-hand choice that debuffs the selected
+    // card(s) is a debuff like any other. It has to be checked HERE rather than
+    // in placeCard: placeCard's own check runs before it pauses for this choice,
+    // so the debuff below did not exist yet at that point. Without this, the
+    // flagship "debuff an opponent's card" ability never triggered the passive.
+    events.push(...triggerDebuffDeckEffects(newState, events));
 
     // Choice consumed — clear the pause before running the deferred tail so the
     // resumed move (and any reconnect) no longer sees a pending choice.
@@ -1029,16 +1096,21 @@ export class GameLogic {
       events.push(...triggerTerrainDeckEffects(newState));
     }
 
+    newState.turn_number++;
+
     // Japanese deck effect: turn-boundary debuffs (tower Poison, OnTurnStart /
     // OnTurnEnd / OnRound* abilities like Moon's Balance) also count as "a card
-    // was debuffed". Checked before turn_number++ so this shares the round with
-    // the placement that led into it — the once-per-round limiter therefore
-    // still allows at most one trigger per round overall.
+    // was debuffed".
+    //
+    // Deliberately AFTER turn_number++. The turn owner was switched above, so
+    // the start-of-turn debuffs scanned here belong to the INCOMING turn, not
+    // the one that just ended. Running before the increment stamped them with
+    // the outgoing turn's round number, which then blocked the incoming
+    // player's own placement from triggering the passive — making a
+    // once-per-round effect fire roughly every other round.
     events.push(
       ...triggerDebuffDeckEffects(newState, events.slice(eventsBeforeNorseEffect))
     );
-
-    newState.turn_number++;
 
     // Final step: if no playable empty tiles remain, the game is over.
     // Run this last so tile effects (e.g. heimdall_block) have already

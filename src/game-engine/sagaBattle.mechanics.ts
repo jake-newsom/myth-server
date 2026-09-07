@@ -4,9 +4,8 @@ import {
   BaseGameEvent,
   CardPowerChangedEvent,
   EVENT_TYPES,
-  TileEvent,
 } from "../types/game-engine.types";
-import { GameState, TileStatus } from "../types/game.types";
+import { GameState } from "../types/game.types";
 import { EffectType, InGameCard, PowerValues } from "../types/card.types";
 import type { SagaBattleContext } from "../types/sagaBattle.types";
 import { createBoardCell } from "./game.utils";
@@ -18,71 +17,12 @@ import {
   updateCurrentPower,
 } from "./ability.utils";
 
+import { applyPreDestroyedTiles } from "./battleMechanic.tiles";
+import { applyBattleMechanicsAfterDefeats } from "./battleMechanics";
+export { destroyRandomEmptyTile, applyPreDestroyedTiles } from "./battleMechanic.tiles";
+
 function totalPower(power: PowerValues): number {
   return power.top + power.right + power.bottom + power.left;
-}
-
-function randomEmptyTile(
-  board: GameState["board"]
-): { x: number; y: number } | null {
-  const empty: { x: number; y: number }[] = [];
-  for (let y = 0; y < board.length; y++) {
-    for (let x = 0; x < board[y].length; x++) {
-      const cell = board[y][x];
-      if (cell.tile_enabled && !cell.card) {
-        empty.push({ x, y });
-      }
-    }
-  }
-  if (empty.length === 0) return null;
-  return empty[Math.floor(Math.random() * empty.length)];
-}
-
-export function destroyRandomEmptyTile(
-  state: GameState,
-  animationLabel = "worlds_end"
-): { state: GameState; events: BaseGameEvent[] } {
-  const pos = randomEmptyTile(state.board);
-  if (!pos) return { state, events: [] };
-
-  const cell = state.board[pos.y][pos.x];
-  cell.tile_enabled = false;
-  cell.tile_effect = {
-    status: TileStatus.Blocked,
-    turns_left: 9999,
-    animation_label: animationLabel,
-  };
-  cell.card = null;
-
-  const event: TileEvent = {
-    type: EVENT_TYPES.TILE_STATE_CHANGED,
-    eventId: uuidv4(),
-    timestamp: Date.now(),
-    position: pos,
-    tile: {
-      tile_enabled: false,
-      tile_effect: cell.tile_effect,
-    },
-    animation: animationLabel,
-  };
-
-  return { state, events: [event] };
-}
-
-export function applyPreDestroyedTiles(
-  state: GameState,
-  count: number
-): { state: GameState; events: BaseGameEvent[] } {
-  const events: BaseGameEvent[] = [];
-  let current = state;
-  for (let i = 0; i < count; i++) {
-    // Use worlds_end so pre-blocked saga tiles render with the same
-    // visual pipeline as in-battle World's End tile destruction.
-    const result = destroyRandomEmptyTile(current, "worlds_end");
-    current = result.state;
-    events.push(...result.events);
-  }
-  return { state: current, events };
 }
 
 export function parseWorldsEndThreshold(
@@ -463,24 +403,7 @@ export function applyWorldsEndAfterFlips(
   state: GameState,
   flipCount: number
 ): { state: GameState; events: BaseGameEvent[] } {
-  const ctx = state.saga_context;
-  if (!ctx || flipCount <= 0) return { state, events: [] };
-
-  const events: BaseGameEvent[] = [];
-  let current = state;
-
-  ctx.worlds_end.defeats_since_destroy += flipCount;
-
-  while (
-    ctx.worlds_end.defeats_since_destroy >= ctx.worlds_end.defeats_per_destroy
-  ) {
-    ctx.worlds_end.defeats_since_destroy -= ctx.worlds_end.defeats_per_destroy;
-    const result = destroyRandomEmptyTile(current, "worlds_end");
-    current = result.state;
-    events.push(...result.events);
-  }
-
-  return { state: current, events };
+  return applyBattleMechanicsAfterDefeats(state, flipCount);
 }
 
 export function countFlipEvents(events: BaseGameEvent[]): number {
