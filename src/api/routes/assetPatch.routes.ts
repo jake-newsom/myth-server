@@ -238,6 +238,16 @@ const PATCHES: AssetPatch[] = [
       "sha256:172e0329cc42502bbb60da1d85227c957008e63aedbe873cff56d584bec9536a",
     size: 582128,
     description: "sfx updates",
+  },
+  {
+    id: "sep-2026-update",
+    version: 1,
+    type: "mixed",
+    r2Key: "patches/sep-2026-p1.zip",
+    checksum:
+      "sha256:526cea522e3429a02f3da409669a1eb342be4b8869079785d3aa20708d6772a0",
+    size: 11585455,
+    description: "september 2026 patch",
   }
 ];
 
