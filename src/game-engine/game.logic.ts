@@ -1039,6 +1039,8 @@ export class GameLogic {
     // triggerCard.owner === state.current_player_id — the same idiom
     // OnTurnStart abilities use. Running this after the switch would invert the
     // test and fire every such ability on the opponent's turn end instead.
+    // triggerIndirectAbilities applies that owner filter itself, so handlers
+    // don't need to.
     //
     // eventsBeforeTurnEnd is taken here so the terrain scan and the Japanese
     // debuff scan further down both still cover the events these abilities emit.

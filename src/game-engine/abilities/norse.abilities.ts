@@ -190,11 +190,10 @@ export const norseAbilities: AbilityMap = {
       return gameEvents;
     }
 
-    // GOD cards in the ENEMY's hand lose 1 power at each turn end. OnTurnEnd
-    // fires for every board card on BOTH players' turn ends and is deliberately
-    // not owner-gated, so this drains twice per round. "Enemy" is still resolved
-    // relative to Ragnarök's owner, so it is always the opponent's hand that
-    // loses power, never the owner's.
+    // GOD cards in the ENEMY's hand lose 1 power at the end of Ragnarök's
+    // owner's turn (triggerIndirectAbilities only fires the ending player's
+    // cards). "Enemy" is resolved relative to Ragnarök's owner, so it is
+    // always the opponent's hand that loses power.
     if (triggerMoment === TriggerMoment.OnTurnEnd) {
       const HAND_POSITION = { x: -1, y: -1 };
       const opponentId = getOpponentId(triggerCard.owner, state);

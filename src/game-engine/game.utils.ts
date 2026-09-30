@@ -884,6 +884,17 @@ export function triggerIndirectAbilities(
         // Skip if we've already collected this card (prevents duplicates)
         if (processedCardIds.has(cardId)) continue;
 
+        // OnTurnEnd means "at the end of YOUR turn": only the ending player's
+        // cards fire. Filtered here so individual handlers don't each need an
+        // owner === current_player_id gate. current_player_id is still the
+        // ending player (endTurn fires this before the turn switch).
+        if (
+          trigger === TriggerMoment.OnTurnEnd &&
+          cell.card.owner !== state.current_player_id
+        ) {
+          continue;
+        }
+
         const ability = cell.card.base_card_data.special_ability;
 
         const isLifecycleTrigger = lifecycleTriggers.includes(trigger);
