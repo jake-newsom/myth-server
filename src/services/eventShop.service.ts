@@ -1,6 +1,7 @@
 // myth-server/src/services/eventShop.service.ts
 
 import db from "../config/db.config";
+import { cosmeticBack, cosmeticBorder } from "../utils/eventCosmetics";
 import EventService from "./event.service";
 import RewardService from "./reward.service";
 import UserModel from "../models/user.model";
@@ -106,7 +107,10 @@ const EventShopService = {
               sa.name AS ability_name, sa.description AS ability_description,
               sa.trigger_moments AS ability_trigger_moments,
               sa.parameters AS ability_parameters,
-              sa.sound_effect AS ability_sound_effect
+              sa.sound_effect AS ability_sound_effect,
+              bd.name AS border_name, bd.image_url AS border_image_url,
+              bd.animation_key AS border_animation_key,
+              cb.name AS back_name, cb.image_url AS back_image_url
          FROM event_shop_offerings o
          LEFT JOIN (
               SELECT offering_id, SUM(quantity) AS purchased
@@ -125,6 +129,9 @@ const EventShopService = {
          LEFT JOIN card_variants cv ON cv.card_variant_id = o.grant_card_variant_id
          LEFT JOIN characters ch ON ch.character_id = cv.character_id
          LEFT JOIN special_abilities sa ON sa.ability_id = ch.special_ability_id
+         -- Cosmetic art, so border / card back tiles can show the real thing.
+         LEFT JOIN card_borders bd ON bd.border_id = o.grant_border_id
+         LEFT JOIN card_backs cb ON cb.back_id = o.grant_card_back_id
         WHERE o.event_id = $2 AND o.is_active = true
         ORDER BY o.sort_order ASC, o.slot_number ASC`,
       [userId, eventId]
@@ -171,6 +178,9 @@ const EventShopService = {
             }),
           }
         : undefined,
+      // Additive, like `card`: present only on cosmetic slots.
+      border: cosmeticBorder(row, row.grant_border_id),
+      card_back: cosmeticBack(row, row.grant_card_back_id),
     }));
   },
 

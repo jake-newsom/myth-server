@@ -4,6 +4,7 @@ import db, { QueryExecutor } from "../config/db.config";
 import EventService from "./event.service";
 import RewardService from "./reward.service";
 import logger from "../utils/logger";
+import { cosmeticBack, cosmeticBorder } from "../utils/eventCosmetics";
 import { RewardItem } from "../types/service.types";
 import { EventMilestone, EventMilestoneView } from "../types/event.types";
 
@@ -93,7 +94,10 @@ const EventMilestoneService = {
                   sa.name AS ability_name, sa.description AS ability_description,
                   sa.trigger_moments AS ability_trigger_moments,
                   sa.parameters AS ability_parameters,
-                  sa.sound_effect AS ability_sound_effect
+                  sa.sound_effect AS ability_sound_effect,
+                  bd.name AS border_name, bd.image_url AS border_image_url,
+                  bd.animation_key AS border_animation_key,
+                  cb.name AS back_name, cb.image_url AS back_image_url
              FROM event_milestones m
              LEFT JOIN user_event_milestone_claims c
                     ON c.milestone_id = m.id AND c.user_id = $1
@@ -105,6 +109,8 @@ const EventMilestoneService = {
                     ON cv.card_variant_id = m.reward_card_variant_id
              LEFT JOIN characters ch ON ch.character_id = cv.character_id
              LEFT JOIN special_abilities sa ON sa.ability_id = ch.special_ability_id
+             LEFT JOIN card_borders bd ON bd.border_id = m.reward_border_id
+             LEFT JOIN card_backs cb ON cb.back_id = m.reward_card_back_id
             WHERE m.event_id = $2
             ORDER BY m.threshold ASC`,
           [userId, eventId]
@@ -153,6 +159,9 @@ const EventMilestoneService = {
                 }),
               }
             : undefined,
+          // Additive, like `card`: present only on cosmetic rungs.
+          border: cosmeticBorder(row, milestone.reward_border_id),
+          card_back: cosmeticBack(row, milestone.reward_card_back_id),
         };
       });
 
