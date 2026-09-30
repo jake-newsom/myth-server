@@ -1,7 +1,8 @@
-import { PowerValues, TemporaryEffect, TriggerMoment } from "../../types/card.types";
+import { InGameCard, PowerValues, TemporaryEffect, TriggerMoment } from "../../types/card.types";
 import {
   AbilityMap,
   CardPowerChangedEvent,
+  COMBAT_TYPES,
   CombatResolverMap,
   EVENT_TYPES,
 } from "../../types/game-engine.types";
@@ -39,7 +40,7 @@ import {
   resetTile,
 } from "../ability.utils";
 import { BaseGameEvent } from "../game-events";
-import { resolveCombat } from "../game.utils";
+import { flipCard, resolveCombat } from "../game.utils";
 import { randomInt } from "../simulation.rng";
 import { simulationContext } from "../simulation.context";
 import AchievementService from "../../services/achievement.service";
@@ -143,37 +144,92 @@ export const polynesianCombatResolvers: CombatResolverMap = {
 };
 
 export const polynesianAbilities: AbilityMap = {
-  // Lava Field: Gains +1 for every card played on a lava tile.
+  // Aumakua's Path (OnDefend half): grant +2 to a random SEA card in your hand.
+  // The "cannot be DEFEATED by enemies with lower total power" passive lives in
+  // the combat resolver above.
+  //
+  // NOTE: OnDefend fires on EVERY prevented defeat, both when this card's own
+  // resolver shields it and when the attacker simply wasn't strong enough
+  // (resolveCombat's plain-defend branch). Nothing in the context distinguishes
+  // the two, so this intentionally rewards any successful defend.
+  kamohoalii_oceans_shield: (context) => {
+    const { triggerCard, state } = context;
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
+
+    const owner =
+      state.player1.user_id === triggerCard.owner ? state.player1 : state.player2;
+
+    const seaHandCards = owner.hand
+      .map((id) => state.hydrated_card_data_cache?.[id])
+      .filter((card): card is InGameCard => !!card)
+      .filter((card) =>
+        (card.base_card_data.tags ?? []).some(
+          (tag) => String(tag).toLowerCase() === "sea",
+        ),
+      );
+
+    if (seaHandCards.length === 0) return [];
+
+    const target = seaHandCards[randomInt(seaHandCards.length)];
+    const events: BaseGameEvent[] = [
+      addTempBuff(target, 1000, 2, {
+        name: "Aumakua's Path",
+        animation: "bubble-swirl-in",
+        position: HAND_POSITION,
+        data: {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          turnNumber: state.turn_number,
+        },
+      }),
+    ];
+
+    target.current_power = updateCurrentPower(target);
+    if (state.hydrated_card_data_cache) {
+      state.hydrated_card_data_cache[target.user_card_instance_id] = target;
+    }
+
+    return events;
+  },
+
+  // Lava Field: in hand or in play, gain +1 for every LAVA tile added to the
+  // board. Driven by OnTerrain, so it counts tiles as they are CREATED rather
+  // than cards played onto them.
+  //
+  // Per-tile, not per-batch: Ragnarök lava-fills every empty tile in one go and
+  // Pele gains once for each.
   pele_lava_field: (context) => {
-    const { position, triggerCard, state } = context;
+    const { triggerCard, terrainEvents, state } = context;
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
 
-    if (!position) return [];
+    const lavaAdded = (terrainEvents ?? []).filter(
+      (event) => event.tile?.tile_effect?.terrain === TileTerrain.Lava,
+    ).length;
+    if (lavaAdded === 0) return [];
 
-    // Check if this is triggered by a card being placed
-    const placedCard = context.originalTriggerCard || triggerCard;
-
-    // Check if the placed card has a lava tile effect (transferred from the tile)
-    const hasLavaEffect = placedCard.temporary_effects.some(
-      (effect) =>
-        effect.name === "lava" ||
-        effect.data?.terrain === TileTerrain.Lava ||
-        effect.data?.originalTileEffect === "lava",
-    );
-    // Also check if the tile still has a lava effect (fallback)
-    const isOnLavaTile =
-      getTileAtPosition(position, state.board)?.tile_effect?.terrain ===
-      TileTerrain.Lava;
-
-    if (!hasLavaEffect && !isOnLavaTile) return [];
+    // Pele buffs HERSELF — her own tile once on the board, else the in-hand
+    // sentinel. Never a tile position from terrainEvents, which would leak her
+    // floating text onto whichever tile happened to change (see Demon Bane).
+    const buffPosition =
+      getPositionOfCardById(triggerCard.user_card_instance_id, state.board) ??
+      HAND_POSITION;
 
     return [
-      createOrUpdateBuff(triggerCard, 1000, 1, "Lava Field", position, {
-        actingPlayerId: triggerCard.owner,
-        sourceCard: triggerCard,
-        sourcePlayerId: triggerCard.owner,
-        batchId: `${triggerCard.user_card_instance_id}:${state.turn_number}:pele`,
-        turnNumber: state.turn_number,
-      }),
+      createOrUpdateBuff(
+        triggerCard,
+        1000,
+        lavaAdded,
+        "Lava Field",
+        buffPosition,
+        {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          batchId: `${triggerCard.user_card_instance_id}:${state.turn_number}:pele`,
+          turnNumber: state.turn_number,
+        },
+      ),
     ];
   },
 
@@ -395,48 +451,79 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Fertile Ground: Each round grant +1 for one turn to allies with existing blessings
+  // Makahiki Bounty: On play, grant +1 to each NATURE card in your hand and
+  // protect allied NATURE cards on the board for 1 round.
   lono_fertile_ground: (context) => {
     const {
       triggerCard,
+      state,
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
 
-    const allAllies = getAllAlliesOnBoard(board, triggerCard.owner);
-    for (const ally of allAllies) {
-      const hasBlessing = ally.temporary_effects.some((effect) => {
-        const totalPowerChange = Object.values(effect.power).reduce(
-          (sum, val) => sum + (val || 0),
-          0,
-        );
-        return totalPowerChange > 0;
-      });
+    const isNature = (card: InGameCard) =>
+      (card.base_card_data.tags ?? []).some(
+        (tag) => String(tag).toLowerCase() === "nature",
+      );
 
-      if (hasBlessing) {
-        const allyPosition = getPositionOfCardById(
-          ally.user_card_instance_id,
-          board,
-        );
-        if (allyPosition) {
-          gameEvents.push(
-            createOrUpdateBuff(ally, 1000, 1, "Makahiki Bounty", allyPosition, {
-              animation: "nature-swirl",
-              actingPlayerId: ally.owner,
-              sourceCard: ally,
-              sourcePlayerId: ally.owner,
-              turnNumber: context.state.turn_number,
-            }),
-          );
-        }
+    // +1 to every NATURE card in the owner's hand.
+    const owner =
+      state.player1.user_id === triggerCard.owner ? state.player1 : state.player2;
+
+    for (const cardId of owner.hand) {
+      const handCard = state.hydrated_card_data_cache?.[cardId];
+      if (!handCard || !isNature(handCard)) continue;
+
+      gameEvents.push(
+        addTempBuff(handCard, 1000, 1, {
+          name: "Makahiki Bounty",
+          animation: "nature-swirl",
+          position: HAND_POSITION,
+          data: {
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            turnNumber: state.turn_number,
+          },
+        }),
+      );
+      handCard.current_power = updateCurrentPower(handCard);
+      if (state.hydrated_card_data_cache) {
+        state.hydrated_card_data_cache[handCard.user_card_instance_id] = handCard;
       }
+    }
+
+    // Protect allied NATURE cards already on the board for 1 round (2 turn
+    // ticks — the temporary-effect lifecycle decrements once per turn end).
+    for (const ally of getAllAlliesOnBoard(board, triggerCard.owner)) {
+      if (!isNature(ally)) continue;
+      const allyPosition = getPositionOfCardById(
+        ally.user_card_instance_id,
+        board,
+      );
+      if (!allyPosition) continue;
+
+      gameEvents.push(
+        protectFromDefeat(ally, 2, allyPosition, {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          turnNumber: state.turn_number,
+        }),
+      );
     }
 
     return gameEvents;
   },
 
-  // Sun Trick: Gain +1 every round in hand, resets after combat
+  // Sun Trick: in hand, gain +1 at the end of each round. In play, grant +1 to
+  // a random TRICKSTER in your hand at the end of each round.
+  //
+  // The old "resets after combat" half is gone: the buff now accumulates for as
+  // long as Maui is held, so there is no AfterCombat branch and no strip.
   maui_sun_trick: (context) => {
-    const { triggerCard, position, state } = context;
+    const { triggerCard, state } = context;
     const label = "Sun Trick";
 
     const gameEvents: BaseGameEvent[] = [];
@@ -453,44 +540,40 @@ export const polynesianAbilities: AbilityMap = {
           turnNumber: context.state.turn_number,
         }),
       );
-      // triggerCard.current_power = updateCurrentPower(triggerCard);
-    } else if (context.triggerMoment === TriggerMoment.AfterCombat) {
-      // The Sun Trick buff is symmetric (+1/side/round). Report the per-side
-      // magnitude (e.g. "-2") rather than the four-side total (e.g. "-8"), since
-      // a card's power reads per side. powerBySide carries the signed per-side
-      // delta so the client shows the "all directions" indicator.
-      const sunTrickBuff = triggerCard.temporary_effects.find(
-        (effect) => effect.name === label,
-      );
-      const removedBySide: Partial<PowerValues> = {};
-      let maxSideRemoved = 0;
-      if (sunTrickBuff) {
-        for (const side of ["top", "bottom", "left", "right"] as const) {
-          const v = sunTrickBuff.power[side] || 0;
-          if (v !== 0) {
-            removedBySide[side] = -v;
-            maxSideRemoved = Math.max(maxSideRemoved, Math.abs(v));
-          }
-        }
-      }
+      return gameEvents;
+    }
 
-      //after combat, remove the buff
-      triggerCard.temporary_effects = triggerCard.temporary_effects.filter(
-        (effect) => effect.name !== label,
+    // In play (OnRoundEnd): buff a random TRICKSTER in the owner's hand.
+    const owner =
+      state.player1.user_id === triggerCard.owner ? state.player1 : state.player2;
+    const tricksters = owner.hand
+      .map((id) => state.hydrated_card_data_cache?.[id])
+      .filter((card): card is InGameCard => !!card)
+      .filter((card) =>
+        (card.base_card_data.tags ?? []).some(
+          (tag) => String(tag).toLowerCase() === "trickster",
+        ),
       );
-      // Update the card's current power after removing temporary effects
-      triggerCard.current_power = updateCurrentPower(triggerCard);
-      gameEvents.push({
-        type: EVENT_TYPES.CARD_POWER_CHANGED,
-        animation: "sun-trick",
-        eventId: uuidv4(),
-        timestamp: Date.now(),
-        cardId: triggerCard.user_card_instance_id,
-        powerDelta: -maxSideRemoved,
-        powerBySide: removedBySide,
-        effectName: label,
-        position,
-      } as CardPowerChangedEvent);
+
+    if (tricksters.length > 0) {
+      const target = tricksters[randomInt(tricksters.length)];
+      gameEvents.push(
+        addTempBuff(target, 1000, 1, {
+          name: label,
+          animation: "sun-trick",
+          position: HAND_POSITION,
+          data: {
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            turnNumber: state.turn_number,
+          },
+        }),
+      );
+      target.current_power = updateCurrentPower(target);
+      if (state.hydrated_card_data_cache) {
+        state.hydrated_card_data_cache[target.user_card_instance_id] = target;
+      }
     }
 
     return gameEvents;
@@ -533,49 +616,85 @@ export const polynesianAbilities: AbilityMap = {
   },
 
   // Feast or Famine: When an ally is defeated, fill their tile with water.
+  // Shark God's Wake: while in play, grant -3 power to non-SEA ENEMIES that
+  // enter WATER -- either played onto it (AnyOnPlace) or moved onto it
+  // (AnyOnMove: pushed, pulled or self-moved).
+  //
+  // Placement and movement are separate engine events, so the ability carries a
+  // trigger from each family and normalises them here into "which cards just
+  // arrived somewhere".
   ukupanipo_feast_or_famine: (context) => {
     const {
       triggerCard,
       originalTriggerCard,
-      flippedCard,
-      flippedBy,
+      moveEvents,
+      triggerMoment,
+      state,
       state: { board },
     } = context;
 
-    const defeatedCard = flippedCard ?? originalTriggerCard;
-    const defeatingCard = flippedBy ?? originalTriggerCard;
+    // Only while Ukupanipo is on the board -- this is a "while in play" passive.
+    if (!getPositionOfCardById(triggerCard.user_card_instance_id, board)) {
+      return [];
+    }
 
-    if (!defeatedCard || !defeatingCard) return [];
+    // Normalise both entry paths to a list of arrived cards.
+    const arrivals: InGameCard[] =
+      triggerMoment === TriggerMoment.AnyOnMove ||
+      triggerMoment === TriggerMoment.OnMove
+        ? (moveEvents ?? [])
+            .map((event) => state.hydrated_card_data_cache?.[event.cardId])
+            .filter((card): card is InGameCard => !!card)
+        : originalTriggerCard
+          ? [originalTriggerCard]
+          : [];
 
-    // Trigger only when an opponent defeats one of this card owner's allies.
-    if (defeatingCard.owner === triggerCard.owner) return [];
+    const events: BaseGameEvent[] = [];
 
-    const defeatedPosition = getPositionOfCardById(
-      defeatedCard.user_card_instance_id,
-      board,
-    );
-    if (!defeatedPosition) return [];
+    for (const arrival of arrivals) {
+      // Enemies only, and never Ukupanipo himself.
+      if (arrival.owner === triggerCard.owner) continue;
+      if (arrival.user_card_instance_id === triggerCard.user_card_instance_id) {
+        continue;
+      }
 
-    const defeatedTile = getTileAtPosition(defeatedPosition, board);
-    if (!defeatedTile) return [];
+      // SEA cards swim free.
+      const isSea = (arrival.base_card_data.tags ?? []).some(
+        (tag) => String(tag).toLowerCase() === "sea",
+      );
+      if (isSea) continue;
 
-    return [
-      setTileStatus(
-        defeatedTile,
-        defeatedPosition,
-        {
-          status: TileStatus.Normal,
-          turns_left: 1000,
-          animation_label: "water",
-          terrain: TileTerrain.Ocean,
-          effect_duration: 1000,
-          applies_to_user: triggerCard.owner,
-        },
-        triggerCard.owner,
-        triggerCard,
-        { turnNumber: context.state.turn_number },
-      ),
-    ];
+      // Read the tile the card is standing on NOW, rather than trusting the
+      // event's toPosition: a move can be followed by further relocation within
+      // the same batch, and placement gives no toPosition at all.
+      const arrivalPosition = getPositionOfCardById(
+        arrival.user_card_instance_id,
+        board,
+      );
+      if (!arrivalPosition) continue;
+
+      const tile = getTileAtPosition(arrivalPosition, board);
+      if (tile?.tile_effect?.terrain !== TileTerrain.Ocean) continue;
+
+      events.push(
+        createOrUpdateDebuff(
+          arrival,
+          1000,
+          3,
+          "Shark God's Wake",
+          arrivalPosition,
+          {
+            animation: "bubble-swirl-in",
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            turnNumber: state.turn_number,
+          },
+        ),
+      );
+    }
+
+    return events;
   },
 
   // Sacred Spring: If in water, grant +1 to a random card in your hand at the end of each round
@@ -583,6 +702,7 @@ export const polynesianAbilities: AbilityMap = {
     const {
       triggerCard,
       position,
+      state,
       state: { board, player1, player2, hydrated_card_data_cache },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
@@ -606,19 +726,35 @@ export const polynesianAbilities: AbilityMap = {
         // Card is in hand, use sentinel position
         const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
         gameEvents.push(
-          addTempBuff(randomCard, 1000, 1, {
+          addTempBuff(randomCard, 1000, 2, {
             name: "Sacred Spring",
             animation: "bubble-swirl-in",
             position: HAND_POSITION,
+            data: {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              turnNumber: state.turn_number,
+            },
           }),
         );
+        randomCard.current_power = updateCurrentPower(randomCard);
+        if (hydrated_card_data_cache) {
+          hydrated_card_data_cache[randomCard.user_card_instance_id] =
+            randomCard;
+        }
       }
     }
     return gameEvents;
   },
 
-  // Icy Presence: Before combat, remove all LAVA tiles, granting +2 to allies
-  // standing in LAVA and -1 to enemies standing in LAVA.
+  // Icy Presence: Convert all LAVA to WATER, then grant +2 to allies and -1 to
+  // enemies standing in WATER.
+  //
+  // Order matters: the conversion runs FIRST, so the buff/debuff pass sees the
+  // freshly converted tiles as water. It also sees tiles that were ALREADY
+  // water, which is intended — the effect reads "in WATER", not "in converted
+  // water".
   poliahu_icy_presence: (context) => {
     const {
       triggerCard,
@@ -626,48 +762,74 @@ export const polynesianAbilities: AbilityMap = {
     } = context;
     const gameEvents: BaseGameEvent[] = [];
 
+    // Pass 1: Lava -> Ocean. The new tile carries no `power` payload, matching
+    // Ukupanipo's water, so a card arriving LATER picks up plain water terrain
+    // rather than an Icy Presence bonus. The +2/-1 below is a one-time effect
+    // on the cards standing there now, deliberately not baked into the tile.
     for (let y = 0; y < board.length; y++) {
       for (let x = 0; x < board[y].length; x++) {
         const tile = board[y][x];
         if (tile.tile_effect?.terrain !== TileTerrain.Lava) continue;
 
-        const tilePosition: BoardPosition = { x, y };
+        gameEvents.push(
+          setTileStatus(
+            tile,
+            { x, y },
+            {
+              status: TileStatus.Normal,
+              turns_left: 1000,
+              animation_label: "water",
+              terrain: TileTerrain.Ocean,
+              effect_duration: 1000,
+              applies_to_user: triggerCard.owner,
+              power: { top: 1, bottom: 1, left: 1, right: 1 },
+            },
+            triggerCard.owner,
+            triggerCard,
+            { turnNumber: context.state.turn_number },
+          ),
+        );
+      }
+    }
+
+    // Pass 2: every card now standing in water. Cards already on the tile never
+    // run transferTileEffectToCard (it only fires at placement), so this is the
+    // only thing that reaches them.
+    for (let y = 0; y < board.length; y++) {
+      for (let x = 0; x < board[y].length; x++) {
+        const tile = board[y][x];
+        if (tile.tile_effect?.terrain !== TileTerrain.Ocean) continue;
+
         const card = tile.card;
+        if (!card) continue;
 
-        if (card) {
-          if (card.owner === triggerCard.owner) {
-            gameEvents.push(
-              addTempBuff(card, 1000, 2, {
-                name: "Icy Presence",
-                animation: "ice-spike",
-                position: tilePosition,
-                data: {
-                  actingPlayerId: triggerCard.owner,
-                  sourceCard: triggerCard,
-                  sourcePlayerId: triggerCard.owner,
-                  turnNumber: context.state.turn_number,
-                },
-              }),
-            );
-          } else {
-            gameEvents.push(
-              debuff(card, -1, {
-                name: "Icy Presence",
-                animation: "ice-spike",
-                position: tilePosition,
-                data: {
-                  actingPlayerId: triggerCard.owner,
-                  sourceCard: triggerCard,
-                  sourcePlayerId: triggerCard.owner,
-                  turnNumber: context.state.turn_number,
-                },
-              }),
-            );
-          }
+        const tilePosition: BoardPosition = { x, y };
+        const effectData = {
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          turnNumber: context.state.turn_number,
+        };
+
+        if (card.owner === triggerCard.owner) {
+          gameEvents.push(
+            addTempBuff(card, 1000, 2, {
+              name: "Icy Presence",
+              animation: "ice-spike",
+              position: tilePosition,
+              data: effectData,
+            }),
+          );
+        } else {
+          gameEvents.push(
+            debuff(card, -1, {
+              name: "Icy Presence",
+              animation: "ice-spike",
+              position: tilePosition,
+              data: effectData,
+            }),
+          );
         }
-
-        // Remove the lava tile.
-        gameEvents.push(resetTile(tile, tilePosition));
       }
     }
 
@@ -803,6 +965,14 @@ export const polynesianAbilities: AbilityMap = {
       //pick random adjacent empty tile
       const randomAdjacentEmptyTile =
         adjacentEmptyTiles[randomInt(adjacentEmptyTiles.length)];
+
+      // Captured BEFORE the move: afterwards `position` is vacated and this
+      // would report the neighbours of an empty tile.
+      const previouslyAdjacent = new Set(
+        getEnemiesAdjacentTo(position, state.board, triggerCard.owner).map(
+          (card) => card.user_card_instance_id,
+        ),
+      );
       //move to random adjacent empty tile
       gameEvents.push(
         ...moveCardToPosition(
@@ -830,6 +1000,43 @@ export const polynesianAbilities: AbilityMap = {
             triggerCard.owner,
             triggerCard,
             { turnNumber: context.state.turn_number },
+          ),
+        );
+      }
+
+      // Attack any HUMAN enemy that the move brought it next to. "New" is
+      // measured against the tile it came FROM: an enemy already adjacent
+      // before the move is not newly adjacent and is left alone.
+      const newHumanNeighbours = getEnemiesAdjacentTo(
+        randomAdjacentEmptyTile.position,
+        state.board,
+        triggerCard.owner,
+      ).filter(
+        (enemy) =>
+          !previouslyAdjacent.has(enemy.user_card_instance_id) &&
+          (enemy.base_card_data.tags ?? []).some(
+            (tag) => String(tag).toLowerCase() === "human",
+          ),
+      );
+
+      for (const human of newHumanNeighbours) {
+        const humanPosition = getPositionOfCardById(
+          human.user_card_instance_id,
+          state.board,
+        );
+        if (!humanPosition) continue;
+
+        gameEvents.push(
+          ...flipCard(
+            state,
+            humanPosition,
+            human,
+            triggerCard,
+            "dread-aura",
+            {
+              forcedOwnerId: triggerCard.owner,
+              combatType: COMBAT_TYPES.SPECIAL,
+            },
           ),
         );
       }

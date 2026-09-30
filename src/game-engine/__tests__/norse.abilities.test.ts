@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EffectType, TriggerMoment } from "../../types/card.types";
+import { TileTerrain } from "../../types/game.types";
 import { simulationContext } from "../simulation.context";
 import { norseAbilities } from "../abilities/norse.abilities";
 import {
@@ -44,13 +45,26 @@ test("njord_sea buffs when adjacent to a sea-tagged card", () => {
       position: { x: 1, y: 0 },
     });
 
-    assert.equal(events.length, 1);
+    // Njord now also floods his row with water, so the event list holds the
+    // buff plus one TILE_STATE_CHANGED per tile in that row. Assert on the
+    // buff specifically rather than the total count.
+    const buffEvents = events.filter(
+      (event) =>
+        (event as unknown as { effectName?: string }).effectName ===
+        "Noatun’s Guard",
+    );
+    assert.equal(buffEvents.length, 1);
     assert.equal(njord.temporary_effects.length, 1);
     assert.equal(njord.temporary_effects[0].power.top, 3);
-    assert.equal(
-      (events[0] as unknown as { effectName: string }).effectName,
-      "Noatun’s Guard",
-    );
+
+    // The whole row Njord occupies (y = 0) is water, including his own tile.
+    for (let x = 0; x < board.length; x++) {
+      assert.equal(
+        board[0][x].tile_effect?.terrain,
+        TileTerrain.Ocean,
+        `tile (${x}, 0) should be water`,
+      );
+    }
   } finally {
     simulationContext.exitSimulation();
   }
@@ -90,8 +104,15 @@ test("njord_sea does not buff without an adjacent sea-tagged card", () => {
       position: { x: 1, y: 0 },
     });
 
-    assert.equal(events.length, 0);
+    // No adjacent SEA card, so no buff -- but the row still floods.
+    const buffEvents = events.filter(
+      (event) =>
+        (event as unknown as { effectName?: string }).effectName ===
+        "Noatun’s Guard",
+    );
+    assert.equal(buffEvents.length, 0);
     assert.equal(njord.temporary_effects.length, 0);
+    assert.equal(board[0][0].tile_effect?.terrain, TileTerrain.Ocean);
   } finally {
     simulationContext.exitSimulation();
   }
@@ -196,6 +217,14 @@ function setupBaldr(params: {
   ];
   baldr.power_enhancements = { top: 1, right: 0, bottom: 0, left: 0 };
   baldr.current_power = { top: 7, right: 6, bottom: 4, left: 4 };
+  // flipCard records the defeat on the BOARD copy before OnFlipped fires.
+  baldr.defeats = [
+    {
+      user_card_instance_id: "attacker-card",
+      base_card_id: "base-attacker",
+      name: "Attacker",
+    },
+  ];
 
   placeCardOnBoard(board, { x: 1, y: 1 }, baldr);
 
@@ -277,6 +306,83 @@ test("baldr_immune keeps buffs and debuffs when it bounces to hand", () => {
       bottom: 4,
       left: 4,
     });
+  });
+});
+
+test("baldr_immune carries the defeat record into the hand copy", () => {
+  inSimulation(() => {
+    // Regression: the bounce used to copy temporary_effects/power/owner but NOT
+    // `defeats`, so the record died with the discarded board copy. Anything
+    // asking "has Baldr been defeated?" reads the cached entry -- Frigg's
+    // Fensalir's Foresight (+3 if Baldr has been DEFEATED) silently never fired.
+    const { cached, baldr } = setupBaldr({ controller: "p1", attacker: "p2" });
+
+    assert.equal(cached.defeats.length, 1);
+    assert.equal(cached.defeats[0].name, "Attacker");
+    // Copied, not aliased: later board-copy mutations must not leak in.
+    assert.notEqual(cached.defeats, baldr.defeats);
+  });
+});
+
+test("frigg_bless buffs +3 once Baldr has been defeated and bounced to hand", () => {
+  inSimulation(() => {
+    const { board, cached, state } = setupBaldr({
+      controller: "p1",
+      attacker: "p2",
+    });
+    // Baldr is now in p1's hand carrying his defeat record.
+    cached.base_card_data.name = "Baldr";
+
+    const frigg = createTestCard({
+      id: "frigg",
+      owner: "p1",
+      abilityId: "frigg_bless",
+    });
+    placeCardOnBoard(board, { x: 3, y: 3 }, frigg);
+
+    const events = norseAbilities.frigg_bless({
+      state,
+      triggerCard: frigg,
+      triggerMoment: TriggerMoment.OnPlace,
+      position: { x: 3, y: 3 },
+    });
+
+    assert.equal(events.length, 1);
+    assert.equal(frigg.temporary_effects.length, 1);
+    assert.equal(frigg.temporary_effects[0].power.top, 3);
+  });
+});
+
+test("frigg_bless does not buff when no Baldr has been defeated", () => {
+  inSimulation(() => {
+    const board = createEmptyBoard();
+
+    const baldr = createTestCard({ id: "baldr", owner: "p2" });
+    baldr.base_card_data.name = "Baldr";
+    placeCardOnBoard(board, { x: 1, y: 1 }, baldr);
+
+    const frigg = createTestCard({
+      id: "frigg",
+      owner: "p1",
+      abilityId: "frigg_bless",
+    });
+    placeCardOnBoard(board, { x: 3, y: 3 }, frigg);
+
+    const state = createTestGameState({
+      board,
+      player1Id: "p1",
+      player2Id: "p2",
+    });
+
+    const events = norseAbilities.frigg_bless({
+      state,
+      triggerCard: frigg,
+      triggerMoment: TriggerMoment.OnPlace,
+      position: { x: 3, y: 3 },
+    });
+
+    assert.equal(events.length, 0);
+    assert.equal(frigg.temporary_effects.length, 0);
   });
 });
 

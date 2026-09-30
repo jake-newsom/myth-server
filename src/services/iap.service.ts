@@ -56,8 +56,9 @@ export const IapService = {
         if (!product) return await finish('review', 'unknown_product');
         const price = purchase.raw_event?.price;
         const result = await c.query(`INSERT INTO iap_purchases(user_id,product_id,app_id,environment,store,store_transaction_id,
-          granted_gems,granted_card_fragments,price_usd) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+          granted_gems,granted_card_fragments,granted_packs,granted_embers,product_kind,price_usd) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
           [user.user_id,product.product_id,...args,product.grant_gems,product.grant_card_fragments,
+            product.grant_packs,product.grant_embers,product.product_kind,
             typeof price === 'number' && Number.isFinite(price) && price >= 0 && price < 100000000 ? price : null]);
         p = result.rows[0];
       }
@@ -73,12 +74,14 @@ export const IapService = {
         AND product_id=$5 AND type IN ('CANCELLATION','REFUND_REVERSED') AND event_timestamp_ms > 0
         ORDER BY event_timestamp_ms DESC, (type='CANCELLATION') DESC LIMIT 1`, [...args,p.product_id]);
       const refunded = refund?.type === REFUND;
-      let gems = 0, fragments = 0, kind = '';
+      let gems = 0, fragments = 0, packs = 0, embers = 0, kind = '';
       if (refunded && p.status !== 'refunded') {
         if (p.credited) {
           gems = -Math.min(user.gems, p.granted_gems);
           fragments = -Math.min(user.card_fragments, p.granted_card_fragments);
-          const spent = -gems < p.granted_gems || -fragments < p.granted_card_fragments;
+          packs = -Math.min(user.pack_count, p.granted_packs || 0);
+          embers = -Math.min(user.embers || 0, p.granted_embers || 0);
+          const spent = -gems < p.granted_gems || -fragments < p.granted_card_fragments || -packs < (p.granted_packs || 0) || -embers < (p.granted_embers || 0);
           if (spent) {
             await c.query(`UPDATE users SET iap_refund_strikes=iap_refund_strikes+1,
               iap_blocked_at=COALESCE(iap_blocked_at,now()),
@@ -88,6 +91,11 @@ export const IapService = {
               WHERE user_id=$1`, [p.user_id]);
           }
           await c.query('UPDATE iap_purchases SET deducted_gems=$2,deducted_fragments=$3,refund_strike=$4 WHERE id=$1', [p.id,-gems,-fragments,spent]);
+          if (p.product_kind === 'blessing_30_day') {
+            await c.query(`DELETE FROM mail m USING iap_blessing_mail_days d, iap_blessings b
+              WHERE d.mail_id=m.id AND d.blessing_id=b.id AND b.purchase_id=$1 AND m.is_claimed=false`, [p.id]);
+            await c.query("UPDATE iap_blessings SET status='refunded' WHERE purchase_id=$1 AND status='active'", [p.id]);
+          }
           kind = 'refund';
         }
         await c.query("UPDATE iap_purchases SET status='refunded',refunded_at=now() WHERE id=$1", [p.id]);
@@ -101,18 +109,38 @@ export const IapService = {
             banned_reason=CASE WHEN iap_refund_strikes <= 2 AND banned_at=iap_auto_banned_at AND banned_reason='IAP_REFUND_ABUSE' THEN NULL ELSE banned_reason END,
             iap_auto_banned_at=CASE WHEN iap_refund_strikes <= 2 THEN NULL ELSE iap_auto_banned_at END WHERE user_id=$1`, [p.user_id]);
         }
+        if (p.product_kind === 'blessing_30_day') {
+          const product = (await c.query('SELECT * FROM iap_products WHERE product_id=$1', [p.product_id])).rows[0];
+          await c.query(`UPDATE iap_blessings SET status='active', starts_at=now(), expires_at=now()+make_interval(days => $2)
+            WHERE purchase_id=$1`, [p.id, product?.blessing_duration_days || 30]);
+        }
         await c.query("UPDATE iap_purchases SET status='granted',refunded_at=NULL,deducted_gems=0,deducted_fragments=0,refund_strike=false WHERE id=$1", [p.id]);
       } else if (!refunded && !p.credited) {
         if (user.banned_at) {
           await c.query("UPDATE iap_purchases SET status='pending_banned_review' WHERE id=$1", [p.id]);
           return await finish('review', 'banned_account');
         }
-        gems = p.granted_gems; fragments = p.granted_card_fragments; kind = 'grant';
+        if (p.product_kind === 'starter_pack') {
+          const owned = await c.query('SELECT 1 FROM iap_product_ownership WHERE user_id=$1 AND product_id=$2', [p.user_id,p.product_id]);
+          if (owned.rowCount) return await finish('review', 'already_owned');
+          await c.query('INSERT INTO iap_product_ownership(user_id,product_id,purchase_id) VALUES($1,$2,$3)', [p.user_id,p.product_id,p.id]);
+          await c.query(`INSERT INTO user_owned_card_backs(user_id,back_id)
+            SELECT $1, back_id FROM card_backs WHERE code_key=(SELECT grant_card_back_code FROM iap_products WHERE product_id=$2)
+            ON CONFLICT DO NOTHING`, [p.user_id,p.product_id]);
+        }
+        if (p.product_kind === 'blessing_30_day') {
+          const active = await c.query("SELECT 1 FROM iap_blessings WHERE user_id=$1 AND status='active' AND expires_at > now()", [p.user_id]);
+          if (active.rowCount) return await finish('review', 'already_active');
+          const product = (await c.query('SELECT * FROM iap_products WHERE product_id=$1', [p.product_id])).rows[0];
+          await c.query(`INSERT INTO iap_blessings(user_id,purchase_id,starts_at,expires_at,daily_gems,daily_embers,gameplay_xp_multiplier)
+            VALUES($1,$2,now(),now()+make_interval(days => $3),$4,$5,$6)`, [p.user_id,p.id,product.blessing_duration_days || 30,product.blessing_daily_gems,product.blessing_daily_embers,product.blessing_gameplay_xp_multiplier || 1.2]);
+        }
+        gems = p.granted_gems; fragments = p.granted_card_fragments; packs = p.granted_packs || 0; embers = p.granted_embers || 0; kind = 'grant';
         await c.query("UPDATE iap_purchases SET status='granted',credited=true,refunded_at=NULL WHERE id=$1", [p.id]);
       }
       if (kind) {
-        await c.query('UPDATE users SET gems=gems+$2,card_fragments=card_fragments+$3 WHERE user_id=$1', [p.user_id,gems,fragments]);
-        await c.query('INSERT INTO iap_movements(purchase_id,event_id,kind,gems,card_fragments) VALUES($1,$2,$3,$4,$5)', [p.id,eventId,kind,gems,fragments]);
+        await c.query('UPDATE users SET gems=gems+$2,card_fragments=card_fragments+$3,pack_count=pack_count+$4,embers=embers+$5 WHERE user_id=$1', [p.user_id,gems,fragments,packs,embers]);
+        await c.query('INSERT INTO iap_movements(purchase_id,event_id,kind,gems,card_fragments,packs,embers) VALUES($1,$2,$3,$4,$5,$6,$7)', [p.id,eventId,kind,gems,fragments,packs,embers]);
         changedUser = p.user_id;
       }
       if (refund) await c.query('UPDATE iap_purchases SET last_refund_ms=$2,last_refund_type=$3 WHERE id=$1', [p.id,refund.event_timestamp_ms,refund.type]);

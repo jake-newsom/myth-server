@@ -100,12 +100,22 @@ export interface Pack {
   is_released: boolean;
   released_at?: Date | null;
   sort_order: number;
+  // When true, openings of this pack never create a Fate pick. Data switch,
+  // toggled per row; false means today's behavior.
+  excluded_from_fate_picks: boolean;
   created_at: Date;
   updated_at: Date;
 }
 
 export interface PackWithCardCount extends Pack {
   card_count: number;
+  /**
+   * How many of this specific pack the requesting user holds in
+   * `user_pack_inventory` — the balance an event pack is opened from, distinct
+   * from the generic `users.pack_count`. 0 for an anonymous caller. Optional
+   * so callers that build this shape without a user stay valid.
+   */
+  owned_quantity?: number;
 }
 
 /** Pack plus the ids of the card variants it contains (client Collection view). */
@@ -502,6 +512,13 @@ export interface Achievement {
   reward_card_fragments?: number; // Optional until DB migration adds this column
   reward_embers?: number | null; // NULL/0 grants none
   reward_border_id?: string | null; // References card_borders table
+  /**
+   * When set, this achievement belongs to an event and is only shown while
+   * that event is visible to the player. NULL on every pre-events achievement.
+   */
+  event_id?: string | null;
+  /** Event currency granted on claim. Requires event_id to be meaningful. */
+  reward_event_currency?: number;
   icon_url?: string;
   is_active: boolean;
   sort_order: number;
@@ -553,6 +570,7 @@ export interface Mail {
   reward_gold: number;
   reward_gems: number;
   reward_packs: number;
+  reward_embers: number;
   reward_fate_coins: number;
   reward_card_ids: string[];
   reward_border_id?: string | null; // References card_borders table
@@ -591,6 +609,8 @@ export type ShopItemType =
   | "rare_card"
   | "enhanced_card"
   | "pack"
+  /** Ten packs in one purchase; the bulk saving is priced into the row. */
+  | "pack_bundle_10"
   | "ember_bundle"
   | "fragment_bundle"
   | "fate_coin_bundle"

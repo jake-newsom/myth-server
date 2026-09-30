@@ -235,8 +235,9 @@ const DailyShopService = {
    * Units granted by one purchase of a cardless bundle.
    *
    * The single server-side source for the amounts the client used to mirror in
-   * its own table. Returns undefined for offerings that grant a card or a pack,
-   * where the quantity is not a bundle size.
+   * its own table. Returns undefined for offerings whose quantity is not a
+   * bundle size — a card, or the single `pack` slot, where one purchase is one
+   * unit. `pack_bundle_10` IS a bundle: one purchase is ten packs.
    */
   getBundleGrantAmount(itemType: ShopItemType): number | undefined {
     switch (itemType) {
@@ -246,6 +247,8 @@ const DailyShopService = {
         return SHOP_CONFIG.FRAGMENT_BUNDLE_AMOUNT;
       case "fate_coin_bundle":
         return SHOP_CONFIG.FATE_COIN_BUNDLE_AMOUNT;
+      case "pack_bundle_10":
+        return SHOP_CONFIG.PACK_BUNDLE_SIZE;
       default:
         return undefined;
     }
@@ -431,6 +434,9 @@ const DailyShopService = {
         if (offering.item_type === "pack") {
           await UserModel.addPacks(userId, quantity, client);
           packsReceived = quantity;
+        } else if (offering.item_type === "pack_bundle_10") {
+          packsReceived = SHOP_CONFIG.PACK_BUNDLE_SIZE * quantity;
+          await UserModel.addPacks(userId, packsReceived, client);
         } else if (offering.item_type === "ember_bundle") {
           // Uncapped on purpose: buying is one of the two paths allowed to
           // push a balance past the regeneration cap.
@@ -564,7 +570,8 @@ const DailyShopService = {
         } else if (
           config.item_type === "ember_bundle" ||
           config.item_type === "fragment_bundle" ||
-          config.item_type === "fate_coin_bundle"
+          config.item_type === "fate_coin_bundle" ||
+          config.item_type === "pack_bundle_10"
         ) {
           // Currency bundles: fixed-price offers with no card behind them, so
           // they use the same cardless offering shape as packs. One slot each;

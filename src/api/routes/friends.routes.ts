@@ -1,5 +1,6 @@
 import { Router } from "express";
 import authMiddleware from "../middlewares/auth.middleware";
+import { blockDuringMaintenance } from "../middlewares/maintenance.middleware";
 import {
   strictRateLimit,
   moderateRateLimit,
@@ -31,7 +32,7 @@ router.get("/status/:userId", moderateRateLimit, checkFriendshipStatus);
 router.post("/add", strictRateLimit, sendFriendRequest);
 router.post("/accept/:friendshipId", strictRateLimit, acceptFriendRequest);
 router.post("/reject/:friendshipId", strictRateLimit, rejectFriendRequest);
-router.post("/challenge/:friendId", strictRateLimit, challengeFriend);
+router.post("/challenge/:friendId", strictRateLimit, blockDuringMaintenance, challengeFriend);
 router.delete("/:friendshipId", strictRateLimit, removeFriend);
 
 export default router;

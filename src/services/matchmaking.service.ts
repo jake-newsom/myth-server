@@ -2,6 +2,7 @@ import db from "../config/db.config";
 import { default as DeckModel } from "../models/deck.model";
 import { default as UserModel } from "../models/user.model";
 import { GameLogic } from "../game-engine/game.logic";
+import EventMechanicService from "./eventMechanic.service";
 import DeckService from "./deck.service";
 
 /**
@@ -101,10 +102,18 @@ const MatchmakingService = {
     initialGameState.player2.equipped_card_back =
       player2Deck.equipped_card_back ?? null;
 
+    // An active event themes ranked-free PvP too. Applies when the event is
+    // live for either player; no-op otherwise.
+    const eventMechanics = await EventMechanicService.applyGlobalMechanicsForMatch(
+      initialGameState,
+      [player1Id, player2Id],
+      "pvp"
+    );
+
     const gameResult = await db.query(
       `
-        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state${eventMechanics.eventContext ? ", event_id, event_mechanic_key" : ""}, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8${eventMechanics.eventContext ? ", $9, $10" : ""}, NOW())
         RETURNING game_id;
       `,
       [
@@ -116,6 +125,12 @@ const MatchmakingService = {
         "active",
         "4x4",
         JSON.stringify(initialGameState),
+        ...(eventMechanics.eventContext
+          ? [
+              eventMechanics.eventContext.eventId,
+              eventMechanics.eventContext.mechanicKey,
+            ]
+          : []),
       ]
     );
 

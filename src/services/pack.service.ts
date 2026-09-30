@@ -379,6 +379,19 @@ const PackService = {
    * selected and carried on each card because set drives passive effects and
    * the client renders the set icon -- it just no longer decides what is in
    * the pack.
+   *
+   * ## Exclusive variants are NOT filtered out here
+   *
+   * `is_exclusive` keeps a variant out of GENERIC pulls — the random-card
+   * helpers in cardVariant.helpers.ts still exclude them, which is what stops
+   * an event card appearing in a standard pack or a random Forge craft. But a
+   * row in `pack_card_variants` is an explicit, deliberate inclusion: someone
+   * put that variant in that pack. Filtering here meant an event pack whose
+   * whole pool is exclusive (Hallow's Eve) resolved to zero cards and failed
+   * with "No cards available in this pack".
+   *
+   * So membership is the authority, and exclusivity is enforced by not linking
+   * a variant to the generic packs in the first place.
    */
   async getCardsFromPack(packId: string): Promise<CardWithAbility[]> {
     const db = require("../config/db.config").default;
@@ -398,7 +411,6 @@ const PackService = {
       JOIN "characters" ch ON cv.character_id = ch.character_id
       LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
       WHERE pcv.pack_id = $1
-        AND cv.is_exclusive = false
         AND cv.released_at <= NOW()
         AND ch.released_at <= NOW();
     `;
@@ -802,27 +814,43 @@ const PackService = {
       };
     }
 
-    // 2. Check if the pack has cards available
-    const packCardsCount = await PackModel.getCardCount(packId);
-    if (packCardsCount === 0) {
+    // 2. Resolve the pack's contents BEFORE spending anything.
+    //
+    // The debit commits before the cards are rolled, so a pack that resolves to
+    // an empty pool is charged for and then fails — the player loses it. This
+    // used to be checked with PackModel.getCardCount, which counts the same
+    // join with DIFFERENT filters, so the two could disagree and the precheck
+    // would pass on a pack that then produced nothing. Resolving the real pool
+    // here makes the check and the roll the same question.
+    const packCards = await this.getCardsFromPack(packId);
+    if (packCards.length === 0) {
       return {
         success: false,
         message: "No cards available in this pack",
       };
     }
 
-    // 3-4. Lock user row, compute costs, check card limit, and deduct
-    // resources atomically to prevent concurrent double-spend.
-    let packsToUse: number;
-    let packsToBuy: number;
-    let requiredGems: number;
+    // 3-4. Lock user row, check the pack balance and card limit, and deduct
+    // atomically to prevent concurrent double-spend.
+    //
+    // Opening spends packs and ONLY packs. It used to top up a short balance by
+    // silently buying the difference with gems, which meant the Pack Opening
+    // screen was a second, hidden storefront with its own hardcoded price and
+    // bulk discount — duplicated in the client so the two could disagree.
+    // Buying now lives entirely in the Shop (`pack` / `pack_bundle_10`
+    // offerings), so this path is pure inventory: enough packs, or nothing.
+    //
+    // Hoisted out of the transaction block so the response can report which
+    // balance actually paid.
+    let useInventoryForResponse = false;
+    let remainingInventory = 0;
 
     const client = await db.getClient();
     try {
       await client.query("BEGIN");
 
       const { rows: lockRows } = await client.query(
-        `SELECT pack_count, gems, (
+        `SELECT pack_count, (
            SELECT COUNT(*) FROM user_owned_cards WHERE user_id = $1
          ) AS card_count
          FROM users WHERE user_id = $1 FOR NO KEY UPDATE`,
@@ -834,33 +862,34 @@ const PackService = {
         return { success: false, message: "User not found" };
       }
 
-      const {
-        pack_count: userPackCount,
-        gems: userGems,
-        card_count,
-      } = lockRows[0];
+      const { pack_count: userPackCount, card_count } = lockRows[0];
       const currentCardCount = Number(card_count);
-      packsToUse = Math.min(userPackCount, count);
-      packsToBuy = Math.max(0, count - userPackCount);
-      requiredGems = 0;
 
-      if (packsToBuy > 0) {
-        requiredGems = packsToBuy * 100;
-        if (count >= 10) requiredGems = Math.floor(requiredGems * 0.9);
-        if (userGems < requiredGems) {
-          await client.query("ROLLBACK");
-          return {
-            success: false,
-            message: "Not enough resources to purchase packs",
-          };
-        }
-      }
+      // Which balance pays for this open.
+      //
+      // A pack the player holds specifically (an event pack) is spent from
+      // per-pack inventory; everything else comes out of the generic
+      // `pack_count`. Checked per pack rather than by a flag on the pack row so
+      // that holding one does not change how the standard packs behave.
+      const { rows: heldRows } = await client.query(
+        `SELECT quantity FROM user_pack_inventory
+          WHERE user_id = $1 AND pack_id = $2 FOR NO KEY UPDATE`,
+        [userId, packId],
+      );
+      const heldQuantity = Number(heldRows[0]?.quantity ?? 0);
+      const useInventory = heldQuantity > 0;
+      const available = useInventory ? heldQuantity : Number(userPackCount);
 
-      if (packsToUse + packsToBuy < count) {
+      if (available < count) {
         await client.query("ROLLBACK");
+        const noun = useInventory ? "of these packs" : "packs";
         return {
           success: false,
-          message: "Not enough resources to purchase packs",
+          message:
+            available === 0
+              ? `You don't have any ${noun} to open. Buy more in the Shop.`
+              : `You only have ${available} of the ${count} packs needed. Buy more in the Shop.`,
+          code: "INSUFFICIENT_PACKS",
         };
       }
 
@@ -874,24 +903,33 @@ const PackService = {
         };
       }
 
-      if (packsToUse > 0) {
-        await client.query(
-          `UPDATE users SET pack_count = pack_count - $1 WHERE user_id = $2`,
-          [packsToUse, userId],
+      // Guarded on the balance as well as the row lock: the lock makes a
+      // concurrent open wait, but the guard is what makes a double-spend
+      // impossible if that ever changes.
+      const { rows: packRows } = useInventory
+        ? await client.query(
+          `UPDATE user_pack_inventory SET quantity = quantity - $1, updated_at = now()
+            WHERE user_id = $2 AND pack_id = $3 AND quantity >= $1
+            RETURNING quantity`,
+          [count, userId, packId],
+        )
+        : await client.query(
+          `UPDATE users SET pack_count = pack_count - $1
+            WHERE user_id = $2 AND pack_count >= $1
+            RETURNING pack_count`,
+          [count, userId],
         );
+      if (packRows.length === 0) {
+        await client.query("ROLLBACK");
+        return {
+          success: false,
+          message: "You don't have enough packs to open. Buy more in the Shop.",
+          code: "INSUFFICIENT_PACKS",
+        };
       }
-      if (packsToBuy > 0) {
-        const { rows: gemRows } = await client.query(
-          `UPDATE users SET gems = gems - $1 WHERE user_id = $2 AND gems >= $1 RETURNING gems`,
-          [requiredGems, userId],
-        );
-        if (gemRows.length === 0) {
-          await client.query("ROLLBACK");
-          return {
-            success: false,
-            message: "Not enough resources to purchase packs",
-          };
-        }
+      useInventoryForResponse = useInventory;
+      if (useInventory) {
+        remainingInventory = Number(packRows[0].quantity);
       }
 
       await client.query("COMMIT");
@@ -914,10 +952,8 @@ const PackService = {
 
     try {
       // Get all cards from this pack
-      const packCards = await this.getCardsFromPack(packId);
-      if (packCards.length === 0) {
-        throw new Error("No cards available in this pack");
-      }
+      // `packCards` was resolved before the debit (step 2) — deliberately, so
+      // an empty pool can never charge the player first.
 
       // Roll every pack's contents FIRST, without persisting anything.
       //
@@ -1033,7 +1069,25 @@ const PackService = {
       return {
         success: true,
         packs,
+        // What this open actually cost. Previously the client recomputed this
+        // from its own copy of the pricing rules; opening is pack-only now, so
+        // the server states it outright. Additive — old clients ignore it.
+        packsUsed: count,
+        // The generic balance. Unchanged when the open was paid from per-pack
+        // inventory, which is why `remainingPackInventory` is reported too
+        // rather than overloading this field with two different meanings.
         remainingPacks: updatedUser?.pack_count ?? 0,
+        /**
+         * Remaining held quantity of THIS pack when the open was paid from
+         * per-pack inventory, and null when it came out of `pack_count`. Always
+         * present so the success shape stays a single type.
+         */
+        remainingPackInventory: useInventoryForResponse
+          ? remainingInventory
+          : null,
+        // Always unchanged by an open now (gems are spent in the Shop, not
+        // here). Kept so already-shipped clients that read it back into their
+        // currency store keep seeing a correct balance rather than undefined.
         remainingGems: updatedUser?.gems ?? 0,
         godPacks, // Include which packs were God Packs
       };

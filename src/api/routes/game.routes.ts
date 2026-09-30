@@ -1,6 +1,7 @@
 import { Router } from "express";
 import gameController from "../controllers/game.controller";
 import authMiddleware from "../middlewares/auth.middleware";
+import { blockDuringMaintenance } from "../middlewares/maintenance.middleware";
 import {
   gameActionRateLimit,
   moderateRateLimit,
@@ -13,6 +14,7 @@ const router = Router();
 router.post(
   "/solo",
   authMiddleware.protect,
+  blockDuringMaintenance,
   moderateRateLimit,
   gameController.startSoloGame
 );
@@ -21,6 +23,7 @@ router.post(
 router.post(
   "/tutorial",
   authMiddleware.protect,
+  blockDuringMaintenance,
   moderateRateLimit,
   gameController.startTutorialGame
 );

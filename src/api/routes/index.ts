@@ -34,6 +34,8 @@ import updaterRoutes from "./updater.routes";
 import promoCodeRoutes from "./promoCode.routes";
 import onboardingRoutes from "./onboarding.routes";
 import featureFlagRoutes from "./featureFlag.routes";
+import maintenanceRoutes from "./maintenance.routes";
+import eventRoutes from "./event.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -51,6 +53,7 @@ router.use("/games", gameRoutes);
 router.use("/matchmaking", matchmakingRoutes);
 router.use("/ranked-draft", rankedDraftRoutes);
 router.use("/challenges", challengeRoutes);
+router.use("/events", eventRoutes);
 router.use("/chat", chatRoutes);
 router.use("/users", userRoutes);
 router.use("/cards", cardRoutes);
@@ -82,6 +85,7 @@ router.use("/updater", updaterRoutes);
 router.use("/promo-codes", promoCodeRoutes);
 router.use("/onboarding", onboardingRoutes);
 router.use("/feature-flags", featureFlagRoutes);
+router.use("/maintenance", maintenanceRoutes);
 
 // Global error handler
 router.use(errorHandler);

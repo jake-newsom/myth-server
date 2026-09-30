@@ -19,6 +19,7 @@ interface CreateMailInput {
   reward_gold?: number;
   reward_gems?: number;
   reward_packs?: number;
+  reward_embers?: number;
   reward_fate_coins?: number;
   reward_card_ids?: string[];
   reward_border_id?: string | null;
@@ -60,6 +61,7 @@ const MailModel = {
       reward_gold = 0,
       reward_gems = 0,
       reward_packs = 0,
+      reward_embers = 0,
       reward_fate_coins = 0,
       reward_card_ids = [],
       reward_border_id = null,
@@ -70,10 +72,10 @@ const MailModel = {
     const query = `
       INSERT INTO mail (
         user_id, mail_type, subject, content, sender_id, sender_name,
-        has_rewards, reward_gold, reward_gems, reward_packs, reward_fate_coins,
+        has_rewards, reward_gold, reward_gems, reward_packs, reward_embers, reward_fate_coins,
         reward_card_ids, reward_border_id, reward_card_back_id, expires_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *;
     `;
 
@@ -88,6 +90,7 @@ const MailModel = {
       reward_gold,
       reward_gems,
       reward_packs,
+      reward_embers,
       reward_fate_coins,
       reward_card_ids,
       reward_border_id,

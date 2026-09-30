@@ -53,6 +53,24 @@ export interface BaseGameEvent {
 export interface CardEvent extends BaseGameEvent {
   cardId: string;
   position?: BoardPosition;
+  /**
+   * Edge-combat detail for presentation (directional clash VFX). Only set on
+   * CARD_FLIPPED / CARD_DEFENDED produced by standard adjacency combat
+   * (resolveCombat) — never on ability (SPECIAL) flips or destroys. Additive:
+   * older clients ignore it.
+   */
+  clash?: ClashInfo;
+}
+
+export type ClashOutcome = "win" | "lose" | "tie" | "prevented";
+
+export interface ClashInfo {
+  attacker: BoardPosition;
+  attackerSide: keyof PowerValues;
+  defenderSide: keyof PowerValues;
+  attackerPower: number;
+  defenderPower: number;
+  outcome: ClashOutcome;
 }
 
 export interface CardPlacedEvent extends CardEvent {
@@ -70,6 +88,16 @@ export interface CardPlacedEvent extends CardEvent {
    * would show 12 while flipping a 13, which reads as impossible.
    */
   powerOnPlace?: PowerValues;
+}
+
+/**
+ * A card changed tiles (pushed, pulled or self-moved). Emitted by
+ * pushCardAway / pullCardsIn / moveCardToPosition; `position` is left unset
+ * because a move has two of them, so read fromPosition/toPosition.
+ */
+export interface CardMovedEvent extends CardEvent {
+  fromPosition: BoardPosition;
+  toPosition: BoardPosition;
 }
 
 export interface TileEvent extends BaseGameEvent {
@@ -155,6 +183,21 @@ export type TriggerContext = {
   // runs relative to the `target.owner = ...` mutation in flipCard. Read this
   // instead of the mutable `flippedCard.owner`.
   defeatedOriginalOwner?: string;
+  /**
+   * The terrain-carrying TILE_STATE_CHANGED events that caused an OnTerrain
+   * trigger, in the order they were emitted. One entry per tile changed, so a
+   * handler can count them (Ragnarok fills many tiles in a single OnPlace) and
+   * filter by `tile.tile_effect.terrain`. Only set for OnTerrain and its
+   * Any/Hand variants.
+   */
+  terrainEvents?: TileEvent[];
+  /**
+   * The CARD_MOVED events that caused an OnMove trigger, in emission order.
+   * One entry per card that changed tiles, so a handler can react to each move
+   * (a single push can relocate several cards) and read where each one landed.
+   * Only set for OnMove and its Any/Hand variants.
+   */
+  moveEvents?: CardMovedEvent[];
   position: BoardPosition;
   // Player-chosen target board position for targeted OnPlace abilities.
   // Undefined for AI/timeout plays — those abilities self-select a target.

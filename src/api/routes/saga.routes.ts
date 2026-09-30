@@ -6,6 +6,7 @@ import { Router } from "express";
 import authMiddleware from "../middlewares/auth.middleware";
 import { requireAdmin } from "../middlewares/adminAuth.middleware";
 import { moderateRateLimit } from "../middlewares/rateLimit.middleware";
+import { blockDuringMaintenance } from "../middlewares/maintenance.middleware";
 import { SagaController } from "../controllers/saga.controller";
 
 const router = Router();
@@ -102,6 +103,7 @@ router.post(
 router.post(
   "/runs/:runId/battle/start",
   authMiddleware.protect,
+  blockDuringMaintenance,
   moderateRateLimit,
   SagaController.startBattle
 );
@@ -172,6 +174,7 @@ router.post(
 router.post(
   "/random-battle/start",
   authMiddleware.protect,
+  blockDuringMaintenance,
   moderateRateLimit,
   SagaController.startRandomBattle
 );

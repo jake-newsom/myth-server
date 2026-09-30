@@ -48,8 +48,22 @@ import FeatureFlagService from "./featureFlag.service";
  * moment one ember is spent.
  */
 
-/** Runs on the interval embers regenerate on. */
-const SWEEP_SCHEDULE = `*/${EMBER_CONFIG.REGEN_INTERVAL_MS / 60000} * * * *`;
+/**
+ * How often the backstop sweep runs.
+ *
+ * Pinned rather than derived from REGEN_INTERVAL_MS. A step cron only divides
+ * an hour evenly when its step does: at the current 40-minute interval,
+ * deriving it would produce a step of 40, which fires at :00 and :40 and then
+ * waits only 20 minutes — an uneven cadence for no benefit.
+ *
+ * The exact period does not affect what any player is owed. Regeneration is
+ * settled on every read (`settle`), so a player looking at their balance always
+ * sees the right number; this sweep exists only so `users.embers` is also
+ * current for things that read the column directly (leaderboards, admin views).
+ * Running it more often than the regen interval is harmless — settling is
+ * idempotent within an interval.
+ */
+const SWEEP_SCHEDULE = "*/20 * * * *";
 
 /** Rows credited per statement, so a large backlog can't trip statement_timeout. */
 const SWEEP_BATCH_SIZE = 5_000;

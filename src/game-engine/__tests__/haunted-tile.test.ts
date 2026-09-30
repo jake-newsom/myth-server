@@ -8,6 +8,7 @@ import {
 import { updateCurrentPower } from "../ability.utils";
 import { MechanicTileEffect } from "../../types/battleMechanic.types";
 import { createTestCard } from "./ai.test-utils";
+import { initializeBattleMechanics } from "../battleMechanics";
 
 const HAUNTED: MechanicTileEffect = {
   id: "haunted",
@@ -121,4 +122,25 @@ test("refreshMechanicTilePower never stacks a second bonus on a claimed card", (
   assert.equal(hauntedEntries.length, 1, "exactly one haunted effect");
   card.current_power = updateCurrentPower(card, board);
   assert.equal(card.current_power.top, 8, "bonus does not double up");
+});
+
+test("haunted marks exactly tile_count cells on a freshly built board", () => {
+  // Regression: the initial board was built with `Array(n).fill(cell)`, which
+  // aliased ONE BoardCell across each row — setting mechanic_effect on any
+  // haunted pick lit up every tile in that row, so a 5-tile event covered the
+  // whole board. Cells must be independent objects.
+  const size = 4;
+  const board = Array.from({ length: size }, () =>
+    Array.from({ length: size }, () => ({
+      card: null,
+      tile_enabled: true,
+      tile_effect: undefined,
+    }))
+  );
+  const state = { board } as any;
+
+  initializeBattleMechanics(state, [{ id: "haunted", tile_count: 5 }]);
+
+  const haunted = board.flat().filter((cell: any) => cell.mechanic_effect);
+  assert.equal(haunted.length, 5);
 });

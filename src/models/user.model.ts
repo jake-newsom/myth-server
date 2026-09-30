@@ -199,14 +199,15 @@ const UserModel = {
   },
 
   // New dual currency methods
-  async updateGold(userId: string, amount: number): Promise<User | null> {
+  async updateGold(userId: string, amount: number, client?: import('../config/db.config').QueryExecutor): Promise<User | null> {
     const query = `
       UPDATE "users" 
       SET gold = gold + $2 
       WHERE user_id = $1 AND gold + $2 >= 0
       RETURNING user_id, username, email, in_game_currency, gems, fate_coins, card_fragments, total_xp, pack_count, win_streak_multiplier, created_at, last_login as last_login_at;
     `;
-    const { rows } = await db.query(query, [userId, amount]);
+    const executor = client ?? db;
+    const { rows } = await executor.query(query, [userId, amount]);
     return rows[0] || null;
   },
 
@@ -265,6 +266,73 @@ const UserModel = {
     const executor = client ?? db;
     const { rows } = await executor.query(query, [userId, quantity]);
     return rows[0] || null;
+  },
+
+  /**
+   * Credit a specific pack to a player's per-pack inventory.
+   *
+   * Separate from `addPacks`, which moves the generic `pack_count` balance any
+   * released pack can be opened from. This is for packs that must stay
+   * identified — an event pack is openable only as that pack.
+   */
+  async addPackToInventory(
+    userId: string,
+    packId: string,
+    quantity: number,
+    client?: import('../config/db.config').QueryExecutor
+  ): Promise<number> {
+    const query = `
+      INSERT INTO user_pack_inventory (user_id, pack_id, quantity)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (user_id, pack_id) DO UPDATE
+        SET quantity = user_pack_inventory.quantity + EXCLUDED.quantity,
+            updated_at = now()
+      RETURNING quantity;
+    `;
+    const executor = client ?? db;
+    const { rows } = await executor.query(query, [userId, packId, quantity]);
+    return Number(rows[0]?.quantity ?? 0);
+  },
+
+  /**
+   * Spend from per-pack inventory, guarded so it cannot go negative.
+   *
+   * Returns the remaining quantity, or null when the player does not hold
+   * enough — the caller decides whether that is an error or a fall-through to
+   * the generic pack_count balance.
+   */
+  async spendPackFromInventory(
+    userId: string,
+    packId: string,
+    quantity: number,
+    client?: import('../config/db.config').QueryExecutor
+  ): Promise<number | null> {
+    const query = `
+      UPDATE user_pack_inventory
+         SET quantity = quantity - $3, updated_at = now()
+       WHERE user_id = $1 AND pack_id = $2 AND quantity >= $3
+       RETURNING quantity;
+    `;
+    const executor = client ?? db;
+    const { rows } = await executor.query(query, [userId, packId, quantity]);
+    return rows.length > 0 ? Number(rows[0].quantity) : null;
+  },
+
+  /** Every specifically-held pack for a player, for inventory and shop reads. */
+  async getPackInventory(
+    userId: string,
+    client?: import('../config/db.config').QueryExecutor
+  ): Promise<Array<{ pack_id: string; quantity: number }>> {
+    const executor = client ?? db;
+    const { rows } = await executor.query(
+      `SELECT pack_id, quantity FROM user_pack_inventory
+        WHERE user_id = $1 AND quantity > 0`,
+      [userId]
+    );
+    return rows.map((r: any) => ({
+      pack_id: r.pack_id,
+      quantity: Number(r.quantity),
+    }));
   },
 
   async removePacks(userId: string, quantity: number): Promise<User | null> {

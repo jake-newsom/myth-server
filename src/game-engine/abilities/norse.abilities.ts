@@ -38,6 +38,7 @@ import {
   blockTile,
   getAdjacentPositions,
   getTileAtPosition,
+  updateCurrentPower,
 } from "../ability.utils";
 import { drawCardSync, flipCard, resolveCombat } from "../game.utils";
 import {
@@ -47,9 +48,10 @@ import {
   EVENT_TYPES,
 } from "../game-events";
 import { v4 as uuidv4 } from "uuid";
-import { TileStatus, TileTerrain } from "../../types/game.types";
+import { BoardPosition, TileStatus, TileTerrain } from "../../types/game.types";
 import { randomChance, randomInt } from "../simulation.rng";
 import AchievementService from "../../services/achievement.service";
+import { GAMEPLAY_FLAGS } from "../../config/constants";
 
 /**
  * All norse cards:
@@ -101,7 +103,59 @@ export const norseCombatResolvers: CombatResolverMap = {
   },
 };
 
+/**
+ * +1 per card in play carrying `tag`, applied to the placed card itself.
+ *
+ * Shared by the "On Play: gain +1 for each X in play" abilities (Hel/
+ * UNDERWORLD, Jörmungandr/SEA). Counts BOTH players' cards — the wording is
+ * "in play", not "allied" — and includes the placed card itself when it
+ * carries the tag, which is intentional: Hel is an UNDERWORLD card and counts
+ * toward her own total.
+ */
+function buffPerTagInPlay(
+  context: Parameters<AbilityMap[string]>[0],
+  tag: string,
+  effectName: string,
+  animation: string,
+): BaseGameEvent[] {
+  const {
+    triggerCard,
+    position,
+    state: { board },
+  } = context;
+  if (!position) return [];
+
+  const matching = getCardsByCondition(board, (card) =>
+    (card.base_card_data.tags ?? []).some(
+      (t) => String(t).toLowerCase() === tag,
+    ),
+  );
+  if (matching.length === 0) return [];
+
+  return [
+    createOrUpdateBuff(
+      triggerCard,
+      1000,
+      matching.length,
+      effectName,
+      position,
+      {
+        animation,
+        actingPlayerId: triggerCard.owner,
+        sourceCard: triggerCard,
+        sourcePlayerId: triggerCard.owner,
+        turnNumber: context.state.turn_number,
+      },
+    ),
+  ];
+}
+
 export const norseAbilities: AbilityMap = {
+  // Titan Shell (On Play half): +1 for each SEA card in play. The defeat
+  // immunity itself lives in norseCombatResolvers above.
+  jormungandr_shell: (context) =>
+    buffPerTagInPlay(context, "sea", "Titan Shell", "bubble-swirl-in"),
+
   // World's End: the actual tile-destruction cadence is driven by saga battle
   // mechanics. This ability entry keeps the card ability ID wired to the Norse map.
   ragnarok_worlds_end: (context) => {
@@ -119,7 +173,7 @@ export const norseAbilities: AbilityMap = {
               { x, y },
               {
                 status: TileStatus.Cursed,
-                turns_left: 2, // Lasts through one full round (both players' turns)
+                turns_left: 3, // Lasts through one full round (both players' turns)
                 terrain: TileTerrain.Lava,
                 animation_label: "lava",
                 effect_duration: 1000,
@@ -136,11 +190,18 @@ export const norseAbilities: AbilityMap = {
       return gameEvents;
     }
 
-    if (triggerMoment === TriggerMoment.OnRoundStart) {
+    // GOD cards in the ENEMY's hand lose 1 power at each turn end. OnTurnEnd
+    // fires for every board card on BOTH players' turn ends and is deliberately
+    // not owner-gated, so this drains twice per round. "Enemy" is still resolved
+    // relative to Ragnarök's owner, so it is always the opponent's hand that
+    // loses power, never the owner's.
+    if (triggerMoment === TriggerMoment.OnTurnEnd) {
       const HAND_POSITION = { x: -1, y: -1 };
-      const allHands = [...state.player1.hand, ...state.player2.hand];
+      const opponentId = getOpponentId(triggerCard.owner, state);
+      const opponent =
+        state.player1.user_id === opponentId ? state.player1 : state.player2;
 
-      for (const cardId of allHands) {
+      for (const cardId of opponent.hand) {
         const handCard = state.hydrated_card_data_cache?.[cardId];
         if (!handCard) continue;
         const tags = handCard.base_card_data.tags ?? [];
@@ -226,6 +287,13 @@ export const norseAbilities: AbilityMap = {
         : [];
       cached.power_enhancements = { ...triggerCard.power_enhancements };
       cached.current_power = { ...triggerCard.current_power };
+      // The defeat that triggered this bounce was recorded on the BOARD copy by
+      // flipCard. Carry it across or the record dies with that copy: the cached
+      // entry keeps its original empty list, and anything asking "has Baldr been
+      // defeated?" (Frigg's Fensalir's Foresight) reads the cache and sees no.
+      cached.defeats = triggerCard.defeats
+        ? structuredClone(triggerCard.defeats)
+        : [];
       // placeCard rejects a card whose cached owner is not the player placing
       // it, so a captured Baldr would be stuck in hand otherwise.
       cached.owner = returnToPlayerId;
@@ -257,28 +325,40 @@ export const norseAbilities: AbilityMap = {
   },
 
   // Foresight: Grant +1 to all allies on the board.
+  // Eye of Mimir: On play, grant +2 to every card in YOUR HAND (not the board).
+  // Buffs are pointed at HAND_POSITION so the client renders them in the hand
+  // rather than leaking floating text onto a board tile.
   odin_foresight: (context) => {
-    const {
-      triggerCard,
-      state: { board },
-    } = context;
+    const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
-    const allAllies = getAllAlliesOnBoard(board, triggerCard.owner);
-    for (const ally of allAllies) {
-      const allyPosition = getPositionOfCardById(
-        ally.user_card_instance_id,
-        board,
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
+
+    const owner =
+      state.player1.user_id === triggerCard.owner ? state.player1 : state.player2;
+
+    for (const cardId of owner.hand) {
+      const handCard = state.hydrated_card_data_cache?.[cardId];
+      if (!handCard) continue;
+
+      gameEvents.push(
+        addTempBuff(handCard, 1000, 2, {
+          name: "Eye of Mimir",
+          animation: "red-lightning",
+          position: HAND_POSITION,
+          data: {
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            turnNumber: state.turn_number,
+          },
+        }),
       );
-      if (allyPosition) {
-        gameEvents.push(
-          buff(ally, 1, {
-            name: "Eye of Mimir",
-            animation: "red-lightning",
-            position: allyPosition,
-          }),
-        );
+      handCard.current_power = updateCurrentPower(handCard);
+      if (state.hydrated_card_data_cache) {
+        state.hydrated_card_data_cache[handCard.user_card_instance_id] = handCard;
       }
     }
+
     return gameEvents;
   },
 
@@ -337,8 +417,42 @@ export const norseAbilities: AbilityMap = {
   // resolveFriggChoice (it must wait on async player input, which an ability
   // function cannot do). This handler is intentionally a no-op marker — the
   // ability id is what placeCard keys off of to raise the pending choice.
-  frigg_bless: () => {
-    return [];
+  // The +3 "if Baldr has been defeated" half DOES live here — only the reveal
+  // and the -3 choice are deferred to placeCard.
+  frigg_bless: (context) => {
+    const { triggerCard, position, state } = context;
+    if (!position) return [];
+
+    // A card records who defeated it in `defeats`, so a non-empty list means
+    // that Baldr has been defeated at least once this game. Checked across the
+    // board AND both hands: Baldr's own ability bounces him back to hand when
+    // defeated, so a board-only scan would miss the very case this rewards.
+    const baldrs: InGameCard[] = [
+      ...getCardsByCondition(state.board, () => true),
+      ...[...state.player1.hand, ...state.player2.hand]
+        .map((id) => state.hydrated_card_data_cache?.[id])
+        .filter((card): card is InGameCard => !!card),
+    ].filter((card) => card.base_card_data.name === "Baldr");
+
+    const baldrDefeated = baldrs.some((card) => (card.defeats?.length ?? 0) > 0);
+    if (!baldrDefeated) return [];
+
+    return [
+      createOrUpdateBuff(
+        triggerCard,
+        1000,
+        3,
+        "Fensalir's Foresight",
+        position,
+        {
+          animation: "light-cross-spin",
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          turnNumber: state.turn_number,
+        },
+      ),
+    ];
   },
 
   heimdall_block: (context) => {
@@ -516,6 +630,7 @@ export const norseAbilities: AbilityMap = {
     const {
       triggerCard,
       position,
+      state,
       state: { board },
     } = context;
     const gameEvents: BaseGameEvent[] = [];
@@ -533,30 +648,79 @@ export const norseAbilities: AbilityMap = {
         }),
       );
     }
+
+    // Flood Njord's whole row with WATER, occupied tiles included. setTileStatus
+    // writes the terrain under a card just as happily as onto an empty tile, and
+    // deliberately so here: the water is meant to appear beneath enemies already
+    // standing there, not just on the gaps.
+    //
+    // It does NOT debuff or buff those sitting cards. transferTileEffectToCard
+    // only runs when a card ARRIVES (placement or move), so an occupant is
+    // unaffected until it leaves and returns — which is what makes this a board
+    // state play rather than a damage effect. Ukupanipo is the card that
+    // punishes non-SEA enemies standing in water; Njord just supplies the water.
+    for (let x = 0; x < board.length; x++) {
+      const tilePosition: BoardPosition = { x, y: position.y };
+      const tile = getTileAtPosition(tilePosition, board);
+      if (!tile) continue;
+
+      // Don't overwrite the terrain Njord himself is standing on if it is
+      // already water — setTileStatus would replace the effect wholesale and
+      // reset its duration for no visible gain.
+      if (tile.tile_effect?.terrain === TileTerrain.Ocean) continue;
+
+      gameEvents.push(
+        setTileStatus(
+          tile,
+          tilePosition,
+          {
+            status: TileStatus.Normal,
+            turns_left: 1000,
+            animation_label: "water",
+            terrain: TileTerrain.Ocean,
+            effect_duration: 1000,
+            applies_to_user: triggerCard.owner,
+            ...(GAMEPLAY_FLAGS.NJORD_WATER_BUFF
+              ? { power: { top: 1, bottom: 1, left: 1, right: 1 } }
+              : {}),
+          },
+          triggerCard.owner,
+          triggerCard,
+          { turnNumber: state.turn_number },
+        ),
+      );
+    }
+
     return gameEvents;
   },
 
   // Warrior's Blessing: While in hand, Freyja gains +1 power whenever any
   // common card (standard/+/++/+++) is played on the board — ally or enemy.
   freyja_bless: (context) => {
-    const { triggerCard, originalTriggerCard } = context;
-    const HAND_POSITION = { x: -1, y: -1 };
+    const {
+      triggerCard,
+      originalTriggerCard,
+      flippedCard,
+      triggerMoment,
+      state: { board },
+    } = context;
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
 
-    // Triggered by AnyOnPlace: only react to a common card being placed.
-    if (!originalTriggerCard) return [];
+    // Freyja buffs HERSELF. Point the buff at her own tile once she is on the
+    // board, else the in-hand sentinel. Never context.position — on a flip
+    // trigger that is the *flipped card's* tile, which leaks her floating text
+    // onto another card (the Demon Bane bug).
+    const buffPosition =
+      getPositionOfCardById(triggerCard.user_card_instance_id, board) ??
+      HAND_POSITION;
 
-    const baseRarity = RarityUtils.getBaseRarity(
-      originalTriggerCard.base_card_data.rarity,
-    );
-    if (baseRarity !== "common") return [];
-
-    return [
+    const gain = () =>
       createOrUpdateBuff(
         triggerCard,
         1000,
         1,
         "Warrior's Blessing",
-        HAND_POSITION,
+        buffPosition,
         {
           animation: "light-cross-spin",
           actingPlayerId: triggerCard.owner,
@@ -564,8 +728,26 @@ export const norseAbilities: AbilityMap = {
           sourcePlayerId: triggerCard.owner,
           turnNumber: context.state.turn_number,
         },
-      ),
-    ];
+      );
+
+    const isCommon = (card: InGameCard | null | undefined) =>
+      !!card &&
+      RarityUtils.getBaseRarity(card.base_card_data.rarity) === "common";
+
+    // A COMMON card was DEFEATED: +1, but only on a 50% roll. Uses the seeded
+    // RNG so the AI lookahead re-simulating this move sees the same outcome as
+    // the real resolution.
+    if (
+      triggerMoment === TriggerMoment.HandOnFlip ||
+      triggerMoment === TriggerMoment.AnyOnFlip
+    ) {
+      if (!isCommon(flippedCard)) return [];
+      return randomChance(50) ? [gain()] : [];
+    }
+
+    // A COMMON card was PLAYED: +1, always.
+    if (!isCommon(originalTriggerCard)) return [];
+    return [gain()];
   },
 
   // Peaceful Strength: Gain +2 if no adjacent enemies.
@@ -646,54 +828,60 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
+  // Trickster's Gambit: for every TRICKSTER in play, defeat a random enemy
+  // with a 65% chance. One roll (and at most one defeat) per TRICKSTER, so a
+  // board thick with tricksters is what makes Loki dangerous.
   loki_flip: (context) => {
     const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
     const batchId = uuidv4();
+    const DEFEAT_CHANCE = 65;
 
-    const allBoardCards = getCardsByCondition(
-      state.board,
-      (card) =>
-        card.user_card_instance_id !== triggerCard.user_card_instance_id,
-    );
+    // Counts tricksters on BOTH sides — the wording is "in play". Loki himself
+    // is a TRICKSTER and counts toward his own total.
+    const tricksterCount = getCardsByCondition(state.board, (card) =>
+      (card.base_card_data.tags ?? []).some(
+        (t) => String(t).toLowerCase() === "trickster",
+      ),
+    ).length;
 
-    const selectedCards: InGameCard[] = [];
-    const availableCards = [...allBoardCards];
+    // Re-read the enemy list each iteration: a card defeated by an earlier roll
+    // has flipped to Loki's side and must not be targeted twice.
+    for (let i = 0; i < tricksterCount; i++) {
+      if (!randomChance(DEFEAT_CHANCE)) continue;
 
-    for (let i = 0; i < 4; i++) {
-      if (availableCards.length === 0) break;
-      const randomIndex = randomInt(availableCards.length);
-      selectedCards.push(availableCards.splice(randomIndex, 1)[0]);
-    }
+      const enemies = getCardsByCondition(
+        state.board,
+        (card) =>
+          card.owner !== triggerCard.owner &&
+          card.user_card_instance_id !== triggerCard.user_card_instance_id,
+      );
+      if (enemies.length === 0) break;
 
-    for (const selectedCard of selectedCards) {
-      const tryToFlip = randomChance(50);
-      if (tryToFlip) {
-        const selectedCardPosition = getPositionOfCardById(
-          selectedCard.user_card_instance_id,
-          state.board,
-        );
-        if (!selectedCardPosition) continue;
+      const target = enemies[randomInt(enemies.length)];
+      const targetPosition = getPositionOfCardById(
+        target.user_card_instance_id,
+        state.board,
+      );
+      if (!targetPosition) continue;
 
-        gameEvents.push(
-          ...flipCard(
-            state,
-            selectedCardPosition,
-            selectedCard,
-            triggerCard,
-            "trickster-gambit",
-            {
-              achievementBatchId: batchId,
-              // Loki flips should always invert card ownership, including allied cards.
-              forcedOwnerId: getOpponentId(selectedCard.owner, state),
-              // Trickster's Gambit ignores all defeat-prevention abilities
-              // (Ocean's Shield, Jormungandr's Shell, Harbor Guardian, etc.).
-              overrideProtection: true,
-              combatType: COMBAT_TYPES.SPECIAL,
-            },
-          ),
-        );
-      }
+      gameEvents.push(
+        ...flipCard(
+          state,
+          targetPosition,
+          target,
+          triggerCard,
+          "trickster-gambit",
+          {
+            achievementBatchId: batchId,
+            forcedOwnerId: triggerCard.owner,
+            // Trickster's Gambit ignores all defeat-prevention abilities
+            // (Ocean's Shield, Jormungandr's Shell, Harbor Guardian, etc.).
+            overrideProtection: true,
+            combatType: COMBAT_TYPES.SPECIAL,
+          },
+        ),
+      );
     }
 
     return gameEvents;
@@ -705,7 +893,18 @@ export const norseAbilities: AbilityMap = {
   // flipped), `releaseLocksAppliedBy` in `destroyCardAtPosition` clears
   // every soul she had bound.
   hel_soul: (context) => {
-    const { flippedCard, triggerCard } = context;
+    const { flippedCard, triggerCard, triggerMoment } = context;
+
+    // On Play: +1 for each UNDERWORLD card in play. Separate branch from the
+    // soul lock below, which fires on OnFlip.
+    if (triggerMoment === TriggerMoment.OnPlace) {
+      return buffPerTagInPlay(
+        context,
+        "underworld",
+        "Soul Lock",
+        "purple-grow",
+      );
+    }
 
     if (flippedCard) {
       flippedCard.lockedTurns = 1000;
@@ -782,12 +981,6 @@ export const norseAbilities: AbilityMap = {
       triggerCard.owner,
     );
 
-    const allAdjacentEnemies = getEnemiesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner,
-    );
-
     if (strongestEnemy) {
       const strongestEnemyPosition = getPositionOfCardById(
         strongestEnemy.user_card_instance_id,
@@ -807,24 +1000,57 @@ export const norseAbilities: AbilityMap = {
       }
     }
 
-    for (const enemy of allAdjacentEnemies) {
-      if (
-        strongestEnemy &&
-        enemy.user_card_instance_id === strongestEnemy.user_card_instance_id
-      ) {
-        // This enemy is already being removed, don't also debuff it.
-        continue;
-      }
-      const enemyPosition = getPositionOfCardById(
-        enemy.user_card_instance_id,
-        board,
+    // Create -1 LAVA on every adjacent side. The tile carries the power payload
+    // and applies_to_user so any card that LATER lands there picks up the -1
+    // via transferTileEffectToCard (which only runs at placement).
+    for (const adjacentPosition of getAdjacentPositions(
+      position,
+      board.length,
+    )) {
+      const tile = getTileAtPosition(adjacentPosition, board);
+      if (!tile) continue;
+
+      gameEvents.push(
+        setTileStatus(
+          tile,
+          adjacentPosition,
+          {
+            status: TileStatus.Cursed,
+            turns_left: 2, // one full round (both players' turns)
+            terrain: TileTerrain.Lava,
+            animation_label: "lava",
+            effect_duration: 1000,
+            applies_to_user: getOpponentId(triggerCard.owner, context.state),
+            power: { top: -1, bottom: -1, left: -1, right: -1 },
+          },
+          triggerCard.owner,
+          triggerCard,
+          { turnNumber: context.state.turn_number },
+        ),
       );
-      if (enemyPosition) {
+
+      // A card ALREADY standing on the tile never runs the placement transfer,
+      // so the lava would be purely cosmetic for it. Apply the -1 directly.
+      // Skipped for the card being destroyed above (it is leaving the board)
+      // and for Surtr's own allies, matching applies_to_user.
+      const occupant = tile.card;
+      if (
+        occupant &&
+        occupant.owner !== triggerCard.owner &&
+        occupant.user_card_instance_id !==
+          strongestEnemy?.user_card_instance_id
+      ) {
         gameEvents.push(
-          debuff(enemy, -1, {
+          addTempDebuff(occupant, 2, -1, {
             name: "Flames of Muspelheim",
             animation: "flames",
-            position: enemyPosition,
+            position: adjacentPosition,
+            data: {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              turnNumber: context.state.turn_number,
+            },
           }),
         );
       }
@@ -1134,11 +1360,22 @@ export const norseAbilities: AbilityMap = {
     );
     if (!position) return [];
 
-    const adjacentEnemies = getEnemiesAdjacentTo(
+    const adjacentEnemyCards = getEnemiesAdjacentTo(
       position,
       board,
       triggerCard.owner,
-    ).filter((enemy) => {
+    );
+
+    // Týr binds the wolf: while an enemy Týr is adjacent, Fenrir's ability is
+    // suppressed entirely. Implemented as a guard here rather than as a real
+    // Silence effect on Týr's side, so it needs no re-application when either
+    // card moves — the check is simply re-evaluated each time Fenrir triggers.
+    const boundByTyr = adjacentEnemyCards.some(
+      (enemy) => enemy.base_card_data.name === "Tyr",
+    );
+    if (boundByTyr) return [];
+
+    const adjacentEnemies = adjacentEnemyCards.filter((enemy) => {
       const enemyTotalPower = getCardTotalPower(enemy);
       return enemyTotalPower < FenrirTotalPower;
     });

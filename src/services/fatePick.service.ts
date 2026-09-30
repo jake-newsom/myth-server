@@ -27,6 +27,21 @@ const FatePickService = {
         };
       }
 
+      // Per-pack opt-out, read fresh per opening so flipping the column takes
+      // effect immediately with no redeploy. A missing pack row is treated as
+      // excluded: we'd rather skip a Fate pick than create one we can't
+      // attribute to a real pack.
+      const { rows } = await db.query(
+        `SELECT excluded_from_fate_picks FROM "packs" WHERE pack_id = $1;`,
+        [packId],
+      );
+      if (rows[0]?.excluded_from_fate_picks !== false) {
+        return {
+          success: false,
+          error: "This pack is excluded from Fate picks",
+        };
+      }
+
       const fatePick = await FatePickModel.createFromPackOpening(
         packOpeningId,
         originalOwnerId,

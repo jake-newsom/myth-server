@@ -414,10 +414,21 @@ export const CURRENCY_CONFIG = {
  * the behaviour that predates embers.
  */
 export const EMBER_CONFIG = {
-  /** Regeneration ceiling. Balances above this are left alone. */
-  REGEN_CAP: 60,
-  /** One ember per this many milliseconds. */
-  REGEN_INTERVAL_MS: 30 * 60 * 1000,
+  /**
+   * Regeneration ceiling. Balances above this are left alone.
+   *
+   * Lowered 60 -> 50. Nothing claws a balance back down: a player sitting on 55
+   * keeps all 55 and simply regenerates none until they spend below 50.
+   */
+  REGEN_CAP: 50,
+  /**
+   * One ember per this many milliseconds.
+   *
+   * Slowed 30 -> 40 minutes, taking natural generation from 48/day to 36/day.
+   * SWEEP_SCHEDULE in ember.service.ts is pinned independently of this — do not
+   * re-derive the cron from it (see the note there).
+   */
+  REGEN_INTERVAL_MS: 40 * 60 * 1000,
   /** Spent to start an ember-funded solo or tower game. */
   GAME_COST: 1,
   /** Embers granted by one daily shop bundle purchase. */
@@ -467,6 +478,14 @@ export const SHOP_CONFIG = {
 
   /** Card fragments granted by one fragment_bundle purchase. */
   FRAGMENT_BUNDLE_AMOUNT: 150,
+  /**
+   * Packs granted by one pack_bundle_10 purchase.
+   *
+   * The bundle's discount is expressed in its PRICE (900 gems against 10 x 100
+   * singly), not here — `purchaseItem` multiplies price by quantity with no
+   * notion of a discount, so the saving has to live in the row itself.
+   */
+  PACK_BUNDLE_SIZE: 10,
   /** Fate coins granted by one fate_coin_bundle purchase. */
   FATE_COIN_BUNDLE_AMOUNT: 2,
 
@@ -887,4 +906,11 @@ export const HTTP_STATUS = {
   TOO_MANY_REQUESTS: 429,
   INTERNAL_SERVER_ERROR: 500,
   SERVICE_UNAVAILABLE: 503,
+} as const;
+
+// Gameplay toggles for balance changes that must be switchable without a
+// release. Off by default: flag-off is exactly the prior behavior.
+export const GAMEPLAY_FLAGS = {
+  /** Njord's flooded row carries a +1/side water blessing for his owner. */
+  NJORD_WATER_BUFF: process.env.GAMEPLAY_NJORD_WATER_BUFF === "true",
 } as const;

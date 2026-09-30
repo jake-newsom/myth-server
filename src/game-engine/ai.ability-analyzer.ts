@@ -489,8 +489,19 @@ export class AbilityAnalyzer {
 
     // === GLOBAL BUFF/DEBUFF ABILITIES ===
     else if (abilityName === "odin_foresight") {
-      // Permanent +1 to all allies
-      score += allAllies.length * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2; // Permanent buff
+      // On Play: +2 to every card in YOUR HAND — not the board. Scoring by
+      // board allies valued him at zero on an empty board and misread him as a
+      // positional play; the value is really "how many cards am I still holding".
+      //
+      // Consequence for the AI: Odin is best played EARLY with a full hand, and
+      // is nearly dead as a last card.
+      const aiPlayer =
+        gameState.player1.user_id === aiPlayerId
+          ? gameState.player1
+          : gameState.player2;
+      // Exclude Odin himself — he is in hand at evaluation time but leaves it.
+      const handAfterPlay = Math.max(0, aiPlayer.hand.length - 1);
+      score += handAfterPlay * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2;
     } else if (abilityName === "thor_push") {
       // Temporary -2 to each enemy's STRONGEST side. Because it always lands on
       // the best side, it reliably weakens the edge an enemy is most likely to
@@ -620,9 +631,37 @@ export class AbilityAnalyzer {
 
     // === CONDITIONAL POWER BOOSTS ===
     else if (abilityName === "njord_sea") {
-      // +3 if adjacent to Sea card
-      const hasSeaAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Sea"));
+      // +3 if adjacent to a SEA card, AND floods his whole row with WATER.
+      //
+      // Tags are stored lower-case ("sea"), so the comparison is lower-cased —
+      // `includes("Sea")` never matched and this branch always scored the
+      // fallback. Adjacency also considers BOTH sides: the +3 keys off any
+      // adjacent SEA card, not just allied ones.
+      const adjacentAll = getAdjacentCards(position, board);
+      const hasSeaAdjacent = adjacentAll.some((c) =>
+        (c.base_card_data.tags ?? []).some(
+          (t) => String(t).toLowerCase() === "sea"
+        )
+      );
       score += hasSeaAdjacent ? AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 2 : 20;
+
+      // The row flood is the bigger half: it writes water under occupied tiles
+      // too, so it is worth roughly the number of tiles it converts. Allied
+      // water-punishers (Ukupanipo) and water-scalers turn that into real value.
+      const rowTiles = board.length;
+      const alreadyWater = (board[position.y] ?? []).filter(
+        (cell) => cell.tile_effect?.terrain === TileTerrain.Ocean
+      ).length;
+      const tilesFlooded = Math.max(0, rowTiles - alreadyWater);
+      score += tilesFlooded * AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 0.5;
+
+      const waterPayoff = getCardsByCondition(board, (c) => {
+        if (c.owner !== aiPlayerId) return false;
+        const sa = c.base_card_data.special_ability;
+        const id = sa?.id ?? sa?.ability_id ?? "";
+        return id === "ukupanipo_feast_or_famine" || id === "kamohoalii_oceans_shield";
+      }).length;
+      score += waterPayoff * AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 2;
     } else if (abilityName === "brynhildr_valk") {
       // +2 if adjacent to Valkyrie
       const hasValkyrieAdjacent = adjacentAllies.some((c) => c.base_card_data.tags.includes("Valkyrie"));
@@ -687,21 +726,32 @@ export class AbilityAnalyzer {
       // Adjacent enemies lose 1
       score += adjacentEnemies.length * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
     } else if (abilityName === "poliahu_icy_presence") {
-      // Removes all LAVA tiles: allies standing on lava gain +2, enemies on
-      // lava lose 1. Value tracks who currently sits on lava, plus a small
-      // bonus for clearing lava that threatens our side. No lava => near no-op.
+      // Converts all LAVA to WATER, then grants +2 to allies and -1 to enemies
+      // standing in WATER. The buff/debuff pass runs AFTER the conversion, so it
+      // covers both the newly converted tiles and water that was already there —
+      // value has to count both, not just who currently sits on lava.
       const lavaCells = board
         .flat()
         .filter((cell) => cell.tile_effect?.terrain === TileTerrain.Lava);
-      const alliesOnLava = lavaCells.filter(
+      const waterCells = board
+        .flat()
+        .filter((cell) => cell.tile_effect?.terrain === TileTerrain.Ocean);
+
+      // Every occupied lava tile becomes water, so its occupant is affected too.
+      const affected = [...lavaCells, ...waterCells];
+      const alliesAffected = affected.filter(
         (cell) => cell.card && cell.card.owner === aiPlayerId
       ).length;
-      const enemiesOnLava = lavaCells.filter(
+      const enemiesAffected = affected.filter(
         (cell) => cell.card && cell.card.owner !== aiPlayerId
       ).length;
+
       score +=
-        alliesOnLava * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2 +
-        enemiesOnLava * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
+        alliesAffected * AI_CONFIG.MOVE_EVALUATION.BUFF_ALLY_VALUE * 2 +
+        enemiesAffected * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE;
+      // Converting lava is board control in its own right (it denies Pele and
+      // strips enemy lava debuffs), worth something even with nobody standing on it.
+      score += lavaCells.length * AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE;
     } else if (abilityName === "fafnir_venom") {
       // Strongest adjacent enemy loses 2
       score += adjacentEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE * 2 : 0;
@@ -728,8 +778,21 @@ export class AbilityAnalyzer {
       // Create lava every round
       score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 2; // Recurring effect
     } else if (abilityName === "pele_lava_field") {
-      // Gains +1 per card played on lava
-      score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 1.5; // Scaling value
+      // Gains +1 for every LAVA TILE ADDED to the board (not per card played on
+      // lava). She scales off lava generation — Ragnarök's board-wide fill,
+      // Kamapua'a's per-round lava — so she is worth most while lava sources are
+      // still in play, and is near dead weight once the board is all water.
+      const lavaSources = getCardsByCondition(
+        board,
+        (c) => {
+          const sa = c.base_card_data.special_ability;
+          const id = sa?.id ?? sa?.ability_id ?? "";
+          return id === "kamapuaa_wild_shift" || id === "ragnarok_worlds_end";
+        }
+      ).length;
+      score +=
+        AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 1.5 +
+        lavaSources * AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS;
     } else if (abilityName === "hauwahine_rains_blessing") {
       // Fill tile with water, allies placed after gain +1
       score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 2;
@@ -740,8 +803,32 @@ export class AbilityAnalyzer {
       // On water: bless ally and cleanse adjacent allies each round
       score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 2;
     } else if (abilityName === "ukupanipo_feast_or_famine") {
-      // When ally defeated, fill tile with water
-      score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE;
+      // While in play: -3 to non-SEA ENEMIES that are played on, or move onto,
+      // WATER. This is board denial, not tile manipulation — he no longer fills
+      // tiles at all. Value scales with how much water is on the board (every
+      // water tile is a square the opponent is punished for entering) and with
+      // allied water generation that will make more of it.
+      const waterTiles = board
+        .flat()
+        .filter((cell) => cell.tile_effect?.terrain === TileTerrain.Ocean).length;
+      const waterMakers = getCardsByCondition(board, (c) => {
+        if (c.owner !== aiPlayerId) return false;
+        const sa = c.base_card_data.special_ability;
+        const id = sa?.id ?? sa?.ability_id ?? "";
+        return (
+          id === "njord_sea" ||
+          id === "hauwahine_rains_blessing" ||
+          id === "kane_pure_waters" ||
+          id === "poliahu_icy_presence"
+        );
+      }).length;
+
+      score +=
+        waterTiles * AI_CONFIG.MOVE_EVALUATION.DEBUFF_ENEMY_VALUE +
+        waterMakers * AI_CONFIG.MOVE_EVALUATION.SYNERGY_BONUS * 2;
+      // A standing threat even on a dry board: the opponent still has to avoid
+      // any water that appears later.
+      score += AI_CONFIG.MOVE_EVALUATION.TILE_MANIPULATION_VALUE * 0.5;
     }
 
     // === UTILITY/CLEANSING ===
@@ -1101,21 +1188,23 @@ export class AbilityAnalyzer {
 
     // === CARDS THAT SCALE IN HAND (Should be held) ===
     if (abilityName === "maui_sun_trick") {
-      // Gains +1 every round in hand, resets after combat
-      // Calculate how many rounds it's been held
+      // Gains +1 at the end of every round while held. The old "resets after
+      // combat" behaviour is GONE, so the gain is permanent and unbounded —
+      // there is no longer a point at which holding stops paying.
+      //
+      // The previous logic told the AI to cash him in once he reached +8, which
+      // now throws away a card that only ever gets stronger. Hold value stays
+      // high and grows with the power already banked; the only reason to play
+      // him is running out of alternatives, which the caller handles by
+      // comparing hold value against the other cards in hand.
       const currentPower = getCardTotalPower(card);
-      const basePower = card.base_card_data.base_power.top + 
-                        card.base_card_data.base_power.right + 
-                        card.base_card_data.base_power.bottom + 
+      const basePower = card.base_card_data.base_power.top +
+                        card.base_card_data.base_power.right +
+                        card.base_card_data.base_power.bottom +
                         card.base_card_data.base_power.left;
       const powerGain = currentPower - basePower;
-      
-      // Hold if it hasn't reached good power yet (suggest holding for 2-3 rounds)
-      if (powerGain < 8) { // Less than 2 rounds of buffs
-        holdValue += 150 - (powerGain * 20); // High hold value, decreases as it gains power
-      } else {
-        holdValue -= 50; // It's powerful now, time to play it
-      }
+
+      holdValue += 150 + Math.min(powerGain * 10, 100);
     } else if (abilityName === "kane_pure_waters") {
       // Gains +1 in hand whenever a tile is blessed (max 5)
       const currentPower = getCardTotalPower(card);

@@ -8,6 +8,11 @@ export interface RcEvent {
 export interface IapProduct {
   product_id: string; internal_id: string; active: boolean;
   grant_gems: number; grant_card_fragments: number;
+  product_kind: 'currency' | 'starter_pack' | 'blessing_30_day';
+  grant_packs: number; grant_embers: number; grant_card_back_code: string | null;
+  price_usd: number | null; max_per_account: number | null;
+  blessing_duration_days: number | null; blessing_daily_gems: number;
+  blessing_daily_embers: number; blessing_gameplay_xp_multiplier: number | null;
   display_name: string; description: string | null; badge: string | null; sort_order: number;
 }
 export const isUuid = (s: unknown): s is string => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);

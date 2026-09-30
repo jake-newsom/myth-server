@@ -29,6 +29,7 @@ import {
   chooseAIMulligan,
 } from "../game-engine/game.mulligan";
 import { clientSupportsMulligan } from "../utils/clientVersion";
+import EventMechanicService from "./eventMechanic.service";
 import CardBackModel from "../models/cardBack.model";
 import FeatureFlagService from "./featureFlag.service";
 import {
@@ -554,6 +555,14 @@ class TowerService {
         };
       }
 
+      // An active event applies its mechanic to tower runs too. No-op when no
+      // event is running; never throws.
+      const eventMechanics = await EventMechanicService.applyGlobalMechanics(
+        finalGameState,
+        userId,
+        "solo"
+      );
+
       await hydrateGameStateCards(finalGameState);
 
       // Spend the entry ember. Placed after every validation that can reject
@@ -573,7 +582,8 @@ class TowerService {
         floor.ai_deck_id,
         floorNumber,
         finalGameState,
-        emberFunded
+        emberFunded,
+        eventMechanics.eventContext
       );
 
       // Get AI deck info for preview and opponent mythology in parallel
@@ -617,14 +627,18 @@ class TowerService {
     floorNumber: number,
     initialGameState: any,
     /** Defaults true so any caller that predates embers keeps paying out. */
-    emberFunded: boolean = true
+    emberFunded: boolean = true,
+    /** Optional event this run was played under; both columns are nullable. */
+    eventContext?: { eventId: string; mechanicKey: string | null }
   ): Promise<{ game_id: string }> {
+    const eventColumns = eventContext ? ", event_id, event_mechanic_key" : "";
+    const eventValues = eventContext ? ", $11, $12" : "";
     const query = `
-      INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, floor_number, ember_funded, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+      INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, floor_number, ember_funded${eventColumns}, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10${eventValues}, NOW())
       RETURNING game_id;
     `;
-    const values = [
+    const values: any[] = [
       player1Id,
       player2Id,
       player1DeckId,
@@ -636,6 +650,9 @@ class TowerService {
       floorNumber,
       emberFunded,
     ];
+    if (eventContext) {
+      values.push(eventContext.eventId, eventContext.mechanicKey);
+    }
     const { rows } = await db.query(query, values);
     return { game_id: rows[0].game_id };
   }

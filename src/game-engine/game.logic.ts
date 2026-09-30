@@ -273,13 +273,15 @@ export class GameLogic {
     const p2DeckShuffled = shuffleDeck([...player2UserCardInstanceIds]);
     const initialHandSize = 5;
 
-    const board = Array(GAME_CONFIG.BOARD_SIZE)
-      .fill(null)
-      .map(() =>
-        Array(GAME_CONFIG.BOARD_SIZE).fill(
-          gameUtils.createBoardCell(null, "normal").boardCell
-        )
-      );
+    // Each cell must be its OWN object. `Array(n).fill(cell)` aliases a single
+    // BoardCell across the whole row, so any per-tile mutation (haunted tiles,
+    // tile effects, destroyed tiles) silently applied to every cell in it.
+    const board = Array.from({ length: GAME_CONFIG.BOARD_SIZE }, () =>
+      Array.from(
+        { length: GAME_CONFIG.BOARD_SIZE },
+        () => gameUtils.createBoardCell(null, "normal").boardCell
+      )
+    );
     const hydrated_card_data_cache: Record<string, InGameCard> = {};
 
     // Hydrate initial hands in batch
@@ -576,7 +578,14 @@ export class GameLogic {
       );
       if (terrainAdded) {
         events.push(...triggerTerrainDeckEffects(newState));
+        events.push(
+          ...gameUtils.triggerTerrainAbilities(newState, abilityEvents)
+        );
       }
+
+      // Movement is independent of terrain: a push that relocates a card
+      // changes no tile, so this is gated separately rather than nested above.
+      events.push(...gameUtils.triggerMoveAbilities(newState, abilityEvents));
 
       let sightBlessingTriggered = false;
       if (newState.saga_context) {
@@ -667,7 +676,12 @@ export class GameLogic {
       );
       if (terrainAddedDuringCombat) {
         events.push(...triggerTerrainDeckEffects(newState));
+        events.push(
+          ...gameUtils.triggerTerrainAbilities(newState, combatEvents)
+        );
       }
+
+      events.push(...gameUtils.triggerMoveAbilities(newState, combatEvents));
 
       // Japanese deck effect: fires when ANY card suffered a negative temporary
       // effect during this placement (tile effects, OnPlace abilities, combat
@@ -1019,6 +1033,25 @@ export class GameLogic {
 
     events = batchEvents(events, 300);
 
+    // End-of-turn abilities (e.g. Hachiman, Mo'oinanea, Ragnarök). Fired BEFORE
+    // the turn switch below, so current_player_id is still the player whose turn
+    // is ending. That lets an "at the end of YOUR turn" ability gate on
+    // triggerCard.owner === state.current_player_id — the same idiom
+    // OnTurnStart abilities use. Running this after the switch would invert the
+    // test and fire every such ability on the opponent's turn end instead.
+    //
+    // eventsBeforeTurnEnd is taken here so the terrain scan and the Japanese
+    // debuff scan further down both still cover the events these abilities emit.
+    const eventsBeforeTurnEnd = events.length;
+
+    events.push(
+      ...gameUtils.triggerIndirectAbilities(TriggerMoment.OnTurnEnd, {
+        state: newState,
+        triggerMoment: TriggerMoment.OnTurnEnd,
+        position: { x: 0, y: 0 },
+      })
+    );
+
     // Switch turns
     newState.current_player_id =
       newState.current_player_id === newState.player1.user_id
@@ -1026,7 +1059,6 @@ export class GameLogic {
         : newState.player1.user_id;
 
     // Start-of-turn Norse deck effect: if behind, buff a random card in hand.
-    const eventsBeforeNorseEffect = events.length;
     events.push(...applyNorseDeckEffect(newState, newState.current_player_id));
 
     // Start-of-turn tower Poison modifier: debuff a random card in hand. No-op
@@ -1045,17 +1077,6 @@ export class GameLogic {
       ...gameUtils.triggerAbilities(TriggerMoment.OnTurnStart, {
         state: newState,
         triggerMoment: TriggerMoment.OnTurnStart,
-        position: { x: 0, y: 0 },
-      })
-    );
-
-    // Track events to detect terrain additions for deck effects
-    const eventsBeforeTurnEnd = events.length;
-
-    events.push(
-      ...gameUtils.triggerIndirectAbilities(TriggerMoment.OnTurnEnd, {
-        state: newState,
-        triggerMoment: TriggerMoment.OnTurnEnd,
         position: { x: 0, y: 0 },
       })
     );
@@ -1094,7 +1115,14 @@ export class GameLogic {
     );
     if (terrainAddedDuringTurn) {
       events.push(...triggerTerrainDeckEffects(newState));
+      events.push(
+        ...gameUtils.triggerTerrainAbilities(newState, turnEndEvents)
+      );
     }
+
+    // Nightmarcher self-moves at turn end, so this is the site that matters most
+    // for move-reactive abilities.
+    events.push(...gameUtils.triggerMoveAbilities(newState, turnEndEvents));
 
     newState.turn_number++;
 
@@ -1108,8 +1136,14 @@ export class GameLogic {
     // the outgoing turn's round number, which then blocked the incoming
     // player's own placement from triggering the passive — making a
     // once-per-round effect fire roughly every other round.
+    //
+    // Sliced from eventsBeforeTurnEnd, not eventsBeforeNorseEffect: OnTurnEnd
+    // abilities now run before the turn switch, and a debuff one of them
+    // applies still has to count here (see the OnTurnEnd/Moon's Balance note
+    // above). eventsBeforeNorseEffect would start after them and silently drop
+    // every end-of-turn debuff from the scan.
     events.push(
-      ...triggerDebuffDeckEffects(newState, events.slice(eventsBeforeNorseEffect))
+      ...triggerDebuffDeckEffects(newState, events.slice(eventsBeforeTurnEnd))
     );
 
     // Final step: if no playable empty tiles remain, the game is over.

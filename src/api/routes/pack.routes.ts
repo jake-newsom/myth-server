@@ -18,7 +18,9 @@ router.get("/rates", PackController.getPackRates);
 // GET /api/packs/available - Public: packs the shop should list.
 // Declared before "/" so neither shadows the other, and before "/:packId"
 // so "available" is never read as an id.
-router.get("/available", PackController.getAvailablePacks);
+// Optional auth: a signed-in caller additionally gets `owned_quantity` (their
+// per-pack inventory) on each row, while anonymous callers still get the list.
+router.get("/available", optionalAuth, PackController.getAvailablePacks);
 
 // GET /api/packs/catalog - Public: packs + the card_variant_ids each contains,
 // for the client's Collection view. Optional auth so admins also see

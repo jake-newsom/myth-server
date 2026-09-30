@@ -411,6 +411,12 @@ export type RewardItem =
   | { type: "fate_coins"; amount: number }
   | { type: "card_fragments"; amount: number }
   | { type: "packs"; amount: number }
+  /**
+   * A specific pack, held as its own inventory rather than as generic
+   * `pack_count`. Used for event packs (a Hallow's Eve Pack must be openable
+   * only as a Hallow's Eve Pack); `packs` remains the generic balance.
+   */
+  | { type: "event_pack"; pack_id: string; amount: number }
   | { type: "embers"; amount: number }
   | { type: "card"; card_variant_id: string }
   | { type: "border"; border_id: string; character_id?: string | null }

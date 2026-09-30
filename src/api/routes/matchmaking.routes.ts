@@ -1,6 +1,7 @@
 import express from "express";
 import { MatchmakingController } from "../controllers/matchmaking.controller";
 import { protect } from "../middlewares/auth.middleware";
+import { blockDuringMaintenance } from "../middlewares/maintenance.middleware";
 
 const router = express.Router();
 
@@ -8,7 +9,7 @@ const router = express.Router();
 router.use(protect);
 
 // Routes for matchmaking
-router.post("/join", MatchmakingController.joinQueue); // Join matchmaking queue
+router.post("/join", blockDuringMaintenance, MatchmakingController.joinQueue); // Join matchmaking queue
 router.get("/status", MatchmakingController.getMatchStatus); // Check matchmaking status
 router.post("/leave", MatchmakingController.leaveQueue); // Leave matchmaking queue
 

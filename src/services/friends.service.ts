@@ -1,4 +1,5 @@
 import FriendshipModel from "../models/friendship.model";
+import EventMechanicService from "./eventMechanic.service";
 import UserModel from "../models/user.model";
 import CardBackModel from "../models/cardBack.model";
 import {
@@ -587,10 +588,18 @@ class FriendsService {
         initialGameState.player2.deck_effect_state = { last_triggered_round: 0 };
       }
 
+      // An active event themes friend matches too (either player).
+      const eventMechanics =
+        await EventMechanicService.applyGlobalMechanicsForMatch(
+          initialGameState,
+          [challengerId, friendId],
+          "pvp"
+        );
+
       // Create the game in the database
       const gameQuery = `
-        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state${eventMechanics.eventContext ? ", event_id, event_mechanic_key" : ""}, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8${eventMechanics.eventContext ? ", $9, $10" : ""}, NOW())
         RETURNING game_id;
       `;
       const gameValues = [
@@ -602,6 +611,12 @@ class FriendsService {
         "active",
         "4x4",
         JSON.stringify(initialGameState),
+        ...(eventMechanics.eventContext
+          ? [
+              eventMechanics.eventContext.eventId,
+              eventMechanics.eventContext.mechanicKey,
+            ]
+          : []),
       ];
 
       const gameResult = await db.query(gameQuery, gameValues);

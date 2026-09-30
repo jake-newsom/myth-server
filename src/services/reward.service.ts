@@ -46,6 +46,8 @@ interface AggregatedRewards {
   card_variant_ids: string[];
   border_grants: BorderGrant[];
   card_back_ids: string[];
+  /** Specific packs, keyed by pack_id. Separate from the generic `packs`. */
+  event_packs: Map<string, number>;
 }
 
 function emptyAggregate(): AggregatedRewards {
@@ -59,6 +61,7 @@ function emptyAggregate(): AggregatedRewards {
     card_variant_ids: [],
     border_grants: [],
     card_back_ids: [],
+    event_packs: new Map(),
   };
 }
 
@@ -80,6 +83,12 @@ function aggregate(items: RewardItem[]): AggregatedRewards {
         break;
       case "packs":
         totals.packs += item.amount;
+        break;
+      case "event_pack":
+        totals.event_packs.set(
+          item.pack_id,
+          (totals.event_packs.get(item.pack_id) ?? 0) + item.amount
+        );
         break;
       case "embers":
         totals.embers += item.amount;
@@ -179,11 +188,14 @@ const RewardService = {
       await UserModel.updateGems(userId, totals.gems, client);
     }
     if (totals.gold !== 0) {
-      // updateGold takes the canonical signature; passing the executor would
-      // require expanding the model signature. Gold is rarely used and is
-      // safe outside the per-grant transaction (it's idempotent on retry by
-      // the caller's claim-row write), so we keep its single-arg form for now.
-      await UserModel.updateGold(userId, totals.gold);
+      // MUST run on the caller's executor like every other currency here.
+      // Running it on the pool instead self-deadlocks: this transaction has
+      // already locked the user's row (gems/fate_coins/fragments above), so a
+      // second connection updating the SAME row waits for a lock that cannot
+      // be released until this transaction commits — which it never does,
+      // because it is blocked waiting on that query. Any grant combining gold
+      // with another currency hung for the full statement_timeout.
+      await UserModel.updateGold(userId, totals.gold, client);
     }
     if (totals.fate_coins !== 0) {
       await UserModel.updateFateCoins(userId, totals.fate_coins, client);
@@ -197,6 +209,13 @@ const RewardService = {
     }
     if (totals.packs !== 0) {
       await UserModel.addPacks(userId, totals.packs, client);
+    }
+    // Specific packs land in per-pack inventory, never in pack_count: an event
+    // pack must stay openable only as itself.
+    for (const [packId, quantity] of totals.event_packs) {
+      if (quantity !== 0) {
+        await UserModel.addPackToInventory(userId, packId, quantity, client);
+      }
     }
     if (totals.embers !== 0) {
       // Deliberately uncapped: rewards are one of the two paths allowed to push

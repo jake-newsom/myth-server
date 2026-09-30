@@ -6,6 +6,7 @@ import { Router } from "express";
 import { TowerController } from "../controllers/tower.controller";
 import { authenticateJWT } from "../middlewares/auth.middleware";
 import { gameActionRateLimit } from "../middlewares/rateLimit.middleware";
+import { blockDuringMaintenance } from "../middlewares/maintenance.middleware";
 
 const router = Router();
 
@@ -249,6 +250,7 @@ router.get(
 router.post(
   "/start",
   authenticateJWT,
+  blockDuringMaintenance,
   gameActionRateLimit,
   TowerController.startGame
 );

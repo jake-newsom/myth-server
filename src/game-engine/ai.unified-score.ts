@@ -169,6 +169,9 @@ export class UnifiedScoreV2 {
       position,
       aiPlayerId
     );
+    // NOTE: this set is hardcoded, so a new or reworked ability is worth ZERO
+    // recurring value until it is added here. See the DB-driven ai_traits
+    // proposal for the real fix.
     const recurringAbilityIds = new Set([
       "fenrir_devourer_surge",
       "futakuchi_onna_vengeful_bite",
@@ -178,6 +181,12 @@ export class UnifiedScoreV2 {
       "lono_fertile_ground",
       "nurarihyon_slipstream",
       "mooinanea_sacred_spring",
+      // Fires at EVERY turn end (both players'), so it accrues twice per round.
+      "hachiman_warriors_aura",
+      "ragnarok_worlds_end",
+      // While-in-play passives that keep paying as the board develops.
+      "ukupanipo_feast_or_famine",
+      "kamohoalii_oceans_shield",
     ]);
 
     const abilityId = getAbilityId(card);
@@ -199,6 +208,7 @@ export class UnifiedScoreV2 {
     card: InGameCard,
     aiPlayerId: string
   ): number {
+    // Hardcoded like recurringAbilityIds above — same caveat applies.
     const permanentGainAbilities = new Set([
       "odin_foresight",
       "tawara_piercing_shot",
@@ -207,6 +217,16 @@ export class UnifiedScoreV2 {
       "urd_past_weaves",
       "ku_war_stance",
       "sigurd_slayer",
+      // Accumulators: these bank power permanently via createOrUpdateBuff, in
+      // hand and/or on the board, and keep growing for the rest of the game.
+      "benkei_steadfast_guard",
+      "momotaro_allies_rally",
+      "pele_lava_field",
+      "freyja_bless",
+      // On-play counts that scale with how developed the board already is.
+      "hel_soul",
+      "jormungandr_shell",
+      "njord_sea",
     ]);
 
     let score = permanentGainAbilities.has(abilityId) ? 60 : 0;

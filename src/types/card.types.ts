@@ -114,11 +114,30 @@ export enum TriggerMoment {
   BeforeCombat = "BeforeCombat",
   AfterCombat = "AfterCombat",
   OnCombat = "OnCombat",
+  /**
+   * Terrain (water/lava/...) was added or changed on one or more tiles.
+   * Dispatched after the stage that produced the change, from the events it
+   * emitted — see triggerTerrainAbilities. Handlers read context.terrainEvents
+   * for WHICH tiles changed and to what, so an ability can react to a specific
+   * terrain (Pele/lava) without a per-terrain trigger moment.
+   */
+  OnTerrain = "OnTerrain",
+  /**
+   * One or more cards CHANGED TILES -- pushed, pulled, or self-moved.
+   * Dispatched after the stage that produced the movement, from the CARD_MOVED
+   * events it emitted; handlers read `context.moveEvents` for who moved and
+   * from/to where. Movement is NOT placement: a card played from hand emits
+   * CARD_PLACED and fires the OnPlace family instead, so a card that must react
+   * to both (Ukupanipo/water) carries both triggers.
+   */
+  OnMove = "OnMove",
 
   AnyOnPlace = "AnyOnPlace",
   AnyOnFlip = "AnyOnFlip",
   AnyOnFlipped = "AnyOnFlipped",
   AnyOnDefend = "AnyOnDefend",
+  AnyOnTerrain = "AnyOnTerrain",
+  AnyOnMove = "AnyOnMove",
 
   HandOnTurnStart = "HandOnTurnStart",
   HandOnTurnEnd = "HandOnTurnEnd",
@@ -126,6 +145,8 @@ export enum TriggerMoment {
   HandOnRoundEnd = "HandOnRoundEnd",
   HandOnPlace = "HandOnPlace",
   HandOnDefend = "HandOnDefend",
+  HandOnTerrain = "HandOnTerrain",
+  HandOnMove = "HandOnMove",
 }
 
 /**

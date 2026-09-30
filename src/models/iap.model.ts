@@ -12,7 +12,10 @@ export const IapModel = {
     return (await q.query('SELECT * FROM iap_products ORDER BY sort_order, product_id')).rows;
   },
   async catalog(userId: string) {
-    return (await db.query(`SELECT p.* FROM iap_products p WHERE p.active AND EXISTS
+    return (await db.query(`SELECT p.*,
+      EXISTS (SELECT 1 FROM iap_product_ownership o WHERE o.user_id=$1 AND o.product_id=p.product_id) AS owned,
+      EXISTS (SELECT 1 FROM iap_blessings b WHERE b.user_id=$1 AND b.status='active' AND b.expires_at > now()) AS blessing_active
+      FROM iap_products p WHERE p.active AND EXISTS
       (SELECT 1 FROM users WHERE user_id=$1 AND banned_at IS NULL AND iap_blocked_at IS NULL) ORDER BY sort_order`, [userId])).rows as IapProduct[];
   },
   async status(userId: string, transactionId: string, store: string) {

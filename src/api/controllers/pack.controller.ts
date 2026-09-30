@@ -9,10 +9,14 @@ const PackController = {
   /**
    * Packs the shop should list. Replaces the old "released sets" listing as
    * the source of the shop carousel.
+   *
+   * Public, with optional auth: a signed-in caller also gets `owned_quantity`
+   * per pack (their per-pack inventory). An anonymous caller gets the same
+   * list with that column at 0, so the route's contract is unchanged for them.
    */
-  async getAvailablePacks(_req: Request, res: Response) {
+  async getAvailablePacks(req: AuthenticatedRequest, res: Response) {
     try {
-      const packs = await PackModel.findAvailable();
+      const packs = await PackModel.findAvailable(req.user?.user_id);
       return res.status(200).json({
         status: "success",
         data: packs,

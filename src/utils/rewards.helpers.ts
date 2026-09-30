@@ -10,6 +10,7 @@ export interface MailRewardFields {
   reward_gems: number;
   reward_fate_coins: number;
   reward_packs: number;
+  reward_embers: number;
   reward_card_ids: string[];
   reward_border_id?: string | null;
   reward_card_back_id?: string | null;
@@ -55,6 +56,9 @@ export function mailRewardsToItems(mail: MailRewardFields): RewardItem[] {
   }
   if (mail.reward_packs > 0) {
     items.push({ type: "packs", amount: mail.reward_packs });
+  }
+  if (mail.reward_embers > 0) {
+    items.push({ type: "embers", amount: mail.reward_embers });
   }
   if (mail.reward_card_ids && mail.reward_card_ids.length > 0) {
     for (const id of mail.reward_card_ids) {

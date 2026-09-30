@@ -111,43 +111,51 @@ class GameService {
      * that predates embers means — the column records "pays out XP and souls",
      * and only a solo/tower game started on an empty balance is false.
      */
-    emberFunded: boolean = true
+    emberFunded: boolean = true,
+    /**
+     * Optional event this match was started under. Records which event (and
+     * mechanic) applied so reward attribution doesn't have to re-derive it.
+     * Both columns are nullable and default to null, so every existing caller
+     * is unchanged.
+     */
+    eventContext?: { eventId: string; mechanicKey: string | null }
   ): Promise<CreateGameResponse> {
-    const query = floorNumber !== undefined
-      ? `
-        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, floor_number, ember_funded, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-        RETURNING game_id, game_state, game_status;
-      `
-      : `
-        INSERT INTO "games" (player1_id, player2_id, player1_deck_id, player2_deck_id, game_mode, game_status, board_layout, game_state, ember_funded, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+    // Columns are assembled rather than hard-coded so the optional event
+    // context can be appended without duplicating the statement a third time.
+    const columns = [
+      "player1_id", "player2_id", "player1_deck_id", "player2_deck_id",
+      "game_mode", "game_status", "board_layout", "game_state",
+    ];
+    const values: unknown[] = [
+      player1Id,
+      player2Id,
+      player1DeckId,
+      player2DeckId,
+      gameMode,
+      GameStatus.ACTIVE, // Initial status
+      "4x4", // Assuming '4x4' as default or pass as param if variable
+      JSON.stringify(initialGameState),
+    ];
+
+    if (floorNumber !== undefined) {
+      columns.push("floor_number");
+      values.push(floorNumber);
+    }
+
+    columns.push("ember_funded");
+    values.push(emberFunded);
+
+    if (eventContext) {
+      columns.push("event_id", "event_mechanic_key");
+      values.push(eventContext.eventId, eventContext.mechanicKey);
+    }
+
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(", ");
+    const query = `
+        INSERT INTO "games" (${columns.join(", ")}, created_at)
+        VALUES (${placeholders}, NOW())
         RETURNING game_id, game_state, game_status;
       `;
-    const values = floorNumber !== undefined
-      ? [
-        player1Id,
-        player2Id,
-        player1DeckId,
-        player2DeckId,
-        gameMode,
-        GameStatus.ACTIVE, // Initial status
-        "4x4", // Assuming '4x4' as default or pass as param if variable
-        JSON.stringify(initialGameState),
-        floorNumber,
-        emberFunded,
-      ]
-      : [
-        player1Id,
-        player2Id,
-        player1DeckId,
-        player2DeckId,
-        gameMode,
-        GameStatus.ACTIVE, // Initial status
-        "4x4", // Assuming '4x4' as default or pass as param if variable
-        JSON.stringify(initialGameState),
-        emberFunded,
-      ];
     // One game in progress at a time: retire any earlier AI game for this
     // player in the same transaction as the insert, so a create can never
     // leave two live rows behind for the client to pick between.

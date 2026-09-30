@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from "../../types/middleware.types";
 import ChallengeService, { ChallengeError } from "../../services/challenge.service";
 import UserModel from "../../models/user.model";
 import DeckModel from "../../models/deck.model";
+import EventMechanicService from "../../services/eventMechanic.service";
 import DeckService from "../../services/deck.service";
 import GameService from "../../services/game.service";
 import { GameLogic } from "../../game-engine/game.logic";
@@ -281,13 +282,24 @@ class ChallengeController {
       initialGameState.player2.equipped_card_back =
         opponentDeck.equipped_card_back ?? null;
 
+      // An active event themes direct challenges too (either player).
+      const eventMechanics =
+        await EventMechanicService.applyGlobalMechanicsForMatch(
+          initialGameState,
+          [challenge.challengerId, challenge.opponentId],
+          "pvp"
+        );
+
       const game = await GameService.createGameRecord(
         challenge.challengerId,
         challenge.opponentId,
         challengerDeckId,
         opponentDeckId,
         "pvp",
-        initialGameState
+        initialGameState,
+        undefined,
+        true,
+        eventMechanics.eventContext
       );
 
       ChallengeService.markReady(challenge.challengeId, game.game_id);

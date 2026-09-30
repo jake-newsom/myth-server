@@ -6,6 +6,7 @@ import UserModel from "../models/user.model";
 import BorderModel from "../models/border.model";
 import CharacterModel from "../models/character.model";
 import RewardService from "./reward.service";
+import EventService from "./event.service";
 import { achievementRewardsToItems } from "../utils/rewards.helpers";
 import {
   Achievement,
@@ -200,6 +201,36 @@ const kuBloodAltarAwardedCards = new Map<string, Set<string>>();
 const kuBloodAltarFlipTargets = new Map<string, Set<string>>();
 const kuBloodAltarFlipAwarded = new Set<string>();
 
+/**
+ * Drop achievements belonging to an event the user cannot currently see.
+ *
+ * Kept as a post-filter rather than a WHERE clause so that no existing
+ * achievement query changes shape: an achievement with `event_id IS NULL`
+ * (all of them, until an event ships) passes through untouched. Fails open —
+ * if the event lookup errors we show only the non-event achievements, never
+ * an empty list.
+ */
+async function filterVisibleEventAchievements<
+  T extends { achievement: { event_id?: string | null } }
+>(userId: string, achievements: T[]): Promise<T[]> {
+  const hasEventScoped = achievements.some((a) => a.achievement?.event_id);
+  if (!hasEventScoped) return achievements;
+
+  let visibleEventIds = new Set<string>();
+  try {
+    const events = await EventService.getEventsForUser(userId);
+    visibleEventIds = new Set(events.map((e) => e.id));
+  } catch {
+    // Fall through with an empty set: hide event achievements rather than
+    // risk showing ones from an event that has ended.
+  }
+
+  return achievements.filter(
+    (a) =>
+      !a.achievement?.event_id || visibleEventIds.has(a.achievement.event_id)
+  );
+}
+
 const AchievementService = {
   /**
    * Get all achievements for a user with their progress
@@ -237,6 +268,15 @@ const AchievementService = {
       if (unclaimedOnly) {
         filteredAchievements = filteredAchievements.filter((a) => a.can_claim);
       }
+
+      // Event-scoped achievements are hidden unless that event is currently
+      // visible to this user. Achievements with a NULL event_id — i.e. every
+      // achievement that existed before the events system — are always
+      // included, so this is a no-op until an event ships.
+      filteredAchievements = await filterVisibleEventAchievements(
+        userId,
+        filteredAchievements
+      );
 
       return {
         success: true,
@@ -2203,6 +2243,26 @@ const AchievementService = {
       );
 
       const grantResult = await RewardService.grantRewards(userId, rewardItems);
+
+      // Event currency is not a RewardService type (it lives in its own
+      // ledger), so event-scoped achievements credit it separately. Grouped by
+      // event so one claim batch spanning two events credits each correctly.
+      const eventCurrencyByEvent = new Map<string, number>();
+      for (const a of claimedAchievementRows) {
+        const amount = a.reward_event_currency ?? 0;
+        if (a.event_id && amount > 0) {
+          eventCurrencyByEvent.set(
+            a.event_id,
+            (eventCurrencyByEvent.get(a.event_id) ?? 0) + amount
+          );
+        }
+      }
+      for (const [eventId, amount] of eventCurrencyByEvent) {
+        const event = await EventService.assertEventAccessible(userId, eventId);
+        if (event?.currency_id) {
+          await EventService.grantCurrency(userId, event.currency_id, amount);
+        }
+      }
 
       const totalRewards = {
         gems: grantResult.totals.gems,

@@ -463,6 +463,12 @@ export function setupGameNamespace(io: Server): void {
             gems: playerRewards.rewards.currency.gems,
             cardXp: playerRewards.rewards.card_xp_rewards,
             winStreakInfo: playerRewards.win_streak_info,
+            // Additive: the drop is awarded server-side regardless, this only
+            // lets the result screen show it. Omitted when nothing dropped, so
+            // old clients see the payload exactly as before.
+            ...(playerRewards.rewards.event_currency_drop
+              ? { eventCurrencyDrop: playerRewards.rewards.event_currency_drop }
+              : {}),
           }
           : null,
       });

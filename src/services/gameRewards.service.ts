@@ -11,6 +11,10 @@ import DailyTaskService from "./dailyTask.service";
 import DeckService from "./deck.service";
 import CardModel from "../models/card.model";
 import FeatureFlagService from "./featureFlag.service";
+import EventCurrencyDropService, {
+  EventCurrencyDropResult,
+  EventGameOutcome,
+} from "./eventCurrencyDrop.service";
 import {
   EMBER_FRAGMENT_REWARD,
   FRAGMENT_REWARD_FLAG,
@@ -93,6 +97,12 @@ export interface GameRewards {
   currency: CurrencyRewards;
   card_xp_rewards: XpReward[];
   rare_card_drop?: RareCardReward;
+  /**
+   * Event currency dropped by this match, when an event with a configured drop
+   * is visible to the player and the roll succeeded. Additive and optional:
+   * absent whenever no drop applied, so old clients are unaffected.
+   */
+  event_currency_drop?: EventCurrencyDropResult;
 }
 
 export interface GameCompletionResult {
@@ -154,15 +164,29 @@ const GameRewardsService = {
     };
   },
 
-  // Calculate currency rewards based on game outcome
-  // Game rewards only include gems (no gold, no fate coins)
-  // isForfeit: true if game ended via surrender/disconnect (loser gets nothing)
+  /**
+   * Gem rewards for a finished game. Gems are the only currency games pay
+   * directly; fragments come from the separate ember-funded win drop.
+   *
+   * The win streak multiplier is deliberately NOT applied here. It used to
+   * multiply PvP wins and draws by up to 5.0x, which — on the one mode embers
+   * do not gate — made PvP an uncapped gem faucet worth up to 65 gems a match.
+   * The streak itself is still tracked and still climbs (see
+   * incrementWinStreakMultiplier in processGameCompletion); it simply no longer
+   * moves gems, leaving it free to drive rank or XP progression later.
+   *
+   * `winStreakMultiplier` is kept in the signature so callers and the
+   * `win_streak_info` response block need no change, and so restoring the
+   * multiplier is a one-line revert.
+   *
+   * isForfeit: true if game ended via surrender/disconnect (loser gets nothing)
+   */
   calculateCurrencyRewards(
     userId: string,
     winnerId: string | null,
     gameMode: GameMode,
     gameDurationSeconds: number,
-    winStreakMultiplier: number = 1.0,
+    _winStreakMultiplier: number = 1.0,
     isForfeit: boolean = false
   ): CurrencyRewards {
     let gemsReward = 0;
@@ -183,16 +207,10 @@ const GameRewardsService = {
         if (gameDurationSeconds < 180) {
           gemsReward += 3;
         }
-        // Apply win streak multiplier for PvP games only
-        gemsReward = Math.floor(gemsReward * winStreakMultiplier);
       }
     } else if (winnerId === null) {
       // Tie/draw rewards (smaller participation reward)
       gemsReward = gameMode === "solo" ? 2 : 3;
-      // Apply win streak multiplier for PvP draws as well
-      if (isHumanVsHumanMode(gameMode)) {
-        gemsReward = Math.floor(gemsReward * winStreakMultiplier);
-      }
     } else {
       // Loss rewards
       if (isForfeit) {
@@ -217,7 +235,8 @@ const GameRewardsService = {
     winnerId: string | null,
     gameMode: GameMode,
     playerDeckCards: { card_id: string; card_name: string }[],
-    isForfeit: boolean = false
+    isForfeit: boolean = false,
+    blessingMultiplier: number = 1
   ): { card_id: string; card_name: string; xp_gained: number }[] {
     const xpRewards = [];
 
@@ -248,6 +267,8 @@ const GameRewardsService = {
         // +10%: drafting is the harder, higher-commitment mode.
         baseXp = Math.round(baseXp * RANKED_DRAFT_XP_BONUS_MULTIPLIER);
       }
+
+      baseXp = Math.round(baseXp * blessingMultiplier);
 
       xpRewards.push({
         card_id: card.card_id,
@@ -393,38 +414,52 @@ const GameRewardsService = {
         winStreakMultiplier = await UserModel.getWinStreakMultiplier(userId);
       }
 
-      // Calculate currency rewards (sync, depends on multiplier)
-      // Tower games handle their own currency via TowerService
-      const currencyRewards = skipCurrency
-        ? { gems: 0 }
-        : this.calculateCurrencyRewards(
-          userId,
-          gameResult.winner,
-          gameMode,
-          gameResult.game_duration_seconds,
-          winStreakMultiplier,
-          isForfeit
-        );
-
-      // Calculate XP rewards (sync).
+      // Whether this game paid its ember at creation.
       //
-      // A solo or tower game started on an empty ember balance earns no card
-      // XP. Read from the state rather than re-querying the games row: the
-      // state is the same object the engine played with, and the row may
-      // already have been rewritten by the time we get here.
+      // Read from the state rather than re-querying the games row: the state is
+      // the same object the engine played with, and the row may already have
+      // been rewritten by the time we get here.
       //
       // Absent means funded, so PvP, ranked draft, Sagas and every game that
-      // predates embers are unaffected.
+      // predates embers are unaffected. Ascendant's Spire runs as game_mode
+      // "solo", so this single flag covers solo and tower alike.
       const emberFunded = (gameState as { ember_funded?: boolean })
         .ember_funded !== false;
 
+      // Calculate currency rewards (sync).
+      //
+      // An unfunded game earns no gems, alongside the card XP, fragment drop
+      // and seasonal souls it already forfeits. Without this the ember gate
+      // leaked: a player sitting at zero embers kept farming gems at the full
+      // funded rate, which is what made embers not a real economic gate.
+      //
+      // Still returns a `gems` field (as 0) rather than omitting it, so the
+      // response shape is unchanged for already-shipped clients.
+      //
+      // Tower games handle their own currency via TowerService (skipCurrency).
+      const currencyRewards =
+        skipCurrency || !emberFunded
+          ? { gems: 0 }
+          : this.calculateCurrencyRewards(
+            userId,
+            gameResult.winner,
+            gameMode,
+            gameResult.game_duration_seconds,
+            winStreakMultiplier,
+            isForfeit
+          );
+
+      const blessingResult = await db.query(`SELECT COALESCE(MAX(gameplay_xp_multiplier),1) AS multiplier
+        FROM iap_blessings WHERE user_id=$1 AND status='active' AND starts_at <= now() AND expires_at > now()`, [userId]);
+      const blessingMultiplier = Number(blessingResult.rows[0]?.multiplier || 1);
       const cardXpRewards = emberFunded
         ? this.calculateCardXpRewards(
           userId,
           gameResult.winner,
           gameMode,
           usedCards,
-          isForfeit
+          isForfeit,
+          blessingMultiplier
         )
         : [];
 
@@ -614,14 +649,42 @@ const GameRewardsService = {
       // Extract updated user (last item in the array)
       const updatedUser = parallelResults[parallelResults.length - 1];
 
-      // Prepare win streak info for PvP games
+      // Prepare win streak info for PvP games.
+      //
+      // `multiplier_applied` is 1.0 because that is literally what was applied:
+      // streaks no longer multiply gems (see calculateCurrencyRewards). The
+      // streak itself still climbs, so `new_multiplier` stays truthful and the
+      // object stays present — old clients read the field, and dropping it
+      // would risk an undefined access on shipped builds.
       let winStreakInfo = undefined;
       if (gameMode === "pvp") {
         winStreakInfo = {
-          multiplier_applied: winStreakMultiplier,
+          multiplier_applied: 1.0,
           new_multiplier: updatedUser?.win_streak_multiplier || 1.0,
         };
       }
+
+      // Event currency drop. Runs for every game mode and is entirely
+      // data-driven off the active event; returns null (and awards nothing)
+      // when no event is visible to this player. Never throws.
+      //
+      // The outcome is passed because an event may pay per result (a win is
+      // worth more than a loss, a forfeit nothing). A forfeit is reported as
+      // such even though the player technically lost: quitting must never be
+      // the efficient way to farm an event currency.
+      const eventOutcome: EventGameOutcome = isForfeit
+        ? "forfeit"
+        : gameResult.winner === null
+          ? "draw"
+          : gameResult.winner === userId
+            ? "win"
+            : "loss";
+
+      const eventCurrencyDrop = await EventCurrencyDropService.rollForGame(
+        userId,
+        gameMode,
+        eventOutcome
+      );
 
       return {
         game_result: gameResult,
@@ -632,6 +695,7 @@ const GameRewardsService = {
             : currencyRewards,
           card_xp_rewards: xpResults,
           rare_card_drop: rareCardDrop,
+          ...(eventCurrencyDrop ? { event_currency_drop: eventCurrencyDrop } : {}),
         },
         updated_currencies: {
           gems: updatedUser?.gems || 0,

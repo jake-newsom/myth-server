@@ -21,9 +21,12 @@ import {
   BaseGameEvent,
   CardEvent,
   CardPowerChangedEvent,
+  CardMovedEvent,
+  TileEvent,
   EVENT_TYPES,
   TriggerContext,
   COMBAT_TYPES,
+  ClashInfo,
 } from "../types/game-engine.types";
 import DailyTaskService from "../services/dailyTask.service";
 import SeasonSoulsService from "../services/seasonSouls.service";
@@ -277,6 +280,14 @@ export function resolveCombat(
                 {
                   forcedOwnerId: playerId,
                   combatType: COMBAT_TYPES.STANDARD,
+                  clash: {
+                    attacker: { x: position.x, y: position.y },
+                    attackerSide: dir.from,
+                    defenderSide: dir.to,
+                    attackerPower: placedCardPower,
+                    defenderPower: adjacentCardPower,
+                    outcome: "win",
+                  },
                 }
               )
             );
@@ -303,6 +314,14 @@ export function resolveCombat(
                 y: ny,
               },
               animation: "defend",
+              clash: {
+                attacker: { x: position.x, y: position.y },
+                attackerSide: dir.from,
+                defenderSide: dir.to,
+                attackerPower: placedCardPower,
+                defenderPower: adjacentCardPower,
+                outcome: placedCardPower === adjacentCardPower ? "tie" : "lose",
+              },
             } as CardEvent);
 
             events.push(
@@ -355,6 +374,8 @@ export function flipCard(
     forcedOwnerId?: string;
     overrideProtection?: boolean;
     combatType?: (typeof COMBAT_TYPES)[keyof typeof COMBAT_TYPES];
+    /** Edge-combat detail, set only by resolveCombat (see CardEvent.clash). */
+    clash?: ClashInfo;
   }
 ): BaseGameEvent[] {
   const defeatingPlayerId = metadata?.forcedOwnerId ?? state.current_player_id;
@@ -398,6 +419,9 @@ export function flipCard(
       // otherwise fall back to the generic defend animation.
       animation: defendAnimation ?? "defend",
       ...(defendSoundEffect ? { soundEffect: defendSoundEffect } : {}),
+      ...(metadata?.clash
+        ? { clash: { ...metadata.clash, outcome: "prevented" as const } }
+        : {}),
     } as CardEvent);
     out.push(
       ...triggerAbilities(TriggerMoment.OnDefend, {
@@ -587,6 +611,7 @@ export function flipCard(
     // Lead-in beat: let the attack land, then a gap before flip-consequence
     // buffs/debuffs (Demon Bane, Hunter's Mark, …) animate as their own beat.
     delayAfterMs: FLIP_TO_CONSEQUENCE_BEAT_MS,
+    ...(metadata?.clash ? { clash: metadata.clash } : {}),
   } as CardEvent);
 
   // Flip-consequence events animate after the flip.
@@ -707,6 +732,85 @@ export function triggerAbilities(
   events.push(...triggerIndirectAbilities(trigger, context));
 
   return batchEvents(events, abilityBatchDelay(trigger));
+}
+
+/**
+ * Fire OnTerrain abilities for terrain created by the stage that just ran.
+ *
+ * `producedEvents` is the slice of events that stage emitted; every
+ * TILE_STATE_CHANGED carrying a `terrain` counts as one terrain change, and all
+ * of them are handed to the handlers via `context.terrainEvents`. Handlers
+ * filter by terrain themselves (Pele cares about lava, a future card might care
+ * about water), which is why this is one trigger moment rather than one per
+ * terrain type.
+ *
+ * Per-EVENT, not per-batch: Ragnarök lava-fills every empty tile in a single
+ * OnPlace, and `terrainEvents.length` is what lets Pele gain per tile rather
+ * than a flat +1 for the whole fill.
+ *
+ * Scans only the events passed in, never its own output. An OnTerrain ability
+ * that itself creates terrain therefore does not re-trigger this pass — a
+ * deliberate one-level-deep dispatch, matching how triggerTerrainDeckEffects is
+ * already called at these same points.
+ *
+ * `resetTile` clears `tile_effect` outright and emits no terrain value, so
+ * terrain REMOVAL does not trigger this. A conversion (Poliahu's lava->water)
+ * goes through setTileStatus with terrain: Ocean and does trigger, as the new
+ * water it is.
+ */
+export function triggerTerrainAbilities(
+  state: GameState,
+  producedEvents: BaseGameEvent[]
+): BaseGameEvent[] {
+  const terrainEvents = producedEvents.filter(
+    (event) =>
+      event.type === EVENT_TYPES.TILE_STATE_CHANGED &&
+      (event as TileEvent).tile?.tile_effect?.terrain !== undefined
+  ) as TileEvent[];
+
+  if (terrainEvents.length === 0) return [];
+
+  return triggerAbilities(TriggerMoment.OnTerrain, {
+    state,
+    triggerMoment: TriggerMoment.OnTerrain,
+    position: { x: 0, y: 0 },
+    terrainEvents,
+  });
+}
+
+/**
+ * Fire OnMove abilities for cards relocated by the stage that just ran.
+ *
+ * Same shape as triggerTerrainAbilities: `producedEvents` is that stage's event
+ * slice, every CARD_MOVED in it counts as one move, and all of them are handed
+ * to handlers via `context.moveEvents` so a single push that shifts several
+ * cards is one dispatch rather than several.
+ *
+ * Movement only ever originates inside an ability (pushCardAway / pullCardsIn /
+ * moveCardToPosition are the only CARD_MOVED emitters), which is why this is
+ * called from the same post-ability points as the terrain dispatch instead of
+ * being hooked into those utils — they take (card, position, board) with no
+ * GameState and so cannot dispatch abilities themselves.
+ *
+ * Scans only the events passed in, never its own output, so an OnMove ability
+ * that itself moves a card does not re-trigger this pass.
+ */
+export function triggerMoveAbilities(
+  state: GameState,
+  producedEvents: BaseGameEvent[]
+): BaseGameEvent[] {
+  const moveEvents = producedEvents.filter(
+    (event) => event.type === EVENT_TYPES.CARD_MOVED
+  ) as CardMovedEvent[];
+
+  if (moveEvents.length === 0) return [];
+
+  return triggerAbilities(TriggerMoment.OnMove, {
+    state,
+    triggerMoment: TriggerMoment.OnMove,
+    position: { x: 0, y: 0 },
+    moveEvents,
+  });
 }
 
 export function triggerIndirectAbilities(

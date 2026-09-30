@@ -15,6 +15,7 @@ import * as cron from "node-cron";
 dotenv.config();
 
 import { startIapRetries, stopIapRetries } from "./services/iap.service";
+import { sendBlessingDailyMail } from "./services/blessing.service";
 import { validateIapConfig } from './config/iap.config';
 validateIapConfig();
 
@@ -411,6 +412,10 @@ if (require.main === module) {
         },
       );
       console.log("🎯 Daily Task Scheduler started successfully");
+      cron.schedule("0 0 * * *", async () => {
+        try { await sendBlessingDailyMail(); }
+        catch (error) { console.error("❌ Failed to send blessing mail:", error); }
+      }, { timezone: "UTC" });
     } catch (error) {
       console.error("❌ Failed to start Daily Task Scheduler:", error);
     }

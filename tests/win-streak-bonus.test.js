@@ -66,33 +66,34 @@ describe('Win Streak Bonus System', () => {
     });
   });
 
-  describe('Reward Calculation with Win Streak', () => {
-    test('should apply multiplier to PvP victory rewards', () => {
+  // The win streak no longer multiplies gems. It is still tracked and still
+  // climbs (see the block above), but every gem payout below is the flat base
+  // regardless of the multiplier passed in.
+  describe('Reward Calculation ignores the win streak', () => {
+    test('should NOT apply multiplier to PvP victory rewards', () => {
       const baseRewards = GameRewardsService.calculateCurrencyRewards(
         testUserId,
         testUserId, // user wins
         'pvp',
         120, // 2 minutes
-        2.5 // 2.5x multiplier
+        2.5 // 2.5x multiplier (must be ignored)
       );
 
-      // Base PvP win: 10 gems + 3 quick bonus = 13 gems
-      // With 2.5x multiplier: floor(13 * 2.5) = 32 gems
-      expect(baseRewards.gems).toBe(32);
+      // PvP win: 10 gems + 3 quick bonus = 13 gems, unmultiplied.
+      expect(baseRewards.gems).toBe(13);
     });
 
-    test('should apply multiplier to PvP draw rewards', () => {
+    test('should NOT apply multiplier to PvP draw rewards', () => {
       const drawRewards = GameRewardsService.calculateCurrencyRewards(
         testUserId,
         null, // draw
         'pvp',
         120,
-        2.0 // 2.0x multiplier
+        2.0 // 2.0x multiplier (must be ignored)
       );
 
-      // Base PvP draw: 3 gems
-      // With 2.0x multiplier: floor(3 * 2.0) = 6 gems
-      expect(drawRewards.gems).toBe(6);
+      // PvP draw: 3 gems, unmultiplied.
+      expect(drawRewards.gems).toBe(3);
     });
 
     test('should NOT apply multiplier to PvP loss rewards', () => {
@@ -101,11 +102,11 @@ describe('Win Streak Bonus System', () => {
         'other-player-id', // user loses
         'pvp',
         120,
-        3.0 // 3.0x multiplier (should not be applied)
+        3.0 // 3.0x multiplier (must be ignored)
       );
 
-      // Base PvP loss: 2 gems (no multiplier applied)
-      expect(lossRewards.gems).toBe(2);
+      // PvP loss participation reward: 5 gems.
+      expect(lossRewards.gems).toBe(5);
     });
 
     test('should NOT apply multiplier to solo game rewards', () => {
@@ -147,6 +148,8 @@ describe('Win Streak Bonus System', () => {
         'game-id-1'
       );
 
+      // multiplier_applied is always 1.0 now: nothing multiplies gems. The
+      // streak itself still climbs, so new_multiplier stays truthful.
       expect(result1.win_streak_info).toBeDefined();
       expect(result1.win_streak_info.multiplier_applied).toBe(1.0);
       expect(result1.win_streak_info.new_multiplier).toBe(1.1);
@@ -163,7 +166,7 @@ describe('Win Streak Bonus System', () => {
         'game-id-2'
       );
 
-      expect(result2.win_streak_info.multiplier_applied).toBe(1.1);
+      expect(result2.win_streak_info.multiplier_applied).toBe(1.0);
       expect(result2.win_streak_info.new_multiplier).toBe(1.2);
     });
 

@@ -25,6 +25,7 @@ interface ClaimRewardsResult {
   rewards_claimed?: {
     gems: number;
     packs: number;
+    embers: number;
     fate_coins: number;
     card_ids: string[];
     border_ids: string[];
@@ -46,6 +47,7 @@ interface ClaimMultipleRewardsResult {
     gold: number;
     gems: number;
     packs: number;
+    embers: number;
     fate_coins: number;
     card_ids: string[];
     border_ids: string[];
@@ -425,6 +427,7 @@ const MailService = {
         rewards_claimed: {
           gems: claimedMail.reward_gems,
           packs: claimedMail.reward_packs,
+          embers: claimedMail.reward_embers,
           fate_coins: claimedMail.reward_fate_coins,
           card_ids: claimedMail.reward_card_ids,
           border_ids: claimedMail.reward_border_id
@@ -465,6 +468,7 @@ const MailService = {
             gold: 0,
             gems: 0,
             packs: 0,
+            embers: 0,
             fate_coins: 0,
             card_ids: [],
             border_ids: [],
@@ -479,6 +483,7 @@ const MailService = {
         gold: 0,
         gems: 0,
         packs: 0,
+        embers: 0,
         fate_coins: 0,
         card_ids: [] as string[],
         border_ids: [] as string[],
@@ -495,6 +500,7 @@ const MailService = {
             totalRewards.gold += claimedSingle.reward_gold;
             totalRewards.gems += claimedSingle.reward_gems;
             totalRewards.packs += claimedSingle.reward_packs;
+            totalRewards.embers += claimedSingle.reward_embers;
             totalRewards.fate_coins += claimedSingle.reward_fate_coins;
             totalRewards.card_ids.push(...claimedSingle.reward_card_ids);
             if (claimedSingle.reward_border_id) {
@@ -550,6 +556,7 @@ const MailService = {
           gold: 0,
           gems: 0,
           packs: 0,
+          embers: 0,
           fate_coins: 0,
           card_ids: [],
           border_ids: [],

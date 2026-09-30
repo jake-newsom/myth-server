@@ -19,11 +19,13 @@ interface PackCreateInput {
   is_released?: boolean;
   released_at?: Date | null;
   sort_order?: number;
+  excluded_from_fate_picks?: boolean;
 }
 
 const PACK_COLUMNS = `
   pack_id, name, slug, description, image_url,
-  is_released, released_at, sort_order, created_at, updated_at
+  is_released, released_at, sort_order, excluded_from_fate_picks,
+  created_at, updated_at
 `;
 
 const PackModel = {
@@ -67,15 +69,30 @@ const PackModel = {
    * Packs the shop may show: flagged released AND past their release date.
    * A NULL released_at means "no schedule", i.e. available as soon as the
    * flag is on.
+   *
+   * `userId` is optional because this route is public. Passing it adds
+   * `owned_quantity`, the count held in per-pack inventory for that user;
+   * without it (or for a user holding none) the column is 0, which is exactly
+   * what an anonymous caller should see.
    */
-  async findAvailable(): Promise<PackWithCardCount[]> {
+  async findAvailable(
+    userId?: string | null
+  ): Promise<PackWithCardCount[]> {
     const query = `
       SELECT ${PACK_COLUMNS.split(",")
         .map((c) => `p.${c.trim()}`)
         .join(", ")},
         -- Counts ch, not cv: a variant whose character is still unreleased
         -- leaves ch NULL and must not be counted.
-        COUNT(ch.character_id)::int AS card_count
+        COUNT(ch.character_id)::int AS card_count,
+        -- Per-pack inventory (user_pack_inventory), NOT the generic
+        -- users.pack_count. A scalar subquery rather than another LEFT JOIN:
+        -- joining it would multiply the rows the COUNT above aggregates over.
+        -- COALESCE covers both "no row" and the anonymous case ($1 IS NULL).
+        COALESCE((
+          SELECT upi.quantity FROM "user_pack_inventory" upi
+           WHERE upi.pack_id = p.pack_id AND upi.user_id = $1::uuid
+        ), 0)::int AS owned_quantity
       FROM "packs" p
       LEFT JOIN "pack_card_variants" pcv ON pcv.pack_id = p.pack_id
       -- Release gating lives in the join condition so a pack with only
@@ -91,7 +108,7 @@ const PackModel = {
       GROUP BY p.pack_id
       ORDER BY p.sort_order, p.name;
     `;
-    const { rows } = await db.query(query);
+    const { rows } = await db.query(query, [userId ?? null]);
     return rows;
   },
 
@@ -200,6 +217,7 @@ const PackModel = {
       "is_released",
       "released_at",
       "sort_order",
+      "excluded_from_fate_picks",
     ];
 
     for (const key of assignable) {

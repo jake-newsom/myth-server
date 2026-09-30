@@ -38,6 +38,8 @@ import GameRewardsService, {
   GameCompletionResult,
 } from "../../services/gameRewards.service";
 import TowerService from "../../services/tower.service";
+import EventMechanicService from "../../services/eventMechanic.service";
+import { initializeBattleMechanics } from "../../game-engine/battleMechanics";
 import SagaBattleService from "../../services/sagaBattle.service";
 import { BaseGameEvent, pacePowerEvents } from "../../game-engine/game-events";
 import { sanitizeGameStateForPlayer } from "../../utils/sanitize";
@@ -105,7 +107,13 @@ class GameController {
         return;
       }
 
-      const { deckId, aiDeckId: requestedAiDeckId } = req.body;
+      // `eventId` is optional and additive: omitted (every existing client) it
+      // starts an ordinary solo game, exactly as before.
+      const {
+        deckId,
+        aiDeckId: requestedAiDeckId,
+        eventId: requestedEventId,
+      } = req.body;
       if (!deckId) {
         res.status(400).json({ error: "Deck ID is required" });
         return;
@@ -239,6 +247,45 @@ class GameController {
       // won't award card XP and its souls won't reach the season total. The
       // spend happens here — after every validation that can reject the request
       // — so a rejected create never costs the player an ember.
+      // Resolve the event's battle mechanic, if this match was started from an
+      // event's game-mode entry point. An event the user cannot currently
+      // access is rejected rather than silently downgraded to a normal game,
+      // so the player never gets a mode they didn't ask for.
+      let eventContext:
+        | { eventId: string; mechanicKey: string | null }
+        | undefined;
+      if (requestedEventId) {
+        const resolved = await EventMechanicService.resolveForUserEvent(
+          userId,
+          requestedEventId
+        );
+        if (!resolved) {
+          res.status(403).json({ error: "Event is not available" });
+          return;
+        }
+        if (resolved.mechanics.length > 0) {
+          events.push(
+            ...initializeBattleMechanics(finalGameState, resolved.mechanics)
+          );
+        }
+        eventContext = {
+          eventId: resolved.event.id,
+          mechanicKey: resolved.event.mechanic_key,
+        };
+      }
+
+      // No explicit event: an ACTIVE event still applies its mechanic to every
+      // ordinary game. No-op when no event is running.
+      if (!eventContext) {
+        const global = await EventMechanicService.applyGlobalMechanics(
+          finalGameState,
+          userId,
+          "solo"
+        );
+        events.push(...global.events);
+        eventContext = global.eventContext;
+      }
+
       const emberFunded = await spendEmberForGame(userId);
 
       // The engine reads this while the game is being played (souls are tracked
@@ -255,7 +302,8 @@ class GameController {
           "solo",
           finalGameState,
           undefined,
-          emberFunded
+          emberFunded,
+          eventContext
         );
 
       // game_state from createGameRecord (via DB) is a JSON string. Parse it.

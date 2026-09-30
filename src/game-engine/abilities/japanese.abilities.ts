@@ -3,6 +3,7 @@ import {
   InGameCard,
   PowerValues,
   TileStatus,
+  TriggerMoment,
 } from "../../types";
 import {
   AbilityMap,
@@ -494,71 +495,97 @@ export const japaneseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Allies Rally: Adjacent allies gain +1 power this turn.
+  // Kibi Dango Treat: in hand or in play, gain +1 for each BEAST played and
+  // +1 for each BEAST defeated. Both halves accumulate into one named buff.
   momotaro_allies_rally: (context) => {
     const {
-      position,
       triggerCard,
+      originalTriggerCard,
+      flippedCard,
+      triggerMoment,
       state: { board },
     } = context;
-    const gameEvents: BaseGameEvent[] = [];
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
 
-    if (!position) return [];
-
-    const adjacentAllies = getAlliesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner,
-    );
-
-    for (const ally of adjacentAllies) {
-      const allyPosition = getPositionOfCardById(
-        ally.user_card_instance_id,
-        board,
+    const isBeast = (card: InGameCard | null | undefined) =>
+      (card?.base_card_data.tags ?? []).some(
+        (tag) => String(tag).toLowerCase() === "beast",
       );
-      if (allyPosition) {
-        gameEvents.push(
-          addTempBuff(ally, 3, 1, {
-            name: "Kibi Dango Treat",
-            animation: "purple-grow",
-            position: allyPosition,
-          }),
-        );
-      }
-    }
 
-    return gameEvents;
-  },
+    // On a flip trigger the relevant card is the one defeated; on a place
+    // trigger it is the card just played.
+    const subject =
+      triggerMoment === TriggerMoment.HandOnFlip ||
+      triggerMoment === TriggerMoment.AnyOnFlip
+        ? flippedCard
+        : originalTriggerCard;
 
-  // Benkei
-  // Steadfast Guard: Gain +1 for each adjacent enemy
-  benkei_steadfast_guard: (context) => {
-    const {
-      triggerCard,
-      position,
-      state: { board },
-    } = context;
+    if (!isBeast(subject)) return [];
 
-    if (!position) return [];
-
-    const adjacentEnemies = getEnemiesAdjacentTo(
-      position,
-      board,
-      triggerCard.owner,
-    );
+    // Momotarō buffs HIMSELF — own tile when on the board, else the in-hand
+    // sentinel. Never context.position (see Demon Bane).
+    const buffPosition =
+      getPositionOfCardById(triggerCard.user_card_instance_id, board) ??
+      HAND_POSITION;
 
     return [
-      addTempBuff(triggerCard, 1000, adjacentEnemies.length, {
-        name: "Standing Death",
-        animation: "plasm-sphere",
-        position,
-        data: {
+      createOrUpdateBuff(
+        triggerCard,
+        1000,
+        1,
+        "Kibi Dango Treat",
+        buffPosition,
+        {
+          animation: "purple-grow",
           actingPlayerId: triggerCard.owner,
           sourceCard: triggerCard,
           sourcePlayerId: triggerCard.owner,
           turnNumber: context.state.turn_number,
         },
-      }),
+      ),
+    ];
+  },
+
+  // Benkei
+  // Steadfast Guard: Gain +1 for each adjacent enemy
+  // Standing Death: in hand or in play, gain +1 whenever a WAR card is
+  // DEFEATED (either side's). Accumulates via createOrUpdateBuff, so the gains
+  // stack into one named effect that survives being played from hand.
+  benkei_steadfast_guard: (context) => {
+    const {
+      triggerCard,
+      flippedCard,
+      state: { board },
+    } = context;
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
+
+    const isWar = (flippedCard?.base_card_data.tags ?? []).some(
+      (tag) => String(tag).toLowerCase() === "war",
+    );
+    if (!isWar) return [];
+
+    // Benkei buffs HIMSELF. Point the buff at his own tile once on the board,
+    // else the in-hand sentinel — never context.position, which on a flip
+    // trigger is the flipped card's tile (the Demon Bane leak).
+    const buffPosition =
+      getPositionOfCardById(triggerCard.user_card_instance_id, board) ??
+      HAND_POSITION;
+
+    return [
+      createOrUpdateBuff(
+        triggerCard,
+        1000,
+        1,
+        "Standing Death",
+        buffPosition,
+        {
+          animation: "plasm-sphere",
+          actingPlayerId: triggerCard.owner,
+          sourceCard: triggerCard,
+          sourcePlayerId: triggerCard.owner,
+          turnNumber: context.state.turn_number,
+        },
+      ),
     ];
   },
 
@@ -610,10 +637,17 @@ export const japaneseAbilities: AbilityMap = {
 
     const adjacentCards = getAdjacentCards(position, board);
 
+    // +2 per stronger adjacent card, plus +2 if Minamoto no Raikō is in play
+    // (either side) — Kintarō served under him.
+    const raikoInPlay = getCardsByCondition(
+      board,
+      (card) => card.base_card_data.name === "Minamoto no Raikō",
+    ).length > 0;
+
     const buffAmount =
       adjacentCards.filter(
         (enemy) => getCardTotalPower(enemy) > getCardTotalPower(triggerCard),
-      ).length * 2;
+      ).length * 2 + (raikoInPlay ? 2 : 0);
 
     if (buffAmount > 0) {
       gameEvents.push(
@@ -681,7 +715,7 @@ export const japaneseAbilities: AbilityMap = {
       target.position,
       target.card,
       triggerCard,
-      "magic-arrow",
+      "centipede",
       { combatType: COMBAT_TYPES.SPECIAL },
     );
   },
@@ -799,30 +833,86 @@ export const japaneseAbilities: AbilityMap = {
               board,
             );
             gameEvents.push(destroyEvent);
-            if (triggerPosition) {
-              gameEvents.push(
-                addTempBuff(triggerCard, 1000, 2, {
-                  name: "Kusanagi's Strike",
-                  animation: "lightning-cloud",
-                  position: triggerPosition,
-                }),
-              );
-            }
           }
         }
+      }
+    }
+
+    // +3 if Yamata no Orochi is in play (either side), replacing the old flat
+    // +2 for destroying. Applied whether or not anything was destroyed.
+    const orochiInPlay = getCardsByCondition(
+      board,
+      (card) => card.base_card_data.name === "Yamata no Orochi",
+    ).length > 0;
+
+    if (orochiInPlay) {
+      const triggerPosition = getPositionOfCardById(
+        triggerCard.user_card_instance_id,
+        board,
+      );
+      if (triggerPosition) {
+        gameEvents.push(
+          addTempBuff(triggerCard, 1000, 3, {
+            name: "Kusanagi's Strike",
+            animation: "lightning-cloud",
+            position: triggerPosition,
+            data: {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              turnNumber: context.state.turn_number,
+            },
+          }),
+        );
       }
     }
 
     return gameEvents;
   },
 
-  // Warrior's Aura: Allies in the same row gain +1 every turn
+  // Divine Archery: at the end of YOUR turn, grant +1 to allies in your row
+  // and +1 to a random WAR card in your hand.
   hachiman_warriors_aura: (context) => {
     const { position, triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
     const batchId = `${triggerCard.user_card_instance_id}:${context.state.turn_number}:hachiman`;
+    const HAND_POSITION: BoardPosition = { x: -1, y: -1 };
 
     if (!position) return [];
+
+    // +1 to a random WAR card in the owner's hand.
+    const owner =
+      state.player1.user_id === triggerCard.owner ? state.player1 : state.player2;
+    const warHandCards = owner.hand
+      .map((id) => state.hydrated_card_data_cache?.[id])
+      .filter((card): card is InGameCard => !!card)
+      .filter((card) =>
+        (card.base_card_data.tags ?? []).some(
+          (tag) => String(tag).toLowerCase() === "war",
+        ),
+      );
+
+    if (warHandCards.length > 0) {
+      const target = warHandCards[randomInt(warHandCards.length)];
+      gameEvents.push(
+        addTempBuff(target, 1000, 1, {
+          name: "Divine Archery",
+          animation: "war-banner",
+          position: HAND_POSITION,
+          data: {
+            actingPlayerId: triggerCard.owner,
+            sourceCard: triggerCard,
+            sourcePlayerId: triggerCard.owner,
+            batchId,
+            turnNumber: state.turn_number,
+          },
+        }),
+      );
+      target.current_power = updateCurrentPower(target);
+      if (state.hydrated_card_data_cache) {
+        state.hydrated_card_data_cache[target.user_card_instance_id] = target;
+      }
+    }
 
     const alliesInRow = getCardsInSameRow(
       position,
@@ -844,7 +934,7 @@ export const japaneseAbilities: AbilityMap = {
           sourcePlayerId: triggerCard.owner,
           batchId,
           turnNumber: context.state.turn_number,
-          animation: "flame-spin-3",
+          animation: "war-banner",
         });
         if (event) gameEvents.push(event);
       }
