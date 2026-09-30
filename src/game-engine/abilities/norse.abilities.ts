@@ -679,9 +679,7 @@ export const norseAbilities: AbilityMap = {
             terrain: TileTerrain.Ocean,
             effect_duration: 1000,
             applies_to_user: triggerCard.owner,
-            ...(GAMEPLAY_FLAGS.NJORD_WATER_BUFF
-              ? { power: { top: 1, bottom: 1, left: 1, right: 1 } }
-              : {}),
+            power: { top: 1, bottom: 1, left: 1, right: 1 } 
           },
           triggerCard.owner,
           triggerCard,
