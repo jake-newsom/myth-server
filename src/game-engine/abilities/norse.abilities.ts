@@ -825,21 +825,24 @@ export const norseAbilities: AbilityMap = {
     return gameEvents;
   },
 
-  // Trickster's Gambit: for every TRICKSTER in play, defeat a random enemy
-  // with a 65% chance. One roll (and at most one defeat) per TRICKSTER, so a
-  // board thick with tricksters is what makes Loki dangerous.
+  // Trickster's Gambit: for every TRICKSTER you control (Loki included),
+  // defeat a random enemy with a 65% chance. One roll (and at most one defeat)
+  // per TRICKSTER.
   loki_flip: (context) => {
     const { triggerCard, state } = context;
     const gameEvents: BaseGameEvent[] = [];
     const batchId = uuidv4();
     const DEFEAT_CHANCE = 65;
 
-    // Counts tricksters on BOTH sides — the wording is "in play". Loki himself
-    // is a TRICKSTER and counts toward his own total.
-    const tricksterCount = getCardsByCondition(state.board, (card) =>
-      (card.base_card_data.tags ?? []).some(
-        (t) => String(t).toLowerCase() === "trickster",
-      ),
+    // Only tricksters Loki's owner controls count. Loki himself is a TRICKSTER
+    // and is already on the board at OnPlace, so he always gets at least one roll.
+    const tricksterCount = getCardsByCondition(
+      state.board,
+      (card) =>
+        card.owner === triggerCard.owner &&
+        (card.base_card_data.tags ?? []).some(
+          (t) => String(t).toLowerCase() === "trickster",
+        ),
     ).length;
 
     // Re-read the enemy list each iteration: a card defeated by an earlier roll
