@@ -241,12 +241,12 @@ const PATCHES: AssetPatch[] = [
   },
   {
     id: "sep-2026-update",
-    version: 1,
+    version: 2,
     type: "mixed",
-    r2Key: "patches/sep-2026-p1.zip",
+    r2Key: "patches/sep-2026-p1.1.zip",
     checksum:
-      "sha256:526cea522e3429a02f3da409669a1eb342be4b8869079785d3aa20708d6772a0",
-    size: 11585455,
+      "sha256:4803f8a706be82aa91cff127001bca9156fbfe0d6ce90e5e56712658fbf90b62",
+    size: 11543399,
     description: "september 2026 patch",
   }
 ];
