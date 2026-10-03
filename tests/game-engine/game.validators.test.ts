@@ -135,45 +135,6 @@ describe("Game Validators", () => {
     });
   });
 
-  describe("isBoardFull", () => {
-    it("should return false when board has empty cells", () => {
-      const gameState = createMockGameState();
-      expect(validators.isBoardFull(gameState.board)).toBe(false);
-    });
-
-    it("should return true when board is full", () => {
-      const gameState = createMockGameState();
-      // Fill the entire board with cards
-      for (let y = 0; y < 4; y++) {
-        for (let x = 0; x < 4; x++) {
-          gameState.board[y][x] = {
-            card: {
-              user_card_instance_id: `card-${x}-${y}`,
-              base_card_id: "base-1",
-              owner: "player1",
-              current_power: { top: 5, right: 5, bottom: 5, left: 5 },
-              level: 1,
-              card_state: "normal",
-              base_card_data: {
-                name: "Test Card",
-                rarity: "common",
-                image_url: "test.jpg",
-                tags: ["test"],
-                base_power: { top: 5, right: 5, bottom: 5, left: 5 },
-                special_ability: null,
-              },
-            },
-            tile_status: "normal",
-            player_1_turns_left: 0,
-            player_2_turns_left: 0,
-            animation_label: null,
-          };
-        }
-      }
-      expect(validators.isBoardFull(gameState.board)).toBe(true);
-    });
-  });
-
   describe("calculateScores", () => {
     it("should calculate correct scores based on card ownership", () => {
       const gameState = createMockGameState();

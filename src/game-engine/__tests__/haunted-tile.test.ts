@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import {
   claimMechanicTileEffect,
   isClaimedMechanicEffect,
-  refreshMechanicTilePower,
 } from "../battleMechanic.power";
 import { updateCurrentPower } from "../ability.utils";
 import { MechanicTileEffect } from "../../types/battleMechanic.types";
+import { EffectType } from "../../types/card.types";
 import { createTestCard } from "./ai.test-utils";
 import { initializeBattleMechanics } from "../battleMechanics";
 
@@ -16,6 +16,8 @@ const HAUNTED: MechanicTileEffect = {
   matching_bonus: 4,
   other_bonus: -2,
 };
+
+const POS = { x: 0, y: 0 };
 
 function boardWith(card: any, effect?: MechanicTileEffect) {
   return [[{ card, tile_enabled: true, mechanic_effect: effect }]] as any;
@@ -29,7 +31,7 @@ test("haunted tile buffs a matching card and the bonus survives being claimed", 
   assert.equal(card.current_power.top, 8, "4 base + 4 matching bonus");
 
   // Placement claims the bonus and clears the tile.
-  assert.equal(claimMechanicTileEffect(card), true);
+  assert.equal(claimMechanicTileEffect(card, POS), true);
   board[0][0].mechanic_effect = undefined;
 
   // The bonus must survive recomputation now that the tile is gone.
@@ -50,7 +52,7 @@ test("haunted tile debuffs a non-matching card and that also persists", () => {
   card.current_power = updateCurrentPower(card, board);
   assert.equal(card.current_power.top, 2, "4 base - 2 other_bonus");
 
-  claimMechanicTileEffect(card);
+  claimMechanicTileEffect(card, POS);
   board[0][0].mechanic_effect = undefined;
 
   card.current_power = updateCurrentPower(card, board);
@@ -62,7 +64,7 @@ test("a spent haunted tile gives nothing to the next occupant", () => {
   const board = boardWith(first, HAUNTED);
 
   first.current_power = updateCurrentPower(first, board);
-  claimMechanicTileEffect(first);
+  claimMechanicTileEffect(first, POS);
   board[0][0].mechanic_effect = undefined;
   assert.equal(first.current_power.top, 8);
 
@@ -101,27 +103,53 @@ test("an iron-rune card takes no debuff but still spends the tile", () => {
   assert.equal(card.current_power.top, 4, "immune to the haunted debuff");
 
   // Nothing to claim, but the caller still clears the tile.
-  assert.equal(claimMechanicTileEffect(card), false);
+  assert.equal(claimMechanicTileEffect(card, POS), false);
   board[0][0].mechanic_effect = undefined;
   assert.equal(board[0][0].mechanic_effect, undefined);
 });
 
-test("refreshMechanicTilePower never stacks a second bonus on a claimed card", () => {
+test("a second haunted tile stacks onto the same claimed effect", () => {
   const card = createTestCard({ id: "greedy", owner: "p1", tags: ["underworld"] });
   const board = boardWith(card, HAUNTED);
 
   card.current_power = updateCurrentPower(card, board);
-  claimMechanicTileEffect(card);
+  claimMechanicTileEffect(card, POS);
+  board[0][0].mechanic_effect = undefined;
 
-  // Simulate the card sitting on another haunted tile: the claimed bonus wins
-  // and no second entry is added.
-  refreshMechanicTilePower(card, HAUNTED);
+  // The card walks onto another haunted tile: the new bonus previews on top of
+  // the claimed one, then folds into it when claimed.
+  board[0][0].mechanic_effect = HAUNTED;
+  card.current_power = updateCurrentPower(card, board);
+  assert.equal(card.current_power.top, 12, "4 base + 4 claimed + 4 pending");
+
+  assert.equal(claimMechanicTileEffect(card, POS), true);
+  board[0][0].mechanic_effect = undefined;
+  card.current_power = updateCurrentPower(card, board);
+  assert.equal(card.current_power.top, 12, "both hauntings persist");
+
   const hauntedEntries = card.temporary_effects.filter(
     (e: any) => e.data?.battleMechanic === "haunted",
   );
-  assert.equal(hauntedEntries.length, 1, "exactly one haunted effect");
+  assert.equal(hauntedEntries.length, 1, "stacked on a single effect");
+  assert.equal(hauntedEntries[0].power.top, 8);
+  assert.equal(hauntedEntries[0].type, EffectType.TilePowerBonus);
+});
+
+test("stacked haunted debuffs accumulate on one effect", () => {
+  const card = createTestCard({ id: "sun", owner: "p1", tags: ["god"] });
+  card.base_card_data.base_power = { top: 8, right: 8, bottom: 8, left: 8 };
+  const board = boardWith(card, HAUNTED);
+
+  for (let i = 0; i < 2; i++) {
+    board[0][0].mechanic_effect = HAUNTED;
+    card.current_power = updateCurrentPower(card, board);
+    claimMechanicTileEffect(card, POS);
+    board[0][0].mechanic_effect = undefined;
+  }
+
   card.current_power = updateCurrentPower(card, board);
-  assert.equal(card.current_power.top, 8, "bonus does not double up");
+  assert.equal(card.current_power.top, 4, "8 base - 2 - 2");
+  assert.equal(card.temporary_effects.filter(isClaimedMechanicEffect).length, 1);
 });
 
 test("haunted marks exactly tile_count cells on a freshly built board", () => {

@@ -47,6 +47,10 @@ export interface TileEffect {
   source_ability_id?: string;
   // When set, this effect is suppressed while the named card is silenced.
   sourceCardInstanceId?: string;
+  /** A temporary block (Heimdall's ward) laid over existing terrain keeps that
+   *  terrain here and restores it on expiry instead of wiping the tile. The
+   *  buried effect doesn't tick while it's covered. */
+  underlying_effect?: TileEffect;
 }
 
 export interface BoardCell {

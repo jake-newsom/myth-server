@@ -105,18 +105,6 @@ export function getOpponent(gameState: GameState, playerId: string) {
     : gameState.player1;
 }
 
-export function isBoardFull(board: (BoardCell | null)[][]): boolean {
-  const size = board.length;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < (board[y]?.length ?? size); x++) {
-      if (board[y][x]?.card === null) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 /** Empty cell where a card can still be placed. */
 export function isPlayableEmptyCell(cell: BoardCell): boolean {
   if (cell.card !== null) return false;

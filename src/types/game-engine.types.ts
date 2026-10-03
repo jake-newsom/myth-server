@@ -30,6 +30,8 @@ export const EVENT_TYPES = {
   STATUS_EFFECT_APPLIED: "STATUS_EFFECT_APPLIED",
   STATUS_EFFECT_REMOVED: "STATUS_EFFECT_REMOVED",
   CARD_MOVED: "CARD_MOVED",
+  /** A push/pull hit a blocked tile and did not move (presentation only). */
+  CARD_MOVE_BLOCKED: "CARD_MOVE_BLOCKED",
   CARD_REMOVED_FROM_BOARD: "CARD_REMOVED_FROM_BOARD",
   CARD_REMOVED_FROM_HAND: "CARD_REMOVED_FROM_HAND",
   FORCED_PASS: "FORCED_PASS",
@@ -98,6 +100,16 @@ export interface CardPlacedEvent extends CardEvent {
 export interface CardMovedEvent extends CardEvent {
   fromPosition: BoardPosition;
   toPosition: BoardPosition;
+}
+
+/**
+ * A push or pull aimed a card at a blocked tile (e.g. Heimdall's ward) and the
+ * card stayed put. Purely presentational: the board is unchanged. New event
+ * type — older clients have no handler for it and skip it.
+ */
+export interface CardMoveBlockedEvent extends CardEvent {
+  fromPosition: BoardPosition;
+  blockedPosition: BoardPosition;
 }
 
 export interface TileEvent extends BaseGameEvent {

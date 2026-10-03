@@ -1,4 +1,5 @@
 import { claimMechanicTileEffect, refreshMechanicTilePower } from "./battleMechanic.power";
+import { GAMEPLAY_FLAGS } from "../config/constants";
 import {
   EffectType,
   InGameCard,
@@ -15,11 +16,15 @@ import {
 } from "../types/game.types";
 import { simulationContext } from "./simulation.context";
 import { randomInt } from "./simulation.rng";
-import { TriggerContext } from "../types/game-engine.types";
+import {
+  CardMoveBlockedEvent,
+  TriggerContext,
+} from "../types/game-engine.types";
 import {
   BaseGameEvent,
   CardEvent,
   CardPowerChangedEvent,
+  CURSE_SNAP_LEAD_MS,
   EVENT_TYPES,
   TileEvent,
 } from "./game-events";
@@ -125,6 +130,7 @@ export function transferTileEffectToCard(
 const TILE_EFFECT_DISPLAY_NAMES: Record<string, string> = {
   water: "Water Blessing",
   lava: "Lava",
+  cursed: "Curse",
 };
 
 export function tileEffectDisplayName(
@@ -1142,6 +1148,26 @@ export const resetTile = (
   } as TileEvent;
 };
 
+/**
+ * A timed tile effect ran out. If it was laid over other terrain (a ward on a
+ * water tile), put that terrain back; otherwise clear the tile.
+ */
+export const expireTileEffect = (
+  tile: BoardCell,
+  position: BoardPosition,
+): BaseGameEvent => {
+  const buried = tile.tile_effect?.underlying_effect;
+  if (!buried) return resetTile(tile, position);
+  tile.tile_effect = buried;
+  return {
+    type: EVENT_TYPES.TILE_STATE_CHANGED,
+    eventId: uuidv4(),
+    timestamp: Date.now(),
+    position,
+    tile: { tile_effect: tile.tile_effect },
+  } as TileEvent;
+};
+
 export const setTileStatus = (
   tile: BoardCell,
   position: BoardPosition,
@@ -1167,10 +1193,12 @@ export const setTileStatus = (
 
   const { tile_effect } = tile;
 
-  // Track daily task progress for curses (fire-and-forget)
+  // Track daily task progress for curses (fire-and-forget). Lava also uses
+  // TileStatus.Cursed but is terrain, not a curse — it must not count.
   if (
     actingPlayerId &&
     effect.status === TileStatus.Cursed &&
+    effect.terrain === undefined &&
     !simulationContext.isInSimulation()
   ) {
     try {
@@ -1536,7 +1564,7 @@ export function applyTileEffectsToMovedCard(
     // Moving onto a haunted tile spends it, exactly as placing onto one does:
     // the bonus becomes permanent on this card and the tile is cleared.
     if (newTile?.mechanic_effect) {
-      claimMechanicTileEffect(card);
+      claimMechanicTileEffect(card, newPosition);
       newTile.mechanic_effect = undefined;
     }
   }
@@ -1564,6 +1592,21 @@ export function applyTileEffectsToMovedCard(
 
       // Update the card's current power after applying tile effect
       card.current_power = updateCurrentPower(card);
+
+      // A curse is spent on the card it hits, same as on placement. Cleared
+      // BEFORE the -X so the client's snap plays and the pop lands on its
+      // implosion. A friendly card moving onto a curse never gets here
+      // (nothing transferred), so the curse stays armed under it.
+      if (
+        GAMEPLAY_FLAGS.CURSE_CONSUMED_ON_MOVE &&
+        tileEffect.status === TileStatus.Cursed &&
+        tileEffect.terrain === undefined
+      ) {
+        events.push({
+          ...resetTile(newTile, newPosition),
+          delayAfterMs: CURSE_SNAP_LEAD_MS,
+        } as BaseGameEvent);
+      }
 
       events.push({
         type: EVENT_TYPES.CARD_POWER_CHANGED,
@@ -1619,6 +1662,23 @@ export function pushCardAway(
 
   // Check if new position is valid and empty
   const destinationTile = getTileAtPosition(newPosition, board);
+  if (
+    isValidPosition(newPosition, board.length) &&
+    !destinationTile?.card &&
+    destinationTile?.tile_effect?.status === TileStatus.Blocked
+  ) {
+    // Bounced off a ward: nothing moves, but let the client show the bump.
+    events.push({
+      type: EVENT_TYPES.CARD_MOVE_BLOCKED,
+      eventId: uuidv4(),
+      timestamp: Date.now(),
+      cardId: card.user_card_instance_id,
+      fromPosition: cardPosition,
+      blockedPosition: newPosition,
+      animation: "push",
+    } as CardMoveBlockedEvent);
+    return events;
+  }
   if (
     !isValidPosition(newPosition, board.length) ||
     destinationTile?.card ||
@@ -1711,6 +1771,22 @@ export function pullCardsIn(
 
     // Check if intermediate position is empty and not blocked
     const intermediateTile = getTileAtPosition(intermediatePosition, board);
+    if (
+      !intermediateTile?.card &&
+      intermediateTile?.tile_effect?.status === TileStatus.Blocked
+    ) {
+      // Bounced off a ward: nothing moves, but let the client show the bump.
+      gameEvents.push({
+        type: EVENT_TYPES.CARD_MOVE_BLOCKED,
+        eventId: uuidv4(),
+        timestamp: Date.now(),
+        cardId: enemyCard.user_card_instance_id,
+        fromPosition: enemyPosition,
+        blockedPosition: intermediatePosition,
+        animation: "pull",
+      } as CardMoveBlockedEvent);
+      continue;
+    }
     if (
       intermediateTile?.card ||
       intermediateTile?.tile_enabled === false ||
@@ -1869,39 +1945,6 @@ export function disableAbilities(
   } as CardPowerChangedEvent;
 }
 
-export function addTileBlessing(
-  position: BoardPosition,
-  bonus: number,
-  ownerId: string,
-  actingPlayerId?: string,
-): BaseGameEvent {
-  // Track daily task progress for blessings (fire-and-forget)
-  if (actingPlayerId && !simulationContext.isInSimulation()) {
-    try {
-      DailyTaskService.trackBless(actingPlayerId).catch(() => {});
-    } catch (error) {
-      // Silently ignore tracking errors during gameplay
-    }
-  }
-
-  return {
-    type: EVENT_TYPES.TILE_STATE_CHANGED,
-    eventId: uuidv4(),
-    timestamp: Date.now(),
-    position,
-    tile: {
-      tile_enabled: true,
-      tile_effect: {
-        status: TileStatus.Boosted,
-        turns_left: 1000,
-        animation_label: `blessed-${bonus}`,
-        power: { top: bonus, bottom: bonus, left: bonus, right: bonus },
-        applies_to_user: ownerId,
-      },
-    },
-  } as TileEvent;
-}
-
 export function protectFromDefeat(
   card: InGameCard,
   turns: number,
@@ -1964,6 +2007,7 @@ export function blockTile(
   board: GameBoard,
   turns = 2,
   animationLabel = "frozen",
+  source?: { card: InGameCard; playerId: string },
 ): BaseGameEvent | undefined {
   const tile = getTileAtPosition(position, board);
   if (!tile) return undefined;
@@ -1980,6 +2024,12 @@ export function blockTile(
     status: TileStatus.Blocked,
     turns_left: turns,
     animation_label: animationLabel,
+    ...(source && {
+      source_card_id: source.card.user_card_instance_id,
+      source_player_id: source.playerId,
+    }),
+    // Keep any terrain under the block; expireTileEffect restores it.
+    ...(tile.tile_effect && { underlying_effect: tile.tile_effect }),
   });
 }
 

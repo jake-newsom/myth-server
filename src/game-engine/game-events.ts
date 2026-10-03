@@ -25,6 +25,14 @@ export {
 export const EFFECT_BEAT_MS = 400;
 
 /**
+ * Beat between a curse being consumed by a MOVED card and the -X landing on
+ * it. The client starts the Curse Snap as the card arrives; this lead puts the
+ * stat pop on the snap's implosion (frames 11-13 at 24fps ≈ 460-540ms).
+ * Placement needs no lead — CARD_PLACED's own delay covers it.
+ */
+export const CURSE_SNAP_LEAD_MS = 450;
+
+/**
  * Extra padding (ms) added to the summed event delays when deriving how long
  * the client needs to finish animating before the next turn timer starts.
  */

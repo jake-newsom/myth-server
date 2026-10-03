@@ -456,6 +456,7 @@ export const norseAbilities: AbilityMap = {
 
   heimdall_block: (context) => {
     const {
+      triggerCard,
       position,
       state: { board },
     } = context;
@@ -470,7 +471,10 @@ export const norseAbilities: AbilityMap = {
     });
 
     for (const pos of emptyAdjacentTiles) {
-      const event = blockTile(pos, board, 2, "heimdall_gate");
+      const event = blockTile(pos, board, 2, "heimdall_gate", {
+        card: triggerCard,
+        playerId: triggerCard.owner,
+      });
       if (event) {
         gameEvents.push(event);
       }

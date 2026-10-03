@@ -913,4 +913,11 @@ export const HTTP_STATUS = {
 export const GAMEPLAY_FLAGS = {
   /** Njord's flooded row carries a +1/side water blessing for his owner. */
   NJORD_WATER_BUFF: process.env.GAMEPLAY_NJORD_WATER_BUFF === "true",
+  /**
+   * A curse is consumed when the card it targets MOVES onto it (push, pull,
+   * self-move), as it already is on placement. On by default — it's the rule;
+   * set GAMEPLAY_CURSE_CONSUMED_ON_MOVE=false to restore the old behavior
+   * (curse stays armed after hitting a moved card).
+   */
+  CURSE_CONSUMED_ON_MOVE: process.env.GAMEPLAY_CURSE_CONSUMED_ON_MOVE !== "false",
 } as const;

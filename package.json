@@ -25,7 +25,7 @@
     "test-rate-limit": "node tests/rate-limit.test.js",
     "test-ai-drawing": "node tests/ai-card-drawing.test.js",
     "test:forge": "node --test --test-force-exit -r ts-node/register src/config/__tests__/forgePricing.test.ts src/services/__tests__/statRoll.test.ts",
-    "test:abilities": "node --test --test-force-exit -r ts-node/register tests/game-engine/abilities.edge.test.ts src/game-engine/__tests__/norse.abilities.test.ts src/game-engine/__tests__/polynesian.abilities.test.ts src/game-engine/__tests__/combat.clash.test.ts",
+    "test:abilities": "node --test --test-force-exit -r ts-node/register tests/game-engine/abilities.edge.test.ts src/game-engine/__tests__/norse.abilities.test.ts src/game-engine/__tests__/heimdall.ward.test.ts src/game-engine/__tests__/worlds-end.rules.test.ts src/game-engine/__tests__/polynesian.abilities.test.ts src/game-engine/__tests__/combat.clash.test.ts tests/game-engine/tile.terrain-placement.test.ts",
     "test:economy": "TS_NODE_TRANSPILE_ONLY=true node --test --test-force-exit -r dotenv/config -r ts-node/register src/services/__tests__/gameRewards.currency.test.ts",
     "test:haunted": "node --test --test-force-exit -r ts-node/register src/game-engine/__tests__/haunted-tile.test.ts",
     "test:tower-modifiers": "node --test --test-force-exit -r ts-node/register src/types/__tests__/towerModifier.test.ts src/game-engine/__tests__/tower.poison.test.ts",

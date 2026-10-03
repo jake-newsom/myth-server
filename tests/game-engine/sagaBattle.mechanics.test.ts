@@ -76,7 +76,6 @@ describe("hasPlayableEmptyTiles", () => {
       }
     }
     assert.equal(validators.hasPlayableEmptyTiles(board), false);
-    assert.equal(validators.isBoardFull(board), false);
   });
 });
 

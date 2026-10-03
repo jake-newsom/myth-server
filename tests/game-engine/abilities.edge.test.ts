@@ -985,8 +985,9 @@ test("applyTileEffectsToMovedCard: per-side delta + preserveEffectName", () => {
 test("tileEffectDisplayName maps tile labels to friendly floating text", () => {
   assert.equal(tileEffectDisplayName("water"), "Water Blessing");
   assert.equal(tileEffectDisplayName("lava"), "Lava");
+  assert.equal(tileEffectDisplayName("cursed"), "Curse");
   // Unknown labels pass through unchanged; missing label falls back.
-  assert.equal(tileEffectDisplayName("cursed"), "cursed");
+  assert.equal(tileEffectDisplayName("web-curse"), "web-curse");
   assert.equal(tileEffectDisplayName(null), "Tile Effect");
   assert.equal(tileEffectDisplayName(undefined), "Tile Effect");
 });

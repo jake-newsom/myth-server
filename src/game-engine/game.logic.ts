@@ -5,6 +5,7 @@ import {
   BoardPosition,
   Player,
   HandChoiceEffect,
+  TileStatus,
 } from "../types/game.types";
 import { InGameCard, TriggerMoment } from "../types/card.types";
 import * as _ from "lodash";
@@ -12,7 +13,7 @@ import db from "../config/db.config"; // For direct DB access if necessary for h
 import * as validators from "./game.validators";
 import * as gameUtils from "./game.utils";
 import { triggerAbilities } from "./game.utils";
-import { resetTile, updateCurrentPower } from "./ability.utils";
+import { expireTileEffect, updateCurrentPower } from "./ability.utils";
 import {
   BaseGameEvent,
   batchEvents,
@@ -21,6 +22,7 @@ import {
   CardPowerChangedEvent,
   EFFECT_BEAT_MS,
   EVENT_TYPES,
+  TileEvent,
 } from "./game-events";
 import {
   applyNorseDeckEffect,
@@ -413,20 +415,34 @@ export class GameLogic {
       // A card was successfully played — reset the consecutive-pass counter
       newState.consecutive_passes = 0;
 
-      if (tileEffectTransferred) {
-        // Calculate power delta from tile effect
-        const tileEffectPowerDelta = existingTileEffect?.power
-          ? (existingTileEffect.power.top || 0) + (existingTileEffect.power.bottom || 0) +
-          (existingTileEffect.power.left || 0) + (existingTileEffect.power.right || 0)
-          : 0;
+      // Tile power (water +1 / lava -1) transferred onto the card as it lands.
+      // Worked out here but emitted AFTER CARD_PLACED, like the haunting below:
+      // the card slams in at its pre-tile power (powerOnPlace excludes the
+      // bonus) and the per-side change then ticks it with the stat pop.
+      let tilePowerChange: CardPowerChangedEvent | null = null;
+      if (tileEffectTransferred && existingTileEffect?.power) {
+        const powerBySide = {
+          top: existingTileEffect.power.top || 0,
+          right: existingTileEffect.power.right || 0,
+          bottom: existingTileEffect.power.bottom || 0,
+          left: existingTileEffect.power.left || 0,
+        };
+        // Per-side display scalar (largest-magnitude side), matching the move
+        // path in applyTileEffectsToMovedCard — a -1/side lava tile is "-1",
+        // not the old four-side sum "-4".
+        const tileEffectPowerDelta = Object.values(powerBySide).reduce(
+          (max, v) => (Math.abs(v) > Math.abs(max) ? v : max),
+          0,
+        );
 
-        events.push({
+        tilePowerChange = {
           type: EVENT_TYPES.CARD_POWER_CHANGED,
           eventId: uuidv4(),
           timestamp: Date.now(),
           cardId: playedCardData.user_card_instance_id,
           position,
           powerDelta: tileEffectPowerDelta,
+          powerBySide,
           // A transferred tile effect that lowers the card's power IS a debuff.
           // Flagging it here is what lets the generic debuff scanner
           // (batchContainsDebuff) see it — this event is hand-rolled rather
@@ -436,12 +452,26 @@ export class GameLogic {
           // terrain effects, which previously never triggered the passive.
           isNegativeEffect: tileEffectPowerDelta < 0,
           effectName: tileEffectDisplayName(existingTileEffect?.animation_label),
-        } as CardPowerChangedEvent);
+        } as CardPowerChangedEvent;
       }
 
       newBoardCell.mechanic_effect = newState.board[position.y][position.x].mechanic_effect;
       newState.board[position.y][position.x] = newBoardCell;
       gameUtils.updateAllBoardCards(newState);
+
+      // Power the card shows as it lands: everything except the transferred
+      // tile bonus, which tilePowerChange ticks on afterwards. The bonus is the
+      // last temporary effect createBoardCell pushed.
+      let powerOnPlace = newBoardCell.card
+        ? { ...newBoardCell.card.current_power }
+        : undefined;
+      if (tilePowerChange && newBoardCell.card) {
+        const preTile = {
+          ...newBoardCell.card,
+          temporary_effects: newBoardCell.card.temporary_effects.slice(0, -1),
+        };
+        powerOnPlace = { ...updateCurrentPower(preTile, newState.board) };
+      }
 
       let hauntedPowerChange: { cardId: string; amount: number } | null = null;
       // A haunted tile is spent by the first card to occupy it: bake the bonus
@@ -454,7 +484,7 @@ export class GameLogic {
       if (newBoardCell.mechanic_effect && newBoardCell.card) {
         const hauntedCard = newBoardCell.card;
         const hauntedEffect = newBoardCell.mechanic_effect;
-        claimMechanicTileEffect(hauntedCard);
+        claimMechanicTileEffect(hauntedCard, position);
         newBoardCell.mechanic_effect = undefined;
 
         // Work out the haunting's power change now (while the tile data is
@@ -479,10 +509,26 @@ export class GameLogic {
         // Power as the card lands (includes effects carried from hand, excludes
         // anything later in this batch) so the client doesn't render end-of-batch
         // power at placement time.
-        powerOnPlace: newBoardCell.card
-          ? { ...newBoardCell.card.current_power }
-          : undefined,
+        powerOnPlace,
       } as CardPlacedEvent);
+
+      // Placement consumes every non-terrain tile effect (curse, blessing) —
+      // createBoardCell drops it. Tell the client now rather than leaving it
+      // to the end-of-batch board sync, so the effect doesn't linger under the
+      // card through combat. No extra beat: the client starts a curse's snap
+      // the moment the card lands, and CARD_PLACED's own delay already puts
+      // the -X pop on the snap's implosion.
+      if (existingTileEffect && existingTileEffect.terrain === undefined) {
+        events.push({
+          type: EVENT_TYPES.TILE_STATE_CHANGED,
+          eventId: uuidv4(),
+          timestamp: Date.now(),
+          position,
+          tile: { tile_effect: undefined },
+        } as TileEvent);
+      }
+
+      if (tilePowerChange) events.push(tilePowerChange);
 
       // Now that the slam has landed (CARD_PLACED above carries its own
       // delayAfterMs, and the client awaits the slam animation before returning
@@ -1012,7 +1058,7 @@ export class GameLogic {
           cell.tile_effect.turns_left -= 1;
 
           if (cell.tile_effect.turns_left === 0) {
-            events.push(resetTile(cell, { x, y }));
+            events.push(expireTileEffect(cell, { x, y }));
           }
         }
         if (cell?.card) {
