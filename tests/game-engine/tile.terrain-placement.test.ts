@@ -154,4 +154,31 @@ describe("curse tiles", () => {
     assert.equal(clearEvents(events).length, 0);
     assert.equal(card.current_power.top, 4);
   });
+
+  it("haunted: slams in at pre-haunt power, then ticks +4 exactly once", async () => {
+    const card = createTestCard({ id: "shade", owner: "p1", tags: ["underworld"] });
+    const state = createTestGameState({ player1Hand: ["shade"], hydrated: { shade: card } });
+    state.board[0][0].mechanic_effect = { id: "haunted", tag: "underworld", matching_bonus: 4, other_bonus: -2 } as any;
+
+    const result = await GameLogic.placeCard(state, "p1", "shade", { x: 0, y: 0 });
+    const placed: any = result.events.find((e: any) => e.type === EVENT_TYPES.CARD_PLACED);
+    const [hauntEvt]: any[] = tilePowerEvents(result.events, "shade");
+
+    assert.equal(placed.powerOnPlace.top, 4, "powerOnPlace excludes the haunt bonus");
+    assert.equal(hauntEvt.powerDelta, 4);
+    assert.equal(result.state.board[0][0].card?.current_power.top, 8);
+  });
+
+  it("haunted + water: powerOnPlace excludes both bonuses", async () => {
+    const card = createTestCard({ id: "shade", owner: "p1", tags: ["underworld"] });
+    const state = createTestGameState({ player1Hand: ["shade"], hydrated: { shade: card } });
+    state.board[0][0].tile_effect = waterFor("p1") as any;
+    state.board[0][0].mechanic_effect = { id: "haunted", tag: "underworld", matching_bonus: 4, other_bonus: -2 } as any;
+
+    const result = await GameLogic.placeCard(state, "p1", "shade", { x: 0, y: 0 });
+    const placed: any = result.events.find((e: any) => e.type === EVENT_TYPES.CARD_PLACED);
+
+    assert.equal(placed.powerOnPlace.top, 4);
+    assert.equal(result.state.board[0][0].card?.current_power.top, 9);
+  });
 });

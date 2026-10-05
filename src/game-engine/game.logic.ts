@@ -410,6 +410,11 @@ export class GameLogic {
 
       const { boardCell: newBoardCell, tileEffectTransferred } =
         gameUtils.createBoardCell(playedCardData, playerId, existingTileEffect);
+      // createBoardCell pushes the transferred tile bonus last; hold the
+      // reference, since updateAllBoardCards appends a haunted entry after it.
+      const transferredTileEntry = tileEffectTransferred
+        ? newBoardCell.card?.temporary_effects.at(-1)
+        : undefined;
       player.hand.splice(cardIndexInHand, 1);
 
       // A card was successfully played — reset the consecutive-pass counter
@@ -460,17 +465,29 @@ export class GameLogic {
       gameUtils.updateAllBoardCards(newState);
 
       // Power the card shows as it lands: everything except the transferred
-      // tile bonus, which tilePowerChange ticks on afterwards. The bonus is the
-      // last temporary effect createBoardCell pushed.
+      // tile bonus and the pending haunted bonus, which tilePowerChange and the
+      // haunted CARD_POWER_CHANGED tick on afterwards. Including either here
+      // made the client apply it twice (land at +4, tick another +4) until the
+      // end-of-batch reconcile corrected it.
       let powerOnPlace = newBoardCell.card
         ? { ...newBoardCell.card.current_power }
         : undefined;
-      if (tilePowerChange && newBoardCell.card) {
+      const hasPendingHaunt = newBoardCell.card?.temporary_effects.some(
+        (entry) =>
+          entry.data?.battleMechanic === "haunted" && entry.data?.claimed !== true,
+      );
+      if ((transferredTileEntry || hasPendingHaunt) && newBoardCell.card) {
         const preTile = {
           ...newBoardCell.card,
-          temporary_effects: newBoardCell.card.temporary_effects.slice(0, -1),
+          temporary_effects: newBoardCell.card.temporary_effects.filter(
+            (entry) =>
+              entry !== transferredTileEntry &&
+              !(entry.data?.battleMechanic === "haunted" && entry.data?.claimed !== true),
+          ),
         };
-        powerOnPlace = { ...updateCurrentPower(preTile, newState.board) };
+        // No board: passing it would make updateCurrentPower re-derive the
+        // haunted entry from the tile we're trying to exclude.
+        powerOnPlace = { ...updateCurrentPower(preTile) };
       }
 
       let hauntedPowerChange: { cardId: string; amount: number } | null = null;
