@@ -1,5 +1,6 @@
 import UserModel from "../models/user.model";
 import { GameMode, isHumanVsHumanMode } from "../types/database.types";
+import UniqueFrameService from "./uniqueFrame.service";
 import { resolveDraftXpTargets } from "../game-engine/draftBattle.hydration";
 import XpService from "./xp.service";
 import { XpReward } from "../types/service.types";
@@ -586,6 +587,24 @@ const GameRewardsService = {
           ).catch((error) => {
             console.error("Error updating leaderboard rankings:", error);
           })
+        );
+      }
+
+      // One Frame to Rule Them All: a Ranked Draft loss passes it to the
+      // victor. Run once per game, from the winner's completion pass.
+      if (
+        gameMode === "ranked_draft" &&
+        gameId &&
+        gameResult.winner === userId &&
+        player1Id !== player2Id
+      ) {
+        const loserId = userId === player1Id ? player2Id : player1Id;
+        parallelOps.push(
+          UniqueFrameService.onRankedGameCompleted(userId, loserId, gameId).catch(
+            (error) => {
+              console.error("Error processing unique frame transfer:", error);
+            }
+          )
         );
       }
 

@@ -39,6 +39,7 @@ import {
   startRankedDraftScheduler,
   stopRankedDraftScheduler,
 } from "./services/rankedDraftScheduler.service";
+import { startUniqueFrameScheduler } from "./services/uniqueFrame.service";
 import DailyTaskService from "./services/dailyTask.service";
 import StartupService from "./services/startup.service";
 import { redisCache } from "./services/redis.cache.service";
@@ -426,6 +427,7 @@ if (require.main === module) {
     // used to be inline here, inside `require.main === module`, and therefore
     // never ran in prod.
     startRankedDraftScheduler();
+    startUniqueFrameScheduler();
 
     // Ranked Draft rewards are NOT scheduled here. The ladder pays out once per
     // season, driven by SeasonService's maintenance tick via

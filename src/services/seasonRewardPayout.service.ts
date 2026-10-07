@@ -1,3 +1,4 @@
+import PlayerCosmeticsService from "./playerCosmetics.service";
 import db from "../config/db.config";
 import SeasonModel from "../models/season.model";
 import SeasonSoulsModel from "../models/seasonSouls.model";
@@ -297,6 +298,13 @@ const SeasonRewardPayoutService = {
       // Card backs have no mail/claim path — grant directly.
       for (const backId of bundle.card_back_ids) {
         await CardBackModel.grantToUser(userId, backId, client);
+      }
+      // Titles and avatar frames likewise.
+      for (const titleId of bundle.title_ids ?? []) {
+        await PlayerCosmeticsService.grantTitle(userId, titleId, `season:${seasonId}`, client);
+      }
+      for (const frameId of bundle.frame_ids ?? []) {
+        await PlayerCosmeticsService.grantFrame(userId, frameId, `season:${seasonId}`, client);
       }
 
       const expandedCardIds = [...bundle.card_variant_ids];

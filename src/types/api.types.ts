@@ -48,6 +48,11 @@ export interface UserProfile {
   completed_feature_tutorials: string[];
   /** ISO date; NULL means the user has never chosen or declined a username. */
   username_chosen_at?: string | null;
+  equipped_title_id?: string | null;
+  equipped_frame_id?: string | null;
+  equipped_avatar_id?: string | null;
+  /** Render-ready avatar/frame/title (GET /users/me). */
+  cosmetics?: import("./cosmetics.types").PublicPlayerProfile | null;
   created_at: string; // ISO Date string
   last_login_at: string; // ISO Date string
 }

@@ -1,3 +1,4 @@
+import { cosmeticRewardsToItems } from "../utils/rewards.helpers";
 // myth-server/src/services/loginSequence.service.ts
 
 import db, { QueryExecutor } from "../config/db.config";
@@ -55,6 +56,8 @@ function rowToReward(row: any): LoginSequenceReward {
     reward_card_variant_id: row.reward_card_variant_id,
     reward_border_id: row.reward_border_id,
     reward_card_back_id: row.reward_card_back_id,
+    reward_title_id: row.reward_title_id ?? null,
+    reward_frame_id: row.reward_frame_id ?? null,
     is_milestone: row.is_milestone,
   };
 }
@@ -78,6 +81,7 @@ function rungToRewardItems(reward: LoginSequenceReward): RewardItem[] {
     items.push({ type: "border", border_id: reward.reward_border_id });
   if (reward.reward_card_back_id)
     items.push({ type: "card_back", back_id: reward.reward_card_back_id });
+  items.push(...cosmeticRewardsToItems(reward));
   return items;
 }
 

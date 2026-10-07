@@ -58,6 +58,14 @@ function offeringToRewardItems(offering: EventShopOffering): RewardItem[] {
       return offering.grant_card_back_id
         ? [{ type: "card_back", back_id: offering.grant_card_back_id }]
         : [];
+    case "title":
+      return offering.grant_title_id
+        ? [{ type: "title", title_id: offering.grant_title_id }]
+        : [];
+    case "avatar_frame":
+      return offering.grant_frame_id
+        ? [{ type: "avatar_frame", frame_id: offering.grant_frame_id }]
+        : [];
     case "pack":
       return [{ type: "packs", amount }];
     case "event_pack":

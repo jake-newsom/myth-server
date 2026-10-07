@@ -60,6 +60,10 @@ export enum GameNamespaceEvent {
   // Sent only to the chooser when an interactive ability (e.g. Frigg) pauses
   // the move and reveals data they must act on (the opponent's hand).
   SERVER_CHOICE_REQUIRED = "server:choice_required",
+  // Cosmetic emoji relay. Not part of game state; the server echoes to the
+  // whole room so both sides render from the same authoritative send.
+  CLIENT_EMOJI = "client:emoji",
+  SERVER_EMOJI = "server:emoji",
 }
 
 // Presence namespace ("/presence") events.
@@ -385,6 +389,8 @@ export interface ServerJoinedResponse {
   playerNumber: 1 | 2;
   /** The opponent's display name */
   opponentUsername: string;
+  /** Opponent's avatar/frame/title. Optional: absent for AI or on lookup failure. */
+  opponentProfile?: import("./cosmetics.types").PublicPlayerProfile | null;
 }
 
 // Broadcast when the *other* player joins after you (optional for Phase-1)

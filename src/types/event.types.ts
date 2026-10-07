@@ -153,6 +153,8 @@ export interface LoginSequenceReward {
   reward_card_variant_id: string | null;
   reward_border_id: string | null;
   reward_card_back_id: string | null;
+  reward_title_id?: string | null;
+  reward_frame_id?: string | null;
   is_milestone: boolean;
 }
 
@@ -197,6 +199,8 @@ export type EventShopItemType =
   | "event_pack"
   | "border"
   | "card_back"
+  | "title"
+  | "avatar_frame"
   | "gems"
   | "gold"
   | "fate_coins"
@@ -219,6 +223,8 @@ export interface EventShopOffering {
   grant_card_variant_id: string | null;
   grant_border_id: string | null;
   grant_card_back_id: string | null;
+  grant_title_id?: string | null;
+  grant_frame_id?: string | null;
   /** Set for `event_pack`: which pack is credited to per-pack inventory. */
   grant_pack_id: string | null;
   grant_amount: number;
@@ -275,6 +281,8 @@ export interface EventMilestone {
   reward_card_variant_id: string | null;
   reward_border_id: string | null;
   reward_card_back_id: string | null;
+  reward_title_id?: string | null;
+  reward_frame_id?: string | null;
   /**
    * A specific pack, held in per-pack inventory rather than credited to the
    * generic `pack_count` that `reward_packs` moves. `reward_pack_quantity` is

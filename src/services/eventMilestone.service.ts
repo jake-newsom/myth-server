@@ -1,3 +1,4 @@
+import { cosmeticRewardsToItems } from "../utils/rewards.helpers";
 // myth-server/src/services/eventMilestone.service.ts
 
 import db, { QueryExecutor } from "../config/db.config";
@@ -36,6 +37,8 @@ function rowToMilestone(row: any): EventMilestone {
     reward_card_variant_id: row.reward_card_variant_id,
     reward_border_id: row.reward_border_id,
     reward_card_back_id: row.reward_card_back_id,
+    reward_title_id: row.reward_title_id ?? null,
+    reward_frame_id: row.reward_frame_id ?? null,
     reward_pack_id: row.reward_pack_id ?? null,
     reward_pack_quantity: Number(row.reward_pack_quantity ?? 0),
     sort_order: row.sort_order,
@@ -59,6 +62,7 @@ function milestoneToRewardItems(milestone: EventMilestone): RewardItem[] {
     items.push({ type: "border", border_id: milestone.reward_border_id });
   if (milestone.reward_card_back_id)
     items.push({ type: "card_back", back_id: milestone.reward_card_back_id });
+  items.push(...cosmeticRewardsToItems(milestone));
   if (milestone.reward_pack_id && milestone.reward_pack_quantity > 0)
     items.push({
       type: "event_pack",

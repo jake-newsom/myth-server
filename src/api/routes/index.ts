@@ -36,6 +36,7 @@ import onboardingRoutes from "./onboarding.routes";
 import featureFlagRoutes from "./featureFlag.routes";
 import maintenanceRoutes from "./maintenance.routes";
 import eventRoutes from "./event.routes";
+import emojiRoutes from "./emoji.routes";
 import errorHandler from "../middlewares/errorHandler.middleware";
 
 // Import matchmaking routes
@@ -86,6 +87,7 @@ router.use("/promo-codes", promoCodeRoutes);
 router.use("/onboarding", onboardingRoutes);
 router.use("/feature-flags", featureFlagRoutes);
 router.use("/maintenance", maintenanceRoutes);
+router.use("/emojis", emojiRoutes);
 
 // Global error handler
 router.use(errorHandler);

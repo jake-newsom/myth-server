@@ -1,5 +1,6 @@
 import { Router } from "express";
 import AdminController from "../controllers/admin.controller";
+import EmojiController from "../controllers/emoji.controller";
 import { authenticateJWT } from "../middlewares/auth.middleware";
 import { requireAdmin } from "../middlewares/adminAuth.middleware";
 
@@ -19,6 +20,13 @@ router.use(requireAdmin);
  * Body: { userId: string, quantity: number }
  */
 router.post("/give-packs", AdminController.givePacksToUser);
+
+/**
+ * Unlock an emoji for a user (idempotent)
+ * POST /api/admin/give-emoji
+ * Body: { userId: string, emojiId: string }
+ */
+router.post("/give-emoji", EmojiController.adminGrant);
 
 /**
  * Set a user's pack quantity

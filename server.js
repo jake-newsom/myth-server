@@ -120,6 +120,17 @@ httpServer.listen(PORT, async () => {
     console.error("❌ Failed to start Ranked Draft scheduler:", error);
   }
 
+  // One Frame inactivity sweep (same dual-entrypoint rule as above).
+  try {
+    const {
+      startUniqueFrameScheduler,
+    } = require("./dist/services/uniqueFrame.service");
+    startUniqueFrameScheduler();
+    console.log("👑 Unique frame scheduler started successfully");
+  } catch (error) {
+    console.error("❌ Failed to start unique frame scheduler:", error);
+  }
+
   // Start the daily rewards scheduler
   try {
     const DailyRewardsService =

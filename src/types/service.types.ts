@@ -420,7 +420,9 @@ export type RewardItem =
   | { type: "embers"; amount: number }
   | { type: "card"; card_variant_id: string }
   | { type: "border"; border_id: string; character_id?: string | null }
-  | { type: "card_back"; back_id: string };
+  | { type: "card_back"; back_id: string }
+  | { type: "title"; title_id: string }
+  | { type: "avatar_frame"; frame_id: string };
 
 export interface GrantedReward {
   item: RewardItem;

@@ -14,6 +14,8 @@ export interface MailRewardFields {
   reward_card_ids: string[];
   reward_border_id?: string | null;
   reward_card_back_id?: string | null;
+  reward_title_id?: string | null;
+  reward_frame_id?: string | null;
 }
 
 export interface AchievementRewardFields {
@@ -24,6 +26,8 @@ export interface AchievementRewardFields {
   reward_card_fragments?: number;
   reward_embers?: number | null;
   reward_border_id?: string | null;
+  reward_title_id?: string | null;
+  reward_frame_id?: string | null;
   /** When set, the border grant is scoped to this character only. */
   character_id?: string | null;
 }
@@ -71,6 +75,7 @@ export function mailRewardsToItems(mail: MailRewardFields): RewardItem[] {
   if (mail.reward_card_back_id) {
     items.push({ type: "card_back", back_id: mail.reward_card_back_id });
   }
+  items.push(...cosmeticRewardsToItems(mail));
   return items;
 }
 
@@ -110,6 +115,7 @@ export function achievementRewardsToItems(
       character_id: achievement.character_id ?? null,
     });
   }
+  items.push(...cosmeticRewardsToItems(achievement));
   return items;
 }
 
@@ -140,4 +146,19 @@ export function monthlyLoginRewardToItems(
     default:
       return [];
   }
+}
+
+/** Title / avatar frame reward columns (shared by every reward-bearing table). */
+export function cosmeticRewardsToItems(row: {
+  reward_title_id?: string | null;
+  reward_frame_id?: string | null;
+}): RewardItem[] {
+  const items: RewardItem[] = [];
+  if (row.reward_title_id) {
+    items.push({ type: "title", title_id: row.reward_title_id });
+  }
+  if (row.reward_frame_id) {
+    items.push({ type: "avatar_frame", frame_id: row.reward_frame_id });
+  }
+  return items;
 }

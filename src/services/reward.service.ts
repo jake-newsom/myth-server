@@ -3,6 +3,7 @@ import UserModel from "../models/user.model";
 import CardModel from "../models/card.model";
 import BorderService from "./border.service";
 import EmberService from "./ember.service";
+import PlayerCosmeticsService from "./playerCosmetics.service";
 import CardBackModel from "../models/cardBack.model";
 import { cacheInvalidation } from "./cache.invalidation.service";
 import logger from "../utils/logger";
@@ -46,6 +47,8 @@ interface AggregatedRewards {
   card_variant_ids: string[];
   border_grants: BorderGrant[];
   card_back_ids: string[];
+  title_ids: string[];
+  frame_ids: string[];
   /** Specific packs, keyed by pack_id. Separate from the generic `packs`. */
   event_packs: Map<string, number>;
 }
@@ -61,6 +64,8 @@ function emptyAggregate(): AggregatedRewards {
     card_variant_ids: [],
     border_grants: [],
     card_back_ids: [],
+    title_ids: [],
+    frame_ids: [],
     event_packs: new Map(),
   };
 }
@@ -104,6 +109,12 @@ function aggregate(items: RewardItem[]): AggregatedRewards {
         break;
       case "card_back":
         totals.card_back_ids.push(item.back_id);
+        break;
+      case "title":
+        totals.title_ids.push(item.title_id);
+        break;
+      case "avatar_frame":
+        totals.frame_ids.push(item.frame_id);
         break;
     }
   }
@@ -260,6 +271,19 @@ const RewardService = {
       }
     }
 
+    const newlyGrantedTitleIds = new Set<string>();
+    for (const titleId of totals.title_ids) {
+      if (await PlayerCosmeticsService.grantTitle(userId, titleId, "reward", client)) {
+        newlyGrantedTitleIds.add(titleId);
+      }
+    }
+    const newlyGrantedFrameIds = new Set<string>();
+    for (const frameId of totals.frame_ids) {
+      if (await PlayerCosmeticsService.grantFrame(userId, frameId, "reward", client)) {
+        newlyGrantedFrameIds.add(frameId);
+      }
+    }
+
     // Build per-item granted records that mirror the input order. Cards are
     // matched by card_variant_id in the order they were inserted (CardModel's
     // bulk insert preserves multiplicity).
@@ -286,6 +310,10 @@ const RewardService = {
           item,
           newly_granted: newlyGrantedCardBackIds.has(item.back_id),
         });
+      } else if (item.type === "title") {
+        granted.push({ item, newly_granted: newlyGrantedTitleIds.has(item.title_id) });
+      } else if (item.type === "avatar_frame") {
+        granted.push({ item, newly_granted: newlyGrantedFrameIds.has(item.frame_id) });
       } else {
         granted.push({ item });
       }

@@ -2237,6 +2237,8 @@ const AchievementService = {
           reward_card_fragments: a.reward_card_fragments,
           reward_embers: a.reward_embers ?? null,
           reward_border_id: a.reward_border_id ?? null,
+          reward_title_id: (a as any).reward_title_id ?? null,
+          reward_frame_id: (a as any).reward_frame_id ?? null,
           character_id:
             a.achievement_kind === "character" ? (a.character_id ?? null) : null,
         })

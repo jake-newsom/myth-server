@@ -1,3 +1,5 @@
+import PlayerCosmeticsService, { CosmeticsError } from "../../services/playerCosmetics.service";
+import UniqueFrameService from "../../services/uniqueFrame.service";
 import { IapModel } from "../../models/iap.model";
 // src/api/controllers/user.controller.ts
 import UserModel from "../../models/user.model";
@@ -65,6 +67,63 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
 
 const UserController = {
   /**
+   * Titles, frames and avatars with ownership flags, for the profile picker.
+   * @route GET /api/users/me/cosmetics
+   */
+  async getMyCosmetics(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "User not authenticated." } });
+        return;
+      }
+      res
+        .status(200)
+        .json(await PlayerCosmeticsService.getAvailable(req.user.user_id));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Equip title / frame / avatar. Omitted keys are untouched; null unequips.
+   * @route PUT /api/users/me/cosmetics
+   */
+  async equipCosmetics(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ error: { message: "User not authenticated." } });
+        return;
+      }
+      const body = req.body ?? {};
+      const pick = (v: unknown): string | null | undefined =>
+        v === undefined ? undefined : typeof v === "string" ? v : null;
+      await PlayerCosmeticsService.equip(req.user.user_id, {
+        title_id: pick(body.title_id),
+        frame_id: pick(body.frame_id),
+        avatar_id: pick(body.avatar_id),
+      });
+      const cosmetics = await PlayerCosmeticsService.getPublicProfile(
+        req.user.user_id
+      );
+      res.status(200).json({ cosmetics });
+    } catch (error) {
+      if (error instanceof CosmeticsError) {
+        res.status(error.status).json({ error: { message: error.message } });
+        return;
+      }
+      next(error);
+    }
+  },
+
+  /**
    * Get current user's profile
    * @route GET /api/users/me
    * @param {AuthenticatedRequest} req - Express request object with authenticated user
@@ -91,8 +150,12 @@ const UserController = {
         res.status(404).json({ error: { message: "User not found." } });
         return;
       }
+      const cosmetics = await PlayerCosmeticsService.getPublicProfile(
+        req.user.user_id
+      );
       res.status(200).json({
         ...userProfile,
+        cosmetics,
         embers: emberState.embers,
         next_ember_in_ms: emberState.next_ember_in_ms,
         ember_regen_cap: emberState.regen_cap,
@@ -667,6 +730,8 @@ const UserController = {
           `DELETE FROM "user_owned_card_backs" WHERE user_id = $1`,
           [targetUserId]
         );
+        await UniqueFrameService.releaseIfHeld(client, targetUserId);
+        await PlayerCosmeticsService.resetForUser(targetUserId, client);
 
         // Reset user currencies and tower progress to default values
         await client.query(
@@ -909,6 +974,7 @@ const UserController = {
           `DELETE FROM "user_owned_card_backs" WHERE user_id = $1`,
           [userId]
         );
+        await UniqueFrameService.releaseIfHeld(client, userId);
 
         // Delete sessions (should be cleared already, but ensure)
         await client.query(`DELETE FROM "user_sessions" WHERE user_id = $1`, [userId]);

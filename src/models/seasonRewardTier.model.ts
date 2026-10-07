@@ -11,6 +11,9 @@ export interface SeasonRewardBundle {
   card_variant_ids: string[];
   border_ids: string[];
   card_back_ids: string[];
+  /** Optional: absent in bundles authored before titles/frames existed. */
+  title_ids?: string[];
+  frame_ids?: string[];
   display: {
     card_count: number;
     card_label: string | null;
@@ -233,6 +236,8 @@ function normalizeBundle(raw: unknown): SeasonRewardBundle {
     card_variant_ids: asStringArray(b.card_variant_ids),
     border_ids: asStringArray(b.border_ids),
     card_back_ids: asStringArray(b.card_back_ids),
+    title_ids: asStringArray(b.title_ids),
+    frame_ids: asStringArray(b.frame_ids),
     display: {
       card_count: Number(display.card_count) || 0,
       card_label:

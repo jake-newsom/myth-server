@@ -1,3 +1,4 @@
+import PlayerCosmeticsService from "../services/playerCosmetics.service";
 import { Namespace, Server, Socket } from "socket.io";
 import { socketAuthMiddleware } from "./socket.auth.middleware";
 import gameService from "../services/game.service";
@@ -37,6 +38,7 @@ import {
 } from "../game-engine/game-events";
 import logger from "../utils/logger";
 import { checkRateLimit } from "../api/middlewares/rateLimit.middleware";
+import EmojiService from "../services/emoji.service";
 import { RATE_LIMIT_CONFIG } from "../config/constants";
 
 // Users with an active /game namespace socket connection.
@@ -776,11 +778,21 @@ export function setupGameNamespace(io: Server): void {
             ? (game as any).player2_username || "Opponent"
             : (game as any).player1_username || "Opponent";
 
+        // Cosmetics are decoration: a failed lookup must never block a join.
+        const opponentId =
+          playerNumber === 1 ? game.player2_id : game.player1_id;
+        const opponentProfile = opponentId
+          ? await PlayerCosmeticsService.getPublicProfile(opponentId).catch(
+              () => null
+            )
+          : null;
+
         // Emit confirmation back only to this socket.
         const joinResponse: ServerJoinedResponse = {
           gameState: sanitizedGameState,
           playerNumber,
           opponentUsername,
+          opponentProfile,
         };
         socket.emit(GameNamespaceEvent.SERVER_JOINED, joinResponse);
 
@@ -919,6 +931,75 @@ export function setupGameNamespace(io: Server): void {
         socket.emit("server:error", { message: "Internal server error" });
       }
     });
+
+    /**
+     * client:emoji — cosmetic reaction. Payload: { gameId, emojiId }.
+     * Validated (room member, active game, owned emoji, 10s cooldown) and
+     * echoed to the whole room; never touches game state.
+     */
+    socket.on(
+      GameNamespaceEvent.CLIENT_EMOJI,
+      async (
+        payload: { gameId?: string; emojiId?: string },
+        ack?: (r: { ok: boolean; error?: string; retryAfterMs?: number }) => void
+      ) => {
+        const reject = (error: string, retryAfterMs?: number) =>
+          ack?.({ ok: false, error, retryAfterMs });
+        try {
+          const gameId = payload?.gameId;
+          const emojiId = payload?.emojiId;
+          if (typeof gameId !== "string" || typeof emojiId !== "string") {
+            reject("gameId and emojiId are required");
+            return;
+          }
+
+          const roomName = `game:${gameId}`;
+          const roomMembers = gameNs.adapter.rooms.get(roomName);
+          if (!roomMembers || !roomMembers.has(socket.id)) {
+            reject("Not in this game");
+            return;
+          }
+
+          // Ownership before cooldown so a bad id doesn't burn the window.
+          if (!(await EmojiService.ownsEmoji(userId, emojiId))) {
+            reject("Emoji not owned");
+            return;
+          }
+
+          const game = await gameService.findGameForUser(gameId, userId);
+          if (
+            !game ||
+            (game.game_status !== GameStatus.ACTIVE &&
+              game.game_status !== GameStatus.MULLIGAN)
+          ) {
+            reject("Game is not active");
+            return;
+          }
+
+          const { allowed, retryAfterSeconds } = checkRateLimit(
+            "socket-game-emoji",
+            `user:${userId}`,
+            RATE_LIMIT_CONFIG.GAME_EMOJI.WINDOW_MS,
+            RATE_LIMIT_CONFIG.GAME_EMOJI.MAX_REQUESTS
+          );
+          if (!allowed) {
+            reject("Emoji on cooldown", retryAfterSeconds * 1000);
+            return;
+          }
+
+          gameNs.to(roomName).emit(GameNamespaceEvent.SERVER_EMOJI, {
+            gameId,
+            senderUserId: userId,
+            emojiId,
+            sentAt: Date.now(),
+          });
+          ack?.({ ok: true, retryAfterMs: RATE_LIMIT_CONFIG.GAME_EMOJI.WINDOW_MS });
+        } catch (error) {
+          console.error("[/game] client:emoji failed", error);
+          reject("Failed to send emoji");
+        }
+      }
+    );
 
     socket.on(
       GameNamespaceEvent.CLIENT_ACTION,

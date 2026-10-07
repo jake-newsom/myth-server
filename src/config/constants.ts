@@ -358,6 +358,11 @@ export const RATE_LIMIT_CONFIG = {
     WINDOW_MS: 10 * 1000, // 10 seconds
     MAX_REQUESTS: 10,
   },
+  // In-game emojis: one per 10s per player (anti-spam cooldown).
+  GAME_EMOJI: {
+    WINDOW_MS: 10 * 1000,
+    MAX_REQUESTS: 1,
+  },
   AI_ACTION: {
     WINDOW_MS: 1 * 1000, // 1 second
     MAX_REQUESTS: 40,
