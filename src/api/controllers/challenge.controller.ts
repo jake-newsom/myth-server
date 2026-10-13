@@ -250,6 +250,18 @@ class ChallengeController {
         );
       }
 
+      const [challengerCopyViolation, opponentCopyViolation] =
+        await Promise.all([
+          DeckService.getDeckCopyViolation(challengerDeckId, challengerDeck.name),
+          DeckService.getDeckCopyViolation(opponentDeckId, opponentDeck.name),
+        ]);
+      if (challengerCopyViolation) {
+        throw new ChallengeError(challengerCopyViolation, 400);
+      }
+      if (opponentCopyViolation) {
+        throw new ChallengeError(opponentCopyViolation, 400);
+      }
+
       const challengerCardIds = challengerDeck.cards
         .map((card) => card.user_card_instance_id)
         .filter((id): id is string => Boolean(id));

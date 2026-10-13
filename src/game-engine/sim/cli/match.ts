@@ -53,6 +53,7 @@ async function main() {
     baseSeed,
     parseFloat(opt("player-share", "0.5"))
   );
+  const mirror = args.includes("--mirror");
   const results: SimGameResult[] = [];
   const started = Date.now();
 
@@ -67,7 +68,8 @@ async function main() {
   for (let i = 0; i < pairs; i++) {
     const seed = baseSeed * 100_003 + i;
     const d1 = pickDeck();
-    const d2 = pickDeck();
+    // --mirror: both seats share a deck, so the result measures play only.
+    const d2 = mirror ? d1 : pickDeck();
 
     for (const aIsP1 of [true, false]) {
       const r = await playSimGame({

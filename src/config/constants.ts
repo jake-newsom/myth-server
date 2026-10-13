@@ -171,7 +171,7 @@ export const AI_CONFIG = {
   // produce new ones with ai-train/ and promote only after they beat the
   // current model in headless matches (src/game-engine/sim/cli/match.ts).
   NEURAL: {
-    MODEL_FILE: "value-v3.json",
+    MODEL_FILE: "value-v4.json",
     VOCAB_FILE: "vocab.json",
     // Moves shortlisted by one-ply value, then searched against the reply.
     BREADTH: 4,

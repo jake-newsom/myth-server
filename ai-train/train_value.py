@@ -28,10 +28,13 @@ p.add_argument("--val-shards", type=int, default=1)
 args = p.parse_args()
 
 # --data takes a comma-separated list of shard dirs (e.g. every self-play
-# round so far); the last --val-shards of EACH dir are held out.
+# round so far), searched recursively so per-machine subdirs work; the last
+# --val-shards of EACH dir are held out.
 train_metas, val_metas = [], []
 for d in args.data.split(","):
-    found = sorted(glob.glob(os.path.join(d, "shard-*.meta.json")))
+    found = sorted(
+        glob.glob(os.path.join(d, "**", "shard-*.meta.json"), recursive=True)
+    )
     if not found:
         raise SystemExit(f"no shards in {d}")
     train_metas += found[: -args.val_shards]

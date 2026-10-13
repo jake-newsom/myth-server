@@ -8,46 +8,43 @@ import {
   UpdateDeckRequest,
   AuthenticatedRequest,
 } from "../../types";
-import { RarityUtils } from "../../types/card.types";
 import { DECK_CONFIG, USER_LIMITS } from "../../config/constants";
 import CardBackService from "../../services/cardBack.service";
 
 /**
- * Validates deck composition based on game rules:
- * - Exactly 20 cards per deck
- * - Maximum 2 copies of the same base card
- * - Total power cost within DECK_CONFIG.POWER_BUDGET (legendary 7, epic 3, rare 1)
+ * Validates what a saved deck may hold. Decks may be saved in an unplayable
+ * state (fewer than 20 cards, over the power budget, too many copies) so
+ * players can work on them incrementally; those rules are enforced at match
+ * start instead (see DeckService.assertDeckWithinBudget and the start paths).
+ * Saving still requires:
+ * - At most DECK_CONFIG.DECK_SIZE cards, no duplicate instances
+ * - Every instance owned by the user
  */
 async function validateDeckComposition(
   userId: string,
   instanceIds: string[],
   client: PoolClient
 ): Promise<void> {
-  if (instanceIds.length !== DECK_CONFIG.DECK_SIZE) {
+  if (!Array.isArray(instanceIds)) {
+    throw { statusCode: 400, message: "user_card_instance_ids must be an array." };
+  }
+  if (instanceIds.length > DECK_CONFIG.DECK_SIZE) {
     throw {
       statusCode: 400,
-      message: `Deck must contain exactly ${DECK_CONFIG.DECK_SIZE} cards. Found: ${instanceIds.length}.`,
+      message: `Deck cannot contain more than ${DECK_CONFIG.DECK_SIZE} cards. Found: ${instanceIds.length}.`,
     };
   }
+  if (new Set(instanceIds).size !== instanceIds.length) {
+    throw { statusCode: 400, message: "Deck cannot contain the same card instance twice." };
+  }
+  if (instanceIds.length === 0) return;
 
-  // Batch query to fetch all instance details at once (fixes N+1 query issue)
-  const instancePlaceholders = instanceIds
-    .map((_, index) => `$${index + 2}`)
-    .join(",");
-  const batchInstanceQuery = `
-    SELECT uci.user_card_instance_id, uci.card_variant_id as base_card_id, cv.rarity, ch.name
-    FROM "user_owned_cards" uci 
-    JOIN "card_variants" cv ON uci.card_variant_id = cv.card_variant_id
-    JOIN "characters" ch ON cv.character_id = ch.character_id
-    WHERE uci.user_card_instance_id IN (${instancePlaceholders}) AND uci.user_id = $1;
-  `;
+  const instanceRes = await client.query(
+    `SELECT user_card_instance_id FROM "user_owned_cards"
+     WHERE user_card_instance_id::text = ANY($2::text[]) AND user_id = $1;`,
+    [userId, instanceIds]
+  );
 
-  const instanceRes = await client.query(batchInstanceQuery, [
-    userId,
-    ...instanceIds,
-  ]);
-
-  // Check if all instances were found
   if (instanceRes.rows.length !== instanceIds.length) {
     const foundInstanceIds = new Set(
       instanceRes.rows.map((row) => row.user_card_instance_id)
@@ -61,46 +58,6 @@ async function validateDeckComposition(
         ", "
       )}.`,
     };
-  }
-
-  let budgetSpent = 0;
-  const baseCardCounts = new Map<string, number>();
-
-  // Process all instances in a single loop
-  for (const row of instanceRes.rows) {
-    const { base_card_id, rarity } = row;
-
-    // Accumulate power-budget cost (by base rarity tier)
-    budgetSpent += RarityUtils.getPowerCost(rarity);
-
-    // Count identical base cards
-    baseCardCounts.set(
-      base_card_id,
-      (baseCardCounts.get(base_card_id) || 0) + 1
-    );
-  }
-
-  if (budgetSpent > DECK_CONFIG.POWER_BUDGET) {
-    throw {
-      statusCode: 400,
-      message: `Deck exceeds the power budget (${budgetSpent}/${DECK_CONFIG.POWER_BUDGET}). Edit the deck to reduce its cost before playing.`,
-    };
-  }
-
-  // Create a map of card IDs to names for better error messages
-  const cardIdToName = new Map<string, string>();
-  for (const row of instanceRes.rows) {
-    cardIdToName.set(row.base_card_id, row.name);
-  }
-
-  for (const [cardId, count] of baseCardCounts.entries()) {
-    if (count > DECK_CONFIG.MAX_IDENTICAL_BASE_CARDS) {
-      const cardName = cardIdToName.get(cardId) || `Card ID: ${cardId}`;
-      throw {
-        statusCode: 400,
-        message: `Deck cannot contain more than ${DECK_CONFIG.MAX_IDENTICAL_BASE_CARDS} copies of the same base card (${cardName}). Found: ${count}.`,
-      };
-    }
   }
 }
 

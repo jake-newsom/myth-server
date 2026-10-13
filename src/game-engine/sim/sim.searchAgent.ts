@@ -193,12 +193,20 @@ export class SearchAgent extends ValueNetAgent {
     private readonly breadth = 6,
     private readonly samples = 3,
     mulligan: "net" | "rule" = "net",
-    private readonly opts: SearchOptions = {}
+    readonly opts: SearchOptions = {}
   ) {
     super(name, net, encoder, 0, mulligan);
   }
 
+  /**
+   * The searched value of the last chooseMove's position, for the mover, or
+   * null when no search ran (forced, exploratory or weakened move). Self-play
+   * blends it into training targets.
+   */
+  lastValue: number | null = null;
+
   async chooseMove(state: GameState, playerId: string) {
+    this.lastValue = null;
     const deadline = Date.now() + (this.opts.timeBudgetMs ?? Infinity);
     const shortlist = (
       await this.scoreMoves(state, playerId, legalMoves(state, playerId))
@@ -210,6 +218,14 @@ export class SearchAgent extends ValueNetAgent {
     // plays sensibly rather than throwing games.
     const strength = this.opts.strength ?? 1;
     if (strength < 1 && randomInt(1000) >= strength * 1000) {
+      return shortlist[randomInt(shortlist.length)].move;
+    }
+    const explore = this.opts.explore;
+    if (
+      explore &&
+      boardCardCount(state) < explore.boardCards &&
+      randomInt(1000) < explore.prob * 1000
+    ) {
       return shortlist[randomInt(shortlist.length)].move;
     }
 
@@ -229,6 +245,7 @@ export class SearchAgent extends ValueNetAgent {
         best = candidate;
       }
     }
+    this.lastValue = bestScore;
     return best.move;
   }
 
@@ -250,6 +267,12 @@ export class SearchAgent extends ValueNetAgent {
     }
     return worst === Infinity ? this.value(world, me) : worst;
   }
+}
+
+function boardCardCount(state: GameState): number {
+  let n = 0;
+  for (const row of state.board) for (const cell of row) if (cell.card) n++;
+  return n;
 }
 
 const MULLIGAN_SAMPLES = 6;
@@ -278,6 +301,11 @@ export interface SearchOptions {
   timeBudgetMs?: number;
   /** 0..1 — chance of playing the searched-best move (1 = full strength). */
   strength?: number;
+  /**
+   * Self-play only: while the board has fewer than `boardCards` cards, play a
+   * random shortlisted move with chance `prob`, so openings vary.
+   */
+  explore?: { boardCards: number; prob: number };
 }
 
 /** Re-deals a player's hand from their unseen cards (hand + deck), same size. */

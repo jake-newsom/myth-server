@@ -110,20 +110,53 @@ class DeckService {
   }
 
   /**
-   * Throws DeckBudgetError if the deck exceeds the power budget. Used at match
-   * start for player decks. AI decks and saga decks are exempt and should not
-   * be passed here.
+   * Returns an error message if the deck holds more than
+   * DECK_CONFIG.MAX_IDENTICAL_BASE_CARDS copies of one card, else null. Decks
+   * may be saved in an invalid state, so this is enforced at match start.
+   */
+  async getDeckCopyViolation(
+    deckId: string,
+    deckName?: string
+  ): Promise<string | null> {
+    const query = `
+      SELECT ch.name, COUNT(*)::int AS count
+      FROM deck_cards dc
+      JOIN user_owned_cards uoc ON dc.user_card_instance_id = uoc.user_card_instance_id
+      JOIN card_variants cv ON uoc.card_variant_id = cv.card_variant_id
+      JOIN characters ch ON cv.character_id = ch.character_id
+      WHERE dc.deck_id = $1
+      GROUP BY cv.card_variant_id, ch.name
+      HAVING COUNT(*) > $2
+      LIMIT 1;
+    `;
+    const { rows } = await db.query(query, [
+      deckId,
+      DECK_CONFIG.MAX_IDENTICAL_BASE_CARDS,
+    ]);
+    if (rows.length === 0) return null;
+    const label = deckName ? ` "${deckName}"` : "";
+    return `Deck${label} cannot contain more than ${DECK_CONFIG.MAX_IDENTICAL_BASE_CARDS} copies of the same card (${rows[0].name}). Edit the deck before playing.`;
+  }
+
+  /**
+   * Throws DeckBudgetError if the deck exceeds the power budget or the copy
+   * limit. Used at match start for player decks (card count is checked by the
+   * callers). AI decks and saga decks are exempt and should not be passed here.
    */
   async assertDeckWithinBudget(
     deckId: string,
     deckName?: string
   ): Promise<void> {
     const { spent, budget, valid } = await this.getDeckBudget(deckId);
+    const label = deckName ? ` "${deckName}"` : "";
     if (!valid) {
-      const label = deckName ? ` "${deckName}"` : "";
       throw new DeckBudgetError(
         `Deck${label} exceeds the power budget (${spent}/${budget}). Edit the deck to reduce its cost before playing.`
       );
+    }
+    const copyViolation = await this.getDeckCopyViolation(deckId, deckName);
+    if (copyViolation) {
+      throw new DeckBudgetError(copyViolation);
     }
   }
 

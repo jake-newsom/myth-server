@@ -1,6 +1,7 @@
 import FriendshipModel from "../models/friendship.model";
 import EventMechanicService from "./eventMechanic.service";
 import UserModel from "../models/user.model";
+import { DECK_CONFIG } from "../config/constants";
 import CardBackModel from "../models/cardBack.model";
 import {
   Friendship,
@@ -475,7 +476,10 @@ class FriendsService {
         deckId,
         challengerId
       );
-      if (!challengerDeck || challengerDeck.cards.length < 10) {
+      if (
+        !challengerDeck ||
+        challengerDeck.cards.length !== DECK_CONFIG.DECK_SIZE
+      ) {
         return {
           success: false,
           message: "Invalid or incomplete deck selected",
@@ -492,6 +496,17 @@ class FriendsService {
           error: "INVALID_DECK",
         };
       }
+      const challengerCopyViolation = await DeckService.getDeckCopyViolation(
+        deckId,
+        challengerDeck.name
+      );
+      if (challengerCopyViolation) {
+        return {
+          success: false,
+          message: challengerCopyViolation,
+          error: "INVALID_DECK",
+        };
+      }
 
       // For friend challenges, we'll use the friend's default deck or a random valid deck
       // First, get candidate decks for the friend, then pick the first within budget.
@@ -501,8 +516,8 @@ class FriendsService {
          JOIN deck_cards dc ON d.deck_id = dc.deck_id
          WHERE d.user_id = $1
          GROUP BY d.deck_id
-         HAVING COUNT(dc.user_card_instance_id) >= 10`,
-        [friendId]
+         HAVING COUNT(dc.user_card_instance_id) = $2`,
+        [friendId, DECK_CONFIG.DECK_SIZE]
       );
 
       if (friendDecks.rows.length === 0) {
@@ -516,7 +531,10 @@ class FriendsService {
       let friendDeckId: string | null = null;
       for (const row of friendDecks.rows) {
         const budget = await DeckService.getDeckBudget(row.deck_id);
-        if (budget.valid) {
+        if (
+          budget.valid &&
+          !(await DeckService.getDeckCopyViolation(row.deck_id))
+        ) {
           friendDeckId = row.deck_id;
           break;
         }

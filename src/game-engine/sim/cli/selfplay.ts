@@ -32,6 +32,7 @@ import { GameState } from "../../../types/game.types";
 import { GameStatus } from "../../game.logic";
 import { DeckPool } from "../sim.types";
 import { createAgent } from "../sim.agents";
+import { SearchAgent } from "../sim.searchAgent";
 import { createDeckPicker, playSimGame, SIM_P1, SIM_P2 } from "../sim.game";
 import {
   buildVocab,
@@ -81,6 +82,19 @@ async function main() {
   const a = createAgent(opt("a", "greedy-eps"));
   const b = createAgent(opt("b", "greedy-eps"));
 
+  // --explore P: search agents play a random shortlisted move with chance P
+  // while the board has fewer than --explore-cards cards.
+  const exploreProb = parseFloat(opt("explore", "0"));
+  const exploreCards = parseInt(opt("explore-cards", "4"), 10);
+  // --target-mix L: label = (1 - L)·result + L·searched value of the position.
+  // Search values are far less noisy than one game's result.
+  const targetMix = parseFloat(opt("target-mix", "0"));
+  for (const agent of [a, b]) {
+    if (agent instanceof SearchAgent && exploreProb > 0) {
+      agent.opts.explore = { boardCards: exploreCards, prob: exploreProb };
+    }
+  }
+
   fs.mkdirSync(outDir, { recursive: true });
   const base = path.join(outDir, `shard-${shard}`);
   const fFd = fs.openSync(`${base}.f32`, "w");
@@ -91,6 +105,7 @@ async function main() {
     1_000_003 * (shard + 1),
     parseFloat(opt("player-share", "0.5"))
   );
+  const mirrorShare = parseFloat(opt("mirror-share", "0"));
   let rows = 0;
   let floatDim = 0;
   let intDim = 0;
@@ -99,23 +114,52 @@ async function main() {
 
   for (let g = 0; g < games; g++) {
     const seed = shard * 10_000_000 + g;
+    // Mirror games (both seats on the same deck) isolate play quality from
+    // deck quality; the rest keep random pairings for coverage.
     const d1 = pickDeck();
-    const d2 = pickDeck();
+    const d2 = (Math.imul(g, 2654435761) >>> 0) % 1000 < mirrorShare * 1000 ? d1 : pickDeck();
     const aIsP1 = g % 2 === 0;
 
-    const positions: { p1: EncodedState; p2: EncodedState }[] = [];
+    // vP1: the mover's searched value of each position, from P1's side.
+    const positions: {
+      p1: EncodedState;
+      p2: EncodedState;
+      vP1: number | null;
+    }[] = [];
+    let lastIdx = -1;
+    const recordValue = (agent: typeof a): typeof a => ({
+      name: agent.name,
+      chooseMulligan: agent.chooseMulligan.bind(agent),
+      chooseHandTargets: agent.chooseHandTargets.bind(agent),
+      chooseMove: async (state: GameState, playerId: string) => {
+        const move = await agent.chooseMove(state, playerId);
+        if (
+          agent instanceof SearchAgent &&
+          agent.lastValue !== null &&
+          lastIdx >= 0
+        ) {
+          positions[lastIdx].vP1 =
+            playerId === SIM_P1 ? agent.lastValue : -agent.lastValue;
+        }
+        lastIdx = -1;
+        return move;
+      },
+    });
     const result = await playSimGame({
-      p1: aIsP1 ? a : b,
-      p2: aIsP1 ? b : a,
+      p1: recordValue(aIsP1 ? a : b),
+      p2: recordValue(aIsP1 ? b : a),
       p1Deck: d1,
       p2Deck: d2,
       seed,
       onState: (state: GameState) => {
+        lastIdx = -1;
         if (state.status !== GameStatus.ACTIVE || state.pending_choice) return;
         positions.push({
           p1: encoder.encode(state, SIM_P1),
           p2: encoder.encode(state, SIM_P2),
+          vP1: null,
         });
+        lastIdx = positions.length - 1;
       },
     });
     if (result.outcome === "error") {
@@ -128,9 +172,11 @@ async function main() {
     const floats: number[] = [];
     const ints: number[] = [];
     for (const pos of positions) {
+      const tP1 =
+        pos.vP1 === null ? zP1 : (1 - targetMix) * zP1 + targetMix * pos.vP1;
       for (const [e, z, m] of [
-        [pos.p1, zP1, marginP1],
-        [pos.p2, -zP1, -marginP1],
+        [pos.p1, tP1, marginP1],
+        [pos.p2, -tP1, -marginP1],
       ] as const) {
         const fr = floatRow(e, z, m);
         const ir = intRow(e);
@@ -170,6 +216,8 @@ async function main() {
         ability_vocab: encoder.abilityVocabSize,
         character_vocab: encoder.characterVocabSize,
         agents: [a.name, b.name],
+        explore: exploreProb,
+        target_mix: targetMix,
         games,
         errors,
       },
