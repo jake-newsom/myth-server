@@ -18,7 +18,13 @@ function getAbilityIdForMove(
 for (const scenario of AI_MOVE_SELECTION_SCENARIOS) {
   test(`move-selection: ${scenario.id}`, async () => {
     const ai = new AILogic();
-    const move = await ai.makeAIMove(structuredClone(scenario.state), "hard");
+    // These scenarios pin the legacy AI's heuristics (it remains the fallback
+    // when the neural AI is unavailable). The neural AI is evaluated by
+    // headless win rate instead — see src/game-engine/sim/cli/match.ts.
+    const move = await ai.makeLegacyAIMove(
+      structuredClone(scenario.state),
+      "hard"
+    );
     assert.ok(move, `No move selected for scenario ${scenario.id}`);
 
     const selectedAbility = getAbilityIdForMove(

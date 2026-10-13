@@ -1,32 +1,43 @@
 import { GameState } from "../../types/game.types";
-import { GAME_CONFIG } from "../../config/constants";
 import { AILogic } from "../ai.logic";
-import { GameLogic, GameStatus } from "../game.logic";
+import { GameLogic } from "../game.logic";
 import { chooseAIMulligan } from "../game.mulligan";
-import * as validators from "../game.validators";
 import { randomInt } from "../simulation.rng";
 import * as fs from "fs";
 import { SimAgent, SimMove } from "./sim.types";
 import { StateEncoder } from "./sim.encoder";
 import { ValueNet } from "./sim.valueNet";
+import { legalMoves, SearchAgent, ValueNetAgent } from "./sim.searchAgent";
 
-function legalMoves(state: GameState, playerId: string): SimMove[] {
-  const player = validators.getPlayer(state, playerId);
-  const moves: SimMove[] = [];
-  for (let y = 0; y < GAME_CONFIG.BOARD_SIZE; y++) {
-    for (let x = 0; x < GAME_CONFIG.BOARD_SIZE; x++) {
-      if (!validators.canPlaceOnTile(state, { x, y }).canPlace) continue;
-      for (const cardId of player.hand) {
-        moves.push({ cardId, position: { x, y } });
-      }
-    }
-  }
-  return moves;
-}
 
-/** The production AI, exactly as the live controller drives it. */
+/** The legacy rules/lookahead AI (the live AI before the neural search). */
 export class CurrentAIAgent implements SimAgent {
   readonly name = "current";
+  private readonly ai = new AILogic();
+
+  async chooseMulligan(state: GameState, playerId: string) {
+    return chooseAIMulligan(state, playerId);
+  }
+
+  async chooseMove(state: GameState, playerId: string) {
+    // Legacy explicitly: makeAIMove now routes to the neural AI first.
+    const move = await this.ai.makeLegacyAIMove(state, "hard", playerId);
+    return move
+      ? { cardId: move.user_card_instance_id, position: move.position }
+      : null;
+  }
+
+  async chooseHandTargets(state: GameState) {
+    return GameLogic.pickStrongestPendingChoiceCards(state);
+  }
+}
+
+/**
+ * The live AI exactly as the server runs it: AILogic.makeAIMove (neural
+ * search from content/ai/, legacy fallback) and AILogic.chooseHandTargets.
+ */
+export class LiveAIAgent implements SimAgent {
+  readonly name = "live";
   private readonly ai = new AILogic();
 
   async chooseMulligan(state: GameState, playerId: string) {
@@ -41,7 +52,7 @@ export class CurrentAIAgent implements SimAgent {
   }
 
   async chooseHandTargets(state: GameState) {
-    return GameLogic.pickStrongestPendingChoiceCards(state);
+    return this.ai.chooseHandTargets(state);
   }
 }
 
@@ -136,211 +147,40 @@ function boardLead(state: GameState, playerId: string): number {
 }
 
 /**
- * One-ply search with the learned value net as the leaf evaluator: plays each
- * legal move through the real engine and keeps the one whose resulting
- * position the net rates best. Reveal-hand targets are chosen the same way,
- * by resolving each candidate and evaluating the outcome.
- */
-export class ValueNetAgent implements SimAgent {
-  constructor(
-    readonly name: string,
-    private readonly net: ValueNet,
-    private readonly encoder: StateEncoder,
-    /** Random-move rate for self-play data generation; 0 when evaluating. */
-    private readonly epsilon = 0
-  ) {}
-
-  /** Net value for playerId, or the exact result if the game has ended. */
-  protected value(state: GameState, playerId: string): number {
-    if (state.status === GameStatus.COMPLETED) {
-      return state.winner === playerId ? 1 : state.winner ? -1 : 0;
-    }
-    return this.net.evaluate(this.encoder.encode(state, playerId));
-  }
-
-  /** Plays a move through the engine, resolving any reveal-hand choice. */
-  protected async play(
-    state: GameState,
-    playerId: string,
-    move: SimMove,
-    bestTargets: boolean
-  ): Promise<GameState | null> {
-    try {
-      let { state: next } = await GameLogic.placeCard(
-        state,
-        playerId,
-        move.cardId,
-        move.position
-      );
-      if (next.pending_choice) {
-        next = bestTargets
-          ? await this.resolveBestChoice(next, playerId)
-          : await this.resolveStrongestChoice(next);
-      }
-      return next;
-    } catch {
-      // Illegal for a reason canPlaceOnTile doesn't see; skip it.
-      return null;
-    }
-  }
-
-  async chooseMulligan(state: GameState, playerId: string) {
-    return chooseAIMulligan(state, playerId);
-  }
-
-  async chooseMove(state: GameState, playerId: string) {
-    const moves = legalMoves(state, playerId);
-    if (this.epsilon > 0 && moves.length && randomInt(1000) < this.epsilon * 1000) {
-      return moves[randomInt(moves.length)];
-    }
-    const scored = await this.scoreMoves(state, playerId, moves);
-    return scored.length ? scored[0].move : null;
-  }
-
-  /** One-ply scores, best first, keeping each resulting state. */
-  protected async scoreMoves(state: GameState, playerId: string, moves: SimMove[]) {
-    const scored: { move: SimMove; next: GameState; v: number }[] = [];
-    for (const move of moves) {
-      const next = await this.play(state, playerId, move, true);
-      if (!next) continue;
-      scored.push({ move, next, v: this.value(next, playerId) + randomInt(100) / 1e6 });
-    }
-    return scored.sort((a, b) => b.v - a.v);
-  }
-
-  async chooseHandTargets(state: GameState, playerId: string) {
-    return (await this.bestChoice(state, playerId)).ids;
-  }
-
-  private async resolveBestChoice(state: GameState, playerId: string) {
-    const { next } = await this.bestChoice(state, playerId);
-    return next ?? { ...state, pending_choice: undefined };
-  }
-
-  /** Cheap choice for searched opponent replies: production's heuristic. */
-  private async resolveStrongestChoice(state: GameState) {
-    const ids = GameLogic.pickStrongestPendingChoiceCards(state);
-    return ids.length
-      ? (await GameLogic.resolveHandChoice(state, ids)).state
-      : { ...state, pending_choice: undefined };
-  }
-
-  private async bestChoice(state: GameState, playerId: string) {
-    const pending = state.pending_choice;
-    let best: { ids: string[]; next: GameState | null; v: number } = {
-      ids: [],
-      next: null,
-      v: -Infinity,
-    };
-    if (!pending) return best;
-    // Every live reveal-hand ability selects one card; for larger selections
-    // fall back to the strongest-cards heuristic rather than enumerate combos.
-    const options =
-      pending.select_count === 1
-        ? pending.choosable_card_ids.map((id) => [id])
-        : [GameLogic.pickStrongestPendingChoiceCards(state)];
-    for (const ids of options) {
-      const { state: next } = await GameLogic.resolveHandChoice(state, ids);
-      const v = this.value(next, playerId);
-      if (v > best.v) best = { ids, next, v };
-    }
-    return best;
-  }
-}
-
-/**
- * Two-ply search: shortlists the top `breadth` moves by one-ply value, then
- * scores each by the opponent's best reply (min over replies), averaged over
- * `samples` determinizations of the opponent's hidden hand. The opponent's
- * real hand is never read: each sample deals a hand of the same size from the
- * cards they haven't played yet (hand + deck).
- */
-export class SearchAgent extends ValueNetAgent {
-  constructor(
-    name: string,
-    net: ValueNet,
-    encoder: StateEncoder,
-    private readonly breadth = 6,
-    private readonly samples = 3
-  ) {
-    super(name, net, encoder);
-  }
-
-  async chooseMove(state: GameState, playerId: string) {
-    const shortlist = (
-      await this.scoreMoves(state, playerId, legalMoves(state, playerId))
-    ).slice(0, this.breadth);
-    if (shortlist.length <= 1) return shortlist[0]?.move ?? null;
-
-    let best = shortlist[0];
-    let bestScore = -Infinity;
-    for (const candidate of shortlist) {
-      let total = 0;
-      for (let s = 0; s < this.samples; s++) {
-        total += await this.worstReply(candidate.next, playerId);
-      }
-      const score = total / this.samples;
-      if (score > bestScore) {
-        bestScore = score;
-        best = candidate;
-      }
-    }
-    return best.move;
-  }
-
-  /** Value for me after the opponent's best reply in one sampled world. */
-  private async worstReply(state: GameState, me: string): Promise<number> {
-    if (state.status !== GameStatus.ACTIVE) return this.value(state, me);
-    const oppId = state.current_player_id;
-    if (oppId === me) return this.value(state, me);
-
-    const world = dealHiddenHand(state, oppId);
-    const opp = validators.getPlayer(world, oppId);
-    if (!validators.canPlayerPlay(opp)) return this.value(world, me);
-
-    let worst = Infinity;
-    for (const reply of legalMoves(world, oppId)) {
-      const after = await this.play(world, oppId, reply, false);
-      if (!after) continue;
-      worst = Math.min(worst, this.value(after, me));
-    }
-    return worst === Infinity ? this.value(world, me) : worst;
-  }
-}
-
-/** Re-deals a player's hand from their unseen cards (hand + deck), same size. */
-function dealHiddenHand(state: GameState, playerId: string): GameState {
-  const world = { ...state };
-  const key = state.player1.user_id === playerId ? "player1" : "player2";
-  const player = state[key];
-  const unseen = [...player.hand, ...player.deck];
-  for (let i = unseen.length - 1; i > 0; i--) {
-    const j = randomInt(i + 1);
-    [unseen[i], unseen[j]] = [unseen[j], unseen[i]];
-  }
-  world[key] = {
-    ...player,
-    hand: unseen.slice(0, player.hand.length),
-    deck: unseen.slice(player.hand.length),
-  };
-  return world;
-}
-
-/**
  * "value[-eps][:<model>]" → one-ply ValueNetAgent;
- * "search[:<model>]" → two-ply SearchAgent.
+ * "search[:<model>[:<breadth>[:<samples>[:net|rule]]]]" → two-ply SearchAgent.
+ * The last field picks the mulligan (default net); value agents read it from
+ * the same 5th position, e.g. "value:<model>:::rule".
  */
 function loadValueAgent(spec: string): SimAgent {
-  const [kind, modelPath = ".ai-sim/models/value-v1.json"] = spec.split(":");
+  const [kind, model, breadth, samples, mulligan] = spec.split(":");
+  const mulliganMode = mulligan === "rule" ? "rule" : "net";
+  const modelPath = model || ".ai-sim/models/value-v1.json";
   const vocab = JSON.parse(fs.readFileSync(".ai-sim/vocab.json", "utf8"));
   const net = ValueNet.load(modelPath);
   const encoder = new StateEncoder(vocab);
-  if (kind === "search") return new SearchAgent(spec, net, encoder);
-  return new ValueNetAgent(spec, net, encoder, kind === "value-eps" ? 0.15 : 0);
+  if (kind === "search") {
+    return new SearchAgent(
+      spec,
+      net,
+      encoder,
+      breadth ? parseInt(breadth, 10) : undefined,
+      samples ? parseInt(samples, 10) : undefined,
+      mulliganMode
+    );
+  }
+  return new ValueNetAgent(
+    spec,
+    net,
+    encoder,
+    kind === "value-eps" ? 0.15 : 0,
+    mulliganMode
+  );
 }
 
 export const AGENTS: Record<string, () => SimAgent> = {
   current: () => new CurrentAIAgent(),
+  live: () => new LiveAIAgent(),
   random: () => new RandomAgent(),
   greedy: () => new GreedyAgent(),
   "greedy-eps": () => new GreedyAgent("greedy-eps", 0.15),

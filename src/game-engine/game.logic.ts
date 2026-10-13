@@ -852,8 +852,18 @@ export class GameLogic {
     let newState = state;
     const player = validators.getPlayer(newState, playerId);
 
+    // Events produced so far may reference objects inside `state` (e.g. a
+    // TileEvent's tile_effect), so for real moves each step below works on a
+    // fresh copy and can't mutate payloads already headed to clients. In
+    // simulation (AI lookahead, headless self-play) events are discarded and
+    // `state` is already a private copy, so the copies are pure overhead —
+    // they were most of the AI search's runtime.
+    const inPlace = simulationContext.isInSimulation();
+
     if (validators.shouldDrawCard(player, newState.max_cards_in_hand)) {
-      const drawCardResult = await this.drawCard(newState, playerId);
+      const drawCardResult = await this.drawCard(newState, playerId, {
+        inPlace,
+      });
       newState = drawCardResult.state;
       events.push(...drawCardResult.events);
     }
@@ -861,7 +871,9 @@ export class GameLogic {
     if (sightBlessingTriggered) {
       const refreshedPlayer = validators.getPlayer(newState, playerId);
       if (validators.shouldDrawCard(refreshedPlayer, newState.max_cards_in_hand)) {
-        const bonusDrawResult = await this.drawCard(newState, playerId);
+        const bonusDrawResult = await this.drawCard(newState, playerId, {
+          inPlace,
+        });
         newState = bonusDrawResult.state;
         events.push(...bonusDrawResult.events);
       }
@@ -869,7 +881,9 @@ export class GameLogic {
 
     // Switch turn to opponent. endTurn() checks for full-board game over
     // as its final step, after turn effects have ticked down.
-    const endTurnResult = await GameLogic.endTurn(newState, playerId);
+    const endTurnResult = await GameLogic.endTurn(newState, playerId, {
+      inPlace,
+    });
     newState = endTurnResult.state;
     events.push(...endTurnResult.events);
 
@@ -989,10 +1003,15 @@ export class GameLogic {
    */
   static async drawCard(
     currentGameState: GameState,
-    playerId: string
+    playerId: string,
+    // Mutate the given state instead of copying it. Only for callers that own
+    // a private copy and don't need earlier event payloads preserved.
+    opts: { inPlace?: boolean } = {}
   ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
     const events: BaseGameEvent[] = [];
-    const newState = _.cloneDeep(currentGameState);
+    const newState = opts.inPlace
+      ? currentGameState
+      : _.cloneDeep(currentGameState);
 
     // Get the drawn card from the correct player's deck in the game state
     const player = validators.getPlayer(newState, playerId);
@@ -1058,7 +1077,9 @@ export class GameLogic {
   // Additional methods like endTurn, surrender, etc. can be implemented here
   static async endTurn(
     currentGameState: GameState,
-    playerId: string
+    playerId: string,
+    // See drawCard: mutate in place instead of copying.
+    opts: { inPlace?: boolean } = {}
   ): Promise<{ state: GameState; events: BaseGameEvent[] }> {
     if (!validators.isPlayerTurn(currentGameState, playerId)) {
       throw new Error("Not current player's turn to end.");
@@ -1066,7 +1087,9 @@ export class GameLogic {
 
     let events: BaseGameEvent[] = [];
 
-    const newState = _.cloneDeep(currentGameState);
+    const newState = opts.inPlace
+      ? currentGameState
+      : _.cloneDeep(currentGameState);
 
     // Process temporary effects
     for (const [y, row] of newState.board.entries()) {
@@ -1322,7 +1345,10 @@ export class GameLogic {
     }
 
     // Only one player has passed so far — end the turn and let the opponent play
-    const endTurnResult = await GameLogic.endTurn(newState, playerId);
+    // newState is this call's own copy and FORCED_PASS holds no state refs.
+    const endTurnResult = await GameLogic.endTurn(newState, playerId, {
+      inPlace: true,
+    });
     return {
       state: endTurnResult.state,
       events: [...events, ...endTurnResult.events],

@@ -32,17 +32,8 @@ db.query = async (text: string) => {
 
 import { DeckPool, SimGameResult } from "../sim.types";
 import { createAgent } from "../sim.agents";
-import { playSimGame } from "../sim.game";
+import { createDeckPicker, playSimGame } from "../sim.game";
 
-function mulberry32(seed: number) {
-  let t = seed >>> 0;
-  return () => {
-    t += 0x6d2b79f5;
-    let n = Math.imul(t ^ (t >>> 15), 1 | t);
-    n ^= n + Math.imul(n ^ (n >>> 7), 61 | n);
-    return ((n ^ (n >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 async function main() {
   const aName = opt("a", "current");
@@ -57,7 +48,11 @@ async function main() {
 
   const a = createAgent(aName);
   const b = createAgent(bName);
-  const pick = mulberry32(baseSeed);
+  const pickDeck = createDeckPicker(
+    pool.decks,
+    baseSeed,
+    parseFloat(opt("player-share", "0.5"))
+  );
   const results: SimGameResult[] = [];
   const started = Date.now();
 
@@ -71,8 +66,8 @@ async function main() {
 
   for (let i = 0; i < pairs; i++) {
     const seed = baseSeed * 100_003 + i;
-    const d1 = pool.decks[Math.floor(pick() * pool.decks.length)];
-    const d2 = pool.decks[Math.floor(pick() * pool.decks.length)];
+    const d1 = pickDeck();
+    const d2 = pickDeck();
 
     for (const aIsP1 of [true, false]) {
       const r = await playSimGame({

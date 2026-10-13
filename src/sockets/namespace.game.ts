@@ -251,11 +251,10 @@ export function setupGameNamespace(io: Server): void {
         let aiMoveUsed = false;
 
         // If the move is paused awaiting this player's interactive choice (e.g.
-        // Frigg) and they ran out of time, auto-resolve against the strongest
-        // enemy hand card(s), then broadcast the full move to both players.
+        // Frigg) and they ran out of time, auto-resolve with the AI's pick,
+        // then broadcast the full move to both players.
         if (currentState.pending_choice) {
-          const chosenIds =
-            GameLogic.pickStrongestPendingChoiceCards(currentState);
+          const chosenIds = await ai.chooseHandTargets(currentState);
           if (chosenIds.length > 0) {
             const result = await GameLogic.resolveHandChoice(
               currentState,
@@ -325,12 +324,11 @@ export function setupGameNamespace(io: Server): void {
           events = result.events;
 
           // If the AI just played an interactive reveal-hand ability (e.g.
-          // Frigg), it can't send a follow-up choice — resolve it inline against
-          // the strongest enemy hand card(s) so the move completes in this same
-          // tick instead of hanging.
+          // Frigg), it can't send a follow-up choice — resolve it inline with
+          // the AI's pick so the move completes in this same tick instead of
+          // hanging.
           if (currentState.pending_choice) {
-            const chosenIds =
-              GameLogic.pickStrongestPendingChoiceCards(currentState);
+            const chosenIds = await ai.chooseHandTargets(currentState);
             if (chosenIds.length > 0) {
               const choiceResult = await GameLogic.resolveHandChoice(
                 currentState,

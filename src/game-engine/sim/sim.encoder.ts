@@ -73,6 +73,11 @@ export class StateEncoder {
   private readonly abilityIndex: Map<string, number>;
   private readonly characterIndex: Map<string, number>;
   private readonly tagIndex: Map<string, number>;
+  /**
+   * Characters/abilities seen that aren't in the vocab (encoded as "unknown").
+   * Non-empty means cards shipped after the model was trained — retrain.
+   */
+  readonly unknown = new Set<string>();
 
   constructor(readonly vocab: EncoderVocab) {
     this.abilityIndex = new Map(
@@ -99,12 +104,17 @@ export class StateEncoder {
   private ability(card: InGameCard | null | undefined): number {
     if (!card) return 0;
     const id = abilityId(card);
-    return id ? this.abilityIndex.get(id) ?? 1 : 0;
+    if (!id) return 0;
+    const index = this.abilityIndex.get(id);
+    if (index === undefined) this.unknown.add(`ability:${id}`);
+    return index ?? 1;
   }
 
   private character(card: InGameCard | null | undefined): number {
     if (!card) return 0;
-    return this.characterIndex.get(card.base_card_data.name) ?? 1;
+    const index = this.characterIndex.get(card.base_card_data.name);
+    if (index === undefined) this.unknown.add(`character:${card.base_card_data.name}`);
+    return index ?? 1;
   }
 
   private abilityBag(state: GameState, ids: string[]): number[] {

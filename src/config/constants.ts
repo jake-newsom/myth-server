@@ -167,6 +167,22 @@ export const MIN_SOULS_FOR_REWARDS = 1000;
 // AI Configuration
 export const AI_CONFIG = {
   PLAYER_ID: "00000000-0000-0000-0000-000000000000",
+  // Learned-value search AI (ai.neural.ts). Model files live in content/ai/;
+  // produce new ones with ai-train/ and promote only after they beat the
+  // current model in headless matches (src/game-engine/sim/cli/match.ts).
+  NEURAL: {
+    MODEL_FILE: "value-v3.json",
+    VOCAB_FILE: "vocab.json",
+    // Moves shortlisted by one-ply value, then searched against the reply.
+    BREADTH: 4,
+    // Sampled opponent hands per shortlisted move.
+    SAMPLES: 3,
+    // Typical search is ~150ms; past this, unsearched candidates are skipped.
+    TIME_BUDGET_MS: 1000,
+    // 0..1 — chance of playing the best searched move (else a random
+    // shortlisted one). Lower to soften the AI.
+    STRENGTH: 1,
+  },
   FEATURE_FLAGS: {
     ENGINE_V2_ENABLED: process.env.AI_ENGINE_V2_ENABLED !== "false",
     ENGINE_V2_SHADOW_MODE: process.env.AI_ENGINE_V2_SHADOW_MODE === "true",

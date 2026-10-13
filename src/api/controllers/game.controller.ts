@@ -1017,12 +1017,10 @@ class GameController {
           events.push(...placeCardResult.events);
 
           // If the AI played an interactive reveal-hand ability (e.g. Frigg), it
-          // can't make a follow-up choice — resolve it inline against the
-          // strongest enemy hand card(s) so the move completes instead of
-          // leaving the game paused.
+          // can't make a follow-up choice — resolve it inline with the AI's own
+          // pick so the move completes instead of leaving the game paused.
           if (updatedGameState.pending_choice) {
-            const chosenIds =
-              GameLogic.pickStrongestPendingChoiceCards(updatedGameState);
+            const chosenIds = await ai.chooseHandTargets(updatedGameState);
             if (chosenIds.length > 0) {
               const choiceResult = await GameLogic.resolveHandChoice(
                 updatedGameState,
