@@ -10,6 +10,7 @@ import { AITelemetry } from "./ai.telemetry";
 import { LookaheadEngine } from "./ai.lookahead";
 import { UnifiedScoreV2 } from "./ai.unified-score";
 import { randomFloat, randomInt } from "./simulation.rng";
+import { chooseNeuralHandTargets, chooseNeuralMove } from "./ai.neural";
 
 interface DifficultyWeights {
   IMMEDIATE_FLIPS: number;
@@ -643,13 +644,53 @@ export class AILogic {
   }
 
   /**
-   * Main AI move selection with difficulty-based strategy.
+   * Picks the AI's move: the learned-value search (ai.neural.ts), falling back
+   * to the legacy rules/lookahead AI if the model is unavailable or errors.
+   *
+   * @param currentGameState The current game state
+   * @param aiDifficulty Difficulty level (legacy AI only; currently pinned)
+   * @param forPlayerId Optional: specific player ID to make move for (used in PvP timeout scenarios)
+   */
+  async makeAIMove(
+    currentGameState: GameState,
+    aiDifficulty = "medium",
+    forPlayerId?: string
+  ): Promise<{
+    action_type: string;
+    user_card_instance_id: string;
+    position: BoardPosition;
+  } | null> {
+    const playerId =
+      forPlayerId ??
+      (currentGameState.player1.user_id.startsWith("AI_")
+        ? currentGameState.player1.user_id
+        : currentGameState.player2.user_id);
+    const neural = await chooseNeuralMove(currentGameState, playerId);
+    if (neural) return { action_type: "placeCard", ...neural };
+    return this.makeLegacyAIMove(currentGameState, aiDifficulty, forPlayerId);
+  }
+
+  /**
+   * Card(s) to select for a pending reveal-hand choice (e.g. Frigg) made on
+   * the AI's or a timed-out player's behalf. Evaluates each candidate with
+   * the neural AI; falls back to the strongest card(s).
+   */
+  async chooseHandTargets(currentGameState: GameState): Promise<string[]> {
+    const chooserId = currentGameState.pending_choice?.chooser_id;
+    const neural = chooserId
+      ? await chooseNeuralHandTargets(currentGameState, chooserId)
+      : null;
+    return neural ?? GameLogic.pickStrongestPendingChoiceCards(currentGameState);
+  }
+
+  /**
+   * Legacy AI move selection with difficulty-based strategy.
    *
    * @param currentGameState The current game state
    * @param aiDifficulty Difficulty level for move evaluation
    * @param forPlayerId Optional: specific player ID to make move for (used in PvP timeout scenarios)
    */
-  async makeAIMove(
+  async makeLegacyAIMove(
     currentGameState: GameState,
     _aiDifficulty = "medium",
     forPlayerId?: string

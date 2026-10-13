@@ -863,6 +863,17 @@ class TowerService {
       if (centuryToAnnounce !== null) {
         void this.announceTowerCentury(userId, centuryToAnnounce);
       }
+      void import("./achievement.service")
+        .then(({ default: AchievementService }) =>
+          AchievementService.triggerAchievementEvent({
+            userId,
+            eventType: "tower_floor_cleared",
+            eventData: { floorNumber },
+          })
+        )
+        .catch((error) =>
+          console.error("Error processing tower_floor_cleared achievement:", error)
+        );
 
       return {
         success: true,

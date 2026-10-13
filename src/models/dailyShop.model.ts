@@ -112,7 +112,9 @@ const DailyShopModel = {
       SELECT 
         dso.offering_id, dso.shop_date, dso.item_type, dso.card_id, 
         dso.mythology, dso.price, dso.currency, dso.slot_number,
-        dso.shop_tab, dso.created_at,
+        dso.shop_tab, dso.created_at, dso.frame_id,
+        af.code_key as frame_code_key, af.name as frame_name,
+        af.sprite_key as frame_sprite_key,
         cv.card_variant_id as card_card_id, ch.name as card_name, cv.rarity as card_rarity, 
         cv.image_url as card_image_url, ch.tags as card_tags, ch.set_id as card_set_id,
         ch.description as card_description,
@@ -129,6 +131,7 @@ const DailyShopModel = {
       LEFT JOIN card_variants cv ON dso.card_id = cv.card_variant_id
       LEFT JOIN characters ch ON cv.character_id = ch.character_id
       LEFT JOIN special_abilities sa ON ch.special_ability_id = sa.ability_id
+      LEFT JOIN avatar_frames af ON af.frame_id = dso.frame_id
       WHERE dso.shop_date = $1
         AND dso.shop_tab = ANY($2::text[])
         AND (
@@ -156,6 +159,16 @@ const DailyShopModel = {
       slot_number: row.slot_number,
       shop_tab: row.shop_tab ?? "daily",
       created_at: row.created_at,
+      frame_id: row.frame_id ?? null,
+      // Additive, like `card`: present only on avatar_frame offerings.
+      frame: row.frame_code_key
+        ? {
+            frame_id: row.frame_id,
+            code_key: row.frame_code_key,
+            name: row.frame_name,
+            sprite_key: row.frame_sprite_key,
+          }
+        : undefined,
       card: row.card_name
         ? {
             card_id: row.card_card_id,
@@ -199,9 +212,9 @@ const DailyShopModel = {
     executor: QueryExecutor = db
   ): Promise<DailyShopOffering> {
     const query = `
-      INSERT INTO daily_shop_offerings (shop_date, item_type, card_id, mythology, price, currency, slot_number, shop_tab)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING offering_id, shop_date, item_type, card_id, mythology, price, currency, slot_number, shop_tab, created_at;
+      INSERT INTO daily_shop_offerings (shop_date, item_type, card_id, mythology, price, currency, slot_number, shop_tab, frame_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING offering_id, shop_date, item_type, card_id, mythology, price, currency, slot_number, shop_tab, frame_id, created_at;
     `;
 
     const { rows } = await executor.query(query, [
@@ -213,6 +226,7 @@ const DailyShopModel = {
       offering.currency,
       offering.slot_number,
       offering.shop_tab ?? "daily",
+      offering.frame_id ?? null,
     ]);
 
     return rows[0];

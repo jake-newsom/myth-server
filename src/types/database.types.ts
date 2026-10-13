@@ -486,6 +486,17 @@ export interface GameResultWithPlayers extends GameResult {
   winner_username?: string;
 }
 
+export interface AchievementWinCondition {
+  /** character_id the winner played (board or discard). */
+  played_character?: string;
+  /** Winner's set passive, e.g. "norse". */
+  deck_effect?: string;
+  /** game_victory gameMode, e.g. "saga". */
+  game_mode?: string;
+  /** Battle mechanic id present in the game, e.g. "worlds_end". */
+  mechanic?: string;
+}
+
 export interface Achievement {
   id: string;
   achievement_key: string;
@@ -508,6 +519,11 @@ export interface Achievement {
    * target_value holds N. NULL on every other achievement.
    */
   level_requirement?: number | null;
+  /**
+   * Matched against each game_victory (AchievementService.handleGameVictory);
+   * every present key must hold. NULL on non-win-condition achievements.
+   */
+  win_condition?: AchievementWinCondition | null;
   rarity: Rarity;
   reward_gems: number;
   reward_fate_coins?: number; // Optional until DB migration adds this column
@@ -617,7 +633,9 @@ export type ShopItemType =
   | "ember_bundle"
   | "fragment_bundle"
   | "fate_coin_bundle"
-  | "soul_card";
+  | "soul_card"
+  /** One avatar frame from the daily_shop_price pool (see frame_id). */
+  | "avatar_frame";
 
 /**
  * Which tab of the unified shop an offering belongs to.
@@ -654,6 +672,8 @@ export interface DailyShopOffering {
   slot_number: number;
   /** Defaults to "daily" for rows written before the overhaul. */
   shop_tab?: ShopTab;
+  /** Set on avatar_frame offerings only. */
+  frame_id?: string | null;
   created_at: Date;
 }
 
@@ -665,6 +685,14 @@ export interface DailyShopOfferingWithCard extends DailyShopOffering {
    * field exists to end. Absent for card and pack offerings.
    */
   grant_amount?: number;
+  /** The frame on sale, for avatar_frame offerings. `owned` is per user. */
+  frame?: {
+    frame_id: string;
+    code_key: string;
+    name: string;
+    sprite_key: string | null;
+    owned?: boolean;
+  };
   card?: {
     card_id: string;
     name: string;

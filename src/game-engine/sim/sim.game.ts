@@ -254,3 +254,23 @@ export async function playSimGame(
   result.durationMs = Date.now() - started;
   return result;
 }
+
+/**
+ * Seeded deck sampler. `playerShare` is the chance a seat gets a real player
+ * deck (vs an AI deck) when the pool has both — uniform sampling would
+ * under-represent player decks, which are a small slice of the pool.
+ */
+export function createDeckPicker(
+  decks: DeckSnapshot[],
+  seed: number,
+  playerShare = 0.5
+): () => DeckSnapshot {
+  const rand = mulberry32(seed);
+  const player = decks.filter((d) => d.source === "player");
+  const ai = decks.filter((d) => d.source === "ai");
+  const from = (list: DeckSnapshot[]) => list[Math.floor(rand() * list.length)];
+  return () => {
+    if (!player.length || !ai.length) return from(decks);
+    return rand() < playerShare ? from(player) : from(ai);
+  };
+}

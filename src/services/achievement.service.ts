@@ -13,6 +13,7 @@ import {
   UserAchievementWithDetails,
 } from "../types/database.types";
 import { GrantedReward } from "../types/service.types";
+import type { AchievementWinCondition } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
 import { simulationContext } from "../game-engine/simulation.context";
 
@@ -229,6 +230,36 @@ async function filterVisibleEventAchievements<
     (a) =>
       !a.achievement?.event_id || visibleEventIds.has(a.achievement.event_id)
   );
+}
+
+/**
+ * Whether a game_victory satisfies a win_condition. Every key present must
+ * hold; an empty or missing condition never matches.
+ */
+export function winConditionMatches(
+  condition: AchievementWinCondition | null | undefined,
+  eventData: {
+    gameMode?: string;
+    deckEffect?: string | null;
+    playedCharacterIds?: string[];
+    mechanicIds?: string[];
+  }
+): boolean {
+  if (!condition || Object.keys(condition).length === 0) return false;
+  if (condition.played_character &&
+      !(eventData.playedCharacterIds ?? []).includes(condition.played_character)) {
+    return false;
+  }
+  if (condition.deck_effect && eventData.deckEffect !== condition.deck_effect) {
+    return false;
+  }
+  if (condition.game_mode && eventData.gameMode !== condition.game_mode) {
+    return false;
+  }
+  if (condition.mechanic && !(eventData.mechanicIds ?? []).includes(condition.mechanic)) {
+    return false;
+  }
+  return true;
 }
 
 const AchievementService = {
@@ -608,6 +639,26 @@ const AchievementService = {
           break;
         case "tile_state_changed":
           await this.handleTileStateChanged(event.userId, event.eventData, result);
+          break;
+        case "tower_floor_cleared":
+          await this.applyBatchedUpdatesAndCollectDetails(
+            event.userId,
+            ["tower_floor_50", "tower_floor_100"].map((achievement_key) => ({
+              achievement_key,
+              mode: "set" as const,
+              value: Number(event.eventData?.floorNumber) || 0,
+            })),
+            ["tower_floor_50", "tower_floor_100"],
+            result
+          );
+          break;
+        case "tutorial_completed":
+          await this.applyBatchedUpdatesAndCollectDetails(
+            event.userId,
+            [{ achievement_key: "tutorial_complete", mode: "set", value: 1 }],
+            ["tutorial_complete"],
+            result
+          );
           break;
         default:
           console.log(`Unknown achievement event type: ${event.eventType}`);
@@ -992,6 +1043,28 @@ const AchievementService = {
       }
     }
 
+    // Wins in any mode.
+    updates.push({
+      achievement_key: "total_wins_100",
+      mode: "increment",
+      value: 1,
+    });
+    keysToFetch.push("total_wins_100");
+
+    // Data-driven "win with X" achievements (achievements.win_condition).
+    const winConditionAchievements =
+      await AchievementModel.getWinConditionAchievements();
+    for (const achievement of winConditionAchievements) {
+      if (winConditionMatches(achievement.win_condition, eventData)) {
+        updates.push({
+          achievement_key: achievement.achievement_key,
+          mode: "increment",
+          value: 1,
+        });
+        keysToFetch.push(achievement.achievement_key);
+      }
+    }
+
     // Beta tester (play games during beta)
     updates.push({
       achievement_key: "beta_tester",
@@ -1154,6 +1227,12 @@ const AchievementService = {
         });
         keysToFetch.push(tier.achievement_key);
       }
+      updates.push({
+        achievement_key: "card_collection_half",
+        mode: "set",
+        value: totalUniqueCards,
+      });
+      keysToFetch.push("card_collection_half");
     }
 
     // Track mythic_collection tiered achievements (SET - only needs to be called once)

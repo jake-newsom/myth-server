@@ -32,7 +32,7 @@ import { GameState } from "../../../types/game.types";
 import { GameStatus } from "../../game.logic";
 import { DeckPool } from "../sim.types";
 import { createAgent } from "../sim.agents";
-import { playSimGame, SIM_P1, SIM_P2 } from "../sim.game";
+import { createDeckPicker, playSimGame, SIM_P1, SIM_P2 } from "../sim.game";
 import {
   buildVocab,
   EncodedState,
@@ -40,15 +40,6 @@ import {
   StateEncoder,
 } from "../sim.encoder";
 
-function mulberry32(seed: number) {
-  let t = seed >>> 0;
-  return () => {
-    t += 0x6d2b79f5;
-    let n = Math.imul(t ^ (t >>> 15), 1 | t);
-    n ^= n + Math.imul(n ^ (n >>> 7), 61 | n);
-    return ((n ^ (n >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 function floatRow(e: EncodedState, z: number, margin: number): number[] {
   return [
@@ -95,7 +86,11 @@ async function main() {
   const fFd = fs.openSync(`${base}.f32`, "w");
   const iFd = fs.openSync(`${base}.i16`, "w");
 
-  const pick = mulberry32(1_000_003 * (shard + 1));
+  const pickDeck = createDeckPicker(
+    pool.decks,
+    1_000_003 * (shard + 1),
+    parseFloat(opt("player-share", "0.5"))
+  );
   let rows = 0;
   let floatDim = 0;
   let intDim = 0;
@@ -104,8 +99,8 @@ async function main() {
 
   for (let g = 0; g < games; g++) {
     const seed = shard * 10_000_000 + g;
-    const d1 = pool.decks[Math.floor(pick() * pool.decks.length)];
-    const d2 = pool.decks[Math.floor(pick() * pool.decks.length)];
+    const d1 = pickDeck();
+    const d2 = pickDeck();
     const aIsP1 = g % 2 === 0;
 
     const positions: { p1: EncodedState; p2: EncodedState }[] = [];

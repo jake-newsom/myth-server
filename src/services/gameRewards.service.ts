@@ -298,6 +298,47 @@ const GameRewardsService = {
     return rows;
   },
 
+  /**
+   * What a win was won WITH, for win_condition achievements: the winner's set
+   * passive, the characters they played (board or discard, by character_id so
+   * ranked draft's synthetic instance ids still resolve), and the battle
+   * mechanics in play.
+   */
+  getVictoryContext(
+    gameState: GameState,
+    playerId: string
+  ): { deckEffect: string | null; playedCharacterIds: string[]; mechanicIds: string[] } {
+    const player =
+      playerId === gameState.player1?.user_id ? gameState.player1 : gameState.player2;
+    const played = new Set<string>();
+
+    for (const row of gameState.board ?? []) {
+      for (const tile of row ?? []) {
+        const card = tile?.card;
+        if (card && card.original_owner === playerId && card.base_card_data?.character_id) {
+          played.add(card.base_card_data.character_id);
+        }
+      }
+    }
+    for (const cardId of player?.discard_pile ?? []) {
+      const characterId =
+        gameState.hydrated_card_data_cache?.[cardId]?.base_card_data?.character_id;
+      if (characterId) played.add(characterId);
+    }
+
+    const mechanicIds = (gameState.mechanics ?? []).map((m) => m.config.id as string);
+    // Legacy persisted saga battles carried World's End on the saga context.
+    if (gameState.saga_context?.worlds_end && !mechanicIds.includes("worlds_end")) {
+      mechanicIds.push("worlds_end");
+    }
+
+    return {
+      deckEffect: player?.deck_effect ?? null,
+      playedCharacterIds: [...played],
+      mechanicIds,
+    };
+  },
+
   // Get cards that were actually used by a player during the game
   getCardsUsedInGame(
     gameState: GameState,
@@ -646,6 +687,7 @@ const GameRewardsService = {
               winnerScore,
               loserScore,
               gameDurationSeconds: gameResult.game_duration_seconds,
+              ...this.getVictoryContext(gameState, userId),
             },
           }).catch((error) => {
             console.error("Error processing game_victory achievement:", error);
@@ -812,6 +854,7 @@ const GameRewardsService = {
           winStreakCount: 0,
           winnerScore,
           loserScore,
+          ...this.getVictoryContext(gameState, userId),
         },
       });
     } catch (error) {

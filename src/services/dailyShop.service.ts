@@ -2,6 +2,7 @@ import { IapService } from "./iap.service";
 import DailyShopModel from "../models/dailyShop.model";
 import UserModel from "../models/user.model";
 import CardModel from "../models/card.model";
+import PlayerCosmeticsService from "./playerCosmetics.service";
 import db from "../config/db.config";
 import {
   DailyShopConfig,
@@ -212,10 +213,25 @@ const DailyShopService = {
       }
     }
 
+    const frameIds = offerings
+      .map((o) => o.frame?.frame_id)
+      .filter((id): id is string => !!id);
+    const ownedFrameIds = new Set<string>();
+    if (frameIds.length > 0) {
+      const { rows } = await db.query(
+        `SELECT frame_id FROM user_owned_frames WHERE user_id = $1 AND frame_id = ANY($2::uuid[])`,
+        [userId, frameIds]
+      );
+      for (const row of rows) ownedFrameIds.add(row.frame_id);
+    }
+
     return {
       shop_date: this.getCurrentShopDate(),
       offerings: offerings.map((offering) => ({
         ...offering,
+        ...(offering.frame && {
+          frame: { ...offering.frame, owned: ownedFrameIds.has(offering.frame.frame_id) },
+        }),
         shop_date: this.getCurrentShopDate(), // Ensure consistent UTC date string
         grant_amount: this.getBundleGrantAmount(offering.item_type),
       })),
@@ -454,6 +470,19 @@ const DailyShopService = {
             `UPDATE users SET fate_coins = fate_coins + $1 WHERE user_id = $2`,
             [fateCoinsReceived, userId]
           );
+        } else if (offering.item_type === "avatar_frame" && offering.frame_id) {
+          // Ownership is re-checked by the INSERT itself: a false return means
+          // the user already has it, so undo the charge.
+          const granted = await PlayerCosmeticsService.grantFrame(
+            userId,
+            offering.frame_id,
+            "daily_shop",
+            client
+          );
+          if (!granted) {
+            await client.query("ROLLBACK");
+            return { success: false, message: "You already own this frame." };
+          }
         } else if (offering.card_id) {
           cardReceived = await CardModel.addCardToUser(userId, offering.card_id, client);
         }
@@ -580,6 +609,11 @@ const DailyShopService = {
           await this.generateFlatOffering(targetDate, config, slotNumber);
           offeringsCreated += 1;
           slotNumber += 1;
+        } else if (config.item_type === "avatar_frame") {
+          if (await this.generateFrameOffering(targetDate, config, slotNumber)) {
+            offeringsCreated += 1;
+            slotNumber += 1;
+          }
         }
       }
 
@@ -921,6 +955,47 @@ const DailyShopService = {
     logger.info(
       `Added ${config.item_type} offering to daily shop: ${config.price} ${config.currency}`
     );
+  },
+
+  /**
+   * One avatar frame from the pool (avatar_frames.daily_shop_price set),
+   * priced by that column. Avoids repeating yesterday's frame when the pool
+   * has more than one. Returns false when the pool is empty.
+   */
+  async generateFrameOffering(
+    shopDate: string,
+    config: DailyShopConfig,
+    slotNumber: number
+  ): Promise<boolean> {
+    const { rows } = await db.query(
+      `SELECT f.frame_id, f.daily_shop_price,
+              EXISTS (
+                SELECT 1 FROM daily_shop_offerings o
+                 WHERE o.frame_id = f.frame_id
+                   AND o.shop_date = $1::date - 1
+              ) AS shown_yesterday
+         FROM avatar_frames f
+        WHERE f.daily_shop_price IS NOT NULL AND f.is_unique = false`,
+      [shopDate]
+    );
+    if (rows.length === 0) return false;
+
+    const fresh = rows.filter((r: any) => !r.shown_yesterday);
+    const pool = fresh.length > 0 ? fresh : rows;
+    const frame = pool[Math.floor(Math.random() * pool.length)];
+
+    await DailyShopModel.createOffering({
+      shop_date: shopDate,
+      item_type: "avatar_frame",
+      card_id: undefined,
+      mythology: undefined,
+      price: frame.daily_shop_price ?? config.price,
+      currency: config.currency,
+      slot_number: slotNumber,
+      shop_tab: "daily",
+      frame_id: frame.frame_id,
+    });
+    return true;
   },
 
   /**

@@ -148,9 +148,9 @@ export function updateCurrentPower(
     const cell = board.flat().find(cell => cell.card?.user_card_instance_id === card.user_card_instance_id);
     refreshMechanicTilePower(card, cell?.tile_enabled ? cell.mechanic_effect : undefined);
   }
-  const currentPower: PowerValues = structuredClone(
-    card.base_card_data.base_power,
-  );
+  // PowerValues is flat numbers, so a spread is a full copy. structuredClone
+  // here was ~15% of AI search time (this runs per card, per board update).
+  const currentPower: PowerValues = { ...card.base_card_data.base_power };
 
   // Add enhancements
   (Object.keys(card.power_enhancements) as (keyof PowerValues)[]).forEach(
