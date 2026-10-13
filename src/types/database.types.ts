@@ -633,7 +633,9 @@ export type ShopItemType =
   | "ember_bundle"
   | "fragment_bundle"
   | "fate_coin_bundle"
-  | "soul_card";
+  | "soul_card"
+  /** One avatar frame from the daily_shop_price pool (see frame_id). */
+  | "avatar_frame";
 
 /**
  * Which tab of the unified shop an offering belongs to.
@@ -670,6 +672,8 @@ export interface DailyShopOffering {
   slot_number: number;
   /** Defaults to "daily" for rows written before the overhaul. */
   shop_tab?: ShopTab;
+  /** Set on avatar_frame offerings only. */
+  frame_id?: string | null;
   created_at: Date;
 }
 
@@ -681,6 +685,14 @@ export interface DailyShopOfferingWithCard extends DailyShopOffering {
    * field exists to end. Absent for card and pack offerings.
    */
   grant_amount?: number;
+  /** The frame on sale, for avatar_frame offerings. `owned` is per user. */
+  frame?: {
+    frame_id: string;
+    code_key: string;
+    name: string;
+    sprite_key: string | null;
+    owned?: boolean;
+  };
   card?: {
     card_id: string;
     name: string;
