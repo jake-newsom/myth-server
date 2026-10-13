@@ -20,12 +20,13 @@ interface PackCreateInput {
   released_at?: Date | null;
   sort_order?: number;
   excluded_from_fate_picks?: boolean;
+  event_id?: string | null;
 }
 
 const PACK_COLUMNS = `
   pack_id, name, slug, description, image_url,
   is_released, released_at, sort_order, excluded_from_fate_picks,
-  created_at, updated_at
+  event_id, created_at, updated_at
 `;
 
 const PackModel = {
@@ -105,6 +106,21 @@ const PackModel = {
         AND ch.released_at <= NOW()
       WHERE p.is_released = true
         AND (p.released_at IS NULL OR p.released_at <= NOW())
+        -- Event packs: listed while the event is live, and afterwards only to
+        -- players still holding some, so leftovers stay openable.
+        AND (
+          p.event_id IS NULL
+          OR EXISTS (
+            SELECT 1 FROM "events" e
+             WHERE e.id = p.event_id AND e.is_active
+               AND NOW() >= e.starts_at AND NOW() < e.ends_at
+          )
+          OR EXISTS (
+            SELECT 1 FROM "user_pack_inventory" upi
+             WHERE upi.pack_id = p.pack_id AND upi.user_id = $1::uuid
+               AND upi.quantity > 0
+          )
+        )
       GROUP BY p.pack_id
       ORDER BY p.sort_order, p.name;
     `;
@@ -156,7 +172,18 @@ const PackModel = {
           '{}'
         ) AS card_variant_min_app_versions
       FROM "packs" p
-      LEFT JOIN "pack_card_variants" pcv ON pcv.pack_id = p.pack_id
+      -- Event-card rows only count while their event is live (same rule as
+      -- PackService.getCardsFromPack).
+      LEFT JOIN "pack_card_variants" pcv
+        ON pcv.pack_id = p.pack_id
+        AND (
+          pcv.event_id IS NULL
+          OR EXISTS (
+            SELECT 1 FROM "events" e
+             WHERE e.id = pcv.event_id AND e.is_active
+               AND NOW() >= e.starts_at AND NOW() < e.ends_at
+          )
+        )
       LEFT JOIN "card_variants" cv
         ON cv.card_variant_id = pcv.card_variant_id
         AND ${sqlVariantReleased("cv", includeUnreleased)}
@@ -218,6 +245,7 @@ const PackModel = {
       "released_at",
       "sort_order",
       "excluded_from_fate_picks",
+      "event_id",
     ];
 
     for (const key of assignable) {
@@ -263,7 +291,9 @@ const PackModel = {
     try {
       await client.query("BEGIN");
       await client.query(
-        `DELETE FROM "pack_card_variants" WHERE pack_id = $1;`,
+        // Event-card rows (event_id set) are managed separately and survive a
+        // wholesale replace of the pack's standard contents.
+        `DELETE FROM "pack_card_variants" WHERE pack_id = $1 AND event_id IS NULL;`,
         [packId],
       );
 

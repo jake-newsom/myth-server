@@ -12,6 +12,7 @@ import FeatureFlagService from "./featureFlag.service";
 
 const CARDS_PER_PACK = 5;
 const GOD_PACK_CHANCE = 1 / 1200; // 1 in 1500 chance
+const DEFAULT_PULL_WEIGHT = 100;
 
 interface CardWithAbility extends Card {
   special_ability: {
@@ -21,6 +22,12 @@ interface CardWithAbility extends Card {
     triggerMoment: string;
     parameters: Record<string, any>;
   } | null;
+  /**
+   * Relative pull weight within its rarity bucket (pack_card_variants.weight,
+   * NULL -> DEFAULT_PULL_WEIGHT). Event cards in standard packs carry
+   * EVENT_CARD_PULL_WEIGHT for a slight edge while their event is live.
+   */
+  pull_weight?: number;
 }
 
 interface PackOpenResult {
@@ -221,22 +228,37 @@ const PackService = {
         throw new Error("User not found");
       }
 
-      if (Number(lockRows[0].pack_count) < 1) {
-        await client.query("ROLLBACK");
-        throw new Error("User does not have any packs available");
-      }
+      if (pack.event_id != null) {
+        // Event packs are paid only from per-pack inventory.
+        const remaining = await UserModel.spendPackFromInventory(
+          userId,
+          packId,
+          1,
+          client,
+        );
+        if (remaining === null) {
+          await client.query("ROLLBACK");
+          throw new Error("User does not have any of this pack available");
+        }
+        remainingPacks = remaining;
+      } else {
+        if (Number(lockRows[0].pack_count) < 1) {
+          await client.query("ROLLBACK");
+          throw new Error("User does not have any packs available");
+        }
 
-      const { rows: debitRows } = await client.query(
-        `UPDATE users SET pack_count = pack_count - 1
-          WHERE user_id = $1 AND pack_count >= 1
-          RETURNING pack_count`,
-        [userId],
-      );
-      if (debitRows.length === 0) {
-        await client.query("ROLLBACK");
-        throw new Error("Failed to remove pack from user inventory");
+        const { rows: debitRows } = await client.query(
+          `UPDATE users SET pack_count = pack_count - 1
+            WHERE user_id = $1 AND pack_count >= 1
+            RETURNING pack_count`,
+          [userId],
+        );
+        if (debitRows.length === 0) {
+          await client.query("ROLLBACK");
+          throw new Error("Failed to remove pack from user inventory");
+        }
+        remainingPacks = Number(debitRows[0].pack_count);
       }
-      remainingPacks = Number(debitRows[0].pack_count);
 
       ({ selectedCards, isGodPack, packOpeningId } =
         await this._openSinglePackCore(userId, packId, packCards, client));
@@ -398,6 +420,7 @@ const PackService = {
     const query = `
       SELECT
         cv.card_variant_id, cv.rarity, cv.image_url, cv.attack_animation,
+        pcv.weight AS pull_weight,
         ch.name, ch.description, ch.type,
         ch.base_power->>'top' as base_power_top,
         ch.base_power->>'right' as base_power_right,
@@ -410,14 +433,23 @@ const PackService = {
       JOIN "card_variants" cv ON cv.card_variant_id = pcv.card_variant_id
       JOIN "characters" ch ON cv.character_id = ch.character_id
       LEFT JOIN "special_abilities" sa ON ch.special_ability_id = sa.ability_id
+      LEFT JOIN "events" e ON e.id = pcv.event_id
       WHERE pcv.pack_id = $1
         AND cv.released_at <= NOW()
-        AND ch.released_at <= NOW();
+        AND ch.released_at <= NOW()
+        -- Event-card rows only resolve while their event is live, so event
+        -- cards leave standard packs on their own when the event ends.
+        AND (
+          pcv.event_id IS NULL
+          OR (e.is_active AND NOW() >= e.starts_at AND NOW() < e.ends_at)
+        );
     `;
     const { rows } = await db.query(query, [packId]);
 
     return rows.map((row: any) => ({
       card_id: row.card_variant_id, // Use card_variant_id as card_id for compatibility
+      pull_weight:
+        row.pull_weight == null ? DEFAULT_PULL_WEIGHT : Number(row.pull_weight),
       name: row.name,
       rarity: row.rarity,
       image_url: row.image_url,
@@ -511,10 +543,9 @@ const PackService = {
       }
 
       if (availableCards.length > 0) {
-        const randomIndex = Math.floor(Math.random() * availableCards.length);
         // Push the pool card as-is: its card_id/rarity already describe a real
         // full-art variant, so there is nothing to override.
-        selectedCards.push({ ...availableCards[randomIndex] });
+        selectedCards.push({ ...this.pickWeighted(availableCards) });
       }
     }
 
@@ -526,6 +557,26 @@ const PackService = {
     });
 
     return selectedCards;
+  },
+
+  /**
+   * Pick one card from a same-rarity bucket by pull_weight. With every weight
+   * at the default this is a uniform pick; an event card at 130 among
+   * defaults gets a 1.3x relative edge over each other card in its rarity. The
+   * rarity roll itself is unaffected.
+   */
+  pickWeighted(cards: CardWithAbility[]): CardWithAbility {
+    const weightOf = (c: CardWithAbility) =>
+      c.pull_weight != null && c.pull_weight > 0
+        ? c.pull_weight
+        : DEFAULT_PULL_WEIGHT;
+    const total = cards.reduce((sum, c) => sum + weightOf(c), 0);
+    let roll = Math.random() * total;
+    for (const card of cards) {
+      roll -= weightOf(card);
+      if (roll < 0) return card;
+    }
+    return cards[cards.length - 1];
   },
 
   selectRandomCards(
@@ -574,8 +625,7 @@ const PackService = {
       }
 
       if (availableCards.length > 0) {
-        const randomIndex = Math.floor(Math.random() * availableCards.length);
-        const selectedCard = { ...availableCards[randomIndex] };
+        const selectedCard = { ...this.pickWeighted(availableCards) };
 
         // Only count as variant if we selected a variant rarity AND found matching cards
         const isVariantRarity = selectedRarity.includes("+");
@@ -877,18 +927,24 @@ const PackService = {
         [userId, packId],
       );
       const heldQuantity = Number(heldRows[0]?.quantity ?? 0);
-      const useInventory = heldQuantity > 0;
+      // An event pack is paid ONLY from per-pack inventory — never from
+      // pack_count, even when the player holds none.
+      const useInventory = pack.event_id != null || heldQuantity > 0;
       const available = useInventory ? heldQuantity : Number(userPackCount);
 
       if (available < count) {
         await client.query("ROLLBACK");
         const noun = useInventory ? "of these packs" : "packs";
+        const more =
+          pack.event_id != null
+            ? "Earn more from the event."
+            : "Buy more in the Shop.";
         return {
           success: false,
           message:
             available === 0
-              ? `You don't have any ${noun} to open. Buy more in the Shop.`
-              : `You only have ${available} of the ${count} packs needed. Buy more in the Shop.`,
+              ? `You don't have any ${noun} to open. ${more}`
+              : `You only have ${available} of the ${count} packs needed. ${more}`,
           code: "INSUFFICIENT_PACKS",
         };
       }

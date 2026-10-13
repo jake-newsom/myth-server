@@ -25,6 +25,29 @@ interface RankedQueueEntry {
 
 const queue: RankedQueueEntry[] = [];
 
+/**
+ * Last time each user queued or was paired, for the "N active players" count
+ * on the queue banner. A raw queue length reads as "1" (yourself) at low
+ * population, which discourages queueing; a recent-activity window doesn't.
+ * In-memory and per-instance, like the queue.
+ */
+const ACTIVE_WINDOW_MS = 10 * 60 * 1000;
+const lastActiveAt = new Map<string, number>();
+
+function markActive(userId: string, now: number = Date.now()): void {
+  lastActiveAt.set(userId, now);
+}
+
+/** Distinct users who queued or were paired in the window, plus anyone queued now. */
+export function activePlayerCount(now: number = Date.now()): number {
+  for (const [userId, at] of lastActiveAt) {
+    if (now - at > ACTIVE_WINDOW_MS) lastActiveAt.delete(userId);
+  }
+  const active = new Set(lastActiveAt.keys());
+  for (const e of queue) active.add(e.userId);
+  return active.size;
+}
+
 /** ±window, widening with wait, capped. Straight from the matchmaking plan. */
 const BASE_WINDOW = 100;
 const WIDEN_PER_10S = 50;
@@ -54,6 +77,7 @@ export async function getRankedRating(userId: string): Promise<number> {
 }
 
 export async function joinQueue(userId: string): Promise<void> {
+  markActive(userId);
   if (isUserInRankedQueue(userId)) return;
   queue.push({
     userId,
@@ -71,12 +95,13 @@ export function leaveQueue(userId: string): boolean {
 
 export function queueStatus(
   userId: string
-): { waitSeconds: number; queueLength: number } | null {
+): { waitSeconds: number; queueLength: number; activePlayers: number } | null {
   const entry = queue.find((e) => e.userId === userId);
   if (!entry) return null;
   return {
     waitSeconds: Math.floor((Date.now() - entry.queuedAt) / 1000),
     queueLength: queue.length,
+    activePlayers: activePlayerCount(),
   };
 }
 
@@ -116,6 +141,8 @@ export async function runMatchPass(now: number = Date.now()): Promise<number> {
   for (const [a, b] of pairs) {
     leaveQueue(a.userId);
     leaveQueue(b.userId);
+    markActive(a.userId, now);
+    markActive(b.userId, now);
     // Coin-flip the seats. `pairs` is built off a rating-ascending sort, so `a`
     // is always the lower-rated player -- and seat 1 carries both first draft
     // pick and the first turn of the resulting game (buildDraftGameState seeds
@@ -142,6 +169,7 @@ export async function runMatchPass(now: number = Date.now()): Promise<number> {
 /** Test seam. */
 export function _resetQueue(): void {
   queue.length = 0;
+  lastActiveAt.clear();
 }
 
 export default {

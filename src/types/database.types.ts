@@ -103,6 +103,9 @@ export interface Pack {
   // When true, openings of this pack never create a Fate pick. Data switch,
   // toggled per row; false means today's behavior.
   excluded_from_fate_picks: boolean;
+  // Non-NULL = event pack: opened only from user_pack_inventory, never from
+  // the generic pack_count.
+  event_id?: string | null;
   created_at: Date;
   updated_at: Date;
 }

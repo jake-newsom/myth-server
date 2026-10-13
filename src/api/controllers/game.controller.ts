@@ -45,6 +45,7 @@ import { BaseGameEvent, pacePowerEvents } from "../../game-engine/game-events";
 import { sanitizeGameStateForPlayer } from "../../utils/sanitize";
 import {
   buildTutorialGameState,
+  buildTutorialGameStateV2,
   getTutorialAIMove,
 } from "../../game-engine/tutorial.data";
 import { resolveAIDifficulty } from "../../game-engine/ai.difficulty";
@@ -339,7 +340,11 @@ class GameController {
   }
 
   /**
-   * Start a tutorial game with predetermined cards and a 3x3 board.
+   * Start a tutorial game with predetermined cards.
+   *
+   * Body `{ version: 2 }` opts in to the 4x4 terrain tutorial. Anything else
+   * (including no body, which is what shipped clients send) builds the v1 3x3
+   * tutorial their hardcoded step script expects.
    */
   async startTutorialGame(req: Request, res: Response): Promise<void> {
     try {
@@ -350,7 +355,10 @@ class GameController {
         return;
       }
 
-      const initialGameState = await buildTutorialGameState(userId);
+      const initialGameState =
+        req.body?.version === 2
+          ? await buildTutorialGameStateV2(userId)
+          : await buildTutorialGameState(userId);
 
       const createdGameResponse: CreateGameResponse =
         await GameService.createTutorialGameRecord(
@@ -926,7 +934,7 @@ class GameController {
 
       if (isTutorial) {
         // Use scripted move for tutorial games
-        const tutorialMove = getTutorialAIMove(currentGameState.turn_number);
+        const tutorialMove = getTutorialAIMove(currentGameState);
 
         if (tutorialMove) {
           const placeCardResult = await GameLogic.placeCard(
@@ -937,6 +945,18 @@ class GameController {
           );
           updatedGameState = placeCardResult.state;
           events.push(...placeCardResult.events);
+        } else if (
+          !validators.canPlayerPlay(
+            validators.getPlayer(currentGameState, AI_PLAYER_ID)
+          )
+        ) {
+          // Out of cards — force-pass so the both-passed end-game path can fire
+          const forcePassResult = await GameLogic.forcePass(
+            currentGameState,
+            AI_PLAYER_ID
+          );
+          updatedGameState = forcePassResult.state;
+          events.push(...forcePassResult.events);
         } else {
           // No scripted move for this turn — game should be ending
           const endTurnResult = await GameLogic.endTurn(

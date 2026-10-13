@@ -246,7 +246,18 @@ export function resolveCombat(
       return { state: gameState, events };
     }
 
+    const placedCardId = placedCell.card.user_card_instance_id;
+
     for (const dir of directions) {
+      // An ability triggered by an earlier flip may have destroyed or moved
+      // the placed card; stop combat rather than read power off null.
+      if (
+        gameState.board[position.y][position.x]?.card?.user_card_instance_id !==
+        placedCardId
+      ) {
+        break;
+      }
+
       const nx = position.x + dir.dx;
       const ny = position.y + dir.dy;
 

@@ -200,6 +200,12 @@ export interface GameState {
    * unset, and must keep paying out.
    */
   ember_funded?: boolean;
+  /**
+   * Which scripted onboarding tutorial this game runs. Absent on v1 (3x3)
+   * tutorials and on every non-tutorial game; 2 = the 4x4 terrain tutorial.
+   * Picks the server's scripted AI move table.
+   */
+  tutorial_version?: number;
 }
 
 export interface GameAction {

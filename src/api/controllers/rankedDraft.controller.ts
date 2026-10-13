@@ -117,6 +117,7 @@ const RankedDraftController = {
         status: "queued",
         waitTime: status.waitSeconds,
         queueLength: status.queueLength,
+        activePlayers: status.activePlayers,
       });
     } catch (error) {
       next(error);
@@ -163,6 +164,7 @@ const RankedDraftController = {
           status: "queued",
           waitTime: status.waitSeconds,
           queueLength: status.queueLength,
+          activePlayers: status.activePlayers,
           dailyBattles,
         });
       }

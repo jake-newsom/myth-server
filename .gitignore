@@ -8,3 +8,4 @@ graphify-out/
 docs/
 scripts/
 *.DS_Store
+.ai-sim/
