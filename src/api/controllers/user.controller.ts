@@ -22,6 +22,7 @@ import {
 } from "../../types";
 import { USER_LIMITS } from "../../config/constants";
 import { checkUsername } from "../../services/usernameFilter.service";
+import AchievementService from "../../services/achievement.service";
 
 // Helper function to transform CardResponse to UserCard
 const transformToUserCard = (card: CardResponse): UserCard => ({
@@ -850,6 +851,14 @@ const UserController = {
         return;
       }
       await UserModel.markTutorialComplete(req.user.user_id);
+      // Fire-and-forget; idempotent ("set" to 1), so repeat calls are harmless.
+      AchievementService.triggerAchievementEvent({
+        userId: req.user.user_id,
+        eventType: "tutorial_completed",
+        eventData: {},
+      }).catch((error) =>
+        console.error("Error processing tutorial_completed achievement:", error)
+      );
       res.status(200).json({ status: "ok" });
     } catch (error) {
       next(error);

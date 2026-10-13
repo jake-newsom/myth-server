@@ -87,8 +87,11 @@ function cacheAchievementDefinition(achievement: Achievement): void {
   });
 }
 
+let winConditionCache: { achievements: Achievement[]; expiresAt: number } | null = null;
+
 function clearAchievementDefinitionCache(): void {
   achievementDefinitionCache.clear();
+  winConditionCache = null;
 }
 
 const AchievementModel = {
@@ -1589,6 +1592,24 @@ const AchievementModel = {
    * Returns a map of base_key -> Achievement[]
    * This is more efficient than calling getTieredAchievementsByBaseKey multiple times
    */
+  /**
+   * Active achievements with a win_condition. Small and read on every win, so
+   * cached for the same TTL as single definitions.
+   */
+  async getWinConditionAchievements(): Promise<Achievement[]> {
+    if (winConditionCache && winConditionCache.expiresAt > Date.now()) {
+      return winConditionCache.achievements;
+    }
+    const { rows } = await db.query(
+      `SELECT * FROM achievements WHERE win_condition IS NOT NULL AND is_active = true`
+    );
+    winConditionCache = {
+      achievements: rows,
+      expiresAt: Date.now() + ACHIEVEMENT_DEFINITION_CACHE_TTL_MS,
+    };
+    return rows;
+  },
+
   async getTieredAchievementsByBaseKeys(
     baseKeys: string[]
   ): Promise<Map<string, Achievement[]>> {
