@@ -486,6 +486,17 @@ export interface GameResultWithPlayers extends GameResult {
   winner_username?: string;
 }
 
+export interface AchievementWinCondition {
+  /** character_id the winner played (board or discard). */
+  played_character?: string;
+  /** Winner's set passive, e.g. "norse". */
+  deck_effect?: string;
+  /** game_victory gameMode, e.g. "saga". */
+  game_mode?: string;
+  /** Battle mechanic id present in the game, e.g. "worlds_end". */
+  mechanic?: string;
+}
+
 export interface Achievement {
   id: string;
   achievement_key: string;
@@ -508,6 +519,11 @@ export interface Achievement {
    * target_value holds N. NULL on every other achievement.
    */
   level_requirement?: number | null;
+  /**
+   * Matched against each game_victory (AchievementService.handleGameVictory);
+   * every present key must hold. NULL on non-win-condition achievements.
+   */
+  win_condition?: AchievementWinCondition | null;
   rarity: Rarity;
   reward_gems: number;
   reward_fate_coins?: number; // Optional until DB migration adds this column

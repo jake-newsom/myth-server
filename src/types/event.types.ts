@@ -258,6 +258,8 @@ export interface EventShopOfferingView extends EventShopOffering {
     special_ability?: unknown;
     sound_effect?: string;
   };
+  /** The granted avatar frame, on `avatar_frame` slots only. Additive. */
+  frame?: { code_key: string; name: string; sprite_key: string | null };
 }
 
 // ---- Milestones ------------------------------------------------------------

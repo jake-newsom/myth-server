@@ -13,6 +13,7 @@ import SeasonRewardTierModel, {
   resolveTierForRankKey,
 } from "../models/seasonRewardTier.model";
 import CardBackModel from "../models/cardBack.model";
+import PlayerCosmeticsService from "./playerCosmetics.service";
 import logger from "../utils/logger";
 
 /**
@@ -199,6 +200,13 @@ async function deliverCosmetics(
 ): Promise<{ cardIds: string[]; firstBorderId: string | null; extraBorderIds: string[] }> {
   for (const backId of bundle.card_back_ids) {
     await CardBackModel.grantToUser(userId, backId, client);
+  }
+  // Titles and avatar frames likewise.
+  for (const titleId of bundle.title_ids ?? []) {
+    await PlayerCosmeticsService.grantTitle(userId, titleId, "ranked_draft_season", client);
+  }
+  for (const frameId of bundle.frame_ids ?? []) {
+    await PlayerCosmeticsService.grantFrame(userId, frameId, "ranked_draft_season", client);
   }
   const borders = [...bundle.border_ids];
   const firstBorderId = borders.shift() ?? null;
