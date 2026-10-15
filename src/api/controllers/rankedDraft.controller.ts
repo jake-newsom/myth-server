@@ -155,6 +155,7 @@ const RankedDraftController = {
         return res.status(200).json({
           status: "drafting",
           sessionId: session.session_id,
+          activePlayers: RankedMatchmaking.activePlayerCount(),
           dailyBattles,
         });
       }
@@ -168,7 +169,11 @@ const RankedDraftController = {
           dailyBattles,
         });
       }
-      return res.status(200).json({ status: "idle", dailyBattles });
+      return res.status(200).json({
+        status: "idle",
+        activePlayers: RankedMatchmaking.activePlayerCount(),
+        dailyBattles,
+      });
     } catch (error) {
       next(error);
     }

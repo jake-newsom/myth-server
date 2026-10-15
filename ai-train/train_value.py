@@ -25,6 +25,14 @@ p.add_argument("--epochs", type=int, default=12)
 p.add_argument("--batch", type=int, default=1024)
 p.add_argument("--lr", type=float, default=1e-3)
 p.add_argument("--val-shards", type=int, default=1)
+# Older data (e.g. archived nights played by weaker models) is subsampled so
+# it makes up at most --old-frac of the rows from --data.
+p.add_argument("--old-data", default="")
+p.add_argument("--old-frac", type=float, default=0.5)
+# Network size; the TS forward pass reads sizes from the weights file.
+p.add_argument("--tile-h", type=int, default=24)
+p.add_argument("--hand-h", type=int, default=24)
+p.add_argument("--hidden", type=int, default=192)
 args = p.parse_args()
 
 # --data takes a comma-separated list of shard dirs (e.g. every self-play
@@ -39,6 +47,20 @@ for d in args.data.split(","):
         raise SystemExit(f"no shards in {d}")
     train_metas += found[: -args.val_shards]
     val_metas += found[-args.val_shards :]
+if args.old_data:
+    rng = np.random.default_rng(0)
+    new_rows = sum(json.load(open(m))["rows"] for m in train_metas)
+    budget = args.old_frac * new_rows
+    old = []
+    for d in args.old_data.split(","):
+        old += glob.glob(os.path.join(d, "**", "shard-*.meta.json"), recursive=True)
+    taken = 0
+    for m in rng.permutation(old):
+        if taken >= budget:
+            break
+        train_metas.append(str(m))
+        taken += json.load(open(m))["rows"]
+    print(f"old data: {taken} rows from {args.old_data} (budget {int(budget)})")
 meta = json.load(open(train_metas[0]))
 FD, ID = meta["float_dim"], meta["int_dim"]
 T, TF = meta["board_tiles"], meta["tile_features"]
@@ -116,7 +138,7 @@ class ValueNet(nn.Module):
 
 
 dev = "mps" if torch.backends.mps.is_available() else "cpu"
-model = ValueNet().to(dev)
+model = ValueNet(tile_h=args.tile_h, hand_h=args.hand_h, hidden=args.hidden).to(dev)
 print(f"params: {sum(p.numel() for p in model.parameters()):,}  device: {dev}")
 opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
 sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, args.epochs)

@@ -216,6 +216,8 @@ async function main() {
         ability_vocab: encoder.abilityVocabSize,
         character_vocab: encoder.characterVocabSize,
         agents: [a.name, b.name],
+        // Which model generated this shard (worker.sh passes a file hash).
+        model_tag: opt("tag", ""),
         explore: exploreProb,
         target_mix: targetMix,
         games,

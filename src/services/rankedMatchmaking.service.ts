@@ -181,5 +181,6 @@ export default {
   rankedQueueLength,
   ratingWindowFor,
   getRankedRating,
+  activePlayerCount,
   _resetQueue,
 };

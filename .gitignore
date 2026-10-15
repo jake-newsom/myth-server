@@ -7,5 +7,7 @@ dist/
 graphify-out/
 docs/
 scripts/
-*.DS_Store
+*/.DS_Store
 .ai-sim/
+*.DS_Store
+src/.DS_Store

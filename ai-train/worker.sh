@@ -8,7 +8,8 @@
 #
 # Each name owns its own shard-number range, so machines never repeat a game.
 # Shards land in .ai-sim/data-pool/<name>/; copy helper folders into the main
-# machine's .ai-sim/data-pool/ before training.
+# machine's .ai-sim/data-pool/ before training. Each morning, archive the pool
+# (see OVERNIGHT.md) so the next night trains mostly on the newest model's games.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -53,7 +54,7 @@ while [ "$BATCHES" = 0 ] || [ "$batch" -lt "$BATCHES" ]; do
       --a "search:$MODEL" --b "search:$MODEL" \
       --games "$GAMES_PER_SHARD" --shard $(( first + i )) \
       --mirror-share 0.5 --explore 0.25 --target-mix 0.5 \
-      --out "$OUT" > "$OUT/shard-$(( first + i )).log" 2>&1 &
+      --tag "$model_hash" --out "$OUT" > "$OUT/shard-$(( first + i )).log" 2>&1 &
   done
   wait
   batch=$(( batch + 1 ))
