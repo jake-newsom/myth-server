@@ -10,7 +10,7 @@ import RankedDraftBot, {
 } from "./rankedDraftBot.service";
 import XpService from "./xp.service";
 import { XpReward } from "../types/service.types";
-import { GameState } from "../types/game.types";
+import { GameState, TileTerrain } from "../types/game.types";
 import db from "../config/db.config";
 import LeaderboardService from "./leaderboard.service";
 import AchievementService from "./achievement.service";
@@ -329,13 +329,20 @@ const GameRewardsService = {
   getVictoryContext(
     gameState: GameState,
     playerId: string
-  ): { deckEffect: string | null; playedCharacterIds: string[]; mechanicIds: string[] } {
+  ): {
+    deckEffect: string | null;
+    playedCharacterIds: string[];
+    mechanicIds: string[];
+    lavaTileCount: number;
+  } {
     const player =
       playerId === gameState.player1?.user_id ? gameState.player1 : gameState.player2;
     const played = new Set<string>();
+    let lavaTileCount = 0;
 
     for (const row of gameState.board ?? []) {
       for (const tile of row ?? []) {
+        if (tile?.tile_effect?.terrain === TileTerrain.Lava) lavaTileCount++;
         const card = tile?.card;
         if (card && card.original_owner === playerId && card.base_card_data?.character_id) {
           played.add(card.base_card_data.character_id);
@@ -358,6 +365,7 @@ const GameRewardsService = {
       deckEffect: player?.deck_effect ?? null,
       playedCharacterIds: [...played],
       mechanicIds,
+      lavaTileCount,
     };
   },
 

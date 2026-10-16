@@ -1,6 +1,10 @@
 import LeaderboardModel from "../models/leaderboard.model";
 import { RANKED_DRAFT_SEASON_PREFIX } from "../config/constants";
 import { redisCache } from "./redis.cache.service";
+import AchievementService from "./achievement.service";
+
+/** Ranked Draft games a player needs that season before #1 earns Allfather. */
+const ALLFATHER_MIN_GAMES = 30;
 import {
   resolveRank,
   IMMORTAL_FLOOR,
@@ -430,6 +434,29 @@ const LeaderboardService = {
       gameDurationSeconds,
       currentSeason
     );
+
+    // Allfather title: #1 on the Ranked Draft ladder with at least
+    // ALLFATHER_MIN_GAMES played that season. Permanent once recorded, so only
+    // the winner (the only player whose rating can have risen) needs checking.
+    if (winnerId && gameMode === "ranked_draft") {
+      try {
+        const info = await LeaderboardModel.getUserRankingInfo(winnerId, currentSeason);
+        const gamesPlayed =
+          Number(info?.wins ?? 0) + Number(info?.losses ?? 0) + Number(info?.draws ?? 0);
+        if (gamesPlayed >= ALLFATHER_MIN_GAMES) {
+          const rank = await LeaderboardModel.getUserRank(winnerId, currentSeason);
+          if (rank === 1) {
+            await AchievementService.triggerAchievementEvent({
+              userId: winnerId,
+              eventType: "leaderboard_rank_reached",
+              eventData: { rank, season: currentSeason, gameMode },
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error checking leaderboard #1 achievement:", error);
+      }
+    }
 
     return gameResult;
   },

@@ -48,6 +48,8 @@ export interface AvailableCosmetics {
     owned: boolean;
     /** Unique frames only: username of the current holder, if any. */
     holder_username?: string | null;
+    /** How to earn it; null when nothing grants it yet. */
+    unlock_hint?: string | null;
   })[];
   avatars: (AvatarInfo & { owned: boolean })[];
   equipped: {

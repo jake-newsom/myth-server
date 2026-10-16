@@ -707,6 +707,10 @@ const AchievementModel = {
         COALESCE(ua.is_claimed, false) as is_claimed,
         COALESCE(ua.created_at, null) as ua_created_at,
         COALESCE(ua.updated_at, null) as ua_updated_at,
+        af.code_key as frame_code_key,
+        af.name as frame_name,
+        af.sprite_key as frame_sprite_key,
+        af.is_unique as frame_is_unique,
         CASE 
           WHEN a.target_value > 0 
           THEN ROUND((COALESCE(ua.current_progress, 0)::DECIMAL / a.target_value * 100), 2)
@@ -724,6 +728,7 @@ const AchievementModel = {
         END as is_unlocked
       FROM achievements a
       LEFT JOIN user_achievements ua ON a.id = ua.achievement_id AND ua.user_id = $1
+      LEFT JOIN avatar_frames af ON af.frame_id = a.reward_frame_id
       WHERE ${whereConditions.join(" AND ")}
         ${
           !includeLocked
@@ -766,6 +771,16 @@ const AchievementModel = {
         reward_packs: row.reward_packs,
         reward_card_fragments: row.reward_card_fragments || undefined,
         reward_embers: row.reward_embers || undefined,
+        reward_frame_id: row.reward_frame_id ?? null,
+        reward_frame: row.frame_code_key
+          ? {
+              frame_id: row.reward_frame_id,
+              code_key: row.frame_code_key,
+              name: row.frame_name,
+              sprite_key: row.frame_sprite_key ?? null,
+              is_unique: !!row.frame_is_unique,
+            }
+          : null,
         icon_url: row.icon_url,
         is_active: row.is_active,
         sort_order: row.sort_order,

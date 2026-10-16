@@ -97,6 +97,13 @@ describe("winConditionMatches", () => {
     assert.strictEqual(winConditionMatches(condition, { ...sagaWin, gameMode: "solo" }), false);
   });
 
+  test("min_lava_tiles requires that many LAVA tiles at the end", () => {
+    const condition = { min_lava_tiles: 3 };
+    assert.strictEqual(winConditionMatches(condition, { ...event, lavaTileCount: 3 }), true);
+    assert.strictEqual(winConditionMatches(condition, { ...event, lavaTileCount: 2 }), false);
+    assert.strictEqual(winConditionMatches(condition, event), false);
+  });
+
   test("empty or missing condition never matches", () => {
     assert.strictEqual(winConditionMatches(null, event), false);
     assert.strictEqual(winConditionMatches({}, event), false);
