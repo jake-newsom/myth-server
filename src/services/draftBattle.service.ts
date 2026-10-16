@@ -1,7 +1,8 @@
 import _ from "lodash";
 import { GameStatus } from "../game-engine/game.logic";
 import * as gameUtils from "../game-engine/game.utils";
-import { GameState, Player } from "../types/game.types";
+import db from "../config/db.config";
+import { DeckEffectType, GameState, Player } from "../types/game.types";
 import { InGameCard } from "../types/card.types";
 import {
   assertDraftCacheComplete,
@@ -29,6 +30,60 @@ import {
  */
 
 const INITIAL_HAND_SIZE = 5;
+
+// Same rule as DeckService.getDeckEffect: >=12 cards of one mythology. A draft
+// deck is 20 cards (picks x copies), so the constructed threshold applies as-is.
+const DECK_EFFECT_MIN_COUNT = 12;
+const DECK_EFFECT_SETS: readonly DeckEffectType[] = ["norse", "polynesian", "japanese"];
+
+/**
+ * Resolve each drafted deck's mythology passive. DeckService.getDeckEffect
+ * can't be used here: it reads deck_cards/user_owned_cards, and drafted cards
+ * are synthetic instances that only exist in the hydrated cache.
+ */
+async function resolveDraftDeckEffects(
+  decks: string[][],
+  cache: Record<string, InGameCard>
+): Promise<(DeckEffectType | null)[]> {
+  const setCounts = decks.map((ids) => {
+    const counts = new Map<string, number>();
+    for (const id of ids) {
+      const setId = cache[id]?.base_card_data?.set_id;
+      if (setId) counts.set(setId, (counts.get(setId) ?? 0) + 1);
+    }
+    return counts;
+  });
+
+  const qualifyingSetIds = new Set<string>();
+  for (const counts of setCounts) {
+    for (const [setId, count] of counts) {
+      if (count >= DECK_EFFECT_MIN_COUNT) qualifyingSetIds.add(setId);
+    }
+  }
+  if (qualifyingSetIds.size === 0) return decks.map(() => null);
+
+  const { rows } = await db.query(
+    `SELECT set_id, LOWER(name) AS set_name FROM sets WHERE set_id = ANY($1::uuid[])`,
+    [[...qualifyingSetIds]]
+  );
+  const effectBySetId = new Map<string, DeckEffectType>();
+  for (const row of rows) {
+    if ((DECK_EFFECT_SETS as readonly string[]).includes(row.set_name)) {
+      effectBySetId.set(row.set_id, row.set_name as DeckEffectType);
+    }
+  }
+
+  return setCounts.map((counts) => {
+    let best: { effect: DeckEffectType; count: number } | null = null;
+    for (const [setId, count] of counts) {
+      const effect = effectBySetId.get(setId);
+      if (effect && count >= DECK_EFFECT_MIN_COUNT && (!best || count > best.count)) {
+        best = { effect, count };
+      }
+    }
+    return best?.effect ?? null;
+  });
+}
 
 export interface DraftGameStateResult {
   gameState: GameState;
@@ -130,6 +185,19 @@ export async function buildDraftGameState(
     score: 0,
     equipped_card_back: null,
   };
+
+  const [p1Effect, p2Effect] = await resolveDraftDeckEffects(
+    [p1.instanceIds, p2.instanceIds],
+    hydrated_card_data_cache
+  );
+  if (p1Effect) {
+    player1.deck_effect = p1Effect;
+    player1.deck_effect_state = { last_triggered_round: 0 };
+  }
+  if (p2Effect) {
+    player2.deck_effect = p2Effect;
+    player2.deck_effect_state = { last_triggered_round: 0 };
+  }
 
   const gameState: GameState = {
     board,

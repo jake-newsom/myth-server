@@ -550,7 +550,7 @@ export class AbilityAnalyzer {
       // Defeats enemies diagonally if lower total power
       score += AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 0.8;
     } else if (abilityName === "fenrir_devourer_surge") {
-      // Destroys weaker adjacent enemy each round, gains +1
+      // Destroys weaker adjacent enemy at end of owner's turn, gains +1
       score += adjacentEnemies.length > 0 ? AI_CONFIG.MOVE_EVALUATION.FLIP_ENEMY_VALUE * 2 : 60;
     }
 

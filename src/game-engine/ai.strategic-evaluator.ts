@@ -514,7 +514,7 @@ export class StrategicEvaluator {
         enemy.base_card_data.special_ability?.ability_id ??
         "";
 
-      // Fenrir destroys weaker adjacent enemies each round.
+      // Fenrir destroys a weaker adjacent enemy at the end of its owner's turn.
       if (enemyAbilityId === "fenrir_devourer_surge") {
         const enemyPower = this.calculateTotalPower(enemy.current_power);
         if (enemyPower > cardPower) {
