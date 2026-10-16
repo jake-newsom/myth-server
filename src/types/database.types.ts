@@ -495,6 +495,8 @@ export interface AchievementWinCondition {
   game_mode?: string;
   /** Battle mechanic id present in the game, e.g. "worlds_end". */
   mechanic?: string;
+  /** Minimum LAVA tiles on the board when the game ended. */
+  min_lava_tiles?: number;
 }
 
 export interface Achievement {

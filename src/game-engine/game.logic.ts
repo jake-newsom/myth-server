@@ -462,6 +462,17 @@ export class GameLogic {
 
       newBoardCell.mechanic_effect = newState.board[position.y][position.x].mechanic_effect;
       newState.board[position.y][position.x] = newBoardCell;
+
+      if (existingTileEffect?.terrain && !simulationContext.isInSimulation()) {
+        AchievementService.triggerAchievementEvent({
+          userId: playerId,
+          eventType: "card_placed_on_terrain",
+          eventData: {
+            terrain: existingTileEffect.terrain,
+            card_id: userCardInstanceId,
+          },
+        }).catch(() => {});
+      }
       gameUtils.updateAllBoardCards(newState);
 
       // Power the card shows as it lands: everything except the transferred

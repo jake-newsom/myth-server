@@ -14,8 +14,10 @@ import {
 } from "../types/database.types";
 import { GrantedReward } from "../types/service.types";
 import type { AchievementWinCondition } from "../types/database.types";
+import { isHumanVsHumanMode } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
 import { simulationContext } from "../game-engine/simulation.context";
+import db from "../config/db.config";
 
 interface AchievementProgressEvent {
   userId: string;
@@ -197,6 +199,34 @@ const nightmarchersAwardedThisMatch = new Set<string>();
 const ukupaCardWaterTileCounts = new Map<string, Map<string, number>>();
 const ukupaCardAwardedThisMatch = new Map<string, Set<string>>();
 const kamapuaaAboveThreshold = new Map<string, boolean>();
+/** Single-row achievements that reward a title. */
+const TITLE_ACHIEVEMENT_KEYS = {
+  allfather: "title_allfather",
+  baneOfTheSerpent: "title_bane_of_the_serpent",
+  trickster: "title_trickster",
+  theUnfading: "title_the_unfading",
+  tidecaller: "title_tidecaller",
+  baneOfTheYokai: "title_bane_of_the_yokai",
+} as const;
+
+/**
+ * YOKAI is characters.type, which never reaches in-game card data (only tags
+ * do), so the yokai roster is read once by name and cached for the process.
+ */
+let yokaiCharacterNamesPromise: Promise<Set<string>> | null = null;
+function getYokaiCharacterNames(): Promise<Set<string>> {
+  if (!yokaiCharacterNamesPromise) {
+    yokaiCharacterNamesPromise = db
+      .query(`SELECT name FROM characters WHERE lower(type) = 'yokai'`)
+      .then(({ rows }) => new Set<string>(rows.map((r: any) => r.name)))
+      .catch((error) => {
+        yokaiCharacterNamesPromise = null;
+        throw error;
+      });
+  }
+  return yokaiCharacterNamesPromise;
+}
+
 const kuBloodAltarDefeatedTargets = new Map<string, Map<string, Set<string>>>();
 const kuBloodAltarAwardedCards = new Map<string, Set<string>>();
 const kuBloodAltarFlipTargets = new Map<string, Set<string>>();
@@ -243,6 +273,7 @@ export function winConditionMatches(
     deckEffect?: string | null;
     playedCharacterIds?: string[];
     mechanicIds?: string[];
+    lavaTileCount?: number;
   }
 ): boolean {
   if (!condition || Object.keys(condition).length === 0) return false;
@@ -257,6 +288,12 @@ export function winConditionMatches(
     return false;
   }
   if (condition.mechanic && !(eventData.mechanicIds ?? []).includes(condition.mechanic)) {
+    return false;
+  }
+  if (
+    condition.min_lava_tiles !== undefined &&
+    (eventData.lavaTileCount ?? 0) < condition.min_lava_tiles
+  ) {
     return false;
   }
   return true;
@@ -640,6 +677,26 @@ const AchievementService = {
         case "tile_state_changed":
           await this.handleTileStateChanged(event.userId, event.eventData, result);
           break;
+        case "card_placed_on_terrain":
+          if (event.eventData?.terrain === "ocean") {
+            await this.incrementAchievement(
+              event.userId,
+              TITLE_ACHIEVEMENT_KEYS.tidecaller,
+              1,
+              result
+            );
+          }
+          break;
+        case "leaderboard_rank_reached":
+          if (Number(event.eventData?.rank) === 1) {
+            await this.applyBatchedUpdatesAndCollectDetails(
+              event.userId,
+              [{ achievement_key: TITLE_ACHIEVEMENT_KEYS.allfather, mode: "set", value: 1 }],
+              [TITLE_ACHIEVEMENT_KEYS.allfather],
+              result
+            );
+          }
+          break;
         case "tower_floor_cleared":
           await this.applyBatchedUpdatesAndCollectDetails(
             event.userId,
@@ -806,6 +863,20 @@ const AchievementService = {
     });
   },
 
+  async incrementAchievement(
+    userId: string,
+    achievementKey: string,
+    incrementBy: number,
+    result: AchievementCompletionResult
+  ): Promise<void> {
+    await this.applyBatchedUpdatesAndCollectDetails(
+      userId,
+      [{ achievement_key: achievementKey, mode: "increment", value: incrementBy }],
+      [achievementKey],
+      result
+    );
+  },
+
   async incrementTieredCharacterAchievement(
     userId: string,
     baseKey: string,
@@ -915,7 +986,7 @@ const AchievementService = {
     const tieredKeysToFetch: string[] = [];
     if (gameMode === "solo") {
       tieredKeysToFetch.push("solo_wins");
-    } else if (gameMode === "pvp") {
+    } else if (isHumanVsHumanMode(gameMode)) {
       tieredKeysToFetch.push("pvp_wins");
       if (isWinStreak && winStreakCount) {
         tieredKeysToFetch.push("pvp_win_streak");
@@ -954,7 +1025,7 @@ const AchievementService = {
         value: 1,
       });
       keysToFetch.push("solo_master");
-    } else if (gameMode === "pvp") {
+    } else if (isHumanVsHumanMode(gameMode)) {
       // Track pvp_wins tiered achievements
       const pvpWinsTiers = tieredAchievements.get("pvp_wins") || [];
       for (const tier of pvpWinsTiers) {
@@ -1640,8 +1711,45 @@ const AchievementService = {
       eventData?.target_total_power_before || 0
     );
 
+    // Defeat-anything titles: the event is already routed to the defeating
+    // player, whoever originally owned the attacking card.
+    const targetTags = ((eventData?.target_tags as string[] | undefined) || []).map(
+      (tag) => tag.toLowerCase()
+    );
+    if (
+      targetTags.includes("demon") ||
+      (targetCardName && (await getYokaiCharacterNames()).has(targetCardName))
+    ) {
+      await this.incrementAchievement(
+        userId,
+        TITLE_ACHIEVEMENT_KEYS.baneOfTheYokai,
+        1,
+        result
+      );
+    }
+    if (
+      eventData?.source_card_name === "Thor" &&
+      targetCardName === "Jormungandr"
+    ) {
+      await this.incrementAchievement(
+        userId,
+        TITLE_ACHIEVEMENT_KEYS.baneOfTheSerpent,
+        1,
+        result
+      );
+    }
+
     if (!sourceAbilityId || sourceOriginalOwner !== userId) {
       return;
+    }
+
+    if (sourceAbilityId === "loki_flip") {
+      await this.incrementAchievement(
+        userId,
+        TITLE_ACHIEVEMENT_KEYS.trickster,
+        1,
+        result
+      );
     }
 
     const baseKey = FLIP_ABILITY_TO_BASE_KEY[sourceAbilityId];
@@ -2071,6 +2179,12 @@ const AchievementService = {
         1,
         result
       );
+      await this.incrementAchievement(
+        userId,
+        TITLE_ACHIEVEMENT_KEYS.theUnfading,
+        1,
+        result
+      );
     }
 
     if (sourceAbilityId === "jormungandr_shell") {
@@ -2152,6 +2266,15 @@ const AchievementService = {
     const sourceAbilityId = eventData?.source_ability_id as string | undefined;
     const sourceCardId = eventData?.source_card_id as string | undefined;
     const lavaActiveCount = Number(eventData?.lava_active_count || 0);
+
+    if (terrain === "ocean") {
+      await this.incrementAchievement(
+        userId,
+        TITLE_ACHIEVEMENT_KEYS.tidecaller,
+        1,
+        result
+      );
+    }
 
     if (
       sourceAbilityId === "ukupanipo_feast_or_famine" &&
