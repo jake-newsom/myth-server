@@ -27,6 +27,29 @@ const avatarImageSql = (alias: string) => `
     ORDER BY (cv.rarity::text LIKE '%+%'), cv.card_variant_id
     LIMIT 1)`;
 
+/**
+ * How a frame is earned, for the picker's locked tiles. First source wins:
+ * achievement, ranked-draft season band (the lowest one that pays it), event
+ * shop or milestone, daily shop. NULL when nothing grants it yet.
+ */
+const FRAME_UNLOCK_HINT_SQL = `COALESCE(
+  (SELECT ach.title || ': ' || ach.description FROM achievements ach
+    WHERE ach.reward_frame_id = f.frame_id AND ach.is_active
+    ORDER BY ach.sort_order LIMIT 1),
+  (SELECT 'Finish a Ranked Draft season at ' || srt.label || ' or higher'
+     FROM season_reward_tiers srt
+    WHERE srt.axis = 'ranked_draft' AND srt.season_id IS NULL
+      AND srt.bundle_json->'frame_ids' ? f.frame_id::text
+    ORDER BY srt.sort_order DESC LIMIT 1),
+  (SELECT ev.name || ' event shop' FROM event_shop_offerings eso
+     JOIN events ev ON ev.id = eso.event_id
+    WHERE eso.grant_frame_id = f.frame_id LIMIT 1),
+  (SELECT ev.name || ' event milestone' FROM event_milestones em
+     JOIN events ev ON ev.id = em.event_id
+    WHERE em.reward_frame_id = f.frame_id LIMIT 1),
+  CASE WHEN f.daily_shop_price IS NOT NULL THEN 'Appears in the Daily Shop' END
+)`;
+
 const PlayerCosmeticsService = {
   /** Idempotent. Returns true when newly granted. */
   async grantTitle(
@@ -80,7 +103,8 @@ const PlayerCosmeticsService = {
                 f.is_default,
                 CASE WHEN f.is_unique THEN ufh.user_id = $1
                      ELSE (uof.user_id IS NOT NULL OR f.is_default) END AS owned,
-                hu.username AS holder_username
+                hu.username AS holder_username,
+                ${FRAME_UNLOCK_HINT_SQL} AS unlock_hint
            FROM avatar_frames f
            LEFT JOIN user_owned_frames uof
              ON uof.frame_id = f.frame_id AND uof.user_id = $1

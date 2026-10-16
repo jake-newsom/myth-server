@@ -15,6 +15,7 @@ import SeasonRewardTierModel, {
 import CardBackModel from "../models/cardBack.model";
 import PlayerCosmeticsService from "./playerCosmetics.service";
 import logger from "../utils/logger";
+import SeasonModel from "../models/season.model";
 
 /**
  * Seasonal rewards for the Ranked Draft ladder.
@@ -134,6 +135,48 @@ async function loadConfiguredTiers(
       error: error instanceof Error ? error.message : String(error),
     });
     return new Map();
+  }
+  return byRank;
+}
+
+/** A frame a payout band grants, as the client draws it. */
+export interface TierFrameDisplay {
+  frame_id: string;
+  code_key: string;
+  name: string;
+  sprite_key: string | null;
+  is_unique: boolean;
+}
+
+/**
+ * Frames each band of the active season grants, keyed by rank. Display only:
+ * a read failure returns an empty map so the config endpoint still serves.
+ */
+export async function getTierFramesForDisplay(): Promise<Map<string, TierFrameDisplay[]>> {
+  const byRank = new Map<string, TierFrameDisplay[]>();
+  try {
+    const season = await SeasonModel.getActiveSeason();
+    const rows = season
+      ? await SeasonRewardTierModel.getTiersForSeason(season.season_id, "ranked_draft")
+      : await SeasonRewardTierModel.getTemplateTiers("ranked_draft");
+    const ids = [...new Set(rows.flatMap((r) => r.bundle_json.frame_ids ?? []))];
+    if (ids.length === 0) return byRank;
+    const { rows: frames } = await db.query(
+      `SELECT frame_id, code_key, name, sprite_key, is_unique
+         FROM avatar_frames WHERE frame_id = ANY($1::uuid[])`,
+      [ids]
+    );
+    const byId = new Map(frames.map((f: TierFrameDisplay) => [f.frame_id, f]));
+    for (const row of rows) {
+      const list = (row.bundle_json.frame_ids ?? [])
+        .map((id) => byId.get(id))
+        .filter((f): f is TierFrameDisplay => !!f);
+      if (list.length) byRank.set(row.tier_key, list);
+    }
+  } catch (error) {
+    logger.error("[rankedDraftRewards] tier frame read failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
   return byRank;
 }

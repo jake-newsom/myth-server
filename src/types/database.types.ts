@@ -531,6 +531,16 @@ export interface Achievement {
   reward_card_fragments?: number; // Optional until DB migration adds this column
   reward_embers?: number | null; // NULL/0 grants none
   reward_border_id?: string | null; // References card_borders table
+  /** References avatar_frames. */
+  reward_frame_id?: string | null;
+  /** Display details for reward_frame_id, on player-facing list responses. */
+  reward_frame?: {
+    frame_id: string;
+    code_key: string;
+    name: string;
+    sprite_key: string | null;
+    is_unique: boolean;
+  } | null;
   /**
    * When set, this achievement belongs to an event and is only shown while
    * that event is visible to the player. NULL on every pre-events achievement.

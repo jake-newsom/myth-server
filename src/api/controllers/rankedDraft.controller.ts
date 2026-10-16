@@ -12,7 +12,10 @@ import FeatureFlagService from "../../services/featureFlag.service";
 import LeaderboardModel from "../../models/leaderboard.model";
 import { default as UserModel } from "../../models/user.model";
 import { RANKED_DRAFT_CONFIG } from "../../config/constants";
-import { SEASONAL_REWARD_TIERS } from "../../services/rankedDraftRewards.service";
+import {
+  SEASONAL_REWARD_TIERS,
+  getTierFramesForDisplay,
+} from "../../services/rankedDraftRewards.service";
 import { PVP_MIN_GAMES_FOR_REWARDS } from "../../config/pvpRanks";
 
 /**
@@ -332,6 +335,7 @@ const RankedDraftController = {
     try {
       const userId = req.user.user_id;
       if (!(await requireFlag(userId, res))) return;
+      const tierFrames = await getTierFramesForDisplay();
       return res.status(200).json({
         picks: RANKED_DRAFT_CONFIG.PICKS,
         copiesPerPick: RANKED_DRAFT_CONFIG.COPIES_PER_PICK,
@@ -350,6 +354,8 @@ const RankedDraftController = {
           label: t.label,
           gems: t.gems,
           packs: t.packs,
+          // Additive: frames this band grants, for the rewards list.
+          frames: tierFrames.get(t.rankKey) ?? [],
         })),
         minGamesForRewards: PVP_MIN_GAMES_FOR_REWARDS,
       });

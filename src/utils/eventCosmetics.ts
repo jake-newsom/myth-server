@@ -21,3 +21,14 @@ export function cosmeticBack(row: any, backId: string | null) {
     ? { back_id: backId, name: row.back_name, image_url: row.back_image_url }
     : undefined;
 }
+
+/** Expects frame_code_key / frame_name / frame_sprite_key on the row. */
+export function cosmeticFrame(row: any) {
+  return row.frame_code_key
+    ? {
+        code_key: row.frame_code_key,
+        name: row.frame_name,
+        sprite_key: row.frame_sprite_key,
+      }
+    : undefined;
+}
