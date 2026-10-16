@@ -58,6 +58,10 @@ import {
 } from "../../services/queueGuard.service";
 import { spendEmberForGame } from "../../services/ember.service";
 import FeatureFlagService from "../../services/featureFlag.service";
+import {
+  isBotGameTurnExpired,
+  stampBotTurnDeadline,
+} from "../../services/rankedDraftBot.service";
 import CardBackModel from "../../models/cardBack.model";
 
 // Initialize ability registry
@@ -672,6 +676,8 @@ class GameController {
           return;
       }
 
+      stampBotTurnDeadline(updatedGameState, events);
+
       // Hydrate any missing cards that were drawn during ability execution
       // Skip for tutorial games since all cards are pre-cached synthetic data
       const isSubmitTutorial = !!gameRecord.is_tutorial;
@@ -818,6 +824,9 @@ class GameController {
         response.game_result = gameCompletionResult.game_result;
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
+        if (gameCompletionResult.ranked_bot) {
+          response.ranked_bot = gameCompletionResult.ranked_bot;
+        }
 
         if (towerCompletion && towerCompletion.won) {
           if (towerCompletion.rewards_earned) {
@@ -905,11 +914,18 @@ class GameController {
       // becomes "make a move as any player in this game".
       const actingPlayerId = currentGameState.current_player_id;
       const isAiTurn = actingPlayerId === AI_PLAYER_ID;
+      // Practice-bot games run the PvP turn clock: once the human's turn has
+      // run out, the AI plays it for them.
+      const isTimeoutMove =
+        !isAiTurn && isBotGameTurnExpired(currentGameState, userId);
       const isAutoplayMove =
         !isAiTurn &&
         actingPlayerId === userId &&
-        !gameRecord.is_tutorial &&
-        (await FeatureFlagService.isEnabled(userId, SOLO_AUTOPLAY_FLAG));
+        (isTimeoutMove ||
+          // Never in a practice-bot game: a ranked match is played by hand.
+          (!gameRecord.is_tutorial &&
+            !currentGameState.ranked_bot &&
+            (await FeatureFlagService.isEnabled(userId, SOLO_AUTOPLAY_FLAG))));
 
       if (!isAiTurn && !isAutoplayMove) {
         res.status(400).json({ error: "Not AI's turn" });
@@ -932,7 +948,28 @@ class GameController {
       let events: BaseGameEvent[] = [];
       const isTutorial = !!gameRecord.is_tutorial;
 
-      if (isTutorial) {
+      if (isTimeoutMove && currentGameState.pending_choice) {
+        // The human timed out on an interactive choice (e.g. Frigg): resolve
+        // it with the AI's pick, as the PvP turn timeout does.
+        const ai = new AILogic();
+        const chosenIds = await ai.chooseHandTargets(currentGameState);
+        if (chosenIds.length > 0) {
+          const choiceResult = await GameLogic.resolveHandChoice(
+            currentGameState,
+            chosenIds
+          );
+          updatedGameState = choiceResult.state;
+          events.push(...choiceResult.events);
+        } else {
+          updatedGameState.pending_choice = undefined;
+          const endTurnResult = await GameLogic.endTurn(
+            updatedGameState,
+            actingPlayerId
+          );
+          updatedGameState = endTurnResult.state;
+          events.push(...endTurnResult.events);
+        }
+      } else if (isTutorial) {
         // Use scripted move for tutorial games
         const tutorialMove = getTutorialAIMove(currentGameState);
 
@@ -970,6 +1007,7 @@ class GameController {
         // Normal AI move calculation
         const ai = new AILogic();
         const aiDifficulty = resolveAIDifficulty({
+          isTimeoutFallback: isTimeoutMove,
           isTowerGame:
             gameRecord.floor_number != null && !gameRecord.saga_run_id,
           floorNumber: gameRecord.floor_number ?? null,
@@ -1085,6 +1123,8 @@ class GameController {
           }
         }
       }
+
+      stampBotTurnDeadline(updatedGameState, events);
 
       // Hydrate any missing cards (no-op for tutorial since all cards are pre-cached)
       if (!isTutorial) {
@@ -1230,6 +1270,9 @@ class GameController {
         response.game_result = gameCompletionResult.game_result;
         response.rewards = gameCompletionResult.rewards;
         response.updated_currencies = gameCompletionResult.updated_currencies;
+        if (gameCompletionResult.ranked_bot) {
+          response.ranked_bot = gameCompletionResult.ranked_bot;
+        }
 
         if (towerCompletionAI && towerCompletionAI.won) {
           if (towerCompletionAI.rewards_earned) {

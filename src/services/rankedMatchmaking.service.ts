@@ -2,6 +2,7 @@ import db from "../config/db.config";
 import LeaderboardModel from "../models/leaderboard.model";
 import Orchestrator from "./rankedDraftOrchestrator.service";
 import logger from "../utils/logger";
+import { RANKED_DRAFT_CONFIG } from "../config/constants";
 
 /**
  * Skill-based queue for Ranked Draft.
@@ -86,6 +87,26 @@ export async function joinQueue(userId: string): Promise<void> {
   });
 }
 
+function isBotOfferAvailable(entry: RankedQueueEntry, now = Date.now()): boolean {
+  return now - entry.queuedAt >= RANKED_DRAFT_CONFIG.BOT_OFFER_AFTER_MS;
+}
+
+/**
+ * Takes a queued player out of the queue for a practice bot draft.
+ *
+ * "not_queued" also covers the race where a matcher pass paired them a moment
+ * earlier; the caller then hands back that real draft instead.
+ */
+export function claimBotOffer(
+  userId: string
+): "ok" | "not_queued" | "too_early" {
+  const entry = queue.find((e) => e.userId === userId);
+  if (!entry) return "not_queued";
+  if (!isBotOfferAvailable(entry)) return "too_early";
+  leaveQueue(userId);
+  return "ok";
+}
+
 export function leaveQueue(userId: string): boolean {
   const i = queue.findIndex((e) => e.userId === userId);
   if (i === -1) return false;
@@ -95,13 +116,19 @@ export function leaveQueue(userId: string): boolean {
 
 export function queueStatus(
   userId: string
-): { waitSeconds: number; queueLength: number; activePlayers: number } | null {
+): {
+  waitSeconds: number;
+  queueLength: number;
+  activePlayers: number;
+  botOfferAvailable: boolean;
+} | null {
   const entry = queue.find((e) => e.userId === userId);
   if (!entry) return null;
   return {
     waitSeconds: Math.floor((Date.now() - entry.queuedAt) / 1000),
     queueLength: queue.length,
     activePlayers: activePlayerCount(),
+    botOfferAvailable: isBotOfferAvailable(entry),
   };
 }
 
@@ -182,5 +209,6 @@ export default {
   ratingWindowFor,
   getRankedRating,
   activePlayerCount,
+  claimBotOffer,
   _resetQueue,
 };

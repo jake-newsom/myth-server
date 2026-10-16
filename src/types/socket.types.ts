@@ -172,6 +172,8 @@ export interface RankedDraftStatePayload {
    */
   opponentVariants: Record<string, string>;
   gameId: string | null;
+  /** Additive: the opponent is the practice bot (old clients ignore it). */
+  opponentIsBot?: boolean;
 
   /**
    * Block phase. `myBlock` is the card THIS player removed from the opponent's
@@ -226,6 +228,11 @@ export interface RankedDraftPickMadePayload {
 export interface RankedDraftCompletedPayload {
   sessionId: string;
   gameId: string;
+  /**
+   * Additive: the game is a practice-bot game, played over the solo REST path
+   * rather than the multiplayer socket. Absent for every PvP draft.
+   */
+  vsBot?: boolean;
 }
 
 export interface RankedDraftAbortedPayload {

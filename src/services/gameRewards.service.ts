@@ -1,7 +1,13 @@
 import UserModel from "../models/user.model";
 import { GameMode, isHumanVsHumanMode } from "../types/database.types";
 import UniqueFrameService from "./uniqueFrame.service";
-import { resolveDraftXpTargets } from "../game-engine/draftBattle.hydration";
+import {
+  isDraftInstanceId,
+  resolveDraftXpTargets,
+} from "../game-engine/draftBattle.hydration";
+import RankedDraftBot, {
+  BotGameRatingResult,
+} from "./rankedDraftBot.service";
 import XpService from "./xp.service";
 import { XpReward } from "../types/service.types";
 import { GameState } from "../types/game.types";
@@ -125,6 +131,22 @@ export interface GameCompletionResult {
     multiplier_applied: number;
     new_multiplier: number;
   };
+  /**
+   * Present only for a Ranked Draft practice-bot game: the flat rating it
+   * granted. Additive; absent for every other game.
+   */
+  ranked_bot?: BotGameRatingResult;
+}
+
+/**
+ * True when the game was built from drafted cards (ranked draft, or a
+ * practice-bot draft played as a solo game): their instance ids are synthetic
+ * and must resolve XP through the drafted characters.
+ */
+function isDraftedGame(gameState: GameState): boolean {
+  return Object.keys(gameState.hydrated_card_data_cache ?? {}).some(
+    isDraftInstanceId
+  );
 }
 
 const GameRewardsService = {
@@ -442,10 +464,28 @@ const GameRewardsService = {
       // Instead, resolve the CHARACTERS the player drafted back to their own
       // owned copies, which is also what the mode promises ("XP to the
       // characters you choose"). Characters they don't own are skipped.
+      //
+      // A practice-bot draft is stored as a solo game but is built the same
+      // way, so it is recognised by its card ids rather than its mode.
       const usedCards =
-        gameMode === "ranked_draft"
+        gameMode === "ranked_draft" || isDraftedGame(gameState)
           ? await resolveDraftXpTargetsForGame(gameState, userId)
           : this.getCardsUsedInGame(gameState, userId);
+
+      // Ranked Draft practice-bot game: grant its flat, daily-capped rating.
+      // Returns null for every other solo game. Never fails the rewards.
+      let rankedBot: BotGameRatingResult | null = null;
+      if (gameMode === "solo" && gameId && isDraftedGame(gameState)) {
+        try {
+          rankedBot = await RankedDraftBot.grantBotGameRating(
+            gameId,
+            userId,
+            gameResult.winner
+          );
+        } catch (error) {
+          console.error("Error granting practice-bot rating:", error);
+        }
+      }
 
       // === PHASE 2: Get win streak multiplier (needed for reward calculation) ===
       // Win streaks stay an unranked-PvP concept: ranked draft has its own
@@ -768,6 +808,7 @@ const GameRewardsService = {
             : {}),
         },
         win_streak_info: winStreakInfo,
+        ...(rankedBot ? { ranked_bot: rankedBot } : {}),
       };
     } catch (error) {
       console.error("Error processing game completion rewards:", error);

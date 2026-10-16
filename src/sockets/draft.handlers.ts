@@ -84,6 +84,7 @@ async function replayRecentCompletion(
   socket.emit(PresenceNamespaceEvent.DRAFT_SERVER_COMPLETED, {
     sessionId: finished.session_id,
     gameId: finished.game_id,
+    ...(finished.vs_bot ? { vsBot: true } : {}),
   });
 }
 
@@ -118,6 +119,7 @@ export function registerDraftHandlers(socket: AuthenticatedSocket): void {
           socket.emit(PresenceNamespaceEvent.DRAFT_SERVER_COMPLETED, {
             sessionId: session.session_id,
             gameId: session.game_id,
+            ...(session.vs_bot ? { vsBot: true } : {}),
           });
         }
         return;

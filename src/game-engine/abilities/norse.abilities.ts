@@ -1020,7 +1020,7 @@ export const norseAbilities: AbilityMap = {
           adjacentPosition,
           {
             status: TileStatus.Cursed,
-            turns_left: 2, // one full round (both players' turns)
+            turns_left: 10000, // forever
             terrain: TileTerrain.Lava,
             animation_label: "lava",
             effect_duration: 1000,

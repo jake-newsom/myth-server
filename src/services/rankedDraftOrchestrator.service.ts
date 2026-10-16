@@ -35,6 +35,8 @@ import {
 } from "../types/socket.types";
 import { userRoom } from "../sockets/namespace.presence";
 import { default as UserModel } from "../models/user.model";
+import GameService from "./game.service";
+import RankedDraftBot, { BOT_USER_ID, isBotUser } from "./rankedDraftBot.service";
 import logger from "../utils/logger";
 
 /**
@@ -149,7 +151,119 @@ function scheduleTimer(sessionId: string, deadline: Date): void {
 }
 
 function emitToUser(userId: string, event: string, payload: unknown): void {
+  // The bot seat is the shared AI user: nobody is listening there.
+  if (isBotUser(userId)) return;
   presenceNs?.to(userRoom(userId)).emit(event, payload);
+}
+
+/** sessionId -> the bot's pending "thinking" timer. */
+const botTimers = new Map<string, NodeJS.Timeout>();
+
+function clearBotTimer(sessionId: string): void {
+  const t = botTimers.get(sessionId);
+  if (t) {
+    clearTimeout(t);
+    botTimers.delete(sessionId);
+  }
+}
+
+/** What the bot still owes in this session's current phase, if anything. */
+function botActionOwed(
+  session: RankedDraftSession
+): "ban" | "pick" | "block" | null {
+  if (!session.vs_bot) return null;
+  const botIsP1 = session.player1_id === BOT_USER_ID;
+  if (session.phase === "ban") {
+    return (botIsP1 ? session.player1_ban : session.player2_ban) ? null : "ban";
+  }
+  if (session.phase === "draft") {
+    return session.current_picker_id === BOT_USER_ID ? "pick" : null;
+  }
+  if (session.phase === "block") {
+    return (botIsP1 ? session.player1_block : session.player2_block)
+      ? null
+      : "block";
+  }
+  return null;
+}
+
+/**
+ * Arms the bot's next move if it owes one.
+ *
+ * Called whenever a bot session's state is pushed, which is every transition,
+ * so the bot never needs its own scheduling logic. The move itself goes
+ * through submitBan/submitPick/submitBlock and is validated exactly like a
+ * human's. If the timer is lost (restart), the turn deadline still fires and
+ * onDeadlineExpired makes the same bot choice.
+ */
+function scheduleBotTurn(session: RankedDraftSession): void {
+  if (!botActionOwed(session) || botTimers.has(session.session_id)) return;
+  const { BOT_THINK_MIN_MS: min, BOT_THINK_MAX_MS: max } = RANKED_DRAFT_CONFIG;
+  const delay = min + Math.random() * (max - min);
+  const sessionId = session.session_id;
+  const timer = setTimeout(() => {
+    botTimers.delete(sessionId);
+    runBotTurn(sessionId).catch((error) => {
+      logger.error("[rankedDraft] bot turn failed", {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }, delay);
+  if (typeof timer.unref === "function") timer.unref();
+  botTimers.set(sessionId, timer);
+}
+
+async function runBotTurn(sessionId: string): Promise<void> {
+  const session = await RankedDraftSessionModel.findById(sessionId);
+  if (!session) return;
+  const owed = botActionOwed(session);
+  if (owed === "ban") {
+    const ban = await RankedDraftBot.chooseBanFor(session);
+    if (ban) await submitBan(sessionId, BOT_USER_ID, ban);
+  } else if (owed === "pick") {
+    const pick =
+      (await RankedDraftBot.choosePickFor(session)) ??
+      (await chooseAutoPick(session, BOT_USER_ID));
+    if (!pick) {
+      await abortSession(sessionId, "The practice bot could not make a pick.");
+      return;
+    }
+    await submitPick(sessionId, BOT_USER_ID, pick);
+  } else if (owed === "block") {
+    const block = await RankedDraftBot.chooseBlockFor(session);
+    if (block) await submitBlock(sessionId, BOT_USER_ID, block);
+  }
+}
+
+/** The ban a timed-out player gets: the bot's own choice for the bot. */
+async function autoBanFor(
+  session: RankedDraftSession,
+  userId: string
+): Promise<string | null> {
+  return isBotUser(userId)
+    ? RankedDraftBot.chooseBanFor(session)
+    : chooseAutoPick(session, userId);
+}
+
+async function autoPickFor(
+  session: RankedDraftSession,
+  userId: string
+): Promise<string | null> {
+  if (isBotUser(userId)) {
+    const pick = await RankedDraftBot.choosePickFor(session);
+    if (pick) return pick;
+  }
+  return chooseAutoPick(session, userId);
+}
+
+async function autoBlockFor(
+  session: RankedDraftSession,
+  userId: string
+): Promise<string | null> {
+  return isBotUser(userId)
+    ? RankedDraftBot.chooseBlockFor(session)
+    : chooseAutoBlock(session, userId);
 }
 
 function emitToBoth(
@@ -173,6 +287,16 @@ function emitToBoth(
  * Returns the session as it should now be.
  */
 export async function reconcileSession(
+  session: RankedDraftSession
+): Promise<RankedDraftSession> {
+  const healed = await reconcileSessionInner(session);
+  // A rejoin after a restart lost the bot's timer: pick its turn back up now
+  // rather than waiting out the whole turn clock.
+  scheduleBotTurn(healed);
+  return healed;
+}
+
+async function reconcileSessionInner(
   session: RankedDraftSession
 ): Promise<RankedDraftSession> {
   // A block phase with both choices in but no game yet (e.g. the reveal hold
@@ -307,24 +431,29 @@ export async function pushStateToBoth(
   session: RankedDraftSession
 ): Promise<void> {
   for (const viewerId of [session.player1_id, session.player2_id]) {
+    if (isBotUser(viewerId)) continue;
     const opponentId =
       viewerId === session.player1_id ? session.player2_id : session.player1_id;
     const extras = await getViewerExtras(session, viewerId, opponentId);
     const payload = await toStatePayload(session, viewerId, extras);
     emitToUser(viewerId, PresenceNamespaceEvent.DRAFT_SERVER_STATE, payload);
   }
+  scheduleBotTurn(session);
 }
 
 /** Creates a session for a freshly matched pair and starts the ban clock. */
 export async function startSession(
   player1Id: string,
-  player2Id: string
+  player2Id: string,
+  options: { vsBot?: boolean } = {}
 ): Promise<RankedDraftSession> {
   const deadline = new Date(Date.now() + RANKED_DRAFT_CONFIG.BAN_MS);
   const session = await RankedDraftSessionModel.create(
     player1Id,
     player2Id,
-    deadline
+    deadline,
+    undefined,
+    options.vsBot ?? false
   );
 
   emitToBoth(session, PresenceNamespaceEvent.DRAFT_SERVER_STARTED, {
@@ -337,8 +466,21 @@ export async function startSession(
     sessionId: session.session_id,
     player1Id,
     player2Id,
+    vsBot: session.vs_bot,
   });
   return session;
+}
+
+/**
+ * A practice draft against the bot, from the queue's "Play bot match" offer.
+ *
+ * The human always sits in player1, so they always get the opening pick, and
+ * the game it produces is a solo game (see completeBotDraft).
+ */
+export async function startBotSession(
+  userId: string
+): Promise<RankedDraftSession> {
+  return startSession(userId, BOT_USER_ID, { vsBot: true });
 }
 
 /**
@@ -693,6 +835,10 @@ async function revealBlocksAndStartGame(
 
 /** Builds the game from the finished draft and hands both players to it. */
 async function completeDraft(session: RankedDraftSession): Promise<void> {
+  if (session.vs_bot) {
+    await completeBotDraft(session);
+    return;
+  }
   // Skins are applied here: each drafted original is swapped for the owned
   // variant the player chose, if any. Power is unaffected (level 1, no
   // power-ups, stats come from the character), so this is purely visual.
@@ -814,6 +960,104 @@ async function completeDraft(session: RankedDraftSession): Promise<void> {
 }
 
 /**
+ * A finished practice draft becomes a SOLO game against the AI.
+ *
+ * Same block and skin handling as completeDraft and the same exactly-once
+ * guard, but the row is `game_mode = 'solo'` with the AI as player2, so it
+ * plays over the existing solo REST path (resume, neural AI, surrender,
+ * rewards) instead of the PvP socket. The session's game_id is what marks it
+ * as a bot game for completion (RankedDraftBot.grantBotGameRating).
+ */
+async function completeBotDraft(session: RankedDraftSession): Promise<void> {
+  const applySkins = (picks: string[], skins: Record<string, string>) =>
+    picks.map((originalId) => skins?.[originalId] ?? originalId);
+  const applyBlock = (picks: string[], blocked: string | null) => {
+    if (!blocked) return picks;
+    const at = picks.indexOf(blocked);
+    if (at === -1) return picks;
+    return [...picks.slice(0, at), ...picks.slice(at + 1)];
+  };
+
+  const humanId = session.player1_id;
+  const humanKept = applyBlock(session.player1_picks, session.player2_block);
+  const botKept = applyBlock(session.player2_picks, session.player1_block);
+  const gameState = await RankedDraftBot.buildBotGameState(
+    humanId,
+    applySkins(humanKept, session.player1_variants),
+    botKept
+  );
+
+  const client = await db.getClient();
+  let gameId: string;
+  try {
+    await client.query("BEGIN");
+    await RankedDraftSessionModel.lock(session.session_id, client);
+    const fresh = await RankedDraftSessionModel.findById(
+      session.session_id,
+      client
+    );
+    if (!fresh || fresh.phase === "complete" || fresh.phase === "aborted") {
+      await client.query("ROLLBACK").catch(() => undefined);
+      return;
+    }
+
+    // Spent only once this completion has won the race above.
+    const emberFunded = await RankedDraftBot.spendBotGameEmber(humanId);
+    gameState.ember_funded = emberFunded;
+
+    // One AI game in progress at a time, same rule as GameService.createGameRecord.
+    await GameService.abandonActiveAiGamesForUser(humanId, client as never);
+
+    const { rows } = await client.query(
+      `INSERT INTO "games"
+         (player1_id, player2_id, player1_deck_id, player2_deck_id,
+          game_mode, game_status, board_layout, game_state, ember_funded,
+          created_at)
+       VALUES ($1, $2, NULL, NULL, 'solo', 'active', '4x4', $3, $4, NOW())
+       RETURNING game_id`,
+      [humanId, BOT_USER_ID, JSON.stringify(gameState), emberFunded]
+    );
+    gameId = rows[0].game_id;
+
+    const completed = await RankedDraftSessionModel.complete(
+      session.session_id,
+      gameId,
+      client
+    );
+    if (!completed) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      return;
+    }
+    await RankedDraft.recordRecentCards(
+      humanId,
+      session.player1_picks,
+      client as never
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  clearViewerCache(session.session_id);
+  clearBotTimer(session.session_id);
+  RankedDraftBot.forgetSession(session.session_id);
+
+  const payload: RankedDraftCompletedPayload = {
+    sessionId: session.session_id,
+    gameId,
+    vsBot: true,
+  };
+  emitToUser(humanId, PresenceNamespaceEvent.DRAFT_SERVER_COMPLETED, payload);
+  logger.info("[rankedDraft] practice draft complete, solo game created", {
+    sessionId: session.session_id,
+    gameId,
+  });
+}
+
+/**
  * Writes the forfeit as a real, already-finished game.
  *
  * Rating lives in `game_results`, whose `game_id` is NOT NULL with a FK to
@@ -898,8 +1142,21 @@ export async function abandonSession(
   }
 
   clearTimer(sessionId);
+  clearBotTimer(sessionId);
   clearViewerCache(sessionId);
+  RankedDraftBot.forgetSession(sessionId);
   const aborted = await RankedDraftSessionModel.abort(sessionId);
+  // A practice draft is unrated: leaving it just ends it.
+  if (aborted?.vs_bot) {
+    emitToUser(userId, PresenceNamespaceEvent.DRAFT_SERVER_ABORTED, {
+      sessionId,
+      reason: "You left the practice draft.",
+      abandonedByMe: true,
+      rated: false,
+    });
+    logger.info("[rankedDraft] practice draft abandoned", { sessionId, userId });
+    return;
+  }
   // Already finished or aborted: nothing to do, and no message to send. This
   // is also what keeps the forfeit exactly-once — `abort` only returns a row
   // for a session still in a live phase, so a double disconnect or a racing
@@ -951,7 +1208,9 @@ export async function abortSession(
   reason: string
 ): Promise<void> {
   clearTimer(sessionId);
+  clearBotTimer(sessionId);
   clearViewerCache(sessionId);
+  RankedDraftBot.forgetSession(sessionId);
   const aborted = await RankedDraftSessionModel.abort(sessionId);
   if (!aborted) return;
   const payload: RankedDraftAbortedPayload = { sessionId, reason };
@@ -992,7 +1251,7 @@ export async function onDeadlineExpired(sessionId: string): Promise<void> {
       [current.player2_id, current.player2_ban],
     ] as const) {
       if (existing) continue;
-      const auto = await chooseAutoPick(current, userId);
+      const auto = await autoBanFor(current, userId);
       if (!auto) continue;
       current = await RankedDraftSessionModel.setBan(
         current.session_id,
@@ -1009,6 +1268,16 @@ export async function onDeadlineExpired(sessionId: string): Promise<void> {
   }
 
   if (session.phase === "block") {
+    // Both blocks already in means the reveal has happened (by submission or
+    // by an earlier run of this handler) and only the game start is left.
+    // block's deadline_at stays in the past after a timeout, so the sweeper
+    // lands here every few seconds; re-revealing would restart the hold each
+    // time and the game would never start. Let reconcile finish it: it leaves
+    // a running hold alone and completes the draft once the hold is over.
+    if (blocksComplete(session)) {
+      await reconcileSession(session);
+      return;
+    }
     // Fill any missing block with the opponent's strongest card, then reveal.
     // Both players choose simultaneously, so either or both may be missing.
     let current = session;
@@ -1018,7 +1287,7 @@ export async function onDeadlineExpired(sessionId: string): Promise<void> {
           ? current.player1_block
           : current.player2_block;
       if (existing) continue;
-      const auto = await chooseAutoBlock(current, userId);
+      const auto = await autoBlockFor(current, userId);
       if (!auto) continue;
       current = await RankedDraftSessionModel.setBlock(
         current.session_id,
@@ -1062,17 +1331,25 @@ export async function onDeadlineExpired(sessionId: string): Promise<void> {
     // The turn moved on (or the draft ended) — nothing further is owed here.
     if (current.current_picker_id !== pickerId) return;
 
-    const auto = await chooseAutoPick(current, pickerId);
+    const auto = await autoPickFor(current, pickerId);
     if (!auto) {
       await abortSession(sessionId, "No legal card remained to auto-pick.");
       return;
     }
     // Only the last pick of the batch pushes full state; the intermediate
     // ones would be immediately superseded.
-    await submitPick(sessionId, pickerId, auto, {
-      autoPicked: true,
-      skipStatePush: i < owed - 1,
-    });
+    try {
+      await submitPick(sessionId, pickerId, auto, {
+        autoPicked: true,
+        skipStatePush: i < owed - 1,
+      });
+    } catch (error) {
+      // The turn timer and the sweeper can both fire for the same expired
+      // turn; whichever lands second finds the picks already made. Not an
+      // error — the other run owns this turn.
+      if (error instanceof DraftRuleError) break;
+      throw error;
+    }
   }
 
   // The loop may have exited early (turn moved on, draft ended) after a
@@ -1154,6 +1431,7 @@ export async function reapStaleRankedGames(): Promise<number> {
 export default {
   setPresenceNamespace,
   startSession,
+  startBotSession,
   submitBan,
   submitPick,
   submitBlock,

@@ -67,11 +67,19 @@ const RankedDraftController = {
         });
       }
 
+      // An unfinished practice-bot game counts too: it is a solo row, found
+      // through the bot session that produced it.
       const active = await db.query(
-        `SELECT game_id FROM "games"
-         WHERE (player1_id = $1 OR player2_id = $1)
-           AND game_status IN ('active', 'mulligan')
-           AND game_mode = 'ranked_draft'
+        `SELECT g.game_id FROM "games" g
+         WHERE (g.player1_id = $1 OR g.player2_id = $1)
+           AND g.game_status IN ('active', 'mulligan')
+           AND (
+             g.game_mode = 'ranked_draft'
+             OR EXISTS (
+               SELECT 1 FROM ranked_draft_sessions s
+                WHERE s.game_id = g.game_id AND s.vs_bot
+             )
+           )
          LIMIT 1`,
         [userId]
       );
@@ -118,6 +126,7 @@ const RankedDraftController = {
         waitTime: status.waitSeconds,
         queueLength: status.queueLength,
         activePlayers: status.activePlayers,
+        botOfferAvailable: status.botOfferAvailable,
       });
     } catch (error) {
       next(error);
@@ -136,6 +145,56 @@ const RankedDraftController = {
             ? { status: "left_queue" }
             : { error: { message: "You are not in the ranked queue." } }
         );
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * Accept the queue's practice-bot offer.
+   *
+   * Only valid for a player who is queued and has waited past
+   * BOT_OFFER_AFTER_MS — the server re-checks both rather than trusting the
+   * client's prompt. If a matcher pass paired them a moment earlier, the real
+   * draft wins and is returned instead.
+   */
+  async startBotMatch(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user.user_id;
+      if (!(await requireFlag(userId, res))) return;
+
+      const claim = RankedMatchmaking.claimBotOffer(userId);
+      if (claim === "too_early") {
+        return res.status(409).json({
+          error: {
+            message: "Keep waiting a little longer for an opponent.",
+            code: "BOT_OFFER_NOT_READY",
+          },
+        });
+      }
+      if (claim === "not_queued") {
+        const live = await RankedDraftSessionModel.findLiveForUser(userId);
+        if (live) {
+          return res.status(200).json({
+            status: "matched",
+            sessionId: live.session_id,
+            ...(live.vs_bot ? { vsBot: true } : {}),
+          });
+        }
+        return res.status(400).json({
+          error: {
+            message: "You are not in the ranked queue.",
+            code: "NOT_QUEUED",
+          },
+        });
+      }
+
+      const session = await RankedDraftOrchestrator.startBotSession(userId);
+      return res.status(200).json({
+        status: "matched",
+        sessionId: session.session_id,
+        vsBot: true,
+      });
     } catch (error) {
       next(error);
     }
@@ -166,6 +225,7 @@ const RankedDraftController = {
           waitTime: status.waitSeconds,
           queueLength: status.queueLength,
           activePlayers: status.activePlayers,
+          botOfferAvailable: status.botOfferAvailable,
           dailyBattles,
         });
       }
@@ -201,9 +261,11 @@ const RankedDraftController = {
             COMPLETION_REPLAY_WINDOW_MINUTES
           );
         if (finished?.game_id) {
-          return res
-            .status(200)
-            .json({ phase: "complete", gameId: finished.game_id });
+          return res.status(200).json({
+            phase: "complete",
+            gameId: finished.game_id,
+            ...(finished.vs_bot ? { vsBot: true } : {}),
+          });
         }
         return res.status(404).json({ error: { message: "No active draft." } });
       }
@@ -216,9 +278,11 @@ const RankedDraftController = {
         session.phase !== "block"
       ) {
         if (session.phase === "complete" && session.game_id) {
-          return res
-            .status(200)
-            .json({ phase: "complete", gameId: session.game_id });
+          return res.status(200).json({
+            phase: "complete",
+            gameId: session.game_id,
+            ...(session.vs_bot ? { vsBot: true } : {}),
+          });
         }
         return res.status(404).json({ error: { message: "No active draft." } });
       }

@@ -206,6 +206,18 @@ export interface GameState {
    * Picks the server's scripted AI move table.
    */
   tutorial_version?: number;
+  /**
+   * Set on the solo game behind a Ranked Draft practice-bot match. Those games
+   * run the PvP clocks for the human (see turn_deadline_ms); other solo games
+   * are untimed.
+   */
+  ranked_bot?: boolean;
+  /**
+   * Practice-bot games only: when the human's current turn runs out (epoch
+   * ms, server clock, already including the move's animation time). Absent on
+   * the bot's turn. Past it, the client may ask the AI to play the turn.
+   */
+  turn_deadline_ms?: number;
 }
 
 export interface GameAction {

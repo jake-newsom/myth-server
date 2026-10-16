@@ -300,7 +300,9 @@ export async function toStatePayload(
     picksLeftInTurn: picksLeftInTurn(session.pick_index),
     picksPerTurn: RANKED_DRAFT_CONFIG.PICKS_PER_TURN,
     deadlineMs: session.deadline_at ? session.deadline_at.getTime() : null,
-    opponentUsername: extras.opponentUsername,
+    // The bot is the shared AI user; name it for what it is rather than
+    // whatever that row's username happens to be.
+    opponentUsername: session.vs_bot ? "Practice Bot" : extras.opponentUsername,
     unavailableCardIds: unavailableCardIds(session),
     recentCardIds: extras.recentCardIds,
     myVariants: (isP1 ? session.player1_variants : session.player2_variants) ?? {},
@@ -311,6 +313,7 @@ export async function toStatePayload(
     blockedFromMe: blocksRevealed ? (theirBlock ?? null) : null,
     opponentBlockSubmitted: !!theirBlock,
     gameId: session.game_id,
+    ...(session.vs_bot ? { opponentIsBot: true } : {}),
   };
 }
 

@@ -51,7 +51,7 @@
     "seed:saga-ragnarok": "node scripts/seed-ragnarok-saga-enemy-decks.js",
     "admin:characters": "ts-node scripts/admin-characters-console.ts",
     "postinstall": "npm run build",
-    "test:ranked-draft": "node --test --test-force-exit -r ts-node/register src/services/__tests__/rankedDraft.test.ts src/services/__tests__/rankedDraftOrder.test.ts src/services/__tests__/rankedDraftBlock.test.ts src/services/__tests__/rankedDraftScheduler.test.ts src/services/__tests__/rankedDraftCompleteGuard.test.ts",
+    "test:ranked-draft": "node --test --test-force-exit -r ts-node/register src/services/__tests__/rankedDraft.test.ts src/services/__tests__/rankedDraftOrder.test.ts src/services/__tests__/rankedDraftBlock.test.ts src/services/__tests__/rankedDraftScheduler.test.ts src/services/__tests__/rankedDraftCompleteGuard.test.ts src/game-engine/__tests__/draftBot.test.ts",
     "test:iap": "node --test --test-force-exit -r ts-node/register src/services/__tests__/iap.test.ts",
     "iap:setup": "node scripts/setup-revenuecat.cjs",
     "iap:reconcile": "node scripts/reconcile-iap.cjs",

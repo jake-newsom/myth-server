@@ -24,6 +24,10 @@ export interface RankedDraftSession {
   pick_index: number;
   deadline_at: Date | null;
   game_id: string | null;
+  /** player2 is the practice bot (AI_PLAYER_ID); its game is a `solo` row. */
+  vs_bot: boolean;
+  /** Flat rating granted for the bot game; null until it completes. */
+  bot_rating_delta: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -34,6 +38,7 @@ const SELECT_COLUMNS = `
   player1_variants, player2_variants,
   player1_block, player2_block,
   current_picker_id, pick_index, deadline_at, game_id,
+  vs_bot, bot_rating_delta,
   created_at, updated_at
 `;
 
@@ -42,15 +47,66 @@ const RankedDraftSessionModel = {
     player1Id: string,
     player2Id: string,
     banDeadline: Date,
-    executor: QueryExecutor = db
+    executor: QueryExecutor = db,
+    vsBot = false
   ): Promise<RankedDraftSession> {
     const { rows } = await executor.query(
-      `INSERT INTO ranked_draft_sessions (player1_id, player2_id, phase, deadline_at)
-       VALUES ($1, $2, 'ban', $3)
+      `INSERT INTO ranked_draft_sessions (player1_id, player2_id, phase, deadline_at, vs_bot)
+       VALUES ($1, $2, 'ban', $3, $4)
        RETURNING ${SELECT_COLUMNS}`,
-      [player1Id, player2Id, banDeadline]
+      [player1Id, player2Id, banDeadline, vsBot]
     );
     return rows[0];
+  },
+
+  /** The practice-bot session whose draft produced this game, if any. */
+  async findBotSessionByGameId(
+    gameId: string,
+    executor: QueryExecutor = db
+  ): Promise<RankedDraftSession | null> {
+    const { rows } = await executor.query(
+      `SELECT ${SELECT_COLUMNS} FROM ranked_draft_sessions
+        WHERE game_id = $1 AND vs_bot
+        LIMIT 1`,
+      [gameId]
+    );
+    return rows[0] ?? null;
+  },
+
+  /**
+   * Records the bot game's rating grant. Returns false if one was already
+   * recorded, which is what makes the grant exactly-once under a retried or
+   * racing completion.
+   */
+  async setBotRatingDelta(
+    sessionId: string,
+    delta: number,
+    executor: QueryExecutor = db
+  ): Promise<boolean> {
+    const { rowCount } = await executor.query(
+      `UPDATE ranked_draft_sessions
+          SET bot_rating_delta = $2, updated_at = NOW()
+        WHERE session_id = $1 AND vs_bot AND bot_rating_delta IS NULL`,
+      [sessionId, delta]
+    );
+    return (rowCount ?? 0) > 0;
+  },
+
+  /** Bot games that granted rating since 00:00 UTC, for the daily cap. */
+  async countRatedBotWinsToday(
+    userId: string,
+    executor: QueryExecutor = db
+  ): Promise<number> {
+    const { rows } = await executor.query(
+      `SELECT COUNT(*)::int AS count FROM ranked_draft_sessions
+        WHERE player1_id = $1 AND vs_bot AND bot_rating_delta > 0
+          -- Converted back to timestamptz explicitly: a bare
+          -- date_trunc(... AT TIME ZONE 'utc') is a naive timestamp, which
+          -- Postgres would read in the SESSION time zone and shift "today".
+          AND updated_at >= (date_trunc('day', now() AT TIME ZONE 'utc') AT TIME ZONE 'utc')`,
+      [userId]
+    );
+    return rows[0]?.count ?? 0;
   },
 
   async findById(
@@ -102,6 +158,13 @@ const RankedDraftSessionModel = {
          AND phase = 'complete'
          AND game_id IS NOT NULL
          AND updated_at > NOW() - ($2 || ' minutes')::interval
+         -- Only a game still being played. A finished one would send every
+         -- refresh straight back to its result screen for the whole window.
+         AND EXISTS (
+           SELECT 1 FROM games g
+            WHERE g.game_id = ranked_draft_sessions.game_id
+              AND g.game_status IN ('pending', 'active', 'mulligan')
+         )
        ORDER BY updated_at DESC
        LIMIT 1`,
       [userId, String(maxAgeMinutes)]

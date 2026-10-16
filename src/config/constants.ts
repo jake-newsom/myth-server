@@ -69,6 +69,27 @@ export const RANKED_DRAFT_CONFIG = {
    * player who stayed is not left staring at a dead draft.
    */
   DISCONNECT_GRACE_MS: 15_000,
+  /**
+   * Practice bot. After this long in the queue the player is offered a draft
+   * against the bot instead of waiting for a person.
+   */
+  BOT_OFFER_AFTER_MS: 60_000,
+  /** The bot's fake "thinking" pause before each ban, pick and block. */
+  BOT_THINK_MIN_MS: 800,
+  BOT_THINK_MAX_MS: 2_000,
+  /** Flat rating for beating the bot (no Elo; a loss costs nothing). */
+  BOT_WIN_RATING: 5,
+  /** Bot wins per UTC day that grant BOT_WIN_RATING; later wins grant 0. */
+  BOT_RATED_WINS_PER_DAY: 3,
+  /**
+   * The player's clocks in a bot game, matching a PvP match: 30s to mulligan
+   * and 30s per turn. A turn that runs out is played by the AI, as in PvP.
+   * The bot itself is never timed.
+   */
+  BOT_MULLIGAN_SECONDS: 30,
+  BOT_TURN_SECONDS: 30,
+  /** Slack for a client whose timer starts a little before the server's. */
+  BOT_TIMEOUT_TOLERANCE_MS: 5_000,
   // Recently-drafted cards surfaced at the front of the pick grid.
   RECENT_CARDS_LIMIT: 20,
   /**

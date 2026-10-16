@@ -9,6 +9,7 @@ const router = express.Router();
 router.get("/config", protect, RankedDraftController.getConfig);
 router.post("/queue/join", protect, blockDuringMaintenance, RankedDraftController.joinQueue);
 router.post("/queue/leave", protect, RankedDraftController.leaveQueue);
+router.post("/queue/bot", protect, blockDuringMaintenance, RankedDraftController.startBotMatch);
 router.get("/queue/status", protect, RankedDraftController.getQueueStatus);
 router.get("/session", protect, RankedDraftController.getSession);
 router.get("/variants/:cardVariantId", protect, RankedDraftController.getVariants);
