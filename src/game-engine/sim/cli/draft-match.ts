@@ -6,7 +6,7 @@
  *
  *   TS_NODE_TRANSPILE_ONLY=true npx ts-node src/game-engine/sim/cli/draft-match.ts \
  *     --a bot --b auto --drafts 100 [--agent greedy] [--seed 1] \
- *     [--table content/ai/draft-card-values.json] [--strength 1] [--looseness 0] [--a-seat 2]
+ *     [--table content/ai/draft-card-values.json] [--strength 1] [--looseness 0] [--a-seat 2] [--taste]
  *
  * --usage casual | <file.json>: draft popularity for the bot's ban/block
  * ("casual" = what noisy-auto drafters take; a file maps card id -> 0..1).
@@ -19,6 +19,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 const args = process.argv.slice(2);
+const hasFlag = (name: string) => args.includes(`--${name}`);
 const opt = (name: string, fallback: string) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
@@ -57,7 +58,7 @@ function makeDrafter(
   usage?: ReadonlyMap<string, number>
 ): SimDrafter {
   if (spec === "bot") {
-    return botDrafter(table, strength, looseness, rand, "bot", usage);
+    return botDrafter(table, strength, looseness, rand, "bot", usage, hasFlag("taste"));
   }
   if (spec === "bot-notable") {
     return botDrafter(null, strength, looseness, rand, "bot-notable");

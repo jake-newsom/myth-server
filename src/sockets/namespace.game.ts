@@ -24,7 +24,7 @@ import { clientSupportsMulligan } from "../utils/clientVersion";
 
 import { TurnManager } from "./turn.manager";
 import { GameLogic, GameStatus } from "../game-engine/game.logic";
-import { AILogic } from "../game-engine/ai.logic";
+import { aiWorkerPool } from "../game-engine/ai.worker-pool";
 import { resolveAIDifficulty } from "../game-engine/ai.difficulty";
 import { GameMode } from "../types/database.types";
 import {
@@ -236,7 +236,6 @@ export function setupGameNamespace(io: Server): void {
     return async (timedOutPlayerId: string) => {
       const releaseLock = await acquireActionLock(gameId);
       try {
-        const ai = new AILogic();
         const latestRecord = await gameService.getRawGameRecord(
           gameId,
           timedOutPlayerId
@@ -254,7 +253,7 @@ export function setupGameNamespace(io: Server): void {
         // Frigg) and they ran out of time, auto-resolve with the AI's pick,
         // then broadcast the full move to both players.
         if (currentState.pending_choice) {
-          const chosenIds = await ai.chooseHandTargets(currentState);
+          const chosenIds = await aiWorkerPool.chooseHandTargets(currentState);
           if (chosenIds.length > 0) {
             const result = await GameLogic.resolveHandChoice(
               currentState,
@@ -306,7 +305,7 @@ export function setupGameNamespace(io: Server): void {
         }
 
         const aiDifficulty = resolveAIDifficulty({ isTimeoutFallback: true });
-        const aiMove = await ai.makeAIMove(
+        const aiMove = await aiWorkerPool.makeAIMove(
           currentState,
           aiDifficulty,
           timedOutPlayerId
@@ -328,7 +327,7 @@ export function setupGameNamespace(io: Server): void {
           // the AI's pick so the move completes in this same tick instead of
           // hanging.
           if (currentState.pending_choice) {
-            const chosenIds = await ai.chooseHandTargets(currentState);
+            const chosenIds = await aiWorkerPool.chooseHandTargets(currentState);
             if (chosenIds.length > 0) {
               const choiceResult = await GameLogic.resolveHandChoice(
                 currentState,

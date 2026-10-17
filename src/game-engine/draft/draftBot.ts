@@ -109,13 +109,40 @@ export interface DraftBotOptions {
    */
   looseness: number;
   rand: () => number;
+  /**
+   * Per-draft "taste": when set, each card's value gets a stable bias of up
+   * to ±TASTE_AMPLITUDE derived from (seed, card name). Live uses the session
+   * id, so one draft's ban, picks and block share a coherent personality
+   * while different drafts lean toward different cards.
+   */
+  tasteSeed?: string;
 }
 
 /** Variety setting used live. */
-export const LIVE_LOOSENESS = 0.5;
+export const LIVE_LOOSENESS = 1.0;
+
+/** Max taste bias, in learned-value units (values span about -0.25..0.85). */
+export const TASTE_AMPLITUDE = 0.1;
 
 /** How many of the top-scoring candidates the softmax may choose among. */
 const SOFTMAX_TOP_K = 5;
+/** Candidates the naive (stat-total) pick chooses among when loose. */
+const NAIVE_TOP_K = 6;
+/** Candidates a loose ban chooses among. */
+const BAN_TOP_K = 3;
+
+/** Stable bias in [-TASTE_AMPLITUDE, TASTE_AMPLITUDE] for (seed, name). */
+export function tasteBias(seed: string | undefined, name: string): number {
+  if (!seed) return 0;
+  // FNV-1a, 32-bit.
+  let h = 0x811c9dc5;
+  const key = `${seed}:${name.toLowerCase()}`;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return ((h >>> 0) / 0xffffffff * 2 - 1) * TASTE_AMPLITUDE;
+}
 
 /**
  * Ranked rating → strength. At or below the 1000 starting rating the bot's
@@ -207,7 +234,8 @@ export interface ScoredCandidate {
  */
 export function scorePicks(
   view: DraftBotView,
-  table: DraftValueTable | null
+  table: DraftValueTable | null,
+  tasteSeed?: string
 ): ScoredCandidate[] {
   const myBudgetLeft = view.budgetTotal - costOf(view, view.myPicks);
   const mySlotsAfter = view.picksTotal - view.myPicks.length - 1;
@@ -216,7 +244,10 @@ export function scorePicks(
 
   const available = view.pool
     .filter((c) => !view.unavailable.has(c.cardVariantId))
-    .map((card) => ({ card, value: cardValue(card, table) }));
+    .map((card) => ({
+      card,
+      value: cardValue(card, table) + tasteBias(tasteSeed, card.name),
+    }));
 
   const scored: ScoredCandidate[] = [];
   for (const cand of available) {
@@ -248,12 +279,13 @@ export function scorePicks(
  * softmax whose temperature is looseness × the spread of the top scores.
  */
 function choose(
-  scored: ScoredCandidate[],
+  scored: { cardVariantId: string; score: number }[],
   looseness: number,
-  rand: () => number
+  rand: () => number,
+  topK = SOFTMAX_TOP_K
 ): string | null {
   if (scored.length === 0) return null;
-  const top = scored.slice(0, SOFTMAX_TOP_K);
+  const top = scored.slice(0, topK);
   if (looseness <= 0.01 || top.length === 1) return top[0].cardVariantId;
 
   const mean = top.reduce((s, c) => s + c.score, 0) / top.length;
@@ -290,15 +322,39 @@ export function naivePick(view: DraftBotView): string | null {
   return best?.cardVariantId ?? null;
 }
 
+/**
+ * naivePick with variety: a softmax over the highest-stat affordable cards.
+ * looseness 0 is exactly naivePick.
+ */
+export function looseNaivePick(
+  view: DraftBotView,
+  looseness: number,
+  rand: () => number
+): string | null {
+  if (looseness <= 0.01) return naivePick(view);
+  const left = view.budgetTotal - costOf(view, view.myPicks);
+  const scored = view.pool
+    .filter((c) => !view.unavailable.has(c.cardVariantId) && c.cost <= left)
+    .map((c) => ({ cardVariantId: c.cardVariantId, score: statTotal(c.power) }))
+    .sort(
+      (a, b) => b.score - a.score || a.cardVariantId.localeCompare(b.cardVariantId)
+    );
+  return choose(scored, looseness, rand, NAIVE_TOP_K);
+}
+
 export function chooseBotPick(
   view: DraftBotView,
   opts: DraftBotOptions
 ): string | null {
   if (opts.rand() >= opts.strength) {
-    const naive = naivePick(view);
+    const naive = looseNaivePick(view, opts.looseness, opts.rand);
     if (naive) return naive;
   }
-  return choose(scorePicks(view, opts.table), opts.looseness, opts.rand);
+  return choose(
+    scorePicks(view, opts.table, opts.tasteSeed),
+    opts.looseness,
+    opts.rand
+  );
 }
 
 /**
@@ -312,17 +368,22 @@ export const USAGE_WEIGHT = 0.3;
 function banBlockScore(
   card: DraftPoolCard,
   view: DraftBotView,
-  table: DraftValueTable | null
+  table: DraftValueTable | null,
+  tasteSeed?: string
 ): number {
   return (
     cardValue(card, table) +
+    tasteBias(tasteSeed, card.name) +
     USAGE_WEIGHT * (view.usage?.get(card.cardVariantId) ?? 0)
   );
 }
 
 /** Below full strength, ban/block also fall back to the naive stat choice. */
 type JudgementOptions = Pick<DraftBotOptions, "table"> &
-  Partial<Pick<DraftBotOptions, "strength" | "rand">>;
+  Partial<Pick<DraftBotOptions, "strength" | "rand" | "tasteSeed">> & {
+    /** Bans only (blocks stay argmax): variety among the top few. Default 0. */
+    looseness?: number;
+  };
 
 function usesJudgement(opts: JudgementOptions): boolean {
   const strength = opts.strength ?? 1;
@@ -353,20 +414,19 @@ export function chooseBotBan(
   view: DraftBotView,
   opts: JudgementOptions
 ): string | null {
-  if (!usesJudgement(opts)) return naivePick(view);
-  let best: { id: string; value: number } | null = null;
-  for (const card of view.pool) {
-    if (view.unavailable.has(card.cardVariantId)) continue;
-    const value = banBlockScore(card, view, opts.table);
-    if (
-      !best ||
-      value > best.value ||
-      (value === best.value && card.cardVariantId < best.id)
-    ) {
-      best = { id: card.cardVariantId, value };
-    }
-  }
-  return best?.id ?? null;
+  const looseness = opts.looseness ?? 0;
+  const rand = opts.rand ?? Math.random;
+  if (!usesJudgement(opts)) return looseNaivePick(view, looseness, rand);
+  const scored = view.pool
+    .filter((c) => !view.unavailable.has(c.cardVariantId))
+    .map((c) => ({
+      cardVariantId: c.cardVariantId,
+      score: banBlockScore(c, view, opts.table, opts.tasteSeed),
+    }))
+    .sort(
+      (a, b) => b.score - a.score || a.cardVariantId.localeCompare(b.cardVariantId)
+    );
+  return choose(scored, looseness, rand, BAN_TOP_K);
 }
 
 /** Blocks the opponent's strongest drafted card, leaning toward popular ones. */
@@ -385,7 +445,7 @@ export function chooseBotBlock(
   for (const id of view.opponentPicks) {
     const card = byId.get(id);
     if (!card) continue;
-    const value = banBlockScore(card, view, opts.table);
+    const value = banBlockScore(card, view, opts.table, opts.tasteSeed);
     if (!best || value > best.value || (value === best.value && id < best.id)) {
       best = { id, value };
     }

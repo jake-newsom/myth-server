@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { HttpError } from "../errors/httpError";
 import { GameNotFoundError } from "../../services/game.service";
 import {
   DeckNotFoundError,
@@ -118,6 +119,20 @@ const errorHandler = (
     method: req.method,
     user: req.user?.user_id || "anonymous",
   });
+
+  // Standard shape (see api/errors/httpError.ts). The legacy branches below
+  // keep their nested { error: { ... } } body for routes already using them;
+  // they're listed in ERROR_HANDLING_TODO.md.
+  if (error instanceof HttpError) {
+    res.status(error.status).json({
+      ...error.legacy,
+      error: error.message,
+      message: error.message,
+      code: error.code,
+      ...(error.details ? { details: error.details } : {}),
+    });
+    return;
+  }
 
   let statusCode = 500;
   let errorResponse: ErrorResponse = {

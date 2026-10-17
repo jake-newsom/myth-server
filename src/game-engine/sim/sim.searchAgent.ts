@@ -4,6 +4,7 @@ import { GameLogic, GameStatus } from "../game.logic";
 import { chooseAIMulligan, MAX_MULLIGAN_REPLACEMENTS } from "../game.mulligan";
 import * as validators from "../game.validators";
 import { randomInt } from "../simulation.rng";
+import { simulationContext } from "../simulation.context";
 import { SimAgent, SimMove } from "./sim.types";
 import { StateEncoder } from "./sim.encoder";
 import { ValueNet } from "./sim.valueNet";
@@ -59,6 +60,7 @@ export class ValueNetAgent implements SimAgent {
     move: SimMove,
     bestTargets: boolean
   ): Promise<GameState | null> {
+    await simulationContext.maybeYield();
     try {
       let { state: next } = await GameLogic.placeCard(
         state,

@@ -213,6 +213,8 @@ export async function chooseBanFor(
   return chooseBotBan(await viewFor(session), {
     table: getValueTable(),
     strength: await strengthFor(session),
+    looseness: LIVE_LOOSENESS,
+    tasteSeed: session.session_id,
     rand: Math.random,
   });
 }
@@ -224,6 +226,7 @@ export async function choosePickFor(
     table: getValueTable(),
     strength: await strengthFor(session),
     looseness: LIVE_LOOSENESS,
+    tasteSeed: session.session_id,
     rand: Math.random,
   });
 }
@@ -234,6 +237,7 @@ export async function chooseBlockFor(
   return chooseBotBlock(await viewFor(session), {
     table: getValueTable(),
     strength: await strengthFor(session),
+    tasteSeed: session.session_id,
     rand: Math.random,
   });
 }

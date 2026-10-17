@@ -72,15 +72,24 @@ export function botDrafter(
   looseness: number,
   rand: () => number,
   name = "bot",
-  usage?: ReadonlyMap<string, number>
+  usage?: ReadonlyMap<string, number>,
+  /** Live-like variety: loose bans + a fresh taste seed each draft. */
+  taste = false
 ): SimDrafter {
   const withUsage = (v: DraftBotView): DraftBotView =>
     usage ? { ...v, usage } : v;
+  let tasteSeed: string | undefined;
+  // Ban is each draft's first bot action, so a new seed there = per-draft taste.
   return {
     name,
-    ban: (v) => chooseBotBan(withUsage(v), { table, strength, rand }),
-    pick: (v) => chooseBotPick(v, { table, strength, looseness, rand }),
-    block: (v) => chooseBotBlock(withUsage(v), { table, strength, rand }),
+    ban: (v) => {
+      if (taste) tasteSeed = rand().toString(36);
+      return chooseBotBan(withUsage(v), {
+        table, strength, rand, tasteSeed, looseness: taste ? looseness : 0,
+      });
+    },
+    pick: (v) => chooseBotPick(v, { table, strength, looseness, rand, tasteSeed }),
+    block: (v) => chooseBotBlock(withUsage(v), { table, strength, rand, tasteSeed }),
   };
 }
 

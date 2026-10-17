@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "async_hooks";
+
 type RandomGenerator = () => number;
 
 interface RngFrame {
@@ -5,7 +7,10 @@ interface RngFrame {
   generator: RandomGenerator;
 }
 
-const rngStack: RngFrame[] = [];
+// Scoped per async call chain, not per process: once AI search yields to the
+// event loop, a process-global stack would leak the AI's seeded RNG into
+// real games handled in between.
+const rngScope = new AsyncLocalStorage<RngFrame>();
 
 function mulberry32(seed: number): RandomGenerator {
   let t = seed >>> 0;
@@ -25,12 +30,11 @@ function normalizeSeed(seed: number): number {
 }
 
 export function getCurrentSimulationSeed(): number | null {
-  const top = rngStack[rngStack.length - 1];
-  return top ? top.seed : null;
+  return rngScope.getStore()?.seed ?? null;
 }
 
 export function randomFloat(): number {
-  const top = rngStack[rngStack.length - 1];
+  const top = rngScope.getStore();
   if (!top) {
     return Math.random();
   }
@@ -58,14 +62,8 @@ export async function withSimulationSeed<T>(
   fn: () => Promise<T>
 ): Promise<T> {
   const normalizedSeed = normalizeSeed(seed);
-  rngStack.push({
-    seed: normalizedSeed,
-    generator: mulberry32(normalizedSeed),
-  });
-
-  try {
-    return await fn();
-  } finally {
-    rngStack.pop();
-  }
+  return rngScope.run(
+    { seed: normalizedSeed, generator: mulberry32(normalizedSeed) },
+    fn
+  );
 }

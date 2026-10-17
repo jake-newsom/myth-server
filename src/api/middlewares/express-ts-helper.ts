@@ -1,25 +1,21 @@
 /**
- * This file contains type helpers for Express to make TypeScript and Express route handlers
- * work well together, especially with async functions.
+ * Express 4 does not forward rejected promises from async handlers: an
+ * uncaught throw leaves the request hanging. Wrap every async route handler.
  */
 
 import { Request, Response, NextFunction, RequestHandler } from "express";
 
 /**
- * Wraps an async request handler to catch and propagate errors to next()
- * @param handler The async request handler to wrap
+ * Wraps an async request handler so a thrown/rejected error reaches next()
+ * and therefore the global errorHandler.
  */
-export const asyncHandler = (handler: Function): RequestHandler => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    // @ts-ignore - Suppressing TypeScript errors for return values
-    Promise.resolve(handler(req, res, next)).catch(next);
+export const asyncHandler = <Req extends Request = Request>(
+  handler: (req: Req, res: Response, next: NextFunction) => Promise<unknown>
+): RequestHandler => {
+  return (req, res, next) => {
+    handler(req as Req, res, next).catch(next);
   };
 };
 
-/**
- * A specialized version of asyncHandler that helps with TypeScript compatibility
- * for routes that use the AuthenticatedRequest interface
- */
-export const protectedAsyncHandler = (handler: Function): RequestHandler => {
-  return asyncHandler(handler);
-};
+/** @deprecated alias of asyncHandler; kept so existing imports compile. */
+export const protectedAsyncHandler = asyncHandler;

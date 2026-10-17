@@ -377,6 +377,7 @@ export class LookaheadEngine {
     playerId: string,
     seed?: number
   ): Promise<GameState | null> {
+    await simulationContext.maybeYield();
     try {
       const clonedState = _.cloneDeep(gameState);
 

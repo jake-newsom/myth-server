@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { GameLogic, GameStatus } from "../../game-engine/game.logic";
-import { AILogic } from "../../game-engine/ai.logic";
+import { aiWorkerPool } from "../../game-engine/ai.worker-pool";
 import {
   applyPlayerMulligan,
   bootstrapSoloMulliganForClient,
@@ -951,8 +951,7 @@ class GameController {
       if (isTimeoutMove && currentGameState.pending_choice) {
         // The human timed out on an interactive choice (e.g. Frigg): resolve
         // it with the AI's pick, as the PvP turn timeout does.
-        const ai = new AILogic();
-        const chosenIds = await ai.chooseHandTargets(currentGameState);
+        const chosenIds = await aiWorkerPool.chooseHandTargets(currentGameState);
         if (chosenIds.length > 0) {
           const choiceResult = await GameLogic.resolveHandChoice(
             currentGameState,
@@ -1005,7 +1004,6 @@ class GameController {
         }
       } else {
         // Normal AI move calculation
-        const ai = new AILogic();
         const aiDifficulty = resolveAIDifficulty({
           isTimeoutFallback: isTimeoutMove,
           isTowerGame:
@@ -1013,7 +1011,7 @@ class GameController {
           floorNumber: gameRecord.floor_number ?? null,
           sagaAiProfile: currentGameState.saga_context?.ai_profile,
         });
-        let aiMove = await ai.makeAIMove(
+        let aiMove = await aiWorkerPool.makeAIMove(
           _.cloneDeep(currentGameState),
           aiDifficulty,
           actingPlayerId
@@ -1032,7 +1030,7 @@ class GameController {
             const forcedState = _.cloneDeep(currentGameState);
             const forcedStateAiPlayer = validators.getPlayer(forcedState, AI_PLAYER_ID);
             forcedStateAiPlayer.hand = [forcedOpeningCardId];
-            const forcedMove = await ai.makeAIMove(
+            const forcedMove = await aiWorkerPool.makeAIMove(
               forcedState,
               aiDifficulty,
               actingPlayerId
@@ -1058,7 +1056,7 @@ class GameController {
           // can't make a follow-up choice — resolve it inline with the AI's own
           // pick so the move completes instead of leaving the game paused.
           if (updatedGameState.pending_choice) {
-            const chosenIds = await ai.chooseHandTargets(updatedGameState);
+            const chosenIds = await aiWorkerPool.chooseHandTargets(updatedGameState);
             if (chosenIds.length > 0) {
               const choiceResult = await GameLogic.resolveHandChoice(
                 updatedGameState,
