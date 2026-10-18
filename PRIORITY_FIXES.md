@@ -17,7 +17,7 @@ The neural AI search (`src/game-engine/sim/sim.searchAgent.ts`) runs up to its 1
 ## 3. Solo game actions have no concurrency control — OPEN
 `submitAction`/`submitAIAction` read-modify-write state, and `updateGameAfterAction` (`game.service.ts`) overwrites unconditionally. A double tap, retry, or race with the AI action can silently lose an update (PvP has an in-memory lock; solo has none). Fix: defaulted `state_version` column + conditional `WHERE state_version = $n`.
 
-## 4. game_state write amplification — PLANNED
+## 4. game_state write amplification — PHASE 1 DONE, PHASE 2 PLANNED
 Local games average ~58KB of JSON, ~41KB of it `hydrated_card_data_cache`, rewritten every move and echoed back via `RETURNING game_state`. `getActiveGamesForUser` parses full blobs for two fields.
 
 ### What the data looks like (local DB, 2026-10-17)
@@ -28,7 +28,9 @@ Local games average ~58KB of JSON, ~41KB of it `hydrated_card_data_cache`, rewri
 - Return value of `updateGameAfterAction`: 8 socket callers ignore it; `submitAction`/`submitAIAction` (`game.controller.ts:789`, `:1233`) `JSON.parse` the returned `game_state` even though they hold the same state in memory. The only difference is the write-time replacer that strips `sourceCard`.
 - No SQL anywhere reads into `game_state` JSON; no admin consumer.
 
-### Phase 1 — stop the round-trips (no schema change, one small PR)
+### Phase 1 — stop the round-trips (no schema change, one small PR) — DONE 2026-10-17
+`updateGameAfterAction` no longer returns `game_state` from Postgres (returns the parsed JSON it wrote; callers unchanged). `getActiveGamesSummary` reads `current_player_id`/`turn_number` in SQL. Both active-game list queries use `UNION ALL` + `player1_id IS DISTINCT FROM $1` instead of `UNION`, which deduped by comparing whole rows incl. the state blob. `getRawGameRecord` keeps `SELECT *` (callers use most columns). Verified on local DB against the old SQL (incl. a self-vs-self row) and a write/read-back equality check; all suites green.
+
 1. `updateGameAfterAction`: `RETURNING game_id, game_status, winner_id` (drop `game_state`). Add `toPersistedState(state)` (the existing `sourceCard`-stripping stringify) and use its output for both the DB param and, via `JSON.parse`, the two controller responses. Response stays byte-identical.
 2. `getActiveGamesForUser`: select `game_state->>'current_player_id'` and `(game_state->>'turn_number')::int` instead of the blob.
 3. Audit the remaining `SELECT *` / full-state reads in `game.service.ts` (e.g. `:323`) and select only what each caller uses.
@@ -69,14 +71,18 @@ Matchmaking queue array, per-game action locks, ranked-draft timers, chat rate-l
 ## 7. Game engine writes achievement progress directly — OPEN
 Ability code calls `AchievementService.triggerAchievementEvent` from ~18 sites mid-resolution; `achievement.service.ts` is 2,565 lines with ~25 module-level per-match Maps (lost on restart, cleaned by key-prefix scans). Fix: engine only emits events; achievements consume the move's event list after the state is saved.
 
-## 8. 28 of 66 test files run by no npm script — OPEN
+## 8. 28 of 66 test files run by no npm script — DONE
 Includes per-pantheon achievement tests, saga map tests, gold reward-service test. `npm test` just prints an error. Fix: one `node --test` glob as `npm test`, plus CI.
+
+**Done 2026-10-17:** `npm test` → `tests/run.js` runs every `*.test.ts/js` under `src/` and `tests/` (new files auto-included; `npm test -- <substring>` filters). 61 files / 532 tests pass. Fixed `tests/utils/clientVersion.test.ts` (asserted 1.0.9 supports mulligan; min has always been 1.0.10). 7 files quarantined in the runner with reasons: 3 Jest-format files (Jest not installed), norse/polynesian achievement tests (hit real DB with fake ids; Pele/Maui assertion also fails), old haunted-tile test (bonus not removed on move off tile — **possible real bug**, check against `test:haunted`), IAP suite (temp schema built from migration 014 only; also fails under `test:iap`). **Still open:** CI step.
 
 ## 9. Game action dispatch duplicated 3× — OPEN
 `submitAction` and `submitAIAction` (~400 lines each) plus `namespace.game.ts`. 62 services/controllers (9 controllers) import `config/db` directly. Fix: one `GameActionService` shared by HTTP and sockets (home for the #3 version check).
 
-## 10. Duplicate indexes on hot tables — OPEN
+## 10. Duplicate indexes on hot tables — DONE (pending deploy)
 Local DB: `games` has two indexes each on `player1_id`, `player2_id`, `game_status`; `user_owned_cards` two on `user_id`. Fix: confirm in prod, then `DROP INDEX CONCURRENTLY` in its own release.
+
+**Done 2026-10-17:** `migrations/1800000000040_drop-duplicate-indexes.js` drops 28 redundant indexes (8 identical plain pairs, 1 duplicated unique index, 19 plain indexes shadowed by a unique one on users, user_sessions, games, user_owned_cards, deck_cards, …). Non-transactional `DROP INDEX CONCURRENTLY`, each guarded by a catalog check that an equivalent valid index remains; `down()` recreates them concurrently. Local: 357 → 329 indexes, down/up round-trip verified, no invalid indexes. Ship in its own release; prod not inspected (guards make it safe either way).
 
 ## 11. Dev and prod start differently — OPEN
 `server.js` (prod) and `app.ts` (dev) each set up Socket.IO, CORS, `listen` — already caused an `io` wiring bug. `socket.manager.js` is still CommonJS. Fix: one `src/bootstrap/` entry used by both.

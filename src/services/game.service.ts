@@ -37,7 +37,7 @@ export interface CreateGameResponse {
 
 export interface UpdatedGameResponse {
   game_id: string;
-  game_state: GameState; // This will be a string initially from DB, to be parsed
+  game_state: GameState; // As written (parsed from the persisted JSON)
   game_status: GameStatus;
   winner_id: string | null;
 }
@@ -350,12 +350,13 @@ class GameService {
           winner_id = $3,
           completed_at = CASE WHEN $2 = 'completed' THEN NOW() ELSE NULL END
       WHERE game_id = $4
-      RETURNING game_id, game_state, game_status, winner_id;
+      RETURNING game_id, game_status, winner_id;
     `;
+    const persistedState = JSON.stringify(updatedGameState, (key, value) =>
+      key === "sourceCard" ? undefined : value
+    );
     const values = [
-      JSON.stringify(updatedGameState, (key, value) =>
-        key === "sourceCard" ? undefined : value
-      ),
+      persistedState,
       newGameStatus,
       winnerId,
       gameId,
@@ -364,8 +365,13 @@ class GameService {
     if (rows.length === 0) {
       throw new Error("Failed to update game."); // Or GameNotFoundError
     }
-    // game_state from DB is JSON string. The caller (controller) will parse it.
-    return rows[0] as UpdatedGameResponse;
+    // Return the state exactly as written (sourceCard stripped) without making
+    // Postgres send the ~60KB blob back. A fresh parse also keeps callers'
+    // later in-memory mutations out of the response, as the DB copy did.
+    return {
+      ...rows[0],
+      game_state: JSON.parse(persistedState),
+    } as UpdatedGameResponse;
   }
 
   /**
@@ -374,14 +380,16 @@ class GameService {
   async getActiveGamesForUser(userId: string): Promise<SanitizedGame[]> {
     // Isolate the player1_id/player2_id OR into a UNION ALL so each branch can
     // use a per-player index (esp. a partial index on game_status='active')
-    // instead of a bitmap-OR. DISTINCT guards the rare row matching both.
+    // instead of a bitmap-OR. The second branch skips rows the first already
+    // returned; plain UNION would dedupe by comparing whole rows incl. game_state.
     const query = `
       WITH mine AS (
         SELECT g.* FROM "games" g
         WHERE g.player1_id = $1 AND g.game_status = 'active' AND g.is_tutorial = false
-        UNION
+        UNION ALL
         SELECT g.* FROM "games" g
         WHERE g.player2_id = $1 AND g.game_status = 'active' AND g.is_tutorial = false
+          AND g.player1_id IS DISTINCT FROM $1
       )
       SELECT g.*,
              p1.username as player1_username,
@@ -420,19 +428,25 @@ class GameService {
     // use a per-player (ideally active-partial) index instead of a bitmap-OR.
     const query = `
       WITH mine AS (
-        SELECT g.game_id, g.game_mode, g.game_status, g.created_at, g.game_state, g.player2_id
+        SELECT g.game_id, g.game_mode, g.game_status, g.created_at, g.player2_id,
+               g.game_state->>'current_player_id' AS current_player_id,
+               g.game_state->>'turn_number' AS turn_number
         FROM "games" g
         WHERE g.player1_id = $1 AND g.game_status = 'active' AND g.is_tutorial = false
-        UNION
-        SELECT g.game_id, g.game_mode, g.game_status, g.created_at, g.game_state, g.player2_id
+        UNION ALL
+        SELECT g.game_id, g.game_mode, g.game_status, g.created_at, g.player2_id,
+               g.game_state->>'current_player_id' AS current_player_id,
+               g.game_state->>'turn_number' AS turn_number
         FROM "games" g
         WHERE g.player2_id = $1 AND g.game_status = 'active' AND g.is_tutorial = false
+          AND g.player1_id IS DISTINCT FROM $1
       )
       SELECT g.game_id,
              g.game_mode,
              g.game_status,
              g.created_at,
-             g.game_state,
+             g.current_player_id,
+             g.turn_number,
              CASE WHEN g.player2_id = $2 THEN 'AI Opponent'
                   WHEN p2.username IS NULL THEN 'Unknown Opponent'
                   ELSE p2.username
@@ -443,18 +457,16 @@ class GameService {
     `;
     const { rows } = await db.query(query, [userId, AI_PLAYER_ID]);
 
-    return rows.map((game) => {
-      const gameState = this.parseGameState(game.game_state);
-      return {
-        game_id: game.game_id,
-        game_mode: game.game_mode,
-        game_status: game.game_status,
-        opponent_name: game.opponent_name,
-        created_at: game.created_at,
-        is_user_turn: gameState.current_player_id === userId,
-        turn_number: gameState.turn_number || 1,
-      };
-    });
+    // Only the two state fields are read (in SQL), not the full blob.
+    return rows.map((game) => ({
+      game_id: game.game_id,
+      game_mode: game.game_mode,
+      game_status: game.game_status,
+      opponent_name: game.opponent_name,
+      created_at: game.created_at,
+      is_user_turn: game.current_player_id === userId,
+      turn_number: Number(game.turn_number) || 1,
+    }));
   }
 
   /**

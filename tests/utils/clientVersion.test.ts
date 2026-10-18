@@ -17,7 +17,7 @@ test("clientSupportsMulligan: missing version is legacy", () => {
 });
 
 test("clientSupportsMulligan: at or above min supports mulligan", () => {
-  assert.equal(clientSupportsMulligan("1.0.9"), true);
+  assert.equal(clientSupportsMulligan("1.0.10"), true);
   assert.equal(clientSupportsMulligan("1.1.0"), true);
-  assert.equal(clientSupportsMulligan("1.0.8"), false);
+  assert.equal(clientSupportsMulligan("1.0.9"), false);
 });
