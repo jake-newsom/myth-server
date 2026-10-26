@@ -17,6 +17,7 @@ import {
 import logger from "../../utils/logger";
 import { getGameNamespaceConnectedUserIds } from "../../sockets/namespace.game";
 import { isUserInMatchmakingQueue } from "./matchmaking.controller";
+import { findLiveCommitment } from "../../services/playerCommitment.service";
 
 class ChallengeController {
   private attachPresenceEmitter(req: AuthenticatedRequest): void {
@@ -122,6 +123,18 @@ class ChallengeController {
         return;
       }
 
+      // A challenge game must never start alongside a live draft or match:
+      // the client would route between the two and strand one of them.
+      if (await findLiveCommitment(challengerId)) {
+        throw new ChallengeError(
+          "Finish your current game or draft before sending a challenge.",
+          409
+        );
+      }
+      if (await findLiveCommitment(opponentId)) {
+        throw new ChallengeError("That player is already in a match.", 409);
+      }
+
       const challenge = ChallengeService.sendChallenge({
         challengerId,
         challengerUsername: challenger.username,
@@ -160,6 +173,14 @@ class ChallengeController {
           : typeof accept === "boolean"
             ? accept
             : String(response).toLowerCase() === "accept";
+
+      // Re-checked at accept: a draft can start while the challenge is pending.
+      if (isAccept && (await findLiveCommitment(userId))) {
+        throw new ChallengeError(
+          "Finish your current game or draft before accepting a challenge.",
+          409
+        );
+      }
 
       const challenge = ChallengeService.respondToChallenge({
         challengeId,

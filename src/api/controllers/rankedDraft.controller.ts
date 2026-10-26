@@ -7,6 +7,9 @@ import RankedDraft, {
 } from "../../services/rankedDraft.service";
 import RankedMatchmaking from "../../services/rankedMatchmaking.service";
 import { isUserInMatchmakingQueue } from "./matchmaking.controller";
+import ChallengeService from "../../services/challenge.service";
+import { findLiveCommitment } from "../../services/playerCommitment.service";
+import { conflict } from "../errors/httpError";
 import RankedDraftOrchestrator from "../../services/rankedDraftOrchestrator.service";
 import FeatureFlagService from "../../services/featureFlag.service";
 import LeaderboardModel from "../../models/leaderboard.model";
@@ -94,6 +97,23 @@ const RankedDraftController = {
           },
           gameId: active.rows[0].game_id,
         });
+      }
+
+      // A pending challenge or a live unranked/challenge game blocks the draft
+      // too, or its auto-picks start a second game the client jumps into.
+      if (ChallengeService.hasActiveChallengeLock(userId)) {
+        throw conflict(
+          "Finish or cancel your challenge before joining Ranked Draft.",
+          "IN_CHALLENGE"
+        );
+      }
+      const commitment = await findLiveCommitment(userId);
+      if (commitment?.kind === "game") {
+        throw conflict(
+          "You already have a game in progress.",
+          "ACTIVE_GAME_EXISTS",
+          { gameId: commitment.gameId }
+        );
       }
 
       // Daily cap. Checked AFTER the in-progress guards so a player mid-draft
