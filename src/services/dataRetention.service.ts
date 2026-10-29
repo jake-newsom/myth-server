@@ -1,6 +1,7 @@
 import * as cron from "node-cron";
 import FatePickService from "./fatePick.service";
 import MailService from "./mail.service";
+import RiddleService from "./riddle.service";
 import db from "../config/db.config";
 
 /**
@@ -104,6 +105,7 @@ class DataRetentionService {
       await this.purgeExpiredFatePicks();
       await this.purgeExpiredMail();
       await this.clearTerminalGameState();
+      await this.pruneRiddleAttempts();
     } finally {
       this.running = false;
     }
@@ -243,6 +245,18 @@ class DataRetentionService {
       }
     } catch (error) {
       console.error("[Data Retention] Mail purge threw:", error);
+    }
+  }
+
+  /** Weekly Riddle play-throughs; per-week progress rows are kept. */
+  private async pruneRiddleAttempts(): Promise<void> {
+    try {
+      const deleted = await RiddleService.pruneAttempts(90);
+      if (deleted > 0) {
+        console.log(`[Data Retention] Pruned ${deleted} old riddle attempts`);
+      }
+    } catch (error) {
+      console.error("[Data Retention] Riddle attempt prune threw:", error);
     }
   }
 }

@@ -269,6 +269,7 @@ class TowerService {
   async getTowerLeaderboard(page: number = 1): Promise<{
     rankings: Array<{
       rank: number;
+      user_id: string;
       username: string;
       highest_completed: number;
       reached_at: Date | null;
@@ -286,6 +287,7 @@ class TowerService {
     const [rankResult, countResult] = await Promise.all([
       db.query(
         `SELECT
+           user_id,
            username,
            tower_floor - 1         AS highest_completed,
            tower_floor_updated_at  AS reached_at
@@ -304,6 +306,7 @@ class TowerService {
 
     const rankings = rankResult.rows.map((row, index) => ({
       rank: offset + index + 1,
+      user_id: row.user_id as string,
       username: row.username as string,
       highest_completed: row.highest_completed as number,
       reached_at: row.reached_at as Date | null,
@@ -317,6 +320,37 @@ class TowerService {
         total,
         total_pages: Math.ceil(total / PAGE_SIZE),
       },
+    };
+  }
+
+  /**
+   * The caller's own leaderboard standing, using the same ordering as
+   * getTowerLeaderboard. rank is null when they haven't cleared a floor.
+   */
+  async getTowerLeaderboardRank(userId: string): Promise<{
+    rank: number | null;
+    highest_completed: number;
+    reached_at: Date | null;
+  }> {
+    const { rows } = await db.query(
+      `SELECT me.tower_floor - 1        AS highest_completed,
+              me.tower_floor_updated_at AS reached_at,
+              CASE WHEN me.tower_floor > 1 THEN (
+                SELECT COUNT(*) + 1 FROM users o
+                 WHERE o.tower_floor > 1
+                   AND (o.tower_floor > me.tower_floor
+                        OR (o.tower_floor = me.tower_floor
+                            AND o.tower_floor_updated_at < me.tower_floor_updated_at))
+              ) END AS rank
+         FROM users me
+        WHERE me.user_id = $1`,
+      [userId]
+    );
+    const row = rows[0];
+    return {
+      rank: row?.rank != null ? parseInt(row.rank, 10) : null,
+      highest_completed: Math.max(0, (row?.highest_completed as number) ?? 0),
+      reached_at: (row?.reached_at as Date | null) ?? null,
     };
   }
 

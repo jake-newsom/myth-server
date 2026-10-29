@@ -5,6 +5,7 @@
 import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../../types/middleware.types";
 import TowerService from "../../services/tower.service";
+import PlayerCosmeticsService from "../../services/playerCosmetics.service";
 import ChallengeService from "../../services/challenge.service";
 import {
   isUserInAnyMatchmakingQueue,
@@ -271,6 +272,7 @@ export class TowerController {
     try {
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const result = await TowerService.getTowerLeaderboard(page);
+      await PlayerCosmeticsService.attachToRows(result.rankings);
 
       res.status(200).json({
         status: "success",
@@ -285,6 +287,18 @@ export class TowerController {
             : "Failed to get tower leaderboard",
       });
     }
+  }
+
+  /**
+   * The caller's own tower leaderboard standing (pinned "you" row).
+   * GET /api/tower/leaderboard/me
+   */
+  static async getMyLeaderboardRank(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    const data = await TowerService.getTowerLeaderboardRank(req.user!.user_id);
+    res.status(200).json({ status: "success", data });
   }
 
   /**

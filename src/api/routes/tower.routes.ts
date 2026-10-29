@@ -7,11 +7,19 @@ import { TowerController } from "../controllers/tower.controller";
 import { authenticateJWT } from "../middlewares/auth.middleware";
 import { gameActionRateLimit } from "../middlewares/rateLimit.middleware";
 import { blockDuringMaintenance } from "../middlewares/maintenance.middleware";
+import { asyncHandler } from "../middlewares/express-ts-helper";
 
 const router = Router();
 
 // GET /api/tower/leaderboard - Public: paginated tower rankings (100 per page)
 router.get("/leaderboard", TowerController.getLeaderboard);
+
+// GET /api/tower/leaderboard/me - Caller's own rank + highest floor
+router.get(
+  "/leaderboard/me",
+  authenticateJWT,
+  asyncHandler(TowerController.getMyLeaderboardRank)
+);
 
 /**
  * @swagger

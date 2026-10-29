@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import LeaderboardService from "../../services/leaderboard.service";
 import { AuthenticatedRequest } from "../../types";
+import PlayerCosmeticsService from "../../services/playerCosmetics.service";
 
 /**
  * Get current leaderboard with optional user context
@@ -21,6 +22,8 @@ export const getLeaderboard = async (
       page,
       limit
     );
+
+    await PlayerCosmeticsService.attachToRows(result.leaderboard);
 
     // Remove success property and flatten response
     const { success, ...flattenedResult } = result;
@@ -227,6 +230,8 @@ export const getLeaderboardAroundUser = async (
       season,
       range
     );
+
+    await PlayerCosmeticsService.attachToRows(result.leaderboard);
 
     // Remove success property and flatten response
     const { success, ...flattenedResult } = result;

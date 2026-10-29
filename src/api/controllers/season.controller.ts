@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../../types";
 import SeasonService from "../../services/season.service";
 import SeasonSoulsService from "../../services/seasonSouls.service";
+import PlayerCosmeticsService from "../../services/playerCosmetics.service";
 
 export const getCurrentSeason = async (
   req: AuthenticatedRequest,
@@ -155,6 +156,7 @@ export const getSetLeaderboard = async (
         page,
         limit
       );
+      await PlayerCosmeticsService.attachToRows(data.leaderboard);
       return res.status(200).json(data);
     } catch (serviceError) {
       const message =
@@ -186,6 +188,7 @@ export const getOverallLeaderboard = async (
     );
 
     const data = await SeasonSoulsService.getOverallLeaderboard(page, limit);
+    await PlayerCosmeticsService.attachToRows(data.leaderboard);
     return res.status(200).json(data);
   } catch (error) {
     console.error("Error getting overall season leaderboard:", error);
@@ -265,6 +268,7 @@ export const getPreviousLeaderboard = async (
     const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
     const limit = Math.min(100, Math.max(1, parseInt((req.query.limit as string) || "50", 10)));
     const data = await SeasonSoulsService.getPreviousLeaderboard(page, limit);
+    await PlayerCosmeticsService.attachToRows(data.leaderboard);
     return res.status(200).json(data);
   } catch (error) {
     console.error("Error getting previous season leaderboard:", error);

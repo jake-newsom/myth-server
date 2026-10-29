@@ -262,6 +262,30 @@ const PlayerCosmeticsService = {
     return result;
   },
 
+  /**
+   * Adds `cosmetics` to each leaderboard-style row (additive response field).
+   * Best-effort: a lookup failure leaves rows undecorated rather than failing
+   * the leaderboard request.
+   */
+  async attachToRows<T extends object>(
+    rows: T[] | undefined | null,
+    idKey: keyof T = "user_id" as keyof T
+  ): Promise<void> {
+    if (!rows?.length) return;
+    try {
+      const idOf = (r: T) => String(r[idKey]);
+      const profiles = await this.getPublicProfiles([
+        ...new Set(rows.map(idOf)),
+      ]);
+      for (const row of rows) {
+        (row as T & { cosmetics?: PublicPlayerProfile | null }).cosmetics =
+          profiles.get(idOf(row)) ?? null;
+      }
+    } catch (err) {
+      console.error("Failed to attach leaderboard cosmetics:", err);
+    }
+  },
+
   async getPublicProfile(
     userId: string,
     exec: QueryExecutor = db

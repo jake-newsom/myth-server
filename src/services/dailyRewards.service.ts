@@ -3,6 +3,7 @@ import UserModel from "../models/user.model";
 import * as cron from "node-cron";
 import DailyShopService from "./dailyShop.service";
 import MonthlyLoginRewardsService from "./monthlyLoginRewards.service";
+import RiddleService from "./riddle.service";
 
 interface DailyRewardResult {
   success: boolean;
@@ -243,6 +244,11 @@ const DailyRewardsService = {
     const tasks: cron.ScheduledTask[] = [];
 
     // Schedule for 12:00 AM UTC (midnight) - Daily shop refresh and rewards
+    // Open this week's riddle on boot if the Wednesday run was missed (deploy, downtime).
+    RiddleService.rotateWeek().catch((err) =>
+      console.error("❌ Error rotating weekly riddle on startup:", err)
+    );
+
     const midnightTask = cron.schedule(
       "0 0 * * *",
       async () => {
@@ -252,6 +258,13 @@ const DailyRewardsService = {
           // Check if it's the 1st of the month and reset monthly login progress
           const now = new Date();
           const isFirstOfMonth = now.getUTCDate() === 1;
+
+          // Weekly Riddle opens Wednesdays; idempotent, so daily runs also catch up a missed week.
+          try {
+            await RiddleService.rotateWeek(now);
+          } catch (riddleError) {
+            console.error("❌ Error rotating weekly riddle:", riddleError);
+          }
           
           if (isFirstOfMonth) {
             console.log("📅 First of the month detected - resetting monthly login progress...");
