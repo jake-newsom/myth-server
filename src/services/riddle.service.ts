@@ -273,9 +273,17 @@ const RiddleService = {
       for (const row of candidates.rows) {
         const check = await checkPuzzle(row.state, row.source_seed, releaseAt);
         if (!check.ok) {
-          if (check.reason === "solve_error") console.error(`[riddle] solve failed for puzzle ${row.id}:`, check.error);
-          // No longer a one-answer puzzle under current balance.
-          await client.query("UPDATE riddle_puzzles SET status = 'retired', notes = 'retired at rotation: no unique solution' WHERE id = $1", [row.id]);
+          if (check.reason === "missing_cards") {
+            // A removed character never comes back, so this one is done for good.
+            await client.query(
+              "UPDATE riddle_puzzles SET status = 'retired', notes = concat_ws('; ', notes, $2::text) WHERE id = $1",
+              [row.id, `retired at rotation: missing ${check.missing.join(", ")}`]
+            );
+          } else {
+            // Random abilities make uniqueness seed-dependent; next week's seed may work, so skip without retiring.
+            const why = check.reason === "solve_error" ? check.error : "no unique solution under this week's seed";
+            console.warn(`[riddle] skipped puzzle ${row.id} for this week:`, why);
+          }
           continue;
         }
 
