@@ -30,7 +30,6 @@ import {
   tileEffectDisplayName,
 } from "../../src/game-engine/ability.utils";
 import DailyTaskService from "../../src/services/dailyTask.service";
-import SeasonSoulsService from "../../src/services/seasonSouls.service";
 
 const BOARD_SIZE = 4;
 const PLAYER_1 = "player-1";
@@ -42,15 +41,12 @@ const originalConsoleLog = console.log;
 
 // Avoid external DB writes/log noise from fire-and-forget trackers in ability/game utils.
 const dailyTaskServiceMutable = DailyTaskService as unknown as Record<string, unknown>;
-const seasonSoulsServiceMutable =
-  SeasonSoulsService as unknown as Record<string, unknown>;
 
 dailyTaskServiceMutable.trackDestroy = async () => {};
 dailyTaskServiceMutable.trackCurse = async () => {};
 dailyTaskServiceMutable.trackBless = async () => {};
 dailyTaskServiceMutable.trackDefeat = async () => {};
 dailyTaskServiceMutable.trackDefeatWithMythology = async () => {};
-seasonSoulsServiceMutable.trackDefeat = () => {};
 
 // Reduce noisy ability debug logs during test runs.
 console.log = () => {};

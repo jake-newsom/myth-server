@@ -14,6 +14,7 @@ import { GameState, TileTerrain } from "../types/game.types";
 import db from "../config/db.config";
 import LeaderboardService from "./leaderboard.service";
 import AchievementService from "./achievement.service";
+import SeasonSoulsService from "./seasonSouls.service";
 import DailyTaskService from "./dailyTask.service";
 import DeckService from "./deck.service";
 import CardModel from "../models/card.model";
@@ -455,6 +456,8 @@ const GameRewardsService = {
         }
       }
 
+      SeasonSoulsService.awardEndOfGameSouls(userId, gameState);
+
       // === PHASE 1: Sequential calculations (sync, no DB) ===
       const gameResult = this.calculateGameResult(
         gameState,
@@ -872,6 +875,8 @@ const GameRewardsService = {
     winnerId: string | null
   ): Promise<void> {
     try {
+      SeasonSoulsService.awardEndOfGameSouls(userId, gameState);
+
       const player1Id = gameState.player1?.user_id;
       const won = !!winnerId && winnerId === userId;
 

@@ -29,7 +29,6 @@ import {
   ClashInfo,
 } from "../types/game-engine.types";
 import DailyTaskService from "../services/dailyTask.service";
-import SeasonSoulsService from "../services/seasonSouls.service";
 import { emitAchievementEvent } from "./achievement.events";
 
 // Helper function to safely check if an ability has a specific trigger
@@ -644,38 +643,34 @@ export function flipCard(
     try {
       const setId = source.base_card_data?.set_id;
 
+      // Must be emitted synchronously: the move's buffer may flush before a
+      // setImmediate callback runs.
+      emitAchievementEvent({
+        userId: defeatingPlayerId,
+        eventType: "card_flipped",
+        eventData: {
+          turn_number: state.turn_number,
+          source_card_id: source.user_card_instance_id,
+          batch_id: metadata?.achievementBatchId ?? null,
+          source_card_name: source.base_card_data?.name ?? null,
+          source_ability_id: getAbilityId(
+            source.base_card_data?.special_ability ?? undefined
+          ),
+          source_original_owner: source.original_owner,
+      source_total_power_before: sourceTotalPowerBefore,
+      target_total_power_before: targetTotalPowerBefore,
+          target_card_id: target.user_card_instance_id,
+          target_card_name: target.base_card_data?.name ?? null,
+          target_tags: target.base_card_data?.tags ?? [],
+        },
+      });
+
       setImmediate(() => {
         DailyTaskService.trackDefeat(defeatingPlayerId).catch(() => { });
         DailyTaskService.trackDefeatWithMythology(
           defeatingPlayerId,
           setId!
         ).catch(() => { });
-        // Souls are counted per flip, as they happen — there is no end-of-game
-        // tally to filter — so a game that never paid its ember has to be
-        // excluded right here. Absent means funded: PvP, ranked draft, Sagas
-        // and every game predating embers leave the field unset.
-        if (state.ember_funded !== false) {
-          SeasonSoulsService.trackDefeat(defeatingPlayerId);
-        }
-        emitAchievementEvent({
-          userId: defeatingPlayerId,
-          eventType: "card_flipped",
-          eventData: {
-            turn_number: state.turn_number,
-            source_card_id: source.user_card_instance_id,
-            batch_id: metadata?.achievementBatchId ?? null,
-            source_card_name: source.base_card_data?.name ?? null,
-            source_ability_id: getAbilityId(
-              source.base_card_data?.special_ability ?? undefined
-            ),
-            source_original_owner: source.original_owner,
-        source_total_power_before: sourceTotalPowerBefore,
-        target_total_power_before: targetTotalPowerBefore,
-            target_card_id: target.user_card_instance_id,
-            target_card_name: target.base_card_data?.name ?? null,
-            target_tags: target.base_card_data?.tags ?? [],
-          },
-        });
       });
     } catch { }
   }

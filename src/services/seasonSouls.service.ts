@@ -12,6 +12,7 @@ import SetModel from "../models/set.model";
 import SeasonService from "./season.service";
 import { MIN_SOULS_FOR_REWARDS } from "../config/constants";
 import logger from "../utils/logger";
+import { GameState } from "../types/game.types";
 
 const SOUL_FLUSH_INTERVAL_MS = 10000;
 
@@ -93,11 +94,22 @@ class SeasonSoulsServiceClass {
     await this.flushPendingSouls();
   }
 
-  trackDefeat(userId: string, count: number = 1): void {
-    if (!userId || count <= 0) {
+  /**
+   * Souls for a finished game: one per card the player owns on the board. A
+   * surrendering player earns none, nor does a game that never paid its ember.
+   * Absent ember_funded means funded: PvP, ranked draft, Sagas and every game
+   * predating embers leave the field unset.
+   */
+  awardEndOfGameSouls(userId: string, state: GameState): void {
+    if (state.ember_funded === false || state.surrendered_by === userId) {
       return;
     }
-    this.pendingByUser.set(userId, (this.pendingByUser.get(userId) || 0) + count);
+    const count = state.board
+      .flat()
+      .filter((cell) => cell.card?.owner === userId).length;
+    if (count > 0) {
+      this.pendingByUser.set(userId, (this.pendingByUser.get(userId) || 0) + count);
+    }
   }
 
   async flushPendingSouls(): Promise<void> {

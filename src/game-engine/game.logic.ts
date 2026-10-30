@@ -1286,6 +1286,7 @@ export class GameLogic {
 
     // Set winner to the opponent of the player who surrendered
     newState.status = GameStatus.COMPLETED;
+    newState.surrendered_by = playerId;
     newState.winner =
       playerId === newState.player1.user_id
         ? newState.player2.user_id
