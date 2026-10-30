@@ -31,7 +31,7 @@ import {
 
 import { v4 as uuidv4 } from "uuid";
 import DailyTaskService from "../services/dailyTask.service";
-import AchievementService from "../services/achievement.service";
+import { emitAchievementEvent } from "./achievement.events";
 
 function getAbilityIdFromCard(card?: InGameCard): string | null {
   if (!card?.base_card_data?.special_ability) return null;
@@ -102,7 +102,7 @@ export function transferTileEffectToCard(
     );
     const isDebuff = totalPower < 0;
     if (isDebuff) {
-      AchievementService.triggerAchievementEvent({
+      emitAchievementEvent({
         userId: tileEffect.source_player_id,
         eventType: "power_debuff_applied",
         eventData: {
@@ -113,7 +113,7 @@ export function transferTileEffectToCard(
           target_card_id: card.user_card_instance_id,
           power_delta: calculatePowerDelta(tileEffect.power, true),
         },
-      }).catch(() => {});
+      });
     }
   }
 
@@ -277,7 +277,7 @@ export function addTempBuff(
     (options.data?.sourcePlayerId as string | undefined);
   const sourceCard = options.data?.sourceCard as InGameCard | undefined;
   if (actingPlayerId && !simulationContext.isInSimulation()) {
-    AchievementService.triggerAchievementEvent({
+    emitAchievementEvent({
       userId: actingPlayerId,
       eventType: "power_buff_applied",
       eventData: {
@@ -292,7 +292,7 @@ export function addTempBuff(
           (options.data?.copied_target_card_id as string | undefined) ?? null,
         power_delta: calculatePowerDelta(power),
       },
-    }).catch(() => {});
+    });
   }
 
   return {
@@ -361,7 +361,7 @@ export function addTempDebuff(
     (options.data?.sourcePlayerId as string | undefined);
   const sourceCard = options.data?.sourceCard as InGameCard | undefined;
   if (actingPlayerId && !simulationContext.isInSimulation()) {
-    AchievementService.triggerAchievementEvent({
+    emitAchievementEvent({
       userId: actingPlayerId,
       eventType: "power_debuff_applied",
       eventData: {
@@ -377,7 +377,7 @@ export function addTempDebuff(
           options.data?.targetMaxSidePowerBefore ?? null,
         power_delta: calculatePowerDelta(power, true),
       },
-    }).catch(() => {});
+    });
   }
 
   // The event's per-side delta must be the SIGNED value actually applied to the
@@ -454,7 +454,7 @@ export function createOrUpdateBuff(
     (data?.sourcePlayerId as string | undefined);
   const sourceCard = data?.sourceCard as InGameCard | undefined;
   if (actingPlayerId && !simulationContext.isInSimulation()) {
-    AchievementService.triggerAchievementEvent({
+    emitAchievementEvent({
       userId: actingPlayerId,
       eventType: "power_buff_applied",
       eventData: {
@@ -467,7 +467,7 @@ export function createOrUpdateBuff(
         target_card_id: card.user_card_instance_id,
         power_delta: calculatePowerDelta(power),
       },
-    }).catch(() => {});
+    });
   }
 
   // Signed per-side delta this call applied, so the client can tick current_power
@@ -544,7 +544,7 @@ export function createOrUpdateDebuff(
     (data?.sourcePlayerId as string | undefined);
   const sourceCard = data?.sourceCard as InGameCard | undefined;
   if (actingPlayerId && !simulationContext.isInSimulation()) {
-    AchievementService.triggerAchievementEvent({
+    emitAchievementEvent({
       userId: actingPlayerId,
       eventType: "power_debuff_applied",
       eventData: {
@@ -559,7 +559,7 @@ export function createOrUpdateDebuff(
         target_max_side_power_before: data?.targetMaxSidePowerBefore ?? null,
         power_delta: calculatePowerDelta(power, true),
       },
-    }).catch(() => {});
+    });
   }
 
   // Signed (negative) per-side delta this call applied, so the client can tick
@@ -1101,7 +1101,7 @@ export const destroyCardAtPosition = (
         : null;
       const destroyedPower = getCardTotalPower(destroyedCard);
 
-      AchievementService.triggerAchievementEvent({
+      emitAchievementEvent({
         userId: actingPlayerId,
         eventType: "card_destroyed",
         eventData: {
@@ -1115,7 +1115,7 @@ export const destroyCardAtPosition = (
           defeated_stronger_enemy:
             destroyerPower !== null ? destroyerPower < destroyedPower : false,
         },
-      }).catch(() => {});
+      });
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }
@@ -1210,7 +1210,7 @@ export const setTileStatus = (
 
   if (actingPlayerId && !simulationContext.isInSimulation()) {
     try {
-      AchievementService.triggerAchievementEvent({
+      emitAchievementEvent({
         userId: actingPlayerId,
         eventType: "tile_state_changed",
         eventData: {
@@ -1224,7 +1224,7 @@ export const setTileStatus = (
           turn_number: metadata?.turnNumber ?? null,
           ...((metadata && metadata.extraEventData) || {}),
         },
-      }).catch(() => {});
+      });
     } catch {
       // no-op
     }
@@ -1974,7 +1974,7 @@ export function protectFromDefeat(
     sourceCardInstanceId: sourceCard?.user_card_instance_id,
   });
   if (actingPlayerId && !simulationContext.isInSimulation()) {
-    AchievementService.triggerAchievementEvent({
+    emitAchievementEvent({
       userId: actingPlayerId,
       eventType: "power_buff_applied",
       eventData: {
@@ -1987,7 +1987,7 @@ export function protectFromDefeat(
         target_card_id: card.user_card_instance_id,
         power_delta: 0,
       },
-    }).catch(() => {});
+    });
   }
 
   return {

@@ -25,6 +25,7 @@ import { clientSupportsMulligan } from "../utils/clientVersion";
 import { TurnManager } from "./turn.manager";
 import { GameLogic, GameStatus } from "../game-engine/game.logic";
 import { aiWorkerPool } from "../game-engine/ai.worker-pool";
+import { beginAchievementMove } from "../game-engine/achievement.events";
 import { resolveAIDifficulty } from "../game-engine/ai.difficulty";
 import { GameMode } from "../types/database.types";
 import {
@@ -235,6 +236,7 @@ export function setupGameNamespace(io: Server): void {
   ) {
     return async (timedOutPlayerId: string) => {
       const releaseLock = await acquireActionLock(gameId);
+      beginAchievementMove();
       try {
         const latestRecord = await gameService.getRawGameRecord(
           gameId,
@@ -1125,6 +1127,7 @@ export function setupGameNamespace(io: Server): void {
             });
           }
 
+          beginAchievementMove();
           try {
             if (actionType === "placeCard") {
               if (!user_card_instance_id || !position) {
@@ -1387,6 +1390,7 @@ export function setupGameNamespace(io: Server): void {
             return;
           }
 
+          beginAchievementMove();
           const surrenderedState = await GameLogic.surrender(
             latestRecord.game_state,
             userId

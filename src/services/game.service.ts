@@ -3,6 +3,8 @@ import { GameMode, HUMAN_VS_HUMAN_MODES } from "../types/database.types";
 import { GameState, TileStatus } from "../types/game.types"; // Assuming GameState is defined here
 import { GameStatus } from "../game-engine/game.logic";
 import { conflict } from "../api/errors/httpError";
+import { flushAchievementEvents } from "../game-engine/achievement.events";
+import "./achievement.service"; // registers the achievement event sink
 
 // Define types for game records and responses
 export interface GameRecord {
@@ -381,6 +383,7 @@ class GameService {
       }
       throw new Error("Failed to update game."); // Or GameNotFoundError
     }
+    flushAchievementEvents();
     // Return the state exactly as written (sourceCard stripped) without making
     // Postgres send the ~60KB blob back. A fresh parse also keeps callers'
     // later in-memory mutations out of the response, as the DB copy did.

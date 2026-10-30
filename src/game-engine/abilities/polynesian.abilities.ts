@@ -43,7 +43,7 @@ import { BaseGameEvent } from "../game-events";
 import { flipCard, resolveCombat } from "../game.utils";
 import { randomInt } from "../simulation.rng";
 import { simulationContext } from "../simulation.context";
-import AchievementService from "../../services/achievement.service";
+import { emitAchievementEvent } from "../achievement.events";
 
 import { v4 as uuidv4 } from "uuid";
 
@@ -862,7 +862,7 @@ export const polynesianAbilities: AbilityMap = {
     }
 
     if (pushedCount > 0 && !simulationContext.isInSimulation()) {
-      AchievementService.triggerAchievementEvent({
+      emitAchievementEvent({
         userId: triggerCard.owner,
         eventType: "power_buff_applied",
         eventData: {
@@ -872,7 +872,7 @@ export const polynesianAbilities: AbilityMap = {
           turn_number: context.state.turn_number,
           power_delta: pushedCount,
         },
-      }).catch(() => {});
+      });
     }
 
     return gameEvents;

@@ -30,7 +30,7 @@ import {
 } from "../types/game-engine.types";
 import DailyTaskService from "../services/dailyTask.service";
 import SeasonSoulsService from "../services/seasonSouls.service";
-import AchievementService from "../services/achievement.service";
+import { emitAchievementEvent } from "./achievement.events";
 
 // Helper function to safely check if an ability has a specific trigger
 function hasTrigger(ability: any, trigger: TriggerMoment): boolean {
@@ -479,7 +479,7 @@ export function flipCard(
     );
     if (activeBlockDefeat) {
       if (!simulationContext.isInSimulation()) {
-        AchievementService.triggerAchievementEvent({
+        emitAchievementEvent({
           userId: target.owner,
           eventType: "power_buff_applied",
           eventData: {
@@ -489,7 +489,7 @@ export function flipCard(
             power_delta: 0,
             defeat_prevented_by_protection: true,
           },
-        }).catch(() => {});
+        });
       }
       return buildDefendedEvents();
     }
@@ -657,7 +657,7 @@ export function flipCard(
         if (state.ember_funded !== false) {
           SeasonSoulsService.trackDefeat(defeatingPlayerId);
         }
-        AchievementService.triggerAchievementEvent({
+        emitAchievementEvent({
           userId: defeatingPlayerId,
           eventType: "card_flipped",
           eventData: {
@@ -675,7 +675,7 @@ export function flipCard(
             target_card_name: target.base_card_data?.name ?? null,
             target_tags: target.base_card_data?.tags ?? [],
           },
-        }).catch(() => {});
+        });
       });
     } catch { }
   }

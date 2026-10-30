@@ -70,8 +70,10 @@ Matchmaking queue array, per-game action locks, ranked-draft timers, chat rate-l
 
 **Done 2026-10-17:** pattern in `myth-server/CLAUDE.md` ("HTTP error handling"): `src/api/errors/httpError.ts` (`HttpError` + `badRequest`/`notFound`/`conflict`/… helpers, `.withLegacy()` for old top-level fields), typed `asyncHandler`, errorHandler emits `{ error, message, code, details? }` for `HttpError`. Test: `npm run test:http-errors`. All 746 non-conforming spots (46 files) plus cross-cutting items listed in `ERROR_HANDLING_TODO.md`, to be fixed over time.
 
-## 7. Game engine writes achievement progress directly — OPEN
+## 7. Game engine writes achievement progress directly — ENGINE DECOUPLED (pending deploy), MAPS OPEN
 Ability code calls `AchievementService.triggerAchievementEvent` from ~18 sites mid-resolution; `achievement.service.ts` is 2,565 lines with ~25 module-level per-match Maps (lost on restart, cleaned by key-prefix scans). Fix: engine only emits events; achievements consume the move's event list after the state is saved.
+
+**Done 2026-10-30:** engine sites call `emitAchievementEvent` (`game-engine/achievement.events.ts`) and no longer import the service. HTTP action, socket action, turn-timeout and disconnect-surrender paths open a per-move buffer with `beginAchievementMove()`; `updateGameAfterAction` flushes it only after a successful save, so rejected, conflicted or failed moves credit nothing. An event emitted with no open buffer dispatches immediately, as before. **Still open:** the module-level per-match Maps (lost on restart); `DailyTaskService`/`SeasonSoulsService` tracking in the engine still fires mid-move.
 
 ## 8. 28 of 66 test files run by no npm script — DONE
 Includes per-pantheon achievement tests, saga map tests, gold reward-service test. `npm test` just prints an error. Fix: one `node --test` glob as `npm test`, plus CI.

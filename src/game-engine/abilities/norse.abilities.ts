@@ -50,7 +50,7 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { BoardPosition, TileStatus, TileTerrain } from "../../types/game.types";
 import { randomChance, randomInt } from "../simulation.rng";
-import AchievementService from "../../services/achievement.service";
+import { emitAchievementEvent } from "../achievement.events";
 import { GAMEPLAY_FLAGS } from "../../config/constants";
 
 /**
@@ -83,7 +83,7 @@ export const norseCombatResolvers: CombatResolverMap = {
 
     if (attacker.base_card_data.name !== "Thor") {
       if (!simulationContext.isInSimulation()) {
-        AchievementService.triggerAchievementEvent({
+        emitAchievementEvent({
           userId: flippedCard.owner,
           eventType: "power_buff_applied",
           eventData: {
@@ -92,7 +92,7 @@ export const norseCombatResolvers: CombatResolverMap = {
             source_ability_id: "jormungandr_shell",
             power_delta: 1,
           },
-        }).catch(() => {});
+        });
       }
       return { preventDefeat: true };
     }
@@ -307,7 +307,7 @@ export const norseAbilities: AbilityMap = {
     } as CardEvent);
 
     if (!simulationContext.isInSimulation()) {
-      AchievementService.triggerAchievementEvent({
+      emitAchievementEvent({
         userId: returnToPlayerId,
         eventType: "power_buff_applied",
         eventData: {
@@ -317,7 +317,7 @@ export const norseAbilities: AbilityMap = {
           turn_number: context.state.turn_number,
           power_delta: 1,
         },
-      }).catch(() => {});
+      });
     }
 
     return gameEvents;
@@ -560,7 +560,7 @@ export const norseAbilities: AbilityMap = {
     // Grant the +3 once per game (guarded by the buff's presence).
     if (!ironShoeBuff) {
       if (!simulationContext.isInSimulation()) {
-        AchievementService.triggerAchievementEvent({
+        emitAchievementEvent({
           userId: triggerCard.owner,
           eventType: "power_buff_applied",
           eventData: {
@@ -570,7 +570,7 @@ export const norseAbilities: AbilityMap = {
             turn_number: context.state.turn_number,
             power_delta: 1,
           },
-        }).catch(() => {});
+        });
       }
 
       gameEvents.push(
@@ -925,7 +925,7 @@ export const norseAbilities: AbilityMap = {
         data: { sourceAbilityId: "hel_soul", soundEffect: triggerCard.base_card_data?.special_ability?.sound_effect ?? null },
       });
       if (!simulationContext.isInSimulation()) {
-        AchievementService.triggerAchievementEvent({
+        emitAchievementEvent({
           userId: triggerCard.owner,
           eventType: "power_buff_applied",
           eventData: {
@@ -936,7 +936,7 @@ export const norseAbilities: AbilityMap = {
             target_card_id: flippedCard.user_card_instance_id,
             power_delta: 1,
           },
-        }).catch(() => {});
+        });
       }
       // Don't create a CARD_FLIPPED event here - let flipCard handle it
       // The attack animation will be set via ability parameters

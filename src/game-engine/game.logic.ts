@@ -37,7 +37,7 @@ import PowerUpService from "../services/powerUp.service";
 import StatRollService from "../services/statRoll.service";
 import logger from "../utils/logger";
 import { GAME_CONFIG } from "../config/constants";
-import AchievementService from "../services/achievement.service";
+import { emitAchievementEvent } from "./achievement.events";
 import { simulationContext } from "./simulation.context";
 
 import { GameStatus } from "../types";
@@ -464,14 +464,14 @@ export class GameLogic {
       newState.board[position.y][position.x] = newBoardCell;
 
       if (existingTileEffect?.terrain && !simulationContext.isInSimulation()) {
-        AchievementService.triggerAchievementEvent({
+        emitAchievementEvent({
           userId: playerId,
           eventType: "card_placed_on_terrain",
           eventData: {
             terrain: existingTileEffect.terrain,
             card_id: userCardInstanceId,
           },
-        }).catch(() => {});
+        });
       }
       gameUtils.updateAllBoardCards(newState);
 
@@ -596,7 +596,7 @@ export class GameLogic {
         demonBaneEffect &&
         (demonBaneEffect.power.left ?? 0) >= 10
       ) {
-        AchievementService.triggerAchievementEvent({
+        emitAchievementEvent({
           userId: playerId,
           eventType: "power_buff_applied",
           eventData: {
@@ -605,7 +605,7 @@ export class GameLogic {
             turn_number: newState.turn_number,
             power_delta: 1,
           },
-        }).catch(() => {});
+        });
       }
 
       // Maui achievement: only when card is played and Sun Trick has
@@ -618,7 +618,7 @@ export class GameLogic {
         sunTrickEffect &&
         (sunTrickEffect.power.left ?? 0) >= 5
       ) {
-        AchievementService.triggerAchievementEvent({
+        emitAchievementEvent({
           userId: playerId,
           eventType: "power_buff_applied",
           eventData: {
@@ -627,7 +627,7 @@ export class GameLogic {
             turn_number: newState.turn_number,
             power_delta: 1,
           },
-        }).catch(() => {});
+        });
       }
 
       // Track events before abilities to detect terrain additions

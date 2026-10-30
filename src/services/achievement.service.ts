@@ -17,9 +17,10 @@ import type { AchievementWinCondition } from "../types/database.types";
 import { isHumanVsHumanMode } from "../types/database.types";
 import { RarityUtils } from "../types/card.types";
 import { simulationContext } from "../game-engine/simulation.context";
+import { setAchievementEventSink } from "../game-engine/achievement.events";
 import db from "../config/db.config";
 
-interface AchievementProgressEvent {
+export interface AchievementProgressEvent {
   userId: string;
   eventType: string;
   eventData?: any;
@@ -2561,5 +2562,9 @@ const AchievementService = {
     return [...result.newlyCompleted, ...result.updatedProgress];
   },
 };
+
+setAchievementEventSink((event) => {
+  AchievementService.triggerAchievementEvent(event).catch(() => {});
+});
 
 export default AchievementService;

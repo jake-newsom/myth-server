@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { HttpError } from "../errors/httpError";
+import { beginAchievementMove } from "../../game-engine/achievement.events";
 import { GameLogic, GameStatus } from "../../game-engine/game.logic";
 import { aiWorkerPool } from "../../game-engine/ai.worker-pool";
 import {
@@ -490,6 +491,7 @@ class GameController {
         return;
       }
 
+      beginAchievementMove();
       const { gameId } = req.params;
       const action: GameAction = req.body;
 
@@ -890,6 +892,7 @@ class GameController {
         return;
       }
 
+      beginAchievementMove();
       const { gameId } = req.params;
 
       // Fetch current game (raw record needed for validation)
