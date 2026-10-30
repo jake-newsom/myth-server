@@ -62,6 +62,7 @@ export interface GameRecord {
   game_status: import("../game-engine/game.logic").GameStatus;
   board_layout: string;
   game_state: GameState;
+  state_version: number;
   is_tutorial?: boolean;
   created_at: Date;
   completed_at?: Date | null;
@@ -86,6 +87,7 @@ export interface UpdatedGameResponse {
   game_state: GameState;
   game_status: import("../game-engine/game.logic").GameStatus;
   winner_id: string | null;
+  state_version: number;
 }
 
 // Game Rewards Service Types

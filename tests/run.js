@@ -17,8 +17,6 @@ const QUARANTINE = {
   "tests/game-engine/game.utils.test.ts": "written for Jest (not installed); port to node:test",
   "tests/game-engine/game.validators.test.ts": "written for Jest (not installed); port to node:test",
   "tests/win-streak-bonus.test.js": "written for Jest (not installed); port to node:test",
-  "tests/game-engine/battleMechanics.test.ts":
-    "haunted tile: bonus not removed on move off tile (8 vs 4) and tile not persisted after placement; real bug or superseded by test:haunted? investigate",
   "src/services/__tests__/achievement.service.norse.test.ts":
     "hits the real DB with fake user ids ('u-baldr'); needs DB stubs",
   "src/services/__tests__/achievement.service.polynesian.test.ts":

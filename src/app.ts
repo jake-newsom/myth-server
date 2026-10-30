@@ -14,6 +14,9 @@ import * as cron from "node-cron";
 // Load environment variables
 dotenv.config();
 
+import { validateConfig } from "./config/validateConfig";
+validateConfig();
+
 import { startIapRetries, stopIapRetries } from "./services/iap.service";
 import { sendBlessingDailyMail } from "./services/blessing.service";
 import { validateIapConfig } from './config/iap.config';

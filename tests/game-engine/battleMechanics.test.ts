@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { initializeBattleMechanics, applyBattleMechanicsAfterDefeats } from "../../src/game-engine/battleMechanics";
 import { resolveSagaMechanics } from "../../src/game-engine/sagaBattle.configuration";
 import { updateCurrentPower, moveCardToPosition } from "../../src/game-engine/ability.utils";
+import { claimMechanicTileEffect } from "../../src/game-engine/battleMechanic.power";
 import { updateAllBoardCards, updateAllHandCards } from "../../src/game-engine/game.utils";
 import { createTestCard, createTestGameState } from "../../src/game-engine/__tests__/ai.test-utils";
 import { GameLogic } from "../../src/game-engine/game.logic";
@@ -80,7 +81,7 @@ describe("haunted tile power", () => {
       }
     }
   });
-  it("removes the effect when moving away or returning to hand", () => {
+  it("keeps the claimed bonus when the card moves to another tile", () => {
     const card = createTestCard({ id: "card", owner: "p1", tags: ["underworld"] });
     const state = createTestGameState({ hydrated: { card } });
     initializeBattleMechanics(state, [{ id: "haunted", tile_count: 16 }]);
@@ -88,14 +89,11 @@ describe("haunted tile power", () => {
     state.board[0][0].card = card;
     updateAllBoardCards(state);
     assert.equal(card.current_power.top, 8);
+    claimMechanicTileEffect(card, { x: 0, y: 0 });
+    delete state.board[0][0].mechanic_effect;
     moveCardToPosition(card, { x: 1, y: 0 }, { x: 0, y: 0 }, state.board);
-    assert.equal(card.current_power.top, 4);
-    moveCardToPosition(card, { x: 0, y: 0 }, { x: 1, y: 0 }, state.board);
+    updateAllBoardCards(state);
     assert.equal(card.current_power.top, 8);
-    state.board[0][0].card = null;
-    state.player1.hand = ["card"];
-    updateAllHandCards(state);
-    assert.equal(card.current_power.top, 4);
   });
   it("respects Iron debuff immunity", () => {
     const state = createTestGameState({});
@@ -105,7 +103,7 @@ describe("haunted tile power", () => {
     state.board[0][0].card = card;
     assert.equal(updateCurrentPower(card, state.board).top, 4);
   });
-  it("applies before combat in ordinary games and persists the tile after placement", async () => {
+  it("applies before combat in ordinary games and spends the tile on placement", async () => {
     const card = createTestCard({ id: "card", owner: "p1", tags: ["underworld"] });
     const enemy = createTestCard({ id: "enemy", owner: "p2", tags: ["underworld"], power: { top: 6, right: 6, bottom: 6, left: 6 } });
     const state = createTestGameState({ player1Hand: ["card"], player2Hand: ["other"], hydrated: { card, enemy } });
@@ -114,7 +112,7 @@ describe("haunted tile power", () => {
     state.board[0][1].card = enemy;
     const result = await GameLogic.placeCard(state, "p1", "card", { x: 0, y: 0 });
     assert.ok(result.events.some(event => event.type === EVENT_TYPES.CARD_FLIPPED));
-    assert.equal(result.state.board[0][0].mechanic_effect?.id, "haunted");
+    assert.equal(result.state.board[0][0].mechanic_effect, undefined);
     assert.equal(state.board[0][0].card, null, "simulation must not mutate input");
   });
 });

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import gameController from "../controllers/game.controller";
 import authMiddleware from "../middlewares/auth.middleware";
+import { asyncHandler } from "../middlewares/express-ts-helper";
 import { blockDuringMaintenance } from "../middlewares/maintenance.middleware";
 import {
   gameActionRateLimit,
@@ -49,7 +50,7 @@ router.post(
   "/:gameId/actions",
   authMiddleware.protect,
   gameActionRateLimit,
-  gameController.submitAction
+  asyncHandler(gameController.submitAction)
 );
 
 // Submit an AI action for a solo game (more lenient rate limiting for AI moves)
@@ -57,7 +58,7 @@ router.post(
   "/:gameId/ai-action",
   authMiddleware.protect,
   aiActionRateLimit,
-  gameController.submitAIAction
+  asyncHandler(gameController.submitAIAction)
 );
 
 export default router;

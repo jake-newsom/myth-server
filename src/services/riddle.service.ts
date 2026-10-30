@@ -16,6 +16,9 @@ import {
   winningFirstMoves,
 } from "../game-engine/riddle.solver";
 import PlayerCosmeticsService from "./playerCosmetics.service";
+import RewardService from "./reward.service";
+import { QueryExecutor } from "../config/db.config";
+import { RewardItem } from "../types/service.types";
 import { badRequest, conflict, notFound } from "../api/errors/httpError";
 
 /*
@@ -40,6 +43,72 @@ const FIRST_SEER_RANKS = 5;
 const TITLE_ORACLES_CHOSEN = "oracles_chosen";
 const TITLE_FIRST_SEER = "first_seer";
 const TITLE_CLEAR_SIGHT = "clear_sight";
+
+const CLEAR_REWARD = { packs: 3, gems: 50 };
+const FIRST_TRY_BONUS_GEMS = 50;
+// Keyed on lifetime clears. A user's count rises by exactly one per week, so each pays once.
+const CLEAR_MILESTONES: { clears: number; packs?: number; gems?: number; frame?: string }[] = [
+  { clears: 4, packs: 5 },
+  { clears: 12, packs: 10, gems: 200 },
+  { clears: 26, frame: "oracle_eye" },
+  { clears: 52, packs: 30, gems: 1000 },
+];
+
+export interface RiddleClearRewards {
+  gems: number;
+  packs: number;
+  frame: string | null;
+  totalClears: number;
+  milestoneReached: number | null;
+  nextMilestone: number | null;
+}
+
+/**
+ * Pays a user's first clear of the week. Runs on the caller's transaction, so a
+ * failed grant rolls the clear back and the player can earn it again.
+ */
+export async function grantClearRewards(
+  userId: string,
+  attemptsToClear: number,
+  client: QueryExecutor
+): Promise<RiddleClearRewards> {
+  const { rows } = await client.query(
+    "SELECT COUNT(*)::int AS n FROM riddle_progress WHERE user_id = $1 AND attempts_to_clear IS NOT NULL",
+    [userId]
+  );
+  const totalClears: number = rows[0].n;
+  const milestone = CLEAR_MILESTONES.find((m) => m.clears === totalClears);
+
+  const gems = CLEAR_REWARD.gems + (attemptsToClear === 1 ? FIRST_TRY_BONUS_GEMS : 0) + (milestone?.gems ?? 0);
+  const packs = CLEAR_REWARD.packs + (milestone?.packs ?? 0);
+  const items: RewardItem[] = [
+    { type: "gems", amount: gems },
+    { type: "packs", amount: packs },
+  ];
+
+  let frame: string | null = null;
+  if (milestone?.frame) {
+    const { rows: frames } = await client.query(
+      "SELECT frame_id, name FROM avatar_frames WHERE code_key = $1",
+      [milestone.frame]
+    );
+    if (frames[0]) {
+      items.push({ type: "avatar_frame", frame_id: frames[0].frame_id });
+      frame = frames[0].name;
+    }
+  }
+
+  await RewardService.grantRewards(userId, items, { client });
+
+  return {
+    gems,
+    packs,
+    frame,
+    totalClears,
+    milestoneReached: milestone?.clears ?? null,
+    nextMilestone: CLEAR_MILESTONES.find((m) => m.clears > totalClears)?.clears ?? null,
+  };
+}
 
 interface WeekRow {
   id: string;
@@ -461,7 +530,7 @@ const RiddleService = {
     }
   },
 
-  /** Final move of an attempt. Grades it, ranks first clears, grants titles. */
+  /** Final move of an attempt. Grades it, ranks first clears, grants titles and rewards. */
   async finishAttempt(userId: string, attemptId: string, move: RiddleMove | null) {
     const week = await this.requireLiveWeek();
     const { rows: attemptRows } = await db.query(
@@ -497,6 +566,7 @@ const RiddleService = {
     let clearRank: number | null = null;
     let attemptsToClear: number | null = null;
     const titlesGranted: string[] = [];
+    let rewards: RiddleClearRewards | null = null;
     try {
       await client.query("BEGIN");
       // Serializes clears so ranks are unique.
@@ -544,6 +614,7 @@ const RiddleService = {
             }
           }
         }
+        rewards = await grantClearRewards(userId, attemptsToClear!, client);
       }
       await client.query("COMMIT");
     } catch (err) {
@@ -559,6 +630,7 @@ const RiddleService = {
       attemptsToClear,
       clearRank,
       titlesGranted,
+      rewards,
       score: (() => {
         const d = validators.calculateScores(final.board as any, final.player1.user_id, final.player2.user_id);
         const mine = final.player1.user_id === RIDDLE_PLAYER ? d.player1Score : d.player2Score;

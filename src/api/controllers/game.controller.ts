@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { HttpError } from "../errors/httpError";
 import { GameLogic, GameStatus } from "../../game-engine/game.logic";
 import { aiWorkerPool } from "../../game-engine/ai.worker-pool";
 import {
@@ -511,6 +512,7 @@ class GameController {
       }
 
       let currentGameState: GameState = gameRecord.game_state; // Already an object
+      let expectedVersion = gameRecord.state_version;
 
       // Process the action based on action_type
       let updatedGameState: GameState = _.cloneDeep(currentGameState); // Start with a copy for modifications by GameLogic
@@ -528,12 +530,14 @@ class GameController {
         currentGameState = legacyResolve.state;
         updatedGameState = _.cloneDeep(currentGameState);
         events.push(...legacyResolve.events);
-        await GameService.updateGameAfterAction(
+        const legacyWrite = await GameService.updateGameAfterAction(
           gameId,
           currentGameState,
           currentGameState.status,
-          currentGameState.winner ?? null
+          currentGameState.winner ?? null,
+          expectedVersion
         );
+        expectedVersion = legacyWrite.state_version;
       }
 
       if (
@@ -701,7 +705,8 @@ class GameController {
           gameId,
           updatedGameState,
           new_game_status_for_db,
-          winner_id_for_db
+          winner_id_for_db,
+          expectedVersion
         );
 
       // Skip rewards entirely for tutorial games
@@ -849,6 +854,7 @@ class GameController {
 
       res.status(200).json(response);
     } catch (error) {
+      if (error instanceof HttpError) throw error;
       console.error("Error processing game action:", error);
       // Provide more specific error messages for client validation issues
       if (error instanceof GameNotFoundError) {
@@ -1145,7 +1151,8 @@ class GameController {
           gameId,
           updatedGameState,
           new_game_status_for_db,
-          winner_id_for_db
+          winner_id_for_db,
+          gameRecord.state_version
         );
 
       const isSagaGameAI = !!gameRecord.saga_run_id;
@@ -1293,6 +1300,7 @@ class GameController {
 
       res.status(200).json(response);
     } catch (error) {
+      if (error instanceof HttpError) throw error;
       console.error("Error processing AI action:", error);
       if (error instanceof GameNotFoundError) {
         res.status(404).json({ error: (error as Error).message });

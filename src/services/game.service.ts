@@ -2,6 +2,7 @@ import db from "../config/db.config";
 import { GameMode, HUMAN_VS_HUMAN_MODES } from "../types/database.types";
 import { GameState, TileStatus } from "../types/game.types"; // Assuming GameState is defined here
 import { GameStatus } from "../game-engine/game.logic";
+import { conflict } from "../api/errors/httpError";
 
 // Define types for game records and responses
 export interface GameRecord {
@@ -14,6 +15,7 @@ export interface GameRecord {
   game_status: GameStatus;
   board_layout: string;
   game_state: GameState;
+  state_version: number;
   floor_number?: number | null;
   saga_run_id?: string | null;
   saga_node_id?: string | null;
@@ -40,6 +42,7 @@ export interface UpdatedGameResponse {
   game_state: GameState; // As written (parsed from the persisted JSON)
   game_status: GameStatus;
   winner_id: string | null;
+  state_version: number;
 }
 
 export class GameNotFoundError extends Error {
@@ -336,21 +339,27 @@ class GameService {
 
   /**
    * Updates the game state, status, winner, and completion time.
+   * Every write bumps state_version. With expectedVersion, the write only
+   * applies if the row is still at that version; otherwise another action got
+   * there first and this throws a 409 without writing.
    */
   async updateGameAfterAction(
     gameId: string,
     updatedGameState: GameState,
     newGameStatus: GameStatus, // Using GameStatus enum
-    winnerId: string | null
+    winnerId: string | null,
+    expectedVersion?: number
   ): Promise<UpdatedGameResponse> {
     const query = `
       UPDATE "games"
       SET game_state = $1,
           game_status = $2::game_status, -- Cast to game_status type
           winner_id = $3,
-          completed_at = CASE WHEN $2 = 'completed' THEN NOW() ELSE NULL END
+          completed_at = CASE WHEN $2 = 'completed' THEN NOW() ELSE NULL END,
+          state_version = state_version + 1
       WHERE game_id = $4
-      RETURNING game_id, game_status, winner_id;
+        AND ($5::integer IS NULL OR state_version = $5::integer)
+      RETURNING game_id, game_status, winner_id, state_version;
     `;
     const persistedState = JSON.stringify(updatedGameState, (key, value) =>
       key === "sourceCard" ? undefined : value
@@ -360,9 +369,16 @@ class GameService {
       newGameStatus,
       winnerId,
       gameId,
+      expectedVersion ?? null,
     ];
     const { rows } = await db.query(query, values);
     if (rows.length === 0) {
+      if (expectedVersion !== undefined) {
+        throw conflict(
+          "Game state changed, please try again",
+          "GAME_STATE_CONFLICT"
+        );
+      }
       throw new Error("Failed to update game."); // Or GameNotFoundError
     }
     // Return the state exactly as written (sourceCard stripped) without making

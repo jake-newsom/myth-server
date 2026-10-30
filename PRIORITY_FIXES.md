@@ -14,8 +14,10 @@ The neural AI search (`src/game-engine/sim/sim.searchAgent.ts`) runs up to its 1
 
 **Done 2026-10-17:** both are now `AsyncLocalStorage`-scoped (`simulationScope` depth, `rngScope` frame). `enterSimulation`/`exitSimulation` kept (via `enterWith`) for tests that bracket manually. Regression test `__tests__/simulation.context.isolation.test.ts` (added to `test:ai-v2`) checks that concurrent work sees neither the flag nor the seed. test:ai-v2 31/31, test:abilities 134/134, test:tutorial 3/3.
 
-## 3. Solo game actions have no concurrency control — OPEN
+## 3. Solo game actions have no concurrency control — FIXED (pending deploy)
 `submitAction`/`submitAIAction` read-modify-write state, and `updateGameAfterAction` (`game.service.ts`) overwrites unconditionally. A double tap, retry, or race with the AI action can silently lose an update (PvP has an in-memory lock; solo has none). Fix: defaulted `state_version` column + conditional `WHERE state_version = $n`.
+
+**Done 2026-10-30:** migration `1800000000043` adds `games.state_version`. Every `updateGameAfterAction` bumps it; the two HTTP handlers pass the version they read, and a stale write throws 409 `GAME_STATE_CONFLICT` before any rewards run. Socket callers bump without checking, so they still write last-wins but do invalidate in-flight HTTP actions. The loser gets a 409 rather than the current state because a state with no events would skip the winner's animations and has no reward payload. Old clients show the message as a toast. Status-only writers (abort paths) don't bump, so an in-flight action can still overwrite an abort.
 
 ## 4. game_state write amplification — PHASE 1 DONE, PHASE 2 PLANNED
 Local games average ~58KB of JSON, ~41KB of it `hydrated_card_data_cache`, rewritten every move and echoed back via `RETURNING game_state`. `getActiveGamesForUser` parses full blobs for two fields.
@@ -74,7 +76,7 @@ Ability code calls `AchievementService.triggerAchievementEvent` from ~18 sites m
 ## 8. 28 of 66 test files run by no npm script — DONE
 Includes per-pantheon achievement tests, saga map tests, gold reward-service test. `npm test` just prints an error. Fix: one `node --test` glob as `npm test`, plus CI.
 
-**Done 2026-10-17:** `npm test` → `tests/run.js` runs every `*.test.ts/js` under `src/` and `tests/` (new files auto-included; `npm test -- <substring>` filters). 61 files / 532 tests pass. Fixed `tests/utils/clientVersion.test.ts` (asserted 1.0.9 supports mulligan; min has always been 1.0.10). 7 files quarantined in the runner with reasons: 3 Jest-format files (Jest not installed), norse/polynesian achievement tests (hit real DB with fake ids; Pele/Maui assertion also fails), old haunted-tile test (bonus not removed on move off tile — **possible real bug**, check against `test:haunted`), IAP suite (temp schema built from migration 014 only; also fails under `test:iap`). **Still open:** CI step.
+**Done 2026-10-17:** `npm test` → `tests/run.js` runs every `*.test.ts/js` under `src/` and `tests/` (new files auto-included; `npm test -- <substring>` filters). 61 files / 532 tests pass. Fixed `tests/utils/clientVersion.test.ts` (asserted 1.0.9 supports mulligan; min has always been 1.0.10). 6 files quarantined in the runner with reasons: 3 Jest-format files (Jest not installed), norse/polynesian achievement tests (hit real DB with fake ids; Pele/Maui assertion also fails), IAP suite (temp schema built from migration 014 only; also fails under `test:iap`). **Still open:** CI step.
 
 ## 9. Game action dispatch duplicated 3× — OPEN
 `submitAction` and `submitAIAction` (~400 lines each) plus `namespace.game.ts`. 62 services/controllers (9 controllers) import `config/db` directly. Fix: one `GameActionService` shared by HTTP and sockets (home for the #3 version check).
@@ -87,8 +89,10 @@ Local DB: `games` has two indexes each on `player1_id`, `player2_id`, `game_stat
 ## 11. Dev and prod start differently — OPEN
 `server.js` (prod) and `app.ts` (dev) each set up Socket.IO, CORS, `listen` — already caused an `io` wiring bug. `socket.manager.js` is still CommonJS. Fix: one `src/bootstrap/` entry used by both.
 
-## 12. No config validation at startup — OPEN
-`config/index.ts` boots with `JWT_SECRET` etc. undefined; DB SSL uses `rejectUnauthorized: false`. `.env` has a second `DATABASE_URL` pointing at Railway (dotenv takes the first; reordering would point dev at it). Fix: startup schema check that fails fast; delete the extra line; rotate that password if live.
+## 12. No config validation at startup — FIXED (pending deploy), SSL OPEN
+`config/index.ts` boots with `JWT_SECRET` etc. undefined; DB SSL uses `rejectUnauthorized: false`. Fix: startup check that fails fast.
+
+**Done 2026-10-30:** `src/config/validateConfig.ts` runs first thing in `app.ts` (both dev and prod load it) and throws listing every problem by name, never by value. Requires `DATABASE_URL` and a 32+ character `JWT_SECRET`; if set, `BCRYPT_SALT_ROUNDS`, `PORT` and `REDIS_PORT` must be positive integers. Missing Redis only warns in production. **Still open:** `rejectUnauthorized: false`, which needs its own test against the prod certificate. The earlier note about a second `DATABASE_URL` was wrong: that line is `DATABASE_URL_PROD`, so there's nothing to delete.
 
 ## Low priority
 Tracked one-off files at repo root (`test-simplified-packs.js`, `unlock-stories-local.sql`, `specialAbilitiesLogic.json`, `redoc-static.html`) — move to `scripts/` or delete.
