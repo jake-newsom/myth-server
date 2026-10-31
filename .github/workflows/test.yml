@@ -1,0 +1,26 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # The suite stubs its DB calls; nothing listens on this address. There's
+      # no migrate step because migrations can't replay onto an empty database
+      # (1772700000000 references a border row that only exists in real data).
+      DATABASE_URL: postgres://nobody@localhost:1/none
+      JWT_SECRET: ci-only-secret-not-used-anywhere-real
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test

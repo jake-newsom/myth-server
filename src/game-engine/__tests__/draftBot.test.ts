@@ -10,8 +10,10 @@ import {
   chooseBotBlock,
   chooseBotPick,
   naivePick,
-  strengthForRating,
-  MIN_STRENGTH,
+  LIVE_STRENGTH,
+  RECENT_PENALTY,
+  draftPlan,
+  draftThemes,
   USAGE_WEIGHT,
   scorePicks,
 } from "../draft/draftBot";
@@ -96,13 +98,45 @@ test("draft bot", async (t) => {
     assert.equal(cardValue(card("new-card", "epic", 5), tbl), 1);
   });
 
-  await t.test("strength is gentle for new players and full at 1400+", () => {
-    assert.equal(strengthForRating(900), MIN_STRENGTH);
-    assert.equal(strengthForRating(1000), MIN_STRENGTH);
-    const mid = strengthForRating(1200);
-    assert.ok(mid > MIN_STRENGTH && mid < 1);
-    assert.equal(strengthForRating(1400), 1);
-    assert.equal(strengthForRating(2000), 1);
+  await t.test("every player faces one valid strength", () => {
+    assert.ok(LIVE_STRENGTH > 0 && LIVE_STRENGTH <= 1);
+  });
+
+  await t.test("a draft's plan is stable and only uses themes with enough cards", () => {
+    const pool = realisticPool().map((c, i) => ({
+      ...c,
+      themes: i < 40 ? ["norse"] : i < 85 ? ["sea"] : ["tiny"],
+    }));
+    const seen = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      const plan = draftPlan(`session-${i}`, pool);
+      assert.deepEqual(plan, draftPlan(`session-${i}`, pool));
+      seen.add(`${plan.theme}/${plan.shape}`);
+      assert.notEqual(plan.theme, "tiny");
+    }
+    assert.ok(seen.size > 3, `only ${seen.size} archetypes`);
+    assert.equal(draftPlan("s", realisticPool()).theme, null);
+    assert.deepEqual(draftThemes(["War"], "norse/thor.webp"), ["war", "norse"]);
+  });
+
+  await t.test("a recent pick loses to a slightly weaker fresh card", () => {
+    const pool = [card("Old", "epic"), card("New", "epic")];
+    const tbl = table({ old: 0.5, new: 0.5 - RECENT_PENALTY / 2 });
+    const picks = (over: Partial<DraftBotView>) =>
+      scorePicks(view(pool, { picksTotal: 1, opponentPicks: ["x"], ...over }), tbl)[0]
+        .cardVariantId;
+    assert.equal(picks({}), "Old");
+    assert.equal(picks({ recentPicks: new Set(["Old"]) }), "New");
+  });
+
+  await t.test("a recent ban is not repeated when a close alternative exists", () => {
+    const pool = [card("Old", "epic"), card("New", "epic")];
+    const tbl = table({ old: 0.5, new: 0.5 - RECENT_PENALTY / 2 });
+    assert.equal(chooseBotBan(view(pool), { table: tbl }), "Old");
+    assert.equal(
+      chooseBotBan(view(pool, { recentBans: new Set(["Old"]) }), { table: tbl }),
+      "New"
+    );
   });
 
   await t.test("strength 0 drafts exactly like the timeout auto-pick", () => {

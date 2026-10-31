@@ -109,6 +109,23 @@ const RankedDraftSessionModel = {
     return rows[0]?.count ?? 0;
   },
 
+  /** The bot's picks and bans from this player's latest finished bot drafts. */
+  async findRecentBotChoices(
+    userId: string,
+    limit: number,
+    executor: QueryExecutor = db
+  ): Promise<{ picks: string[]; ban: string | null }[]> {
+    const { rows } = await executor.query(
+      `SELECT player2_picks AS picks, player2_ban AS ban
+         FROM ranked_draft_sessions
+        WHERE player1_id = $1 AND vs_bot AND phase = 'complete'
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [userId, limit]
+    );
+    return rows;
+  },
+
   async findById(
     sessionId: string,
     executor: QueryExecutor = db

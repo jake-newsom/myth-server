@@ -28,6 +28,8 @@ export interface DraftPoolCard {
   /** Draft budget cost (RARITY_POWER_COST). */
   cost: number;
   power: DraftPower;
+  /** Tags plus pantheon, lower-case. Drives each draft's archetype. */
+  themes?: string[];
 }
 
 export interface DraftValueFallback {
@@ -49,6 +51,20 @@ export const DEFAULT_FALLBACK: DraftValueFallback = {
   perStat: 0.08,
   perMinSide: 0.04,
 };
+
+/**
+ * A card's themes: its tags plus its pantheon, which is the first segment of
+ * the image path ("norse/thor.webp").
+ */
+export function draftThemes(
+  tags: string[] | null | undefined,
+  imageUrl: string | null | undefined
+): string[] {
+  const pantheon = imageUrl?.includes("/") ? imageUrl.split("/")[0] : "";
+  return [...(tags ?? []), pantheon]
+    .filter(Boolean)
+    .map((t) => t.toLowerCase());
+}
 
 export function statTotal(p: DraftPower): number {
   return p.top + p.right + p.bottom + p.left;
@@ -88,6 +104,10 @@ export interface DraftBotView {
    * block lean toward popular cards; picks ignore it.
    */
   usage?: ReadonlyMap<string, number>;
+  /** Cards the bot drafted against this player recently; picks avoid them. */
+  recentPicks?: ReadonlySet<string>;
+  /** Cards the bot banned against this player recently; bans avoid them. */
+  recentBans?: ReadonlySet<string>;
 }
 
 export interface DraftBotOptions {
@@ -97,8 +117,9 @@ export interface DraftBotOptions {
    * Otherwise it takes the naive choice (highest stat total it can afford,
    * which is also what the timeout auto-pick does). This is the difficulty
    * knob. Measured in sim (draft-match.ts, bot drafting second, live AI
-   * playing both decks, 400 games each) against a casual stat-minded drafter:
-   * strength 0 → 46%, 0.25 → 63%, 0.6 → 79%, 1 → 94%.
+   * playing both decks, 400 games each, with live taste and archetypes) against
+   * a casual stat-minded drafter: strength 0.25 → 64%, 0.5 → 62%, 0.75 → 68%,
+   * 1 → 74% (each ±5%).
    */
   strength: number;
   /**
@@ -110,10 +131,10 @@ export interface DraftBotOptions {
   looseness: number;
   rand: () => number;
   /**
-   * Per-draft "taste": when set, each card's value gets a stable bias of up
-   * to ±TASTE_AMPLITUDE derived from (seed, card name). Live uses the session
-   * id, so one draft's ban, picks and block share a coherent personality
-   * while different drafts lean toward different cards.
+   * Per-draft personality: when set, each card's value gets a stable bias of
+   * up to ±TASTE_AMPLITUDE derived from (seed, card name), and the seed picks
+   * the draft's archetype (see draftPlan). Live uses the session id, so one
+   * draft's ban, picks and block stay coherent while drafts differ.
    */
   tasteSeed?: string;
 }
@@ -122,42 +143,97 @@ export interface DraftBotOptions {
 export const LIVE_LOOSENESS = 1.0;
 
 /** Max taste bias, in learned-value units (values span about -0.25..0.85). */
-export const TASTE_AMPLITUDE = 0.1;
+export const TASTE_AMPLITUDE = 0.25;
+
+/** Value bonus for cards matching the draft's theme. */
+export const THEME_BONUS = 0.2;
+/** Value shift applied by a draft's budget shape. */
+export const SHAPE_BONUS = 0.15;
+/** Value penalty for repeating a recent pick or ban against the same player. */
+export const RECENT_PENALTY = 0.2;
+/** A theme needs this many pool cards to fill a deck coherently. */
+const MIN_THEME_CARDS = 8;
+/** Converts a value bias into stat points for the stat-minded choices. */
+const STAT_POINTS_PER_VALUE = 20;
 
 /** How many of the top-scoring candidates the softmax may choose among. */
 const SOFTMAX_TOP_K = 5;
 /** Candidates the naive (stat-total) pick chooses among when loose. */
 const NAIVE_TOP_K = 6;
 /** Candidates a loose ban chooses among. */
-const BAN_TOP_K = 3;
+const BAN_TOP_K = 8;
 
-/** Stable bias in [-TASTE_AMPLITUDE, TASTE_AMPLITUDE] for (seed, name). */
-export function tasteBias(seed: string | undefined, name: string): number {
-  if (!seed) return 0;
-  // FNV-1a, 32-bit.
+/** FNV-1a, 32-bit. */
+function hash(key: string): number {
   let h = 0x811c9dc5;
-  const key = `${seed}:${name.toLowerCase()}`;
   for (let i = 0; i < key.length; i++) {
     h ^= key.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
-  return ((h >>> 0) / 0xffffffff * 2 - 1) * TASTE_AMPLITUDE;
+  return h >>> 0;
 }
 
-/**
- * Ranked rating → strength. At or below the 1000 starting rating the bot's
- * deck is about as good as a casual drafter's (new players are who this mode
- * exists for); full strength at 1400 and up. Tune from the
- * "[rankedDraftBot] practice draft difficulty" / "bot game rated" logs.
- */
-export const MIN_STRENGTH = 0.1;
-export function strengthForRating(rating: number): number {
-  const LOW = 1000;
-  const HIGH = 1400;
-  if (rating <= LOW) return MIN_STRENGTH;
-  if (rating >= HIGH) return 1;
-  return MIN_STRENGTH + ((1 - MIN_STRENGTH) * (rating - LOW)) / (HIGH - LOW);
+/** Stable bias in [-TASTE_AMPLITUDE, TASTE_AMPLITUDE] for (seed, name). */
+export function tasteBias(seed: string | undefined, name: string): number {
+  if (!seed) return 0;
+  const h = hash(`${seed}:${name.toLowerCase()}`);
+  return (h / 0xffffffff * 2 - 1) * TASTE_AMPLITUDE;
 }
+
+export type DraftBudgetShape = "top_heavy" | "balanced" | "wide";
+
+/** The archetype one draft commits to, so decks differ in identity. */
+export interface DraftPlan {
+  /** Null when the pool carries no usable themes. */
+  theme: string | null;
+  shape: DraftBudgetShape;
+}
+
+const BUDGET_SHAPES: DraftBudgetShape[] = ["top_heavy", "balanced", "wide"];
+
+/** The archetype for a seed: stable across one draft's decisions. */
+export function draftPlan(seed: string, pool: DraftPoolCard[]): DraftPlan {
+  const counts = new Map<string, number>();
+  for (const card of pool) {
+    for (const theme of card.themes ?? []) {
+      counts.set(theme, (counts.get(theme) ?? 0) + 1);
+    }
+  }
+  const themes = [...counts.entries()]
+    .filter(([, n]) => n >= MIN_THEME_CARDS)
+    .map(([theme]) => theme)
+    .sort();
+  return {
+    theme: themes.length ? themes[hash(`${seed}:theme`) % themes.length] : null,
+    shape: BUDGET_SHAPES[hash(`${seed}:shape`) % BUDGET_SHAPES.length],
+  };
+}
+
+function planBias(card: DraftPoolCard, plan: DraftPlan | null): number {
+  if (!plan) return 0;
+  let bias = plan.theme && card.themes?.includes(plan.theme) ? THEME_BONUS : 0;
+  if (plan.shape === "top_heavy" && card.rarity === "legendary") bias += SHAPE_BONUS;
+  if (plan.shape === "wide") {
+    if (card.rarity === "epic") bias += SHAPE_BONUS;
+    if (card.rarity === "legendary") bias -= SHAPE_BONUS;
+  }
+  return bias;
+}
+
+/** Everything that makes this draft's picks its own, in value units. */
+function pickBiasFn(
+  view: DraftBotView,
+  tasteSeed?: string
+): (card: DraftPoolCard) => number {
+  const plan = tasteSeed ? draftPlan(tasteSeed, view.pool) : null;
+  return (card) =>
+    tasteBias(tasteSeed, card.name) +
+    planBias(card, plan) -
+    (view.recentPicks?.has(card.cardVariantId) ? RECENT_PENALTY : 0);
+}
+
+/** The one difficulty used for every player, regardless of rating. */
+export const LIVE_STRENGTH = 1;
 
 function costOf(view: DraftBotView, ids: string[]): number {
   const byId = new Map(view.pool.map((c) => [c.cardVariantId, c]));
@@ -242,11 +318,12 @@ export function scorePicks(
   const oppBudgetLeft = view.budgetTotal - costOf(view, view.opponentPicks);
   const oppPicksLeft = view.picksTotal - view.opponentPicks.length;
 
+  const bias = pickBiasFn(view, tasteSeed);
   const available = view.pool
     .filter((c) => !view.unavailable.has(c.cardVariantId))
     .map((card) => ({
       card,
-      value: cardValue(card, table) + tasteBias(tasteSeed, card.name),
+      value: cardValue(card, table) + bias(card),
     }));
 
   const scored: ScoredCandidate[] = [];
@@ -323,19 +400,23 @@ export function naivePick(view: DraftBotView): string | null {
 }
 
 /**
- * naivePick with variety: a softmax over the highest-stat affordable cards.
- * looseness 0 is exactly naivePick.
+ * naivePick with variety: a softmax over the highest-stat affordable cards,
+ * nudged by `bias` (value units). Looseness 0 with no bias is exactly naivePick.
  */
 export function looseNaivePick(
   view: DraftBotView,
   looseness: number,
-  rand: () => number
+  rand: () => number,
+  bias?: (card: DraftPoolCard) => number
 ): string | null {
-  if (looseness <= 0.01) return naivePick(view);
+  if (looseness <= 0.01 && !bias) return naivePick(view);
   const left = view.budgetTotal - costOf(view, view.myPicks);
   const scored = view.pool
     .filter((c) => !view.unavailable.has(c.cardVariantId) && c.cost <= left)
-    .map((c) => ({ cardVariantId: c.cardVariantId, score: statTotal(c.power) }))
+    .map((c) => ({
+      cardVariantId: c.cardVariantId,
+      score: statTotal(c.power) + (bias?.(c) ?? 0) * STAT_POINTS_PER_VALUE,
+    }))
     .sort(
       (a, b) => b.score - a.score || a.cardVariantId.localeCompare(b.cardVariantId)
     );
@@ -347,7 +428,12 @@ export function chooseBotPick(
   opts: DraftBotOptions
 ): string | null {
   if (opts.rand() >= opts.strength) {
-    const naive = looseNaivePick(view, opts.looseness, opts.rand);
+    const naive = looseNaivePick(
+      view,
+      opts.looseness,
+      opts.rand,
+      opts.tasteSeed ? pickBiasFn(view, opts.tasteSeed) : undefined
+    );
     if (naive) return naive;
   }
   return choose(
@@ -365,6 +451,10 @@ export function chooseBotPick(
  */
 export const USAGE_WEIGHT = 0.3;
 
+/**
+ * Taste only: a draft's archetype says what the bot wants to play, not what it
+ * fears, so a Norse plan must not start banning Norse cards.
+ */
 function banBlockScore(
   card: DraftPoolCard,
   view: DraftBotView,
@@ -390,14 +480,15 @@ function usesJudgement(opts: JudgementOptions): boolean {
   return strength >= 1 || (opts.rand ?? Math.random)() < strength;
 }
 
-function highestStat(cards: DraftPoolCard[]): string | null {
+function highestStat(cards: DraftPoolCard[], tasteSeed?: string): string | null {
+  const score = (c: DraftPoolCard) =>
+    statTotal(c.power) + tasteBias(tasteSeed, c.name) * STAT_POINTS_PER_VALUE;
   let best: DraftPoolCard | null = null;
   for (const card of cards) {
     if (
       !best ||
-      statTotal(card.power) > statTotal(best.power) ||
-      (statTotal(card.power) === statTotal(best.power) &&
-        card.cardVariantId < best.cardVariantId)
+      score(card) > score(best) ||
+      (score(card) === score(best) && card.cardVariantId < best.cardVariantId)
     ) {
       best = card;
     }
@@ -416,12 +507,23 @@ export function chooseBotBan(
 ): string | null {
   const looseness = opts.looseness ?? 0;
   const rand = opts.rand ?? Math.random;
-  if (!usesJudgement(opts)) return looseNaivePick(view, looseness, rand);
+  const banPenalty = (c: DraftPoolCard) =>
+    view.recentBans?.has(c.cardVariantId) ? RECENT_PENALTY : 0;
+  if (!usesJudgement(opts)) {
+    return looseNaivePick(
+      view,
+      looseness,
+      rand,
+      opts.tasteSeed
+        ? (c) => tasteBias(opts.tasteSeed, c.name) - banPenalty(c)
+        : undefined
+    );
+  }
   const scored = view.pool
     .filter((c) => !view.unavailable.has(c.cardVariantId))
     .map((c) => ({
       cardVariantId: c.cardVariantId,
-      score: banBlockScore(c, view, opts.table, opts.tasteSeed),
+      score: banBlockScore(c, view, opts.table, opts.tasteSeed) - banPenalty(c),
     }))
     .sort(
       (a, b) => b.score - a.score || a.cardVariantId.localeCompare(b.cardVariantId)
@@ -439,7 +541,7 @@ export function chooseBotBlock(
     const theirs = view.opponentPicks
       .map((id) => byId.get(id))
       .filter((c): c is DraftPoolCard => !!c);
-    return highestStat(theirs) ?? view.opponentPicks[0] ?? null;
+    return highestStat(theirs, opts.tasteSeed) ?? view.opponentPicks[0] ?? null;
   }
   let best: { id: string; value: number } | null = null;
   for (const id of view.opponentPicks) {

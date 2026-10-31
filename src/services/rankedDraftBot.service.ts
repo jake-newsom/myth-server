@@ -26,8 +26,9 @@ import {
   chooseBotBan,
   chooseBotBlock,
   chooseBotPick,
+  draftThemes,
   LIVE_LOOSENESS,
-  strengthForRating,
+  LIVE_STRENGTH,
 } from "../game-engine/draft/draftBot";
 import { ORIGINAL_RARITY_SQL, unavailableCardIds } from "./rankedDraft.service";
 import logger from "../utils/logger";
@@ -81,7 +82,7 @@ export async function getDraftPool(): Promise<DraftPoolCard[]> {
     return poolCache.cards;
   }
   const { rows } = await db.query(
-    `SELECT cv.card_variant_id, ch.name, cv.rarity,
+    `SELECT cv.card_variant_id, ch.name, cv.rarity, cv.image_url, ch.tags,
             (ch.base_power->>'top')::int AS top,
             (ch.base_power->>'right')::int AS "right",
             (ch.base_power->>'bottom')::int AS bottom,
@@ -102,6 +103,7 @@ export async function getDraftPool(): Promise<DraftPoolCard[]> {
       rarity,
       cost,
       power: { top: r.top, right: r.right, bottom: r.bottom, left: r.left },
+      themes: draftThemes(r.tags, r.image_url),
     });
   }
   poolCache = { at: Date.now(), cards };
@@ -161,41 +163,49 @@ export async function getDraftUsage(): Promise<Map<string, number>> {
   return usage;
 }
 
-/** sessionId -> strength, so the human's rating is read once per draft. */
-const strengthBySession = new Map<string, number>();
+/** How many of a player's past bot drafts the bot tries not to repeat. */
+const RECENT_DRAFTS_REMEMBERED = 3;
 
-async function strengthFor(session: RankedDraftSession): Promise<number> {
-  const cached = strengthBySession.get(session.session_id);
-  if (cached !== undefined) return cached;
-  let rating = 1000;
+interface RecentChoices {
+  picks: Set<string>;
+  bans: Set<string>;
+}
+
+/** sessionId -> the bot's recent choices, read once per draft. */
+const recentBySession = new Map<string, RecentChoices>();
+
+async function recentChoicesFor(
+  session: RankedDraftSession
+): Promise<RecentChoices> {
+  const cached = recentBySession.get(session.session_id);
+  if (cached) return cached;
+  const recent: RecentChoices = { picks: new Set(), bans: new Set() };
   try {
-    const { rows } = await db.query(
-      `SELECT rating FROM user_rankings WHERE user_id = $1 AND season = $2`,
-      [session.player1_id, LeaderboardModel.getRankedDraftSeason()]
+    const rows = await RankedDraftSessionModel.findRecentBotChoices(
+      session.player1_id,
+      RECENT_DRAFTS_REMEMBERED
     );
-    rating = rows[0]?.rating ?? 1000;
-  } catch {
-    // Default difficulty is fine; never block the bot's move on this.
+    for (const row of rows) {
+      for (const id of row.picks ?? []) recent.picks.add(id);
+      if (row.ban) recent.bans.add(row.ban);
+    }
+  } catch (error) {
+    // Variety only: never block the bot's move on this.
+    logger.warn("[rankedDraftBot] recent bot choices query failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
-  const strength = strengthForRating(rating);
-  strengthBySession.set(session.session_id, strength);
-  // Logged so MIN_STRENGTH can be tuned from real bot-game outcomes
-  // (grantBotGameRating logs the result for the same player).
-  logger.info("[rankedDraftBot] practice draft difficulty", {
-    sessionId: session.session_id,
-    userId: session.player1_id,
-    rating,
-    strength,
-  });
-  return strength;
+  recentBySession.set(session.session_id, recent);
+  return recent;
 }
 
 export function forgetSession(sessionId: string): void {
-  strengthBySession.delete(sessionId);
+  recentBySession.delete(sessionId);
 }
 
 async function viewFor(session: RankedDraftSession): Promise<DraftBotView> {
   const botIsP1 = session.player1_id === BOT_USER_ID;
+  const recent = await recentChoicesFor(session);
   return {
     pool: await getDraftPool(),
     unavailable: new Set(unavailableCardIds(session)),
@@ -204,6 +214,8 @@ async function viewFor(session: RankedDraftSession): Promise<DraftBotView> {
     budgetTotal: RANKED_DRAFT_CONFIG.POWER_BUDGET,
     picksTotal: RANKED_DRAFT_CONFIG.PICKS,
     usage: await getDraftUsage(),
+    recentPicks: recent.picks,
+    recentBans: recent.bans,
   };
 }
 
@@ -212,7 +224,7 @@ export async function chooseBanFor(
 ): Promise<string | null> {
   return chooseBotBan(await viewFor(session), {
     table: getValueTable(),
-    strength: await strengthFor(session),
+    strength: LIVE_STRENGTH,
     looseness: LIVE_LOOSENESS,
     tasteSeed: session.session_id,
     rand: Math.random,
@@ -224,7 +236,7 @@ export async function choosePickFor(
 ): Promise<string | null> {
   return chooseBotPick(await viewFor(session), {
     table: getValueTable(),
-    strength: await strengthFor(session),
+    strength: LIVE_STRENGTH,
     looseness: LIVE_LOOSENESS,
     tasteSeed: session.session_id,
     rand: Math.random,
@@ -236,7 +248,7 @@ export async function chooseBlockFor(
 ): Promise<string | null> {
   return chooseBotBlock(await viewFor(session), {
     table: getValueTable(),
-    strength: await strengthFor(session),
+    strength: LIVE_STRENGTH,
     tasteSeed: session.session_id,
     rand: Math.random,
   });

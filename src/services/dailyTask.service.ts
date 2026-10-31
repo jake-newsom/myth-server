@@ -7,6 +7,7 @@ import UserModel from "../models/user.model";
 import RewardService from "./reward.service";
 import db from "../config/db.config";
 import logger from "../utils/logger";
+import { setDailyTaskEventSink } from "../game-engine/achievement.events";
 import { RewardItem } from "../types/service.types";
 
 // Reward tiers
@@ -429,5 +430,20 @@ const DailyTaskService = {
     }
   },
 };
+
+setDailyTaskEventSink((event) => {
+  const tracked =
+    event.type === "defeat"
+      ? [
+          DailyTaskService.trackDefeat(event.userId),
+          DailyTaskService.trackDefeatWithMythology(event.userId, event.setId!),
+        ]
+      : event.type === "destroy"
+        ? [DailyTaskService.trackDestroy(event.userId)]
+        : event.type === "curse"
+          ? [DailyTaskService.trackCurse(event.userId)]
+          : [DailyTaskService.trackBless(event.userId)];
+  tracked.forEach((promise) => promise.catch(() => {}));
+});
 
 export default DailyTaskService;

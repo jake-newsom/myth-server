@@ -28,8 +28,7 @@ import {
   COMBAT_TYPES,
   ClashInfo,
 } from "../types/game-engine.types";
-import DailyTaskService from "../services/dailyTask.service";
-import { emitAchievementEvent } from "./achievement.events";
+import { emitAchievementEvent, emitDailyTaskEvent } from "./achievement.events";
 
 // Helper function to safely check if an ability has a specific trigger
 function hasTrigger(ability: any, trigger: TriggerMoment): boolean {
@@ -643,8 +642,6 @@ export function flipCard(
     try {
       const setId = source.base_card_data?.set_id;
 
-      // Must be emitted synchronously: the move's buffer may flush before a
-      // setImmediate callback runs.
       emitAchievementEvent({
         userId: defeatingPlayerId,
         eventType: "card_flipped",
@@ -665,13 +662,7 @@ export function flipCard(
         },
       });
 
-      setImmediate(() => {
-        DailyTaskService.trackDefeat(defeatingPlayerId).catch(() => { });
-        DailyTaskService.trackDefeatWithMythology(
-          defeatingPlayerId,
-          setId!
-        ).catch(() => { });
-      });
+      emitDailyTaskEvent({ type: "defeat", userId: defeatingPlayerId, setId });
     } catch { }
   }
 

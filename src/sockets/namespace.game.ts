@@ -1,7 +1,7 @@
 import PlayerCosmeticsService from "../services/playerCosmetics.service";
 import { Namespace, Server, Socket } from "socket.io";
 import { socketAuthMiddleware } from "./socket.auth.middleware";
-import gameService from "../services/game.service";
+import gameService, { isGameFinished } from "../services/game.service";
 import GameRewardsService from "../services/gameRewards.service";
 import {
   AuthenticatedSocket,
@@ -1045,6 +1045,11 @@ export function setupGameNamespace(io: Server): void {
 
           if (!gameRecord) {
             rejectAction("Game not found or access denied");
+            return;
+          }
+
+          if (isGameFinished(gameRecord)) {
+            rejectAction("Game is not active");
             return;
           }
 

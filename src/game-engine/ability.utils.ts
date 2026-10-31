@@ -30,8 +30,7 @@ import {
 } from "./game-events";
 
 import { v4 as uuidv4 } from "uuid";
-import DailyTaskService from "../services/dailyTask.service";
-import { emitAchievementEvent } from "./achievement.events";
+import { emitAchievementEvent, emitDailyTaskEvent } from "./achievement.events";
 
 function getAbilityIdFromCard(card?: InGameCard): string | null {
   if (!card?.base_card_data?.special_ability) return null;
@@ -1094,7 +1093,7 @@ export const destroyCardAtPosition = (
   // Track daily task progress for card destruction (fire-and-forget)
   if (actingPlayerId && !simulationContext.isInSimulation()) {
     try {
-      DailyTaskService.trackDestroy(actingPlayerId).catch(() => {});
+      emitDailyTaskEvent({ type: "destroy", userId: actingPlayerId });
 
       const destroyerPower = destroyerCard
         ? getCardTotalPower(destroyerCard)
@@ -1202,7 +1201,7 @@ export const setTileStatus = (
     !simulationContext.isInSimulation()
   ) {
     try {
-      DailyTaskService.trackCurse(actingPlayerId).catch(() => {});
+      emitDailyTaskEvent({ type: "curse", userId: actingPlayerId });
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }
@@ -1237,7 +1236,7 @@ export const setTileStatus = (
     !simulationContext.isInSimulation()
   ) {
     try {
-      DailyTaskService.trackBless(actingPlayerId).catch(() => {});
+      emitDailyTaskEvent({ type: "bless", userId: actingPlayerId });
     } catch (error) {
       // Silently ignore tracking errors during gameplay
     }

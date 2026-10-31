@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import db from "../../config/db.config";
 import GameService from "../../services/game.service";
 import AchievementService from "../../services/achievement.service";
+import DailyTaskService from "../../services/dailyTask.service";
 import { GameStatus } from "../game.logic";
 import { simulationContext } from "../simulation.context";
 import {
   beginAchievementMove,
   emitAchievementEvent,
+  emitDailyTaskEvent,
 } from "../achievement.events";
 import { GameState } from "../../types/game.types";
 
@@ -94,4 +96,36 @@ test("simulation emits nothing, and no open buffer dispatches immediately", asyn
 
   emitAchievementEvent(event("direct"));
   assert.deepEqual(users(trigger), ["direct"]);
+});
+
+test("daily tasks wait for the save too", async (t) => {
+  const defeat = t.mock.method(DailyTaskService, "trackDefeat", async () => {});
+  const mythology = t.mock.method(DailyTaskService, "trackDefeatWithMythology", async () => {});
+  const curse = t.mock.method(DailyTaskService, "trackCurse", async () => {});
+  t.mock.method(db, "query", async () => ({ rows: [{ state_version: 1 }] }));
+
+  await (async () => {
+    beginAchievementMove();
+    emitDailyTaskEvent({ type: "defeat", userId: "a", setId: "s" });
+    emitDailyTaskEvent({ type: "curse", userId: "a" });
+    assert.equal(defeat.mock.callCount(), 0);
+    await GameService.updateGameAfterAction("g", state, GameStatus.ACTIVE, null);
+  })();
+  assert.equal(defeat.mock.callCount(), 1);
+  assert.deepEqual(mythology.mock.calls[0].arguments, ["a", "s"]);
+  assert.equal(curse.mock.callCount(), 1);
+});
+
+test("a rejected move's daily tasks are dropped", async (t) => {
+  const defeat = t.mock.method(DailyTaskService, "trackDefeat", async () => {});
+  t.mock.method(db, "query", async () => ({ rows: [] }));
+
+  await (async () => {
+    beginAchievementMove();
+    emitDailyTaskEvent({ type: "defeat", userId: "a", setId: "s" });
+    await assert.rejects(
+      GameService.updateGameAfterAction("g", state, GameStatus.ACTIVE, null, 3)
+    );
+  })();
+  assert.equal(defeat.mock.callCount(), 0);
 });

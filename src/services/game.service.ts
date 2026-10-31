@@ -4,7 +4,8 @@ import { GameState, TileStatus } from "../types/game.types"; // Assuming GameSta
 import { GameStatus } from "../game-engine/game.logic";
 import { conflict } from "../api/errors/httpError";
 import { flushAchievementEvents } from "../game-engine/achievement.events";
-import "./achievement.service"; // registers the achievement event sink
+import "./achievement.service"; // registers the engine event sinks
+import "./dailyTask.service";
 
 // Define types for game records and responses
 export interface GameRecord {
@@ -45,6 +46,24 @@ export interface UpdatedGameResponse {
   game_status: GameStatus;
   winner_id: string | null;
   state_version: number;
+}
+
+/**
+ * True once a game is over. Checks the row as well as the state: tower rewards
+ * set the row to 'rewarded', and the abort paths only ever change the row.
+ */
+export function isGameFinished(
+  record: Pick<GameRecord, "game_status" | "game_state">
+): boolean {
+  const finished: GameStatus[] = [
+    GameStatus.COMPLETED,
+    GameStatus.ABORTED,
+    GameStatus.REWARDED,
+  ];
+  return (
+    finished.includes(record.game_status) ||
+    finished.includes(record.game_state.status)
+  );
 }
 
 export class GameNotFoundError extends Error {

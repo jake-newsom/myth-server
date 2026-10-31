@@ -11,6 +11,7 @@ import {
   DraftPoolCard,
   DraftValueTable,
   chooseBotBan,
+  draftThemes,
   chooseBotBlock,
   chooseBotPick,
   statTotal,
@@ -38,6 +39,7 @@ export function toPoolCard(card: InGameCard): DraftPoolCard {
     rarity,
     cost,
     power: { ...card.base_card_data.base_power },
+    themes: draftThemes(card.base_card_data.tags, card.base_card_data.image_url),
   };
 }
 

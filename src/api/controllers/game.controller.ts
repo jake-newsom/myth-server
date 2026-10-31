@@ -34,6 +34,7 @@ import GameService, {
   UpdatedGameResponse,
   SanitizedGame,
   GameRecord,
+  isGameFinished,
 } from "../../services/game.service";
 import UserService from "../../services/user.service";
 import GameRewardsService, {
@@ -510,6 +511,11 @@ class GameController {
 
       if (!gameRecord) {
         res.status(404).json({ error: "Game not found or access denied" });
+        return;
+      }
+
+      if (isGameFinished(gameRecord)) {
+        res.status(400).json({ error: "Game is not active" });
         return;
       }
 
