@@ -1,5 +1,6 @@
 import * as cron from "node-cron";
 import db, { QueryExecutor } from "../config/db.config";
+import { reportJobError } from "../utils/telemetry";
 import { RANKED_DRAFT_SEASON_PREFIX } from "../config/constants";
 import LeaderboardModel from "../models/leaderboard.model";
 import logger from "../utils/logger";
@@ -229,6 +230,7 @@ export function startUniqueFrameScheduler(): void {
     try {
       await UniqueFrameService.runInactivitySweep();
     } catch (error) {
+      reportJobError("unique_frame_sweep", error);
       logger.error("[uniqueFrame] inactivity sweep failed", {
         error: error instanceof Error ? error.message : String(error),
       });

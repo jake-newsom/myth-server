@@ -1,5 +1,6 @@
 import { Namespace } from "socket.io";
 import db from "../config/db.config";
+import { trackGameStarted } from "./gameTelemetry.service";
 import RankedDraftSessionModel, {
   RankedDraftSession,
 } from "../models/rankedDraftSession.model";
@@ -938,6 +939,12 @@ async function completeDraft(session: RankedDraftSession): Promise<void> {
     );
 
     await client.query("COMMIT");
+    trackGameStarted({
+      gameId,
+      userIds: [session.player1_id, session.player2_id],
+      mode: "ranked_draft",
+      kind: "ranked_draft",
+    });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
@@ -1041,6 +1048,12 @@ async function completeBotDraft(session: RankedDraftSession): Promise<void> {
     client.release();
   }
 
+  trackGameStarted({
+    gameId,
+    userIds: [humanId],
+    mode: "solo",
+    kind: "ranked_draft_bot",
+  });
   clearViewerCache(session.session_id);
   clearBotTimer(session.session_id);
   RankedDraftBot.forgetSession(session.session_id);

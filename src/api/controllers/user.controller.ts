@@ -1,5 +1,6 @@
 import PlayerCosmeticsService, { CosmeticsError } from "../../services/playerCosmetics.service";
 import UniqueFrameService from "../../services/uniqueFrame.service";
+import { captureServerEvent, clientReleaseProps } from "../../utils/telemetry";
 import { IapModel } from "../../models/iap.model";
 // src/api/controllers/user.controller.ts
 import UserModel from "../../models/user.model";
@@ -57,6 +58,7 @@ const transformToUserCard = (card: CardResponse): UserCard => ({
   // Instance-level, so it rides on the UserCard rather than base_card_data:
   // two owners of the same variant differ here.
   is_forged: card.is_forged ?? false,
+  is_first_edition: card.is_first_edition ?? false,
   power_enhancements: card.power_enhancements || {
     top: 0,
     right: 0,
@@ -851,6 +853,16 @@ const UserController = {
         return;
       }
       await UserModel.markTutorialComplete(req.user.user_id);
+      // Optional body fields (additive): newer clients send the tutorial
+      // version, total time and whether it was skipped; older clients send
+      // nothing. A skip is reported by the client as tutorial_abandoned.
+      const tutorialVersion = Number(req.body?.version);
+      const totalMs = Number(req.body?.total_ms);
+      if (req.body?.skipped !== true) captureServerEvent(req.user.user_id, "tutorial_completed", {
+        version: Number.isFinite(tutorialVersion) ? tutorialVersion : null,
+        total_ms: Number.isFinite(totalMs) && totalMs >= 0 ? Math.round(totalMs) : null,
+        ...clientReleaseProps(req.headers),
+      });
       // Fire-and-forget; idempotent ("set" to 1), so repeat calls are harmless.
       AchievementService.triggerAchievementEvent({
         userId: req.user.user_id,

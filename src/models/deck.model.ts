@@ -1,3 +1,4 @@
+import { isFirstEdition } from "../utils/printNumber";
 import { PoolClient } from "pg";
 import db from "../config/db.config";
 import {
@@ -33,6 +34,7 @@ const formatDeckCardInstanceResponse = (
     level: instance.level,
     xp: instance.xp,
     is_locked: instance.is_locked,
+    ...(isFirstEdition(instance.print_number) && { is_first_edition: true }),
     power_enhancements: instance.power_enhancements,
     tags: baseCard.tags,
     set_id: baseCard.set_id || null,
@@ -138,7 +140,7 @@ const DeckModel = {
       SELECT
         dc.deck_id,
         dc.user_card_instance_id,
-        uci.level, uci.xp, uci.is_locked, uci.card_variant_id AS base_card_id,
+        uci.level, uci.xp, uci.is_locked, uci.print_number, uci.card_variant_id AS base_card_id,
         ch.character_id, ch.name, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
         ch.base_power->>'top' as base_power_top,
         ch.base_power->>'right' as base_power_right,
@@ -218,6 +220,7 @@ const DeckModel = {
         level: row.level,
         xp: row.xp,
         is_locked: row.is_locked,
+        print_number: row.print_number ?? null,
         power_enhancements: powerEnhancements,
       };
 
@@ -275,7 +278,7 @@ const DeckModel = {
     const cardsQuery = `
       SELECT
         dc.user_card_instance_id,
-        uci.level, uci.xp, uci.is_locked, uci.card_variant_id AS base_card_id,
+        uci.level, uci.xp, uci.is_locked, uci.print_number, uci.card_variant_id AS base_card_id,
         ch.character_id, ch.name, cv.rarity, cv.image_url, cv.attack_animation, cv.is_exclusive,
         ch.base_power->>'top' as base_power_top,
         ch.base_power->>'right' as base_power_right,
@@ -356,6 +359,7 @@ const DeckModel = {
         level: row.level,
         xp: row.xp,
         is_locked: row.is_locked,
+        print_number: row.print_number ?? null,
         power_enhancements: powerEnhancements,
       };
       const ability: SpecialAbility | null = row.special_ability_id

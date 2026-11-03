@@ -1,5 +1,6 @@
 import * as cron from "node-cron";
 import SeasonModel, { SeasonDefinitionRow } from "../models/season.model";
+import { reportJobError } from "../utils/telemetry";
 import SeasonRewardPayoutService from "./seasonRewardPayout.service";
 import logger from "../utils/logger";
 
@@ -82,6 +83,7 @@ const SeasonService = {
           await SeasonModel.markStatuses();
           await SeasonRewardPayoutService.processFinalizingSeasons();
         } catch (error) {
+          reportJobError("season_maintenance", error);
           logger.error(
             "Season maintenance scheduler failed",
             {},

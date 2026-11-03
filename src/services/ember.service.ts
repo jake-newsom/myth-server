@@ -1,5 +1,6 @@
 import * as cron from "node-cron";
 import db, { QueryExecutor } from "../config/db.config";
+import { reportJobError } from "../utils/telemetry";
 import { EMBER_CONFIG, EMBERS_FLAG } from "../config/constants";
 import logger from "../utils/logger";
 import FeatureFlagService from "./featureFlag.service";
@@ -351,6 +352,7 @@ class EmberService {
         logger.debug("Ember regeneration swept", { users_credited: totalUpdated });
       }
     } catch (error) {
+      reportJobError("ember_sweep", error);
       logger.error(
         "Ember regeneration sweep failed",
         {},

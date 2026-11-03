@@ -1,5 +1,6 @@
 import PackModel from "../models/pack.model";
 import PackService from "./pack.service";
+import { monitorCronTask, reportJobError } from "../utils/telemetry";
 import FatePickService from "./fatePick.service";
 import UserModel from "../models/user.model";
 import db from "../config/db.config";
@@ -210,12 +211,14 @@ const AIAutomationService = {
           console.log(`✅ Scheduled fate pick created: ${result.message}`);
         } else {
           console.error(`❌ Scheduled fate pick failed: ${result.message}`);
+          reportJobError("automated_fate_pick", new Error(result.message));
         }
       },
       {
         timezone: "UTC",
       },
     );
+    monitorCronTask(task, "automated_fate_pick");
 
     return task;
   },

@@ -9,7 +9,6 @@ import path from "path";
 import http from "http";
 import dotenv from "dotenv";
 import { marked } from "marked";
-import * as cron from "node-cron";
 
 // Load environment variables
 dotenv.config();
@@ -17,8 +16,6 @@ dotenv.config();
 import { validateConfig } from "./config/validateConfig";
 validateConfig();
 
-import { startIapRetries, stopIapRetries } from "./services/iap.service";
-import { sendBlessingDailyMail } from "./services/blessing.service";
 import { validateIapConfig } from './config/iap.config';
 validateIapConfig();
 
@@ -31,23 +28,19 @@ const SERVER_VERSION = packageJson.version;
 // Import the API routes
 import apiRoutes from "./api/routes";
 import errorHandler from "./api/middlewares/errorHandler.middleware";
-import AIAutomationService from "./services/aiAutomation.service";
-import SessionCleanupService from "./services/sessionCleanup.service";
-import DataRetentionService from "./services/dataRetention.service";
-import EmberService from "./services/ember.service";
-import FeatureFlagService from "./services/featureFlag.service";
-import DailyRewardsService from "./services/dailyRewards.service";
-import RankedDraftRewardsService from "./services/rankedDraftRewards.service";
 import {
-  startRankedDraftScheduler,
-  stopRankedDraftScheduler,
-} from "./services/rankedDraftScheduler.service";
-import { startUniqueFrameScheduler } from "./services/uniqueFrame.service";
-import DailyTaskService from "./services/dailyTask.service";
-import StartupService from "./services/startup.service";
+  startBackgroundJobs,
+  stopBackgroundJobs,
+} from "./services/backgroundJobs";
 import { redisCache } from "./services/redis.cache.service";
-import SeasonService from "./services/season.service";
-import SeasonSoulsService from "./services/seasonSouls.service";
+import {
+  captureServerException,
+  clientReleaseProps,
+  installProcessErrorHandlers,
+  shutdownTelemetry,
+} from "./utils/telemetry";
+
+installProcessErrorHandlers();
 import { queryMetricsMiddleware } from "./utils/queryMetrics";
 
 // Setup Swagger
@@ -75,10 +68,6 @@ const swaggerSpec = swaggerJSDoc(swaggerOptions);
 const app = express();
 
 // Store the automation scheduler tasks globally
-let automationSchedulerTask: any = null;
-let dailyRewardsSchedulerTasks: any[] = [];
-let dailyTaskScheduler: any = null;
-let seasonMaintenanceScheduler: any = null;
 
 // Trust the first proxy hop (Render's load balancer) so req.ip / X-Forwarded-*
 // unwind that hop.
@@ -152,6 +141,26 @@ app.use(
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   }),
 );
+// Many legacy controllers answer 500 themselves instead of throwing (see
+// ERROR_HANDLING_TODO.md), so errorHandler never sees them. Report those too.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.on("finish", () => {
+    if (res.statusCode < 500 || res.locals.errorReported) return;
+    const route = req.route?.path ? `${req.baseUrl}${req.route.path}` : req.path;
+    captureServerException(
+      new Error(`HTTP ${res.statusCode} ${req.method} ${route}`),
+      {
+        distinctId: (req as any).user?.user_id,
+        handler_type: "http_unthrown",
+        route,
+        method: req.method,
+        http_status: res.statusCode,
+        ...clientReleaseProps(req.headers),
+      },
+    );
+  });
+  next();
+});
 app.use(express.json({ limit: "1mb" })); // Parse JSON request bodies
 app.use(express.urlencoded({ extended: true, limit: "1mb" })); // Parse URL-encoded request bodies
 app.use(queryMetricsMiddleware);
@@ -310,7 +319,6 @@ if (require.main === module) {
   }
 
   httpServer.listen(PORT, async () => {
-    startIapRetries();
     console.log(`Server is running on port ${PORT}`);
     console.log(`Access at http://localhost:${PORT}`);
 
@@ -331,175 +339,26 @@ if (require.main === module) {
       );
     }
 
-    // Run startup initialization
-    try {
-      await StartupService.initialize();
-
-      await SeasonService.initialize();
-      seasonMaintenanceScheduler = SeasonService.startMaintenanceScheduler();
-      SeasonSoulsService.start();
-    } catch (error) {
-      console.error("❌ Startup initialization failed:", error);
-    }
-
-    // Start the automated fate pick scheduler
-    try {
-      automationSchedulerTask =
-        AIAutomationService.startAutomatedFatePickScheduler();
-      console.log("🤖 AI Automation Service started successfully");
-    } catch (error) {
-      console.error("❌ Failed to start AI Automation Service:", error);
-    }
-
-    // Start the session cleanup service
-    try {
-      SessionCleanupService.start();
-      console.log("🧹 Session Cleanup Service started successfully");
-    } catch (error) {
-      console.error("❌ Failed to start Session Cleanup Service:", error);
-    }
-
-    // Start the data retention service (expires + purges fate picks, mail)
-    try {
-      DataRetentionService.start();
-      console.log("🧹 Data Retention Service started successfully");
-    } catch (error) {
-      console.error("❌ Failed to start Data Retention Service:", error);
-    }
-
-    // Start the ember regeneration sweep. Lazy settling on read already keeps
-    // an active player's balance correct; this keeps it correct for players who
-    // aren't looking, and for code that reads users.embers directly.
-    try {
-      EmberService.start();
-      console.log("🔥 Ember Regeneration Service started successfully");
-    } catch (error) {
-      console.error("❌ Failed to start Ember Regeneration Service:", error);
-    }
-
-    // Sweep expired entries out of the in-process feature flag cache. Purely
-    // local memory hygiene — no DB work, and unrelated to DataRetentionService's
-    // shared-state jobs.
-    try {
-      FeatureFlagService.startCacheSweeper();
-      console.log("🧹 Feature flag cache sweeper started successfully");
-    } catch (error) {
-      console.error("❌ Failed to start feature flag cache sweeper:", error);
-    }
-
-    // Start the daily rewards and shop service
-    try {
-      dailyRewardsSchedulerTasks =
-        DailyRewardsService.startDailyRewardsScheduler();
-      console.log("🎁 Daily Rewards and Shop Service started successfully");
-    } catch (error) {
-      console.error(
-        "❌ Failed to start Daily Rewards and Shop Service:",
-        error,
-      );
-    }
-
-    // Start the daily task scheduler (runs at 12am UTC to select tomorrow's tasks)
-    try {
-      // Ensure today's selection exists on startup
-      await DailyTaskService.ensureTodaySelection();
-
-      // Schedule daily task selection at 12am UTC
-      dailyTaskScheduler = cron.schedule(
-        "0 0 * * *",
-        async () => {
-          console.log("🎯 Running daily task selection scheduler...");
-          await DailyTaskService.generateTomorrowSelection();
-        },
-        {
-          timezone: "UTC",
-        },
-      );
-      console.log("🎯 Daily Task Scheduler started successfully");
-      cron.schedule("0 0 * * *", async () => {
-        try { await sendBlessingDailyMail(); }
-        catch (error) { console.error("❌ Failed to send blessing mail:", error); }
-      }, { timezone: "UTC" });
-    } catch (error) {
-      console.error("❌ Failed to start Daily Task Scheduler:", error);
-    }
-
-    // Ranked Draft: pair queued players and resolve any draft whose clock
-    // expired. Lives in rankedDraftScheduler.service so `node server.js`
-    // (production) starts the exact same tick this dev entrypoint does — it
-    // used to be inline here, inside `require.main === module`, and therefore
-    // never ran in prod.
-    startRankedDraftScheduler();
-    startUniqueFrameScheduler();
-
-    // Ranked Draft rewards are NOT scheduled here. The ladder pays out once per
-    // season, driven by SeasonService's maintenance tick via
-    // SeasonRewardPayoutService, so PvP and Season Souls end together.
+    // Every scheduler and cron, shared with server.js (prod).
+    await startBackgroundJobs();
   });
 }
 
-// Graceful shutdown handler
-process.on("SIGTERM", async () => {
-  console.log("🛑 SIGTERM received, shutting down gracefully");
-  stopRankedDraftScheduler();
-  stopIapRetries();
-  if (automationSchedulerTask) {
-    AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerTask);
-  }
-  if (dailyRewardsSchedulerTasks.length > 0) {
-    DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerTasks);
-  }
-  if (dailyTaskScheduler) {
-    dailyTaskScheduler.stop();
-    console.log("🎯 Daily Task Scheduler stopped");
-  }
-  if (seasonMaintenanceScheduler) {
-    SeasonService.stopMaintenanceScheduler(seasonMaintenanceScheduler);
-  }
+// Graceful shutdown. Registered at import time, so it also covers server.js
+// (prod), which imports this module.
+async function shutdown(signal: string) {
+  console.log(`🛑 ${signal} received, shutting down gracefully`);
+  await stopBackgroundJobs();
   try {
-    await SeasonSoulsService.flushNow();
-  } catch (error) {
-    console.error("⚠️ Failed to flush season souls during SIGTERM:", error);
+    await redisCache.disconnect();
+  } catch {
+    // Not connected (prod entrypoint never connects); nothing to close.
   }
-  SeasonSoulsService.stop();
-  SessionCleanupService.stop();
-  DataRetentionService.stop();
-  EmberService.stop();
-  FeatureFlagService.stopCacheSweeper();
-  await redisCache.disconnect();
+  await shutdownTelemetry();
   process.exit(0);
-});
-
-process.on("SIGINT", async () => {
-  console.log("🛑 SIGINT received, shutting down gracefully");
-  stopRankedDraftScheduler();
-  stopIapRetries();
-  if (automationSchedulerTask) {
-    AIAutomationService.stopAutomatedFatePickScheduler(automationSchedulerTask);
-  }
-  if (dailyRewardsSchedulerTasks.length > 0) {
-    DailyRewardsService.stopDailyRewardsScheduler(dailyRewardsSchedulerTasks);
-  }
-  if (dailyTaskScheduler) {
-    dailyTaskScheduler.stop();
-    console.log("🎯 Daily Task Scheduler stopped");
-  }
-  if (seasonMaintenanceScheduler) {
-    SeasonService.stopMaintenanceScheduler(seasonMaintenanceScheduler);
-  }
-  try {
-    await SeasonSoulsService.flushNow();
-  } catch (error) {
-    console.error("⚠️ Failed to flush season souls during SIGINT:", error);
-  }
-  SeasonSoulsService.stop();
-  SessionCleanupService.stop();
-  DataRetentionService.stop();
-  EmberService.stop();
-  FeatureFlagService.stopCacheSweeper();
-  await redisCache.disconnect();
-  process.exit(0);
-});
+}
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
 
 // Export the app for testing or for use in other files
 export default app;

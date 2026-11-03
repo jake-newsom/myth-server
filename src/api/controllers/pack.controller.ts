@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import PackService from "../../services/pack.service";
+import { captureServerEvent } from "../../utils/telemetry";
 import PackModel from "../../models/pack.model";
 import UserModel from "../../models/user.model";
 import { AuthenticatedRequest } from "../../types";
@@ -245,6 +246,13 @@ const PackController = {
           message: result.message || "Not enough resources to purchase packs",
         });
       }
+
+      captureServerEvent(userId, "pack_opened", {
+        pack_id: packId,
+        quantity: packsToOpen,
+        god_pack_count: (result.godPacks || []).length,
+        remaining_packs: result.remainingPacks ?? null,
+      });
 
       return res.status(200).json({
         packs: result.packs,

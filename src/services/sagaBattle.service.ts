@@ -1,5 +1,6 @@
 import { initializeBattleMechanics } from "../game-engine/battleMechanics";
 import { resolveSagaMechanics } from "../game-engine/sagaBattle.configuration";
+import { trackGameStarted } from "./gameTelemetry.service";
 import _ from "lodash";
 import db from "../config/db.config";
 import { AI_PLAYER_ID } from "../api/controllers/game.controller";
@@ -337,6 +338,13 @@ const SagaBattleService = {
     } finally {
       client.release();
     }
+
+    trackGameStarted({
+      gameId: rows[0]?.game_id,
+      userIds: [playerId],
+      mode: "solo",
+      kind: "saga",
+    });
 
     const deckNameResult = await db.query(
       "SELECT name FROM decks WHERE deck_id = $1",

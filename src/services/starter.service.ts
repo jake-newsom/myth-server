@@ -3,7 +3,7 @@ import db from "../config/db.config";
 import DeckModel from "../models/deck.model";
 import UserModel from "../models/user.model";
 
-const STARTER_BASE_CARD_NAMES_AND_QUANTITIES: {
+export const STARTER_BASE_CARD_NAMES_AND_QUANTITIES: {
   name: string;
   quantity: number;
 }[] = [

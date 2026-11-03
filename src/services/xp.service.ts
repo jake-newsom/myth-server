@@ -1,3 +1,4 @@
+import { isFirstEdition } from "../utils/printNumber";
 import db from "../config/db.config";
 import XpPoolModel from "../models/xpPool.model";
 import UserModel from "../models/user.model";
@@ -417,6 +418,7 @@ const XpService = {
           uoc.level, 
           uoc.xp,
           uoc.is_locked,
+          uoc.print_number,
           ch.name,
           cv.rarity,
           EXISTS (
@@ -447,8 +449,14 @@ const XpService = {
         const cardsWithXp = cards.filter((card) => card.xp > 0);
         // Cards that are in a deck are never eligible for sacrifice: deleting them
         // cascades deck_cards rows away and silently leaves the deck short.
+        // First editions are never bulk-sacrificed. They can still be
+        // sacrificed one at a time through sacrificeCards.
         const cardsWithZeroXp = cards.filter(
-          (card) => card.xp === 0 && !card.is_locked && !card.in_deck
+          (card) =>
+            card.xp === 0 &&
+            !card.is_locked &&
+            !card.in_deck &&
+            !isFirstEdition(card.print_number)
         );
 
         // Calculate how many cards we should keep total (at least 2, or all cards with XP if more than 2)

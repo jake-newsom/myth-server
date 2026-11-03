@@ -216,6 +216,23 @@ export interface GameState {
    * the bot's turn. Past it, the client may ask the AI to play the turn.
    */
   turn_deadline_ms?: number;
+  /**
+   * Every placement in order, for the compact replay record (game_replays).
+   * Appended by GameLogic.placeCard on real moves only (never AI lookahead or
+   * self-play). Clients can ignore it.
+   */
+  move_log?: ReplayMove[];
+}
+
+/** One placement: turn, player side (1|2), card instance, tile, chosen target. */
+export interface ReplayMove {
+  t: number;
+  p: 1 | 2;
+  id: string;
+  x: number;
+  y: number;
+  tx?: number;
+  ty?: number;
 }
 
 export interface GameAction {

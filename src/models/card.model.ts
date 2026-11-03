@@ -1,4 +1,5 @@
 import db, { QueryExecutor } from "../config/db.config";
+import { claimPrintNumbers, isFirstEdition } from "../utils/printNumber";
 import {
   andCatalogReleased,
   CatalogQueryOptions,
@@ -22,7 +23,7 @@ import StatRollService from "../services/statRoll.service";
  */
 const USER_CARD_SELECT_COLUMNS = `
   uoc.user_card_instance_id, uoc.user_id, uoc.card_variant_id, uoc.level, uoc.xp,
-  uoc.is_locked, uoc.equipped_border_id,
+  uoc.is_locked, uoc.equipped_border_id, uoc.print_number,
   ch.character_id, ch.name, ch.description, ch.type,
   ch.base_power->>'top' as base_power_top,
   ch.base_power->>'right' as base_power_right,
@@ -105,6 +106,8 @@ function formatUserCardInstanceResponse(
     // Only emitted when true, like the other optional flags above: every
     // non-forged card's payload is byte-identical to before this change.
     ...(isForged && { is_forged: true }),
+    // Same only-when-true rule: first 50 player-minted copies of this variant.
+    ...(isFirstEdition(instance.print_number) && { is_first_edition: true }),
     equipped_border: equippedBorder,
   };
 }
@@ -229,6 +232,7 @@ const CardModel = {
         level: row.level,
         xp: row.xp,
         is_locked: row.is_locked,
+        print_number: row.print_number ?? null,
         power_enhancements: powerEnhancements,
       };
 
@@ -344,6 +348,7 @@ const CardModel = {
       level: row.level,
       xp: row.xp,
       is_locked: row.is_locked,
+      print_number: row.print_number ?? null,
       power_enhancements: powerEnhancements,
     };
 
@@ -814,6 +819,7 @@ const CardModel = {
         level: row.level,
         xp: row.xp,
         is_locked: row.is_locked,
+        print_number: row.print_number ?? null,
         power_enhancements: powerEnhancements,
       };
 
@@ -1064,6 +1070,7 @@ const CardModel = {
           level: row.level,
           xp: row.xp,
           is_locked: row.is_locked,
+          print_number: row.print_number ?? null,
           power_enhancements: powerEnhancements,
         };
 
@@ -1110,10 +1117,11 @@ const CardModel = {
     options?: { isLocked?: boolean }
   ): Promise<UserCardInstance> {
     const exec = client ?? db;
+    const [printNumber] = await claimPrintNumbers(exec, userId, [cardVariantId]);
     const query = `
-      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, is_locked)
-      VALUES ($1, $2, 1, 0, $3)
-      RETURNING user_card_instance_id, user_id, card_variant_id, level, xp, is_locked, created_at;
+      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, is_locked, print_number)
+      VALUES ($1, $2, 1, 0, $3, $4)
+      RETURNING user_card_instance_id, user_id, card_variant_id, level, xp, is_locked, print_number, created_at;
     `;
 
     // Defaults to false, i.e. the column default, so every existing caller
@@ -1122,6 +1130,7 @@ const CardModel = {
       userId,
       cardVariantId,
       options?.isLocked === true,
+      printNumber,
     ]);
     return rows[0];
   },
@@ -1139,14 +1148,15 @@ const CardModel = {
   ): Promise<Array<{ user_card_instance_id: string; card_variant_id: string }>> {
     if (cardVariantIds.length === 0) return [];
     const exec = client ?? db;
+    const printNumbers = await claimPrintNumbers(exec, userId, cardVariantIds);
     const query = `
-      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp)
-      SELECT $1, card_variant_id, 1, 0
-      FROM unnest($2::uuid[]) WITH ORDINALITY AS t(card_variant_id, ord)
+      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, print_number)
+      SELECT $1, card_variant_id, 1, 0, print_number
+      FROM unnest($2::uuid[], $3::int[]) WITH ORDINALITY AS t(card_variant_id, print_number, ord)
       ORDER BY ord
       RETURNING user_card_instance_id, card_variant_id;
     `;
-    const { rows } = await exec.query(query, [userId, cardVariantIds]);
+    const { rows } = await exec.query(query, [userId, cardVariantIds, printNumbers]);
     return rows.map((r) => ({
       user_card_instance_id: r.user_card_instance_id,
       card_variant_id: r.card_variant_id,

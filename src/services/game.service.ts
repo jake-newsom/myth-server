@@ -1,5 +1,6 @@
 import db from "../config/db.config";
 import { GameMode, HUMAN_VS_HUMAN_MODES } from "../types/database.types";
+import { trackGameStarted } from "./gameTelemetry.service";
 import { GameState, TileStatus } from "../types/game.types"; // Assuming GameState is defined here
 import { GameStatus } from "../game-engine/game.logic";
 import { conflict } from "../api/errors/httpError";
@@ -201,6 +202,12 @@ class GameService {
     if (rows.length === 0) {
       throw new Error("Failed to create game record."); // Or a more specific error
     }
+    trackGameStarted({
+      gameId: rows[0].game_id,
+      userIds: [player1Id, player2Id],
+      mode: gameMode,
+      kind: gameMode === "solo" && floorNumber !== undefined ? "tower" : (gameMode as any),
+    });
     // game_state from DB is JSON string. The caller (controller) will parse it.
     return rows[0] as CreateGameResponse;
   }

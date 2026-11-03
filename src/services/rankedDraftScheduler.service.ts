@@ -1,5 +1,6 @@
 import RankedMatchmakingService from "./rankedMatchmaking.service";
 import RankedDraftOrchestrator from "./rankedDraftOrchestrator.service";
+import { captureServerExceptionOnce } from "../utils/telemetry";
 import logger from "../utils/logger";
 
 /**
@@ -47,6 +48,12 @@ async function runTick(): Promise<void> {
     await RankedDraftOrchestrator.sweepExpiredSessions();
     await RankedDraftOrchestrator.reapStaleRankedGames();
   } catch (error) {
+    // Ticks run every few seconds: report each distinct failure once.
+    captureServerExceptionOnce(
+      `ranked_draft_tick:${error instanceof Error ? error.message : String(error)}`,
+      error,
+      { handler_type: "job", job: "ranked_draft_tick" },
+    );
     logger.error("[rankedDraft] tick failed", {
       error: error instanceof Error ? error.message : String(error),
     });

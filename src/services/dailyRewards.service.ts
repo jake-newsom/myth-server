@@ -1,5 +1,6 @@
 import db from "../config/db.config";
 import UserModel from "../models/user.model";
+import { reportJobError } from "../utils/telemetry";
 import * as cron from "node-cron";
 import DailyShopService from "./dailyShop.service";
 import MonthlyLoginRewardsService from "./monthlyLoginRewards.service";
@@ -264,6 +265,7 @@ const DailyRewardsService = {
             await RiddleService.rotateWeek(now);
           } catch (riddleError) {
             console.error("❌ Error rotating weekly riddle:", riddleError);
+            reportJobError("riddle_rotate_week", riddleError);
           }
           
           if (isFirstOfMonth) {
@@ -273,6 +275,7 @@ const DailyRewardsService = {
               console.log(`✅ Monthly login progress reset complete. ${resetCount} records deleted.`);
             } catch (resetError) {
               console.error("❌ Error resetting monthly login progress:", resetError);
+              reportJobError("monthly_login_reset", resetError);
             }
           }
 
@@ -293,6 +296,7 @@ const DailyRewardsService = {
           }
         } catch (error) {
           console.error("❌ Error in midnight scheduled tasks:", error);
+          reportJobError("midnight_scheduled_tasks", error);
         }
       },
       {
@@ -316,6 +320,7 @@ const DailyRewardsService = {
           }
         } catch (error) {
           console.error("❌ Error in noon scheduled tasks:", error);
+          reportJobError("noon_scheduled_tasks", error);
         }
       },
       {

@@ -12,6 +12,10 @@ import XpService from "./xp.service";
 import { XpReward } from "../types/service.types";
 import { GameState, TileTerrain } from "../types/game.types";
 import db from "../config/db.config";
+import { recordGameCardResults, resultFor } from "./gameCardResults.service";
+import { recordGameReplay } from "./gameReplay.service";
+import { trackGameCompleted } from "./gameTelemetry.service";
+import { captureServerException } from "../utils/telemetry";
 import LeaderboardService from "./leaderboard.service";
 import AchievementService from "./achievement.service";
 import SeasonSoulsService from "./seasonSouls.service";
@@ -465,6 +469,51 @@ const GameRewardsService = {
         player1Id,
         player2Id
       );
+
+      // Tracking (TRACKING.md): per-card results for the balance report and
+      // the server-side game_completed event. Fire-and-forget; never blocks or
+      // fails the rewards.
+      if (gameId) {
+        recordGameCardResults({
+          gameId,
+          userId,
+          gameMode,
+          gameState,
+          winner: gameResult.winner,
+        }).catch((error) =>
+          captureServerException(error, {
+            distinctId: userId,
+            handler_type: "game_card_results",
+            game_id: gameId,
+          })
+        );
+        // Compact replay (30 days). Idempotent, so both PvP players writing
+        // it is fine.
+        recordGameReplay({
+          gameId,
+          gameMode,
+          gameState,
+          player1Id: gameState.player1?.user_id,
+          player2Id: gameState.player2?.user_id,
+          winnerId: gameResult.winner,
+        }).catch((error) =>
+          captureServerException(error, {
+            distinctId: userId,
+            handler_type: "game_replay",
+            game_id: gameId,
+          })
+        );
+        trackGameCompleted({
+          gameId,
+          userId,
+          mode: gameMode,
+          kind: isDraftedGame(gameState) && gameMode === "solo" ? "ranked_draft_bot" : undefined,
+          result: resultFor(gameResult.winner, userId),
+          turns: (gameState as { turn_number?: number }).turn_number ?? null,
+          durationSeconds: gameResult.game_duration_seconds,
+          isForfeit,
+        });
+      }
 
       // Which cards earn XP.
       //

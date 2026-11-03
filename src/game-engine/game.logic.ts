@@ -1,3 +1,4 @@
+import { isFirstEdition } from "../utils/printNumber";
 import { applyBattleMechanicsAfterDefeats } from "./battleMechanics";
 import { claimMechanicTileEffect } from "./battleMechanic.power";
 import {
@@ -124,7 +125,7 @@ export class GameLogic {
         .join(",");
       const query = `
         SELECT 
-          uci.user_card_instance_id, uci.level, uci.xp, uci.is_locked, uci.user_id,
+          uci.user_card_instance_id, uci.level, uci.xp, uci.is_locked, uci.user_id, uci.print_number,
           cv.card_variant_id as base_card_id, ch.name, cv.rarity, cv.image_url, 
           ch.base_power->>'top' as base_power_top, ch.base_power->>'right' as base_power_right, 
           ch.base_power->>'bottom' as base_power_bottom, ch.base_power->>'left' as base_power_left, 
@@ -234,6 +235,8 @@ export class GameLogic {
           level: row.level,
           xp: row.xp,
           is_locked: row.is_locked,
+          // Only when true, so non-first-edition game_state stays byte-identical.
+          ...(isFirstEdition(row.print_number) && { is_first_edition: true }),
           power_enhancements: powerEnhancements,
           current_power: currentPower,
           owner: row.user_id,
@@ -397,6 +400,22 @@ export class GameLogic {
         position
       );
       if (!canPlace) throw new Error(errorMessage);
+
+      if (!simulationContext.isInSimulation()) {
+        newState.move_log = [
+          ...(newState.move_log ?? []),
+          {
+            t: newState.turn_number,
+            p: newState.player1.user_id === playerId ? 1 : 2,
+            id: userCardInstanceId,
+            x: position.x,
+            y: position.y,
+            ...(targetPosition
+              ? { tx: targetPosition.x, ty: targetPosition.y }
+              : {}),
+          },
+        ];
+      }
 
       // Start of this placement's event production. The debuff scan at the end
       // of placeCard anchors here rather than at eventsBeforeAbilities so that

@@ -1,5 +1,6 @@
 import db from '../config/db.config';
 import { IapModel } from '../models/iap.model';
+import { captureServerExceptionOnce } from "../utils/telemetry";
 import { iapConfig } from '../config/iap.config';
 import { isUuid } from '../types/iap.types';
 import FeatureFlagService from './featureFlag.service';
@@ -172,9 +173,16 @@ export function startIapRetries() {
         AND received_at > now() - interval '7 days' ORDER BY processed_at NULLS FIRST,received_at LIMIT 50`);
       for (const e of rows) {
         try { await IapService.process(e.event_id); }
-        catch { console.error('IAP retry failed', {eventId:e.event_id}); }
+        catch (error) {
+          console.error('IAP retry failed', {eventId:e.event_id});
+          // A purchase we can't verify: report once per event, not per retry.
+          captureServerExceptionOnce(`iap_retry:${e.event_id}`, error, { handler_type: 'job', job: 'iap_retry', iap_event_id: e.event_id });
+        }
       }
-    } catch { console.error('IAP retry queue unavailable'); }
+    } catch (error) {
+      console.error('IAP retry queue unavailable');
+      captureServerExceptionOnce('iap_retry_queue', error, { handler_type: 'job', job: 'iap_retry' });
+    }
     finally { retryRunning=false; }
   }, 60000);
   retryTimer.unref();

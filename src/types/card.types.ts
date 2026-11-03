@@ -230,6 +230,8 @@ export type UserCard = {
   power_enhancements: PowerValues;
   /** Carries a Forge reforge roll; drives the signed-foil card treatment. */
   is_forged?: boolean;
+  /** One of the first 50 player-minted copies of this variant. */
+  is_first_edition?: boolean;
   equipped_border?: import("./database.types").EquippedBorder | null;
 };
 

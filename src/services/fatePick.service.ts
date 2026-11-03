@@ -1,3 +1,4 @@
+import { claimPrintNumbers } from "../utils/printNumber";
 import FatePickModel, {
   FatePickWithDetails,
   FatePickParticipation,
@@ -406,11 +407,14 @@ const FatePickService = {
       // Add the won card to user's collection
       let addedToCollection = false;
       try {
+        const [printNumber] = await claimPrintNumbers(client, userId, [
+          wonCard.card_id,
+        ]);
         const addCardQuery = `
-          INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp, created_at)
-          VALUES ($1, $2, 1, 0, NOW());
+          INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp, created_at, print_number)
+          VALUES ($1, $2, 1, 0, NOW(), $3);
         `;
-        await client.query(addCardQuery, [userId, wonCard.card_id]);
+        await client.query(addCardQuery, [userId, wonCard.card_id, printNumber]);
         addedToCollection = true;
       } catch (error) {
         console.error("Error adding won card to collection:", error);

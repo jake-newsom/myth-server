@@ -230,6 +230,8 @@ export interface UserCardInstance {
   is_locked: boolean;
   power_enhancements: PowerValues;
   equipped_border_id?: string | null; // References card_borders table
+  /** Per-variant mint order; NULL for AI, starter and un-backfilled rows. */
+  print_number?: number | null;
   created_at?: Date;
 }
 

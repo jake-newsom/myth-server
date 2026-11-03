@@ -1,5 +1,6 @@
 import db from "../config/db.config";
 import { default as DeckModel } from "../models/deck.model";
+import { trackGameStarted } from "./gameTelemetry.service";
 import { default as UserModel } from "../models/user.model";
 import { GameLogic } from "../game-engine/game.logic";
 import EventMechanicService from "./eventMechanic.service";
@@ -135,6 +136,12 @@ const MatchmakingService = {
     );
 
     const newGameId = gameResult.rows[0].game_id;
+    trackGameStarted({
+      gameId: newGameId,
+      userIds: [player1Id, player2Id],
+      mode: "pvp",
+      kind: "pvp",
+    });
 
     // Display names for both players, for the caller's response/event payloads.
     const [player2User, player1User] = await Promise.all([

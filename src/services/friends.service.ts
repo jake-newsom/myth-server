@@ -1,5 +1,6 @@
 import FriendshipModel from "../models/friendship.model";
 import EventMechanicService from "./eventMechanic.service";
+import { trackGameStarted } from "./gameTelemetry.service";
 import UserModel from "../models/user.model";
 import { DECK_CONFIG } from "../config/constants";
 import CardBackModel from "../models/cardBack.model";
@@ -639,6 +640,12 @@ class FriendsService {
 
       const gameResult = await db.query(gameQuery, gameValues);
       const newGameId = gameResult.rows[0].game_id;
+      trackGameStarted({
+        gameId: newGameId,
+        userIds: [challengerId, friendId],
+        mode: "pvp",
+        kind: "friend_challenge",
+      });
 
       return {
         success: true,

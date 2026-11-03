@@ -1,3 +1,4 @@
+import { claimPrintNumbers } from "../utils/printNumber";
 import PackModel from "../models/pack.model";
 import UserModel from "../models/user.model";
 import CardModel from "../models/card.model";
@@ -663,12 +664,14 @@ const PackService = {
     const runner: QueryExecutor = executor ?? db;
 
     // card.card_id is actually the card_variant_id in the new normalized structure
+    const variantIds = cards.map((card) => card.card_id);
+    const printNumbers = await claimPrintNumbers(runner, userId, variantIds);
     const query = `
-      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at)
-      SELECT $1, variant_id, 1, 0, NOW()
-      FROM UNNEST($2::uuid[]) AS variant_id;
+      INSERT INTO "user_owned_cards" (user_id, card_variant_id, level, xp, created_at, print_number)
+      SELECT $1, variant_id, 1, 0, NOW(), print_number
+      FROM UNNEST($2::uuid[], $3::int[]) AS t(variant_id, print_number);
     `;
-    await runner.query(query, [userId, cards.map((card) => card.card_id)]);
+    await runner.query(query, [userId, variantIds, printNumbers]);
   },
 
   /**

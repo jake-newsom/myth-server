@@ -57,7 +57,10 @@
     "test:iap": "node --test --test-force-exit -r ts-node/register src/services/__tests__/iap.test.ts",
     "iap:setup": "node scripts/setup-revenuecat.cjs",
     "iap:reconcile": "node scripts/reconcile-iap.cjs",
-    "test:iap:setup": "node --test scripts/__tests__/setup-revenuecat.test.cjs"
+    "test:iap:setup": "node --test scripts/__tests__/setup-revenuecat.test.cjs",
+    "test:card-results": "TS_NODE_TRANSPILE_ONLY=true node --test --test-force-exit -r ts-node/register src/services/__tests__/gameCardResults.test.ts src/services/__tests__/gameReplay.test.ts",
+    "backfill:game-archive": "ts-node --transpile-only scripts/backfill-game-archive.ts",
+    "balance:report": "ts-node --transpile-only src/game-engine/sim/cli/balance-report.ts"
   },
   "keywords": [],
   "author": "",
@@ -85,6 +88,7 @@
     "passport": "^0.7.0",
     "passport-facebook-token": "^4.0.0",
     "pg": "^8.16.0",
+    "posthog-node": "^5.60.0",
     "redis": "^5.10.0",
     "socket.io": "^4.8.1",
     "uuid": "^14.0.0"

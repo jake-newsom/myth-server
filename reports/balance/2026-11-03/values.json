@@ -1,0 +1,822 @@
+{
+ "version": 1,
+ "fitted_at": "2026-11-03T12:25:16.412Z",
+ "games": 32000,
+ "pool_source": "prod",
+ "agent": "value:content/ai/value-v8.json:::rule",
+ "stat_point_logit": 0.02077,
+ "stat_point_logit_se": 0.0013,
+ "vanilla_slope_logit": 0.01225,
+ "cards": {
+  "Village Healer": {
+   "rarity": "common",
+   "stat_total": 21,
+   "card_logit": -0.2221,
+   "card_pts": -10.69,
+   "card_pts_se": 1.28,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Shieldmaiden": {
+   "rarity": "common",
+   "stat_total": 27,
+   "card_logit": -0.206,
+   "card_pts": -9.92,
+   "card_pts_se": 1.28,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Hitotsume-kozō": {
+   "rarity": "common",
+   "stat_total": 18,
+   "card_logit": -0.2418,
+   "card_pts": -11.64,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Kamohoaliʻi": {
+   "rarity": "epic",
+   "stat_total": 35,
+   "card_logit": 0.253,
+   "card_pts": 12.18,
+   "card_pts_se": 1.28,
+   "ability_pts": 5.69,
+   "ability_pts_se": 1.79
+  },
+  "Jorōgumo": {
+   "rarity": "rare",
+   "stat_total": 22,
+   "card_logit": -0.3283,
+   "card_pts": -15.8,
+   "card_pts_se": 1.27,
+   "ability_pts": -6.05,
+   "ability_pts_se": 1.8
+  },
+  "Sigurd": {
+   "rarity": "rare",
+   "stat_total": 25,
+   "card_logit": -0.2285,
+   "card_pts": -11,
+   "card_pts_se": 1.27,
+   "ability_pts": 0.03,
+   "ability_pts_se": 1.8
+  },
+  "Ryūjin": {
+   "rarity": "legendary",
+   "stat_total": 40,
+   "card_logit": 1.0141,
+   "card_pts": 48.82,
+   "card_pts_se": 1.32,
+   "ability_pts": 38.48,
+   "ability_pts_se": 1.8
+  },
+  "Momotarō": {
+   "rarity": "epic",
+   "stat_total": 29,
+   "card_logit": -0.1251,
+   "card_pts": -6.02,
+   "card_pts_se": 1.28,
+   "ability_pts": 0.96,
+   "ability_pts_se": 1.79
+  },
+  "Poliʻahu": {
+   "rarity": "epic",
+   "stat_total": 32,
+   "card_logit": -0.0604,
+   "card_pts": -2.91,
+   "card_pts_se": 1.27,
+   "ability_pts": 2.91,
+   "ability_pts_se": 1.81
+  },
+  "Surtr": {
+   "rarity": "legendary",
+   "stat_total": 42,
+   "card_logit": 0.0098,
+   "card_pts": 0.47,
+   "card_pts_se": 1.26,
+   "ability_pts": -7.13,
+   "ability_pts_se": 1.79
+  },
+  "Noppera-bō": {
+   "rarity": "rare",
+   "stat_total": 22,
+   "card_logit": -0.1969,
+   "card_pts": -9.48,
+   "card_pts_se": 1.28,
+   "ability_pts": 1.57,
+   "ability_pts_se": 1.77
+  },
+  "Thrall": {
+   "rarity": "common",
+   "stat_total": 20,
+   "card_logit": -0.2876,
+   "card_pts": -13.84,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Ukupanipo": {
+   "rarity": "epic",
+   "stat_total": 32,
+   "card_logit": -0.0511,
+   "card_pts": -2.46,
+   "card_pts_se": 1.27,
+   "ability_pts": -1.44,
+   "ability_pts_se": 1.79
+  },
+  "Heimdall": {
+   "rarity": "epic",
+   "stat_total": 29,
+   "card_logit": -0.1455,
+   "card_pts": -7.01,
+   "card_pts_se": 1.29,
+   "ability_pts": 1.87,
+   "ability_pts_se": 1.83
+  },
+  "Drengr": {
+   "rarity": "common",
+   "stat_total": 22,
+   "card_logit": -0.2478,
+   "card_pts": -11.93,
+   "card_pts_se": 1.28,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Odin": {
+   "rarity": "legendary",
+   "stat_total": 39,
+   "card_logit": 0.7984,
+   "card_pts": 38.44,
+   "card_pts_se": 1.3,
+   "ability_pts": 33.75,
+   "ability_pts_se": 1.8
+  },
+  "Yamata no Orochi": {
+   "rarity": "legendary",
+   "stat_total": 42,
+   "card_logit": 0.2635,
+   "card_pts": 12.69,
+   "card_pts_se": 1.27,
+   "ability_pts": 1.93,
+   "ability_pts_se": 1.81
+  },
+  "Māui": {
+   "rarity": "legendary",
+   "stat_total": 39,
+   "card_logit": 0.7608,
+   "card_pts": 36.63,
+   "card_pts_se": 1.3,
+   "ability_pts": 29.51,
+   "ability_pts_se": 1.82
+  },
+  "Runestone Keeper": {
+   "rarity": "common",
+   "stat_total": 18,
+   "card_logit": -0.2366,
+   "card_pts": -11.39,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Frigg": {
+   "rarity": "epic",
+   "stat_total": 32,
+   "card_logit": 0.0598,
+   "card_pts": 2.88,
+   "card_pts_se": 1.26,
+   "ability_pts": 9.32,
+   "ability_pts_se": 1.78
+  },
+  "Hel": {
+   "rarity": "legendary",
+   "stat_total": 35,
+   "card_logit": 0.625,
+   "card_pts": 30.09,
+   "card_pts_se": 1.27,
+   "ability_pts": 28.39,
+   "ability_pts_se": 1.78
+  },
+  "Kintarō": {
+   "rarity": "epic",
+   "stat_total": 28,
+   "card_logit": 0.2659,
+   "card_pts": 12.8,
+   "card_pts_se": 1.27,
+   "ability_pts": 23.99,
+   "ability_pts_se": 1.79
+  },
+  "Baldr": {
+   "rarity": "epic",
+   "stat_total": 41,
+   "card_logit": 0.5196,
+   "card_pts": 25.01,
+   "card_pts_se": 1.3,
+   "ability_pts": 8.54,
+   "ability_pts_se": 1.83
+  },
+  "Thor": {
+   "rarity": "legendary",
+   "stat_total": 40,
+   "card_logit": 0.2404,
+   "card_pts": 11.58,
+   "card_pts_se": 1.27,
+   "ability_pts": 2.28,
+   "ability_pts_se": 1.82
+  },
+  "Young Jarl": {
+   "rarity": "common",
+   "stat_total": 18,
+   "card_logit": -0.2342,
+   "card_pts": -11.28,
+   "card_pts_se": 1.28,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Pele": {
+   "rarity": "legendary",
+   "stat_total": 41,
+   "card_logit": 0.2348,
+   "card_pts": 11.3,
+   "card_pts_se": 1.29,
+   "ability_pts": 0.88,
+   "ability_pts_se": 1.81
+  },
+  "Ushi-oni": {
+   "rarity": "rare",
+   "stat_total": 24,
+   "card_logit": -0.1269,
+   "card_pts": -6.11,
+   "card_pts_se": 1.29,
+   "ability_pts": 4.11,
+   "ability_pts_se": 1.83
+  },
+  "Ice Fisher": {
+   "rarity": "common",
+   "stat_total": 21,
+   "card_logit": -0.2321,
+   "card_pts": -11.18,
+   "card_pts_se": 1.26,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Raven Scout": {
+   "rarity": "common",
+   "stat_total": 22,
+   "card_logit": -0.1908,
+   "card_pts": -9.19,
+   "card_pts_se": 1.26,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Temple Drummer": {
+   "rarity": "common",
+   "stat_total": 27,
+   "card_logit": -0.1696,
+   "card_pts": -8.16,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Njord": {
+   "rarity": "epic",
+   "stat_total": 32,
+   "card_logit": 0.1652,
+   "card_pts": 7.95,
+   "card_pts_se": 1.29,
+   "ability_pts": 14.81,
+   "ability_pts_se": 1.8
+  },
+  "Kappa": {
+   "rarity": "common",
+   "stat_total": 20,
+   "card_logit": -0.2305,
+   "card_pts": -11.1,
+   "card_pts_se": 1.28,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Tyr": {
+   "rarity": "epic",
+   "stat_total": 27,
+   "card_logit": -0.1056,
+   "card_pts": -5.08,
+   "card_pts_se": 1.29,
+   "ability_pts": -0.16,
+   "ability_pts_se": 1.82
+  },
+  "Yamabiko": {
+   "rarity": "rare",
+   "stat_total": 22,
+   "card_logit": 0.0724,
+   "card_pts": 3.48,
+   "card_pts_se": 1.3,
+   "ability_pts": 15.58,
+   "ability_pts_se": 1.84
+  },
+  "Kitsune": {
+   "rarity": "common",
+   "stat_total": 27,
+   "card_logit": -0.186,
+   "card_pts": -8.96,
+   "card_pts_se": 1.28,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Kaʻahupāhau": {
+   "rarity": "epic",
+   "stat_total": 28,
+   "card_logit": -0.0957,
+   "card_pts": -4.61,
+   "card_pts_se": 1.27,
+   "ability_pts": 4.86,
+   "ability_pts_se": 1.77
+  },
+  "Tawara Tōda": {
+   "rarity": "epic",
+   "stat_total": 37,
+   "card_logit": 0.7726,
+   "card_pts": 37.19,
+   "card_pts_se": 1.3,
+   "ability_pts": 25.72,
+   "ability_pts_se": 1.82
+  },
+  "Amaterasu": {
+   "rarity": "legendary",
+   "stat_total": 45,
+   "card_logit": 0.1575,
+   "card_pts": 7.58,
+   "card_pts_se": 1.29,
+   "ability_pts": -5.68,
+   "ability_pts_se": 1.81
+  },
+  "Hachiman": {
+   "rarity": "epic",
+   "stat_total": 40,
+   "card_logit": 0.3655,
+   "card_pts": 17.6,
+   "card_pts_se": 1.28,
+   "ability_pts": 10.04,
+   "ability_pts_se": 1.8
+  },
+  "Futakuchi-onna": {
+   "rarity": "rare",
+   "stat_total": 22,
+   "card_logit": -0.2742,
+   "card_pts": -13.2,
+   "card_pts_se": 1.27,
+   "ability_pts": -1.18,
+   "ability_pts_se": 1.79
+  },
+  "Fisherman of Kuʻula": {
+   "rarity": "common",
+   "stat_total": 23,
+   "card_logit": -0.2056,
+   "card_pts": -9.9,
+   "card_pts_se": 1.26,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Lono": {
+   "rarity": "legendary",
+   "stat_total": 32,
+   "card_logit": 0.0878,
+   "card_pts": 4.23,
+   "card_pts_se": 1.27,
+   "ability_pts": 4.46,
+   "ability_pts_se": 1.83
+  },
+  "Ran": {
+   "rarity": "rare",
+   "stat_total": 32,
+   "card_logit": 0.1178,
+   "card_pts": 5.67,
+   "card_pts_se": 1.27,
+   "ability_pts": 10.27,
+   "ability_pts_se": 1.84
+  },
+  "Kiʻi": {
+   "rarity": "common",
+   "stat_total": 22,
+   "card_logit": -0.2311,
+   "card_pts": -11.13,
+   "card_pts_se": 1.26,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Bragi": {
+   "rarity": "epic",
+   "stat_total": 32,
+   "card_logit": 0.0124,
+   "card_pts": 0.6,
+   "card_pts_se": 1.28,
+   "ability_pts": 3.43,
+   "ability_pts_se": 1.83
+  },
+  "Kupua": {
+   "rarity": "epic",
+   "stat_total": 31,
+   "card_logit": -0.1648,
+   "card_pts": -7.93,
+   "card_pts_se": 1.27,
+   "ability_pts": -3.87,
+   "ability_pts_se": 1.78
+  },
+  "Susanoo": {
+   "rarity": "legendary",
+   "stat_total": 44,
+   "card_logit": 0.2109,
+   "card_pts": 10.15,
+   "card_pts_se": 1.28,
+   "ability_pts": 6.54,
+   "ability_pts_se": 1.8
+  },
+  "Hiʻiaka": {
+   "rarity": "epic",
+   "stat_total": 32,
+   "card_logit": -0.1076,
+   "card_pts": -5.18,
+   "card_pts_se": 1.28,
+   "ability_pts": 0.96,
+   "ability_pts_se": 1.8
+  },
+  "Jormungandr": {
+   "rarity": "legendary",
+   "stat_total": 40,
+   "card_logit": 0.6412,
+   "card_pts": 30.87,
+   "card_pts_se": 1.3,
+   "ability_pts": 22.29,
+   "ability_pts_se": 1.82
+  },
+  "Koa Warrior": {
+   "rarity": "common",
+   "stat_total": 34,
+   "card_logit": -0.0207,
+   "card_pts": -0.99,
+   "card_pts_se": 1.28,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Kapo": {
+   "rarity": "epic",
+   "stat_total": 29,
+   "card_logit": -0.0915,
+   "card_pts": -4.41,
+   "card_pts_se": 1.28,
+   "ability_pts": 1.71,
+   "ability_pts_se": 1.81
+  },
+  "Norse Fox": {
+   "rarity": "common",
+   "stat_total": 27,
+   "card_logit": -0.1331,
+   "card_pts": -6.41,
+   "card_pts_se": 1.26,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Kāne": {
+   "rarity": "legendary",
+   "stat_total": 41,
+   "card_logit": 0.2655,
+   "card_pts": 12.78,
+   "card_pts_se": 1.27,
+   "ability_pts": 0.14,
+   "ability_pts_se": 1.82
+  },
+  "Benkei": {
+   "rarity": "epic",
+   "stat_total": 29,
+   "card_logit": 0.0242,
+   "card_pts": 1.17,
+   "card_pts_se": 1.27,
+   "ability_pts": 12.96,
+   "ability_pts_se": 1.82
+  },
+  "Fenrir": {
+   "rarity": "legendary",
+   "stat_total": 40,
+   "card_logit": 0.2163,
+   "card_pts": 10.41,
+   "card_pts_se": 1.28,
+   "ability_pts": 2.94,
+   "ability_pts_se": 1.8
+  },
+  "Loki": {
+   "rarity": "legendary",
+   "stat_total": 34,
+   "card_logit": 0.3271,
+   "card_pts": 15.75,
+   "card_pts_se": 1.26,
+   "ability_pts": 19.35,
+   "ability_pts_se": 1.74
+  },
+  "Moʻoinanea": {
+   "rarity": "epic",
+   "stat_total": 31,
+   "card_logit": -0.1718,
+   "card_pts": -8.27,
+   "card_pts_se": 1.29,
+   "ability_pts": -0.39,
+   "ability_pts_se": 1.83
+  },
+  "Vidar": {
+   "rarity": "epic",
+   "stat_total": 43,
+   "card_logit": 0.2808,
+   "card_pts": 13.52,
+   "card_pts_se": 1.29,
+   "ability_pts": 3.09,
+   "ability_pts_se": 1.84
+  },
+  "Tsukuyomi": {
+   "rarity": "legendary",
+   "stat_total": 36,
+   "card_logit": -0.0652,
+   "card_pts": -3.14,
+   "card_pts_se": 1.27,
+   "ability_pts": -0.8,
+   "ability_pts_se": 1.8
+  },
+  "Kū": {
+   "rarity": "legendary",
+   "stat_total": 42,
+   "card_logit": 0.3436,
+   "card_pts": 16.54,
+   "card_pts_se": 1.27,
+   "ability_pts": 5.7,
+   "ability_pts_se": 1.77
+  },
+  "Yuki-onna": {
+   "rarity": "rare",
+   "stat_total": 27,
+   "card_logit": -0.0555,
+   "card_pts": -2.67,
+   "card_pts_se": 1.27,
+   "ability_pts": 7.38,
+   "ability_pts_se": 1.75
+  },
+  "Hula Dancer": {
+   "rarity": "common",
+   "stat_total": 22,
+   "card_logit": -0.2314,
+   "card_pts": -11.14,
+   "card_pts_se": 1.29,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Bear Totem": {
+   "rarity": "common",
+   "stat_total": 23,
+   "card_logit": -0.2457,
+   "card_pts": -11.83,
+   "card_pts_se": 1.29,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Laʻamaomao": {
+   "rarity": "epic",
+   "stat_total": 30,
+   "card_logit": -0.1142,
+   "card_pts": -5.5,
+   "card_pts_se": 1.27,
+   "ability_pts": -3.28,
+   "ability_pts_se": 1.8
+  },
+  "Nurarihyon": {
+   "rarity": "rare",
+   "stat_total": 22,
+   "card_logit": -0.2277,
+   "card_pts": -10.96,
+   "card_pts_se": 1.27,
+   "ability_pts": -0.11,
+   "ability_pts_se": 1.81
+  },
+  "Tsuchinoko": {
+   "rarity": "common",
+   "stat_total": 18,
+   "card_logit": -0.23,
+   "card_pts": -11.07,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Tengu": {
+   "rarity": "common",
+   "stat_total": 26,
+   "card_logit": -0.1664,
+   "card_pts": -8.01,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Kamapuaʻa": {
+   "rarity": "epic",
+   "stat_total": 30,
+   "card_logit": -0.0797,
+   "card_pts": -3.84,
+   "card_pts_se": 1.27,
+   "ability_pts": 1.49,
+   "ability_pts_se": 1.78
+  },
+  "Milu": {
+   "rarity": "epic",
+   "stat_total": 30,
+   "card_logit": -0.087,
+   "card_pts": -4.19,
+   "card_pts_se": 1.27,
+   "ability_pts": 1.96,
+   "ability_pts_se": 1.79
+  },
+  "Minamoto no Raikō": {
+   "rarity": "epic",
+   "stat_total": 28,
+   "card_logit": -0.0758,
+   "card_pts": -3.65,
+   "card_pts_se": 1.29,
+   "ability_pts": 4.95,
+   "ability_pts_se": 1.84
+  },
+  "Hauwahine": {
+   "rarity": "rare",
+   "stat_total": 26,
+   "card_logit": -0.1047,
+   "card_pts": -5.04,
+   "card_pts_se": 1.25,
+   "ability_pts": 5.05,
+   "ability_pts_se": 1.77
+  },
+  "Mokumokuren": {
+   "rarity": "common",
+   "stat_total": 18,
+   "card_logit": -0.2169,
+   "card_pts": -10.44,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Kanaloa": {
+   "rarity": "legendary",
+   "stat_total": 39,
+   "card_logit": 0.9995,
+   "card_pts": 48.12,
+   "card_pts_se": 1.32,
+   "ability_pts": 39.03,
+   "ability_pts_se": 1.78
+  },
+  "Canoe Builder": {
+   "rarity": "common",
+   "stat_total": 23,
+   "card_logit": -0.2353,
+   "card_pts": -11.33,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Okuri-inu": {
+   "rarity": "rare",
+   "stat_total": 23,
+   "card_logit": -0.179,
+   "card_pts": -8.62,
+   "card_pts_se": 1.27,
+   "ability_pts": 1.79,
+   "ability_pts_se": 1.82
+  },
+  "Bakeneko": {
+   "rarity": "common",
+   "stat_total": 22,
+   "card_logit": -0.2187,
+   "card_pts": -10.53,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Freyja": {
+   "rarity": "epic",
+   "stat_total": 24,
+   "card_logit": 0.0144,
+   "card_pts": 0.69,
+   "card_pts_se": 1.28,
+   "ability_pts": 10.95,
+   "ability_pts_se": 1.82
+  },
+  "Urashima Tarō": {
+   "rarity": "epic",
+   "stat_total": 28,
+   "card_logit": -0.1836,
+   "card_pts": -8.84,
+   "card_pts_se": 1.26,
+   "ability_pts": -0.52,
+   "ability_pts_se": 1.78
+  },
+  "Tanuki": {
+   "rarity": "common",
+   "stat_total": 19,
+   "card_logit": -0.2573,
+   "card_pts": -12.39,
+   "card_pts_se": 1.26,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Berserker": {
+   "rarity": "common",
+   "stat_total": 31,
+   "card_logit": -0.0998,
+   "card_pts": -4.81,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Torchbearer": {
+   "rarity": "common",
+   "stat_total": 22,
+   "card_logit": -0.2197,
+   "card_pts": -10.58,
+   "card_pts_se": 1.26,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Lava Scout": {
+   "rarity": "common",
+   "stat_total": 21,
+   "card_logit": -0.1984,
+   "card_pts": -9.55,
+   "card_pts_se": 1.28,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Oni": {
+   "rarity": "common",
+   "stat_total": 33,
+   "card_logit": -0.0474,
+   "card_pts": -2.28,
+   "card_pts_se": 1.26,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Nightmarchers": {
+   "rarity": "rare",
+   "stat_total": 26,
+   "card_logit": -0.2876,
+   "card_pts": -13.85,
+   "card_pts_se": 1.28,
+   "ability_pts": -5.41,
+   "ability_pts_se": 1.83
+  },
+  "Gashadokuro": {
+   "rarity": "epic",
+   "stat_total": 40,
+   "card_logit": 0.1645,
+   "card_pts": 7.92,
+   "card_pts_se": 1.28,
+   "ability_pts": 4.94,
+   "ability_pts_se": 1.82
+  },
+  "Kānehekili": {
+   "rarity": "epic",
+   "stat_total": 31,
+   "card_logit": -0.1378,
+   "card_pts": -6.63,
+   "card_pts_se": 1.28,
+   "ability_pts": 0.53,
+   "ability_pts_se": 1.8
+  },
+  "Stone Carver": {
+   "rarity": "common",
+   "stat_total": 22,
+   "card_logit": -0.2478,
+   "card_pts": -11.93,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Peasant Archer": {
+   "rarity": "common",
+   "stat_total": 22,
+   "card_logit": -0.2262,
+   "card_pts": -10.89,
+   "card_pts_se": 1.28,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Tapa Weaver": {
+   "rarity": "common",
+   "stat_total": 21,
+   "card_logit": -0.26,
+   "card_pts": -12.52,
+   "card_pts_se": 1.27,
+   "ability_pts": null,
+   "ability_pts_se": null
+  },
+  "Skadi": {
+   "rarity": "rare",
+   "stat_total": 31,
+   "card_logit": -0.0361,
+   "card_pts": -1.74,
+   "card_pts_se": 1.26,
+   "ability_pts": 1.44,
+   "ability_pts_se": 1.78
+  }
+ }
+}

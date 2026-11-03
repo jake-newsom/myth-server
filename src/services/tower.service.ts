@@ -1,8 +1,10 @@
+import { claimPrintNumbers } from "../utils/printNumber";
 /**
  * Tower Service - Handles Infinite Tower game logic and rewards
  */
 
 import db from "../config/db.config";
+import { trackGameStarted } from "./gameTelemetry.service";
 import {
   TowerReward,
   TowerTier,
@@ -688,6 +690,12 @@ class TowerService {
       values.push(eventContext.eventId, eventContext.mechanicKey);
     }
     const { rows } = await db.query(query, values);
+    trackGameStarted({
+      gameId: rows[0].game_id,
+      userIds: [player1Id, player2Id],
+      mode: "solo",
+      kind: "tower",
+    });
     return { game_id: rows[0].game_id };
   }
 
@@ -1037,14 +1045,18 @@ class TowerService {
     const card = await pickRandomVariantByRarity(variantRarity);
     if (!card) return null;
 
+    const [printNumber] = await claimPrintNumbers(db, userId, [
+      card.card_variant_id,
+    ]);
     const insertQuery = `
-      INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp)
-      VALUES ($1, $2, 1, 0)
+      INSERT INTO user_owned_cards (user_id, card_variant_id, level, xp, print_number)
+      VALUES ($1, $2, 1, 0, $3)
       RETURNING user_card_instance_id;
     `;
     const { rows: insertRows } = await db.query(insertQuery, [
       userId,
       card.card_variant_id,
+      printNumber,
     ]);
 
     return {

@@ -1,5 +1,6 @@
 // myth-server/src/api/controllers/auth.controller.ts
 import { Request, Response, NextFunction } from "express";
+import { captureServerEvent, clientReleaseProps } from "../../utils/telemetry";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import UserModel from "../../models/user.model";
@@ -180,6 +181,7 @@ const AuthController = {
       // Seed the onboarding track and send the day-1 welcome mail. Must run
       // after COMMIT: it uses its own connections, so the user row has to be
       // visible outside this transaction first. Never throws.
+      captureServerEvent(newUser.user_id, "user_registered", { method: "username", ...clientReleaseProps(req.headers) });
       await OnboardingService.initializeForUser(
         newUser.user_id,
         newUser.created_at
@@ -536,6 +538,7 @@ const AuthController = {
       // Seed the onboarding track and send the day-1 welcome mail. Must run
       // after COMMIT: it uses its own connections, so the user row has to be
       // visible outside this transaction first. Never throws.
+      captureServerEvent(newUser.user_id, "user_registered", { method: "facebook", ...clientReleaseProps(req.headers) });
       await OnboardingService.initializeForUser(
         newUser.user_id,
         newUser.created_at
@@ -1024,6 +1027,7 @@ const AuthController = {
       // Seed the onboarding track and send the day-1 welcome mail. Must run
       // after COMMIT: it uses its own connections, so the user row has to be
       // visible outside this transaction first. Never throws.
+      captureServerEvent(newUser.user_id, "user_registered", { method: "apple", ...clientReleaseProps(req.headers) });
       await OnboardingService.initializeForUser(
         newUser.user_id,
         newUser.created_at
@@ -1326,6 +1330,7 @@ const AuthController = {
       // Seed the onboarding track and send the day-1 welcome mail. Must run
       // after COMMIT: it uses its own connections, so the user row has to be
       // visible outside this transaction first. Never throws.
+      captureServerEvent(newUser.user_id, "user_registered", { method: "google", ...clientReleaseProps(req.headers) });
       await OnboardingService.initializeForUser(
         newUser.user_id,
         newUser.created_at

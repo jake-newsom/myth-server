@@ -117,6 +117,8 @@ export interface CardResponse {
    * Optional and additive: old clients ignore it.
    */
   is_forged?: boolean;
+  /** One of the first 50 player-minted copies of this variant. Optional and additive. */
+  is_first_edition?: boolean;
   equipped_border?: import("./database.types").EquippedBorder | null;
 }
 

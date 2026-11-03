@@ -6,6 +6,31 @@ import {
   DeckAccessError,
   EmptyDeckError,
 } from "../../services/deck.service";
+import {
+  captureServerException,
+  clientReleaseProps,
+} from "../../utils/telemetry";
+
+/** 5xx only: 4xx errors are expected and would drown the real issues. */
+function reportServerError(
+  error: Error,
+  req: Request,
+  res: Response,
+  status: number,
+  code: string,
+): void {
+  if (status < 500) return;
+  res.locals.errorReported = true;
+  captureServerException(error, {
+    distinctId: req.user?.user_id,
+    handler_type: "http",
+    route: req.route?.path ? `${req.baseUrl}${req.route.path}` : req.path,
+    method: req.method,
+    http_status: status,
+    error_code: code,
+    ...clientReleaseProps(req.headers),
+  });
+}
 
 // Define custom error types
 export class ValidationError extends Error {
@@ -124,6 +149,7 @@ const errorHandler = (
   // keep their nested { error: { ... } } body for routes already using them;
   // they're listed in ERROR_HANDLING_TODO.md.
   if (error instanceof HttpError) {
+    reportServerError(error, req, res, error.status, error.code);
     res.status(error.status).json({
       ...error.legacy,
       error: error.message,
@@ -309,6 +335,7 @@ const errorHandler = (
     };
   }
 
+  reportServerError(error, req, res, statusCode, errorResponse.error.code);
   res.status(statusCode).json(errorResponse);
 };
 
