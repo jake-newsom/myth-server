@@ -30,7 +30,9 @@ db.query = async () => {
 
 import { GameState } from "../../../types/game.types";
 import { GameStatus } from "../../game.logic";
-import { DeckPool } from "../sim.types";
+import { DeckPool, DeckSnapshot } from "../sim.types";
+import { InGameCard } from "../../../types/card.types";
+import { DraftPoolSnapshot, mulberry32 } from "../sim.draft";
 import { createAgent } from "../sim.agents";
 import { SearchAgent } from "../sim.searchAgent";
 import { createDeckPicker, playSimGame, SIM_P1, SIM_P2 } from "../sim.game";
@@ -106,6 +108,33 @@ async function main() {
     parseFloat(opt("player-share", "0.5"))
   );
   const mirrorShare = parseFloat(opt("mirror-share", "0"));
+
+  // --focus "Tyr,Surtr" --focus-share P: in P of games, swap one focus card into
+  // each deck (replacing a random card) so the net sees them far more often.
+  // Hydrated copies come from --focus-pool (a draft pool export, prod stats).
+  const focusNames = opt("focus", "").split(",").map((n) => n.trim()).filter(Boolean);
+  const focusShare = parseFloat(opt("focus-share", "0.5"));
+  const focusCards: InGameCard[] = [];
+  if (focusNames.length) {
+    const fp: DraftPoolSnapshot = JSON.parse(
+      fs.readFileSync(path.resolve(opt("focus-pool", ".ai-sim/draft-pool-prod.json")), "utf8")
+    );
+    for (const n of focusNames) {
+      const card = fp.cards.find((c) => c.base_card_data.name === n);
+      if (!card) throw new Error(`--focus: "${n}" not in focus pool`);
+      focusCards.push(card);
+    }
+  }
+  const focusRand = mulberry32(7_919 * (shard + 1));
+  const withFocus = (deck: DeckSnapshot, tag: string): DeckSnapshot => {
+    const card = focusCards[Math.floor(focusRand() * focusCards.length)];
+    const cards = [...deck.cards];
+    cards[Math.floor(focusRand() * cards.length)] = {
+      ...JSON.parse(JSON.stringify(card)),
+      user_card_instance_id: `focus-${tag}-${card.user_card_instance_id}`,
+    };
+    return { ...deck, cards };
+  };
   let rows = 0;
   let floatDim = 0;
   let intDim = 0;
@@ -116,8 +145,12 @@ async function main() {
     const seed = shard * 10_000_000 + g;
     // Mirror games (both seats on the same deck) isolate play quality from
     // deck quality; the rest keep random pairings for coverage.
-    const d1 = pickDeck();
-    const d2 = (Math.imul(g, 2654435761) >>> 0) % 1000 < mirrorShare * 1000 ? d1 : pickDeck();
+    let d1 = pickDeck();
+    let d2 = (Math.imul(g, 2654435761) >>> 0) % 1000 < mirrorShare * 1000 ? d1 : pickDeck();
+    if (focusCards.length && focusRand() < focusShare) {
+      d1 = withFocus(d1, `${g}a`);
+      d2 = withFocus(d2, `${g}b`);
+    }
     const aIsP1 = g % 2 === 0;
 
     // vP1: the mover's searched value of each position, from P1's side.

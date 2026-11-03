@@ -26,6 +26,10 @@ PROCS=${2:-$DEFAULT_PROCS}
 GAMES_PER_SHARD=${GAMES_PER_SHARD:-100}
 BATCHES=${BATCHES:-0} # 0 = run until stopped
 MODEL=.ai-sim/models/best.json
+# FOCUS="Tyr,Surtr,..." puts one of those cards into both decks in FOCUS_SHARE of
+# games (prod stats from .ai-sim/draft-pool-prod.json) — for cards the net misjudges.
+FOCUS=${FOCUS:-}
+FOCUS_SHARE=${FOCUS_SHARE:-0.5}
 OUT=.ai-sim/data-pool/$NAME
 
 for f in "$MODEL" .ai-sim/vocab.json .ai-sim/deck-pool.json; do
@@ -54,6 +58,7 @@ while [ "$BATCHES" = 0 ] || [ "$batch" -lt "$BATCHES" ]; do
       --a "search:$MODEL" --b "search:$MODEL" \
       --games "$GAMES_PER_SHARD" --shard $(( first + i )) \
       --mirror-share 0.5 --explore 0.25 --target-mix 0.5 \
+      ${FOCUS:+--focus "$FOCUS" --focus-share "$FOCUS_SHARE"} \
       --tag "$model_hash" --out "$OUT" > "$OUT/shard-$(( first + i )).log" 2>&1 &
   done
   wait

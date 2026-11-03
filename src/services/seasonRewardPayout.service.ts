@@ -74,6 +74,17 @@ async function insertRewardMail(
  * processed the season is marked `finalized`.
  */
 
+/** Pure ladder-key mapping, exported for tests. */
+export function pvpLaddersForStart(startAt: Date): { finished: string; next: string } {
+  const quarter = LeaderboardModel.getQuarterForDate(startAt);
+  return {
+    finished: LeaderboardModel.getRankedDraftSeason(quarter),
+    next: LeaderboardModel.getRankedDraftSeason(
+      LeaderboardModel.getNextQuarter(quarter)
+    ),
+  };
+}
+
 interface PayoutOutcome {
   paid: number;
   skipped: number;
@@ -130,8 +141,17 @@ const SeasonRewardPayoutService = {
    */
   async payoutPvpLadder(seasonId: string): Promise<PayoutOutcome> {
     try {
+      // Pay the ladder the season was played on, not the one that is current
+      // when the payout runs: seasons end on Jan 1 / Apr 1 / Jul 1 / Oct 1, so
+      // by finalization the current quarter is already the NEXT ladder.
+      const ladders = await this.pvpLaddersForSeason(seasonId);
+      if (!ladders) {
+        logger.error("PvP payout: season not found", { seasonId });
+        return { paid: 0, skipped: 0, failed: 1 };
+      }
       const result = await RankedDraftRewardsService.runSeasonalPayoutIfEnabled(
-        seasonId
+        seasonId,
+        { season: ladders.finished }
       );
       if (!result) return { paid: 0, skipped: 0, failed: 0 };
 
@@ -139,10 +159,8 @@ const SeasonRewardPayoutService = {
       // ratings instead of wiping them. Runs only after a successful payout,
       // so the standings that were paid are the ones that get carried.
       await RankedDraftRewardsService.applySoftReset(
-        result.season,
-        LeaderboardModel.getRankedDraftSeason(
-          LeaderboardModel.getCurrentSeason()
-        )
+        ladders.finished,
+        ladders.next
       ).catch((error) => {
         // A failed carry leaves the next season starting from base — bad, but
         // never a reason to un-pay a season that was already delivered.
@@ -162,6 +180,18 @@ const SeasonRewardPayoutService = {
       );
       return { paid: 0, skipped: 0, failed: 1 };
     }
+  },
+
+  /**
+   * The draft ladder keys for a season: the quarter its window started in, and
+   * the quarter after it (where the soft reset seeds ratings).
+   */
+  async pvpLaddersForSeason(
+    seasonId: string
+  ): Promise<{ finished: string; next: string } | null> {
+    const season = await SeasonModel.getSeasonById(seasonId);
+    if (!season) return null;
+    return pvpLaddersForStart(new Date(season.start_at));
   },
 
   /**

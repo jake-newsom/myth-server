@@ -24,6 +24,23 @@ const LeaderboardModel = {
   },
 
   /**
+   * The quarter key ("2026-Q4") a date falls in, in UTC. Ladder keys are
+   * quarters, so this maps a season's window back to the ladder it was played on.
+   */
+  getQuarterForDate(date: Date): string {
+    return `${date.getUTCFullYear()}-Q${Math.floor(date.getUTCMonth() / 3) + 1}`;
+  },
+
+  /** The quarter key after `quarter` ("2026-Q4" -> "2027-Q1"). */
+  getNextQuarter(quarter: string): string {
+    const m = /^(\d{4})-Q([1-4])$/.exec(quarter);
+    if (!m) throw new Error(`[leaderboard] Not a quarter key: "${quarter}"`);
+    const year = Number(m[1]);
+    const q = Number(m[2]);
+    return q === 4 ? `${year + 1}-Q1` : `${year}-Q${q + 1}`;
+  },
+
+  /**
    * Season string for the Ranked Draft ladder.
    *
    * `user_rankings` is keyed UNIQUE(user_id, season) and `season` is an opaque

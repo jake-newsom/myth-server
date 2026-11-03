@@ -798,6 +798,36 @@ export const japaneseAbilities: AbilityMap = {
 
     const gameEvents: BaseGameEvent[] = [];
 
+    // +3 if Yamata no Orochi is in play (either side), checked BEFORE the
+    // destroy: the card reads "gain, then destroy", and Orochi is usually the
+    // very dragon Susanoo slays, so checking after never granted the buff.
+    const orochiInPlay = getCardsByCondition(
+      board,
+      (card) => card.base_card_data.name === "Yamata no Orochi",
+    ).length > 0;
+
+    if (orochiInPlay) {
+      const triggerPosition = getPositionOfCardById(
+        triggerCard.user_card_instance_id,
+        board,
+      );
+      if (triggerPosition) {
+        gameEvents.push(
+          addTempBuff(triggerCard, 1000, 3, {
+            name: "Kusanagi's Strike",
+            animation: "lightning-cloud",
+            position: triggerPosition,
+            data: {
+              actingPlayerId: triggerCard.owner,
+              sourceCard: triggerCard,
+              sourcePlayerId: triggerCard.owner,
+              turnNumber: context.state.turn_number,
+            },
+          }),
+        );
+      }
+    }
+
     const enemyBeastsAndDragons = getCardsByCondition(board, (card) => {
       if (card.owner === triggerCard.owner) return false;
       const tags = (card.base_card_data.tags || []).map((tag) =>
@@ -827,43 +857,8 @@ export const japaneseAbilities: AbilityMap = {
             triggerCard.owner,
             triggerCard,
           );
-          if (destroyEvent) {
-            const triggerPosition = getPositionOfCardById(
-              triggerCard.user_card_instance_id,
-              board,
-            );
-            gameEvents.push(destroyEvent);
-          }
+          if (destroyEvent) gameEvents.push(destroyEvent);
         }
-      }
-    }
-
-    // +3 if Yamata no Orochi is in play (either side), replacing the old flat
-    // +2 for destroying. Applied whether or not anything was destroyed.
-    const orochiInPlay = getCardsByCondition(
-      board,
-      (card) => card.base_card_data.name === "Yamata no Orochi",
-    ).length > 0;
-
-    if (orochiInPlay) {
-      const triggerPosition = getPositionOfCardById(
-        triggerCard.user_card_instance_id,
-        board,
-      );
-      if (triggerPosition) {
-        gameEvents.push(
-          addTempBuff(triggerCard, 1000, 3, {
-            name: "Kusanagi's Strike",
-            animation: "lightning-cloud",
-            position: triggerPosition,
-            data: {
-              actingPlayerId: triggerCard.owner,
-              sourceCard: triggerCard,
-              sourcePlayerId: triggerCard.owner,
-              turnNumber: context.state.turn_number,
-            },
-          }),
-        );
       }
     }
 

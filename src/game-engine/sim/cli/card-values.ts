@@ -54,6 +54,8 @@ interface Pick {
   n: string;
   s: 0 | 1;
   j: -1 | 0 | 1;
+  /** Single-side jitter (--p-side): [side index in SIDES, delta, 1 if it was the card's weakest side, 1 if strongest]. */
+  d?: [number, number, 0 | 1, 0 | 1];
 }
 interface GameRow {
   a: Pick[];
@@ -81,13 +83,26 @@ function randomLegalDeck(cards: InGameCard[], exclude: Set<string>, rand: () => 
   return deck;
 }
 
-function treat(cards: InGameCard[], rand: () => number, pSilence: number, pJitter: number) {
+function treat(cards: InGameCard[], rand: () => number, pSilence: number, pJitter: number, pSide = 0) {
   return cards.map((card): { card: InGameCard; pick: Pick } => {
     const hasAbility = !!card.base_card_data.special_ability;
     const s: 0 | 1 = hasAbility && rand() < pSilence ? 1 : 0;
     const j: -1 | 0 | 1 = rand() < pJitter ? (rand() < 0.5 ? -1 : 1) : 0;
-    if (!s && !j) return { card, pick: { n: card.base_card_data.name, s, j } };
+    let d: Pick["d"];
+    if (pSide > 0 && rand() < pSide) {
+      const bp = card.base_card_data.base_power;
+      const vals = SIDES.map((k) => bp[k]);
+      const si = Math.floor(rand() * 4);
+      const delta = rand() < 0.5 ? -2 : 2;
+      d = [si, delta, vals[si] === Math.min(...vals) ? 1 : 0, vals[si] === Math.max(...vals) ? 1 : 0];
+    }
+    if (!s && !j && !d) return { card, pick: { n: card.base_card_data.name, s, j } };
     const c = _.cloneDeep(card);
+    if (d) {
+      const side = SIDES[d[0]];
+      c.base_card_data.base_power[side] = Math.max(0, c.base_card_data.base_power[side] + d[1]);
+      c.current_power[side] = Math.max(0, c.current_power[side] + d[1]);
+    }
     if (s) c.base_card_data.special_ability = null;
     if (j) {
       for (const side of SIDES) {
@@ -95,7 +110,7 @@ function treat(cards: InGameCard[], rand: () => number, pSilence: number, pJitte
         c.current_power[side] = Math.max(0, c.current_power[side] + j);
       }
     }
-    return { card: c, pick: { n: card.base_card_data.name, s, j } };
+    return { card: c, pick: d ? { n: card.base_card_data.name, s, j, d } : { n: card.base_card_data.name, s, j } };
   });
 }
 
@@ -112,6 +127,7 @@ async function generate() {
   const agentName = opt("agent", "greedy");
   const pSilence = parseFloat(opt("p-silence", "0.5"));
   const pJitter = parseFloat(opt("p-jitter", "0.3"));
+  const pSide = parseFloat(opt("p-side", "0"));
   const poolPath = path.resolve(opt("pool", ".ai-sim/draft-pool.json"));
   const outPath = path.resolve(opt("out", `.ai-sim/card-values/s${seed}.jsonl`));
 
@@ -127,8 +143,8 @@ async function generate() {
   for (let i = 0; i < games / 2; i++) {
     const rawA = randomLegalDeck(pool.cards, new Set(), rand);
     const rawB = randomLegalDeck(pool.cards, new Set(rawA.map((c) => c.base_card_id)), rand);
-    const A = treat(rawA, rand, pSilence, pJitter);
-    const B = treat(rawB, rand, pSilence, pJitter);
+    const A = treat(rawA, rand, pSilence, pJitter, pSide);
+    const B = treat(rawB, rand, pSilence, pJitter, pSide);
     const snapA = snapshot("A", A.map((x) => x.card));
     const snapB = snapshot("B", B.map((x) => x.card));
     const gameSeed = seed * 1_000_003 + i;
@@ -186,7 +202,13 @@ function fit() {
   const abilityCards = pool.cards.filter((c) => c.base_card_data.special_ability).map((c) => c.base_card_data.name);
   const silIdx = new Map(abilityCards.map((n, i) => [n, names.length + i]));
   const JIT = names.length + abilityCards.length;
-  const n = JIT + 1;
+  // Single-side jitter: one feature per board position, plus extras when the
+  // nudged side was the card's weakest / strongest.
+  const POS = JIT + 1;
+  const WEAK = POS + 4;
+  const STRONG = WEAK + 1;
+  const n = STRONG + 1;
+  const unpenalised = new Set([JIT, POS, POS + 1, POS + 2, POS + 3, WEAK, STRONG]);
 
   // Sparse rows: feature index → value.
   type X = { f: Map<number, number>; y: number };
@@ -200,6 +222,11 @@ function fit() {
         add(i, sgn);
         if (p.s) add(silIdx.get(p.n)!, sgn);
         if (p.j) add(JIT, sgn * p.j * 4);
+        if (p.d) {
+          add(POS + p.d[0], sgn * p.d[1]);
+          if (p.d[2]) add(WEAK, sgn * p.d[1]);
+          if (p.d[3]) add(STRONG, sgn * p.d[1]);
+        }
       }
     }
     return { f, y: r.y };
@@ -220,7 +247,7 @@ function fit() {
       for (const [k, val] of x.f) g[k] += err * val;
     }
     for (let i = 0; i < n; i++) {
-      const grad = g[i] / N + (i === JIT ? 0 : (lambda * w[i]) / N);
+      const grad = g[i] / N + (unpenalised.has(i) ? 0 : (lambda * w[i]) / N);
       m[i] = 0.9 * m[i] + 0.1 * grad;
       v[i] = 0.999 * v[i] + 0.001 * grad * grad;
       const mh = m[i] / (1 - 0.9 ** step);
@@ -276,6 +303,12 @@ function fit() {
   }
   console.log(`rows ${N}, train acc ${((100 * correct) / Math.max(1, decisive)).toFixed(1)}%`);
   console.log(`one stat point = ${perStat.toFixed(4)} logit (se ${se(JIT).toFixed(4)})`);
+  if (info[POS] > lambda) {
+    const r = (i: number) => `${(w[i] / perStat).toFixed(2)}±${(se(i) / perStat).toFixed(2)}`;
+    console.log(`single-side point, in stat points (1.00 = an average point):`);
+    console.log(`  by position  top ${r(POS)}  right ${r(POS + 1)}  bottom ${r(POS + 2)}  left ${r(POS + 3)}`);
+    console.log(`  extra if it's the weakest side ${r(WEAK)}   extra if strongest ${r(STRONG)}`);
+  }
   // Cross-check from a different source: slope of vanilla cards' coefficient on
   // their stat total. Should roughly agree with the jitter estimate.
   const vanilla = pool.cards

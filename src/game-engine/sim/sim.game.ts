@@ -128,6 +128,15 @@ export interface PlaySimGameOptions {
   seed: number;
   /** Called with every state the game passes through (for data export later). */
   onState?: (state: GameState) => void;
+  /** Called after each card placement with the engine's full event list. */
+  onMove?: (move: {
+    before: GameState;
+    after: GameState;
+    playerId: string;
+    cardId: string;
+    position: { x: number; y: number };
+    events: unknown[];
+  }) => void;
 }
 
 /**
@@ -202,14 +211,22 @@ export async function playSimGame(
           if (!move) {
             state = (await GameLogic.endTurn(state, playerId)).state;
           } else {
-            state = (
-              await GameLogic.placeCard(
-                state,
-                playerId,
-                move.cardId,
-                move.position
-              )
-            ).state;
+            const before = state;
+            const placed = await GameLogic.placeCard(
+              state,
+              playerId,
+              move.cardId,
+              move.position
+            );
+            state = placed.state;
+            opts.onMove?.({
+              before,
+              after: state,
+              playerId,
+              cardId: move.cardId,
+              position: move.position,
+              events: placed.events,
+            });
 
             if (state.pending_choice) {
               result.handChoices++;

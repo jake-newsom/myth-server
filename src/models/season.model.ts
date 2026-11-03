@@ -100,6 +100,15 @@ const SeasonModel = {
     return rows as SeasonDefinitionRow[];
   },
 
+  async getSeasonById(seasonId: string): Promise<SeasonDefinitionRow | null> {
+    const { rows } = await db.query(
+      `SELECT season_id, name, start_at, end_at, status, generated_by, generation_rule_version, created_at, updated_at
+       FROM season_definitions WHERE season_id = $1;`,
+      [seasonId]
+    );
+    return (rows[0] as SeasonDefinitionRow) ?? null;
+  },
+
   /** Advance a season to finalized once payouts have been written. */
   async markFinalized(seasonId: string): Promise<void> {
     await db.query(
