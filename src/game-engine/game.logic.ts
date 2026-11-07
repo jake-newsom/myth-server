@@ -236,7 +236,7 @@ export class GameLogic {
           xp: row.xp,
           is_locked: row.is_locked,
           // Only when true, so non-first-edition game_state stays byte-identical.
-          ...(isFirstEdition(row.print_number) && { is_first_edition: true }),
+          ...(isFirstEdition(row.print_number, row) && { is_first_edition: true }),
           power_enhancements: powerEnhancements,
           current_power: currentPower,
           owner: row.user_id,

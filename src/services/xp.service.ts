@@ -421,6 +421,7 @@ const XpService = {
           uoc.print_number,
           ch.name,
           cv.rarity,
+          cv.is_exclusive,
           EXISTS (
             SELECT 1 FROM "deck_cards" dc
             WHERE dc.user_card_instance_id = uoc.user_card_instance_id
@@ -456,7 +457,7 @@ const XpService = {
             card.xp === 0 &&
             !card.is_locked &&
             !card.in_deck &&
-            !isFirstEdition(card.print_number)
+            !isFirstEdition(card.print_number, card)
         );
 
         // Calculate how many cards we should keep total (at least 2, or all cards with XP if more than 2)

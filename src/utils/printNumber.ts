@@ -2,8 +2,11 @@
  * First-edition print numbering.
  *
  * Every card variant (each art) counts its player-minted copies. The first
- * FIRST_EDITION_LIMIT of each carry the "1st Edition" badge. Numbers are handed
- * out once and never reused, so sacrificing a first edition retires it.
+ * FIRST_EDITION_LIMIT of each carry the "1st Edition" badge, but only on
+ * badge-eligible variants: legendary tier or any +/++/+++ upgrade, and never
+ * exclusives. Ineligible variants are still numbered (the count is kept);
+ * they just never show the badge. Numbers are handed out once and never
+ * reused, so sacrificing a first edition retires it.
  *
  * Numbering is opt-in per grant path, never a column default or trigger: only
  * paths that give a real player a collection card call this. AI deck copies,
@@ -17,8 +20,28 @@ export const FIRST_EDITION_LIMIT = 50;
 /** The shared AI account. Its cards are never numbered. */
 const AI_PLAYER_ID = "00000000-0000-0000-0000-000000000000";
 
-export function isFirstEdition(printNumber: number | null | undefined): boolean {
-  return printNumber != null && printNumber <= FIRST_EDITION_LIMIT;
+/**
+ * Whether a variant can carry the 1st Edition badge at all: legendary tier or
+ * any upgraded (+/++/+++) rarity, excluding exclusives. `rarity` packs tier and
+ * upgrade into one string, so check the prefix and the "+" separately.
+ */
+export function isFirstEditionEligible(variant: {
+  rarity: string;
+  is_exclusive?: boolean | null;
+}): boolean {
+  if (variant.is_exclusive) return false;
+  return variant.rarity.startsWith("legendary") || variant.rarity.includes("+");
+}
+
+export function isFirstEdition(
+  printNumber: number | null | undefined,
+  variant: { rarity: string; is_exclusive?: boolean | null }
+): boolean {
+  return (
+    printNumber != null &&
+    printNumber <= FIRST_EDITION_LIMIT &&
+    isFirstEditionEligible(variant)
+  );
 }
 
 /**

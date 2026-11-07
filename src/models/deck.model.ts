@@ -34,7 +34,7 @@ const formatDeckCardInstanceResponse = (
     level: instance.level,
     xp: instance.xp,
     is_locked: instance.is_locked,
-    ...(isFirstEdition(instance.print_number) && { is_first_edition: true }),
+    ...(isFirstEdition(instance.print_number, baseCard) && { is_first_edition: true }),
     power_enhancements: instance.power_enhancements,
     tags: baseCard.tags,
     set_id: baseCard.set_id || null,

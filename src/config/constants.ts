@@ -459,22 +459,25 @@ export const EMBER_CONFIG = {
   /**
    * Regeneration ceiling. Balances above this are left alone.
    *
-   * Lowered 60 -> 50. Nothing claws a balance back down: a player sitting on 55
-   * keeps all 55 and simply regenerates none until they spend below 50.
+   * Lowered 60 -> 50 -> 20. At 50, prod (2026-11) showed every active player
+   * sitting full and zero unfunded games. Nothing claws a balance back down: a
+   * player sitting on 55 keeps all 55 and simply regenerates none until they
+   * spend below the cap.
    */
-  REGEN_CAP: 50,
+  REGEN_CAP: 20,
   /**
    * One ember per this many milliseconds.
    *
-   * Slowed 30 -> 40 minutes, taking natural generation from 48/day to 36/day.
+   * Slowed 30 -> 40 -> 80 minutes: 48/day -> 36/day -> 18/day. Median prod
+   * player plays ~11 games/day, so only heavy sessions hit the wall.
    * SWEEP_SCHEDULE in ember.service.ts is pinned independently of this — do not
    * re-derive the cron from it (see the note there).
    */
-  REGEN_INTERVAL_MS: 40 * 60 * 1000,
+  REGEN_INTERVAL_MS: 80 * 60 * 1000,
   /** Spent to start an ember-funded solo or tower game. */
   GAME_COST: 1,
-  /** Embers granted by one daily shop bundle purchase. */
-  SHOP_BUNDLE_AMOUNT: 60,
+  /** Embers granted by one daily shop bundle purchase. 60 -> 25 alongside the cap cut. */
+  SHOP_BUNDLE_AMOUNT: 25,
 } as const;
 
 /** Feature flag gating ember spending and the XP/souls withholding. */

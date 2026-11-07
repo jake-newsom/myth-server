@@ -106,8 +106,9 @@ function formatUserCardInstanceResponse(
     // Only emitted when true, like the other optional flags above: every
     // non-forged card's payload is byte-identical to before this change.
     ...(isForged && { is_forged: true }),
-    // Same only-when-true rule: first 50 player-minted copies of this variant.
-    ...(isFirstEdition(instance.print_number) && { is_first_edition: true }),
+    // Same only-when-true rule: first 50 player-minted copies of a
+    // badge-eligible variant (legendary or upgraded, never exclusive).
+    ...(isFirstEdition(instance.print_number, baseCard) && { is_first_edition: true }),
     equipped_border: equippedBorder,
   };
 }
